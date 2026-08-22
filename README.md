@@ -78,7 +78,7 @@ school-management-system/
 
 5. Run the development server
    ```
-   python manage.py runserver
+   python manage.py runserver 
    ```
 
 6. Open in browser
