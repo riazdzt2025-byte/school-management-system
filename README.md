@@ -26,7 +26,17 @@ A web-based Student Management System built with Python and Django, inspired by 
 
 ## Screenshots
 
-*(Add screenshots here — Student List, Add Student form, Admin panel)*
+### Dashboard
+![Dashboard](screenshots/dashboard.png)
+
+### Student List
+![Student List](screenshots/student_list.png)
+
+### Add Student Form
+![Add Student](screenshots/add_student.png)
+
+### Student Detail
+![Student Detail](screenshots/student_detail.png)
 
 ## Project Structure
 
