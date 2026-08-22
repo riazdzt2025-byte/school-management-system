@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>...... High School</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container mt-5 text-center">
+    <h1 class="mb-4">...... High School</h1>
+    <p class="lead">Student Management System</p>
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-4">
+            <div class="card p-4 shadow-sm">
+                <h2>{{ total_students }}</h2>
+                <p>Total Students</p>
+            </div>
+        </div>
+    </div>
+    <a href="{% url 'student_list' %}" class="btn btn-primary btn-lg mt-4">View Student List</a>
+</div>
+</body>
+</html>
