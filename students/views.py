@@ -37,3 +37,9 @@ def delete_student(request, pk):
         student.delete()
         return redirect('student_list')
     return render(request, 'students/delete_student.html', {'student': student})
+
+
+def student_detail(request, pk):
+    student = get_object_or_404(Student, pk=pk)
+    subjects = student.subjects.all()
+    return render(request, 'students/student_detail.html', {'student': student, 'subjects': subjects})

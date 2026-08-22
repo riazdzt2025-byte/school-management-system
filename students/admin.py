@@ -1,4 +1,7 @@
 from django.contrib import admin
+admin.site.site_header = "...... High School Administration"
+admin.site.site_title = "...... High School"
+admin.site.index_title = "School Management System"
 from .models import Student, Subject, StudentSubject
 
 
