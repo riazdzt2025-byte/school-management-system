@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student List</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        th { background-color: #4a90d9; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>Student List</h1>
+    <table>
+        <tr>
+            <th>Student ID</th>
+            <th>Name</th>
+            <th>Class</th>
+            <th>Section</th>
+            <th>Roll</th>
+            <th>Gender</th>
+        </tr>
+        {% for student in students %}
+        <tr>
+            <td>{{ student.student_id }}</td>
+            <td>{{ student.name }}</td>
+            <td>{{ student.admission_class }}</td>
+            <td>{{ student.section }}</td>
+            <td>{{ student.roll_no }}</td>
+            <td>{{ student.get_gender_display }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
