@@ -1,10 +1,14 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Student
+from .models import Student, Subject
 from .forms import StudentForm
 
 def dashboard(request):
     total_students = Student.objects.count()
-    return render(request, 'students/dashboard.html', {'total_students': total_students})
+    total_subjects = Subject.objects.count()
+    return render(request, 'students/dashboard.html',  {
+        'total_students': total_students,
+        'total_subjects': total_subjects,
+        })
 
 def student_list(request):
     students = Student.objects.all()

@@ -5,6 +5,15 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+    <div class="container">
+        <a class="navbar-brand" href="{% url 'dashboard' %}">...... High School</a>
+        <div>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-light btn-sm me-2">Home</a>
+            <a href="{% url 'student_list' %}" class="btn btn-outline-light btn-sm">Students</a>
+        </div>
+    </div>
+</nav>
 <div class="container mt-5">
     <h1 class="mb-4">{{ student.name }}</h1>
     <table class="table table-bordered w-50 mb-4">
