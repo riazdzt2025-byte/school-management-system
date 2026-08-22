@@ -23,7 +23,7 @@ def add_student(request):
             return redirect('student_list')
     else:
         form = StudentForm()
-    return render(request, 'students/add_student.html', {'form': form})
+    return render(request, 'students/add_student.html', {'form': form, 'mode': 'Add'})
 
 
 def edit_student(request, pk):
@@ -35,8 +35,7 @@ def edit_student(request, pk):
             return redirect('student_list')
     else:
         form = StudentForm(instance=student)
-    return render(request, 'students/add_student.html', {'form': form})
-
+    return render(request, 'students/add_student.html', {'form': form, 'mode': 'Edit'})
 
 def delete_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
