@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Delete Student</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        button { padding: 8px 20px; margin-right: 10px; cursor: pointer; }
+        .confirm { background-color: #d9534f; color: white; border: none; }
+        .cancel { background-color: #ccc; border: none; }
+    </style>
+</head>
+<body>
+    <h1>Delete Student</h1>
+    <p>আপনি কি নিশ্চিত যে <strong>{{ student.name }}</strong> ({{ student.student_id }}) কে ডিলিট করতে চান?</p>
+    <form method="POST">
+        {% csrf_token %}
+        <button type="submit" class="confirm">হ্যাঁ, Delete করুন</button>
+        <a href="{% url 'student_list' %}"><button type="button" class="cancel">না, বাতিল করুন</button></a>
+    </form>
+</body>
+</html>

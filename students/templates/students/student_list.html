@@ -21,6 +21,7 @@
             <th>Section</th>
             <th>Roll</th>
             <th>Gender</th>
+            <th>Action</th>
         </tr>
         {% for student in students %}
         <tr>
@@ -30,6 +31,10 @@
             <td>{{ student.section }}</td>
             <td>{{ student.roll_no }}</td>
             <td>{{ student.get_gender_display }}</td>
+            <td>
+                <a href="{% url 'edit_student' student.pk %}">Edit</a> |
+                <a href="{% url 'delete_student' student.pk %}">Delete</a>
+            </td>
         </tr>
         {% endfor %}
     </table>
