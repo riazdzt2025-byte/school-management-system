@@ -91,6 +91,7 @@ A web-based Student Management System built with Python and Django, inspired by 
 
 ## Project Structure
 ```
+<img width="466" height="276" alt="image" src="https://github.com/user-attachments/assets/c0c7d0f9-d3b7-4762-b92b-50d41ef1a631" />
 school-management-system/
 ├── school_system/       # Project settings and main URL configuration
 ├── students/             # Main app: models, views, forms, templates
