@@ -42,67 +42,7 @@ A web-based Student Management System built with Python and Django, inspired by 
 ![Student Detail](student_detail.png)
 
 ## Project Structure
-
-গুড হাবিব, তোমার README দেখলাম — কিছু জায়গা আপডেট দরকার কারণ Roadmap-এ যেগুলো "pending" লেখা আছে, সেগুলো তো তুমি ইতিমধ্যে করে ফেলেছ (search, Bootstrap, deploy)। এখানে full updated version:
-
-```markdown
-# School Management System (Django)
-A web-based Student Management System built with Python and Django, inspired by real-world school administration software. This project demonstrates core full-stack web development skills including database design, CRUD operations, and form handling.
-
-## 🔗 Live Demo
-- **Website:** https://school-management-system-27mn.onrender.com/
-- **Admin Panel:** https://school-management-system-27mn.onrender.com/admin/
-
-> Note: Hosted on Render free tier — first load may take 30-50 seconds to wake up.
-
-## Features
-- **Student Management (Full CRUD)**
-  - Add new student records through a web form
-  - View all students in a structured list
-  - Edit existing student information
-  - Delete student records with confirmation
-- **Subject Management**
-  - Store subject details (code, name, full marks)
-- **Student-Subject Relationship**
-  - Track which subjects each student is enrolled in, along with their marks
-- **Search**
-  - Search students by name, roll, or class
-- **Admin Panel**
-  - Full Django admin interface for data management
-  - Inline subject/marks entry when adding a student
-  - Custom branded admin header
-
-## Tech Stack
-- **Backend:** Python, Django 6.1
-- **Database:** SQLite (development)
-- **Frontend:** HTML, CSS, Bootstrap 5 (Django Templates)
-- **Deployment:** Render.com (Gunicorn)
-- **Version Control:** Git & GitHub
-
-## Screenshots
-### Dashboard
-![Dashboard](dashboard.png)
-### Student List
-![Student List](student_list.png)
-### Add Student Form
-![Add Student](add_student.png)
-### Student Detail
-![Student Detail](student_detail.png)
-
-## Project Structure
-```
 <img width="466" height="276" alt="image" src="https://github.com/user-attachments/assets/c0c7d0f9-d3b7-4762-b92b-50d41ef1a631" />
-school-management-system/
-├── school_system/       # Project settings and main URL configuration
-├── students/             # Main app: models, views, forms, templates
-│   ├── models.py         # Student, Subject, StudentSubject models
-│   ├── views.py           # CRUD logic
-│   ├── forms.py           # Student form (ModelForm)
-│   ├── urls.py             # App-level routing
-│   └── templates/students/ # HTML templates
-├── manage.py
-└── requirements.txt
-```
 
 ## How to Run Locally
 1. Clone the repository
