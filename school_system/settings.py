@@ -15,7 +15,8 @@ SECRET_KEY = 'django-insecure-r6_1dyqr(-s0!v)m-3@yh&15k1rj__i)nw-r*_rgo(h7m1wvps
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'dashboard'
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

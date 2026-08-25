@@ -2,8 +2,10 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from .models import Student, Subject
 from .forms import StudentForm
+from django.contrib.auth.decorators import login_required
 
 
+@login_required
 def dashboard(request):
     total_students = Student.objects.count()
     total_subjects = Subject.objects.count()
@@ -13,6 +15,7 @@ def dashboard(request):
     })
 
 
+@login_required
 def student_list(request):
     students = Student.objects.all()
     return render(request, 'students/student_list.html', {
@@ -20,6 +23,7 @@ def student_list(request):
     })
 
 
+@login_required
 def student_detail(request, pk):
     student = get_object_or_404(Student, pk=pk)
     return render(request, 'students/student_detail.html', {
@@ -27,6 +31,7 @@ def student_detail(request, pk):
     })
 
 
+@login_required
 def add_student(request):
     if request.method == 'POST':
         form = StudentForm(request.POST)
@@ -41,9 +46,10 @@ def add_student(request):
             messages.error(request, "ফর্মে ত্রুটি আছে — নিচের ফিল্ডগুলো চেক করুন।")
     else:
         form = StudentForm()
-        return render(request, 'students/add_student.html', {'form': form})
+    return render(request, 'students/add_student.html', {'form': form})
 
 
+@login_required
 def edit_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
     if request.method == 'POST':
@@ -56,30 +62,14 @@ def edit_student(request, pk):
             messages.error(request, "ফর্মে ত্রুটি আছে — নিচের ফিল্ডগুলো চেক করুন।")
     else:
         form = StudentForm(instance=student)
-        return render(request, 'students/add_student.html', {'form': form, 'student': student})
+    return render(request, 'students/add_student.html', {'form': form, 'student': student})
 
 
+@login_required
 def delete_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
     if request.method == 'POST':
         student.delete()
         messages.success(request, "স্টুডেন্ট ডিলিট হয়েছে।")
         return redirect('student_list')
-        return render(request, 'students/delete_student.html', {'student': student})
-
-
-def admission_view(request):
-    if request.method == 'POST':
-        form = StudentForm(request.POST)
-        if form.is_valid():
-            try:
-                student = form.save()
-                messages.success(request, f"ভর্তি সম্পন্ন হয়েছে — Student ID: {student.student_id}")
-                return redirect('student_list')
-            except ValueError as e:
-                messages.error(request, str(e))
-        else:
-            messages.error(request, "ফর্মে ত্রুটি আছে — নিচের ফিল্ডগুলো চেক করুন।")
-    else:
-        form = StudentForm()
-    return render(request, 'students/admission.html', {'form': form})
+    return render(request, 'students/delete_student.html', {'student': student})
