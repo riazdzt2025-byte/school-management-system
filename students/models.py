@@ -17,7 +17,7 @@ class Student(models.Model):
     ]
 
     form_no = models.CharField(max_length=20, blank=True)
-    student_id = models.CharField(max_length=20, unique=True)
+    student_id = models.CharField(max_length=20, unique=True, blank=True)
     name = models.CharField(max_length=100)
     admission_class = models.CharField(max_length=10)
     section = models.CharField(max_length=5)
@@ -29,7 +29,26 @@ class Student(models.Model):
     contact_no = models.CharField(max_length=20, blank=True)
     guardian_contact_no = models.CharField(max_length=20, blank=True)
     group = models.CharField(max_length=3, choices=GROUP_CHOICES, blank=True)
+    def save(self, *args, **kwargs):
+        if not self.student_id:
+            class_code = str(self.admission_class).zfill(2)
+            count = Student.objects.filter(
+                admission_year=self.admission_year,
+                admission_class=self.admission_class
+            ).count() + 1
 
+            if count > 999:
+                raise ValueError(
+                    f"এই ক্লাসে ({self.admission_class}) {self.admission_year} সালে ৯৯৯ জনের বেশি ভর্তি হয়ে গেছে।"
+                )
+
+            self.student_id = f"{self.admission_year}{class_code}{count:03d}"
+
+        if not self.form_no:
+            last = Student.objects.exclude(form_no='').order_by('-form_no').first()
+            self.form_no = str(int(last.form_no) + 1) if last and last.form_no.isdigit() else "30001"
+
+        super().save(*args, **kwargs)
     def __str__(self):
         return f"{self.name} ({self.student_id})"
 

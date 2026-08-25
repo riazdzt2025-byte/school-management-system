@@ -87,30 +87,18 @@
     {% endif %}
 
     <div class="form-card">
-        <form method="post" enctype="multipart/form-data" novalidate>
+        <form method="post" novalidate>
             {% csrf_token %}
 
-            <div class="section-title">Student Information</div>
+                     <div class="section-title">Student Information</div>
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label">Full Name (English)</label>
-                    {{ form.full_name }}
+                    <label class="form-label">Name</label>
+                    {{ form.name }}
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Full Name (Bengali)</label>
-                    {{ form.full_name_bn }}
-                </div>
-                <div class="col-md-4">
                     <label class="form-label">Father's Name</label>
                     {{ form.father_name }}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Mother's Name</label>
-                    {{ form.mother_name }}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Date of Birth</label>
-                    {{ form.date_of_birth }}
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Gender</label>
@@ -121,8 +109,8 @@
                     {{ form.religion }}
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Photo</label>
-                    {{ form.photo }}
+                    <label class="form-label">Group</label>
+                    {{ form.group }}
                 </div>
             </div>
 
@@ -130,7 +118,7 @@
             <div class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label">Class</label>
-                    {{ form.student_class }}
+                    {{ form.admission_class }}
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Section</label>
@@ -138,32 +126,23 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Roll No.</label>
-                    {{ form.roll_number }}
+                    {{ form.roll_no }}
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Admission Year</label>
                     {{ form.admission_year }}
                 </div>
-                <div class="col-md-12">
-                    <label class="form-label">Previous School (if any)</label>
-                    {{ form.previous_school }}
-                </div>
             </div>
 
-            <div class="section-title">Contact & Address</div>
+            <div class="section-title">Contact</div>
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label">Guardian Phone</label>
-                    {{ form.guardian_phone }}
-                </div>
-                <div class="col-md-6"></div>
-                <div class="col-md-6">
-                    <label class="form-label">Present Address</label>
-                    {{ form.present_address }}
+                    <label class="form-label">Student's Contact No.</label>
+                    {{ form.contact_no }}
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Permanent Address</label>
-                    {{ form.permanent_address }}
+                    <label class="form-label">Guardian Contact No.</label>
+                    {{ form.guardian_contact_no }}
                 </div>
             </div>
 

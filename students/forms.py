@@ -4,12 +4,8 @@ from .models import Student
 class StudentForm(forms.ModelForm):
     class Meta:
         model = Student
-        fields = ['form_no', 'student_id', 'name', 'admission_class', 'section',
-                  'admission_year', 'roll_no', 'gender', 'religion', 'father_name',
-                  'contact_no', 'guardian_contact_no', 'group']
+        exclude = ['form_no', 'student_id']
         widgets = {
-            'form_no': forms.TextInput(attrs={'class': 'form-control'}),
-            'student_id': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'admission_class': forms.TextInput(attrs={'class': 'form-control'}),
             'section': forms.TextInput(attrs={'class': 'form-control'}),
