@@ -1,6 +1,11 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.contrib.auth import views as auth_views
+from django.contrib import admin
+
+admin.site.site_header = "Principal Kazi Faruky School And College"
+admin.site.site_title = "PKFSC Admin"
+admin.site.index_title = "Welcome to School Administration"
 
 urlpatterns = [
     path('admin/', admin.site.urls),
