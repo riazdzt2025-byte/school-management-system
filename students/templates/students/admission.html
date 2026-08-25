@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admission - PKFSC</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy: #0F2D52;
+            --navy-light: #17406e;
+            --gold: #C9A227;
+            --bg: #F6F7FA;
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
+        h1, h2, .brand { font-family: 'Fraunces', serif; }
+
+        .sidebar {
+            width: 240px; height: 100vh; position: fixed; top: 0; left: 0;
+            background: var(--navy); color: #fff; display: flex;
+            flex-direction: column; padding: 24px 0;
+        }
+        .brand { font-size: 1.15rem; font-weight: 700; padding: 0 20px 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 16px; }
+        .sidebar a { color: rgba(255,255,255,0.75); text-decoration: none; padding: 12px 20px;
+            display: flex; align-items: center; gap: 10px; font-size: 0.95rem;
+            border-left: 3px solid transparent; transition: all 0.15s; }
+        .sidebar a:hover, .sidebar a.active { background: var(--navy-light); color: #fff; border-left-color: var(--gold); }
+        .sidebar i { font-size: 1.1rem; width: 20px; }
+
+        .main { margin-left: 240px; padding: 32px 40px; }
+
+        .form-card {
+            background: #fff; border-radius: 16px; padding: 32px;
+            box-shadow: 0 4px 14px rgba(15,45,82,0.06); max-width: 900px;
+        }
+        .section-title {
+            font-family: 'Fraunces', serif; color: var(--navy); font-size: 1.1rem;
+            margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--gold);
+        }
+        .section-title:first-child { margin-top: 0; }
+        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; padding: 10px 28px; }
+        .btn-navy:hover { background: var(--navy-light); color: #fff; }
+
+        .menu-toggle {
+            display: none; background: var(--navy); color: #fff; border: none;
+            border-radius: 8px; width: 42px; height: 42px; font-size: 1.2rem;
+            position: fixed; top: 16px; left: 16px; z-index: 1050;
+        }
+        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 1000; width: 220px; }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; padding: 80px 16px 24px; }
+            .menu-toggle { display: block; }
+            .sidebar-overlay.show { display: block; }
+            .form-card { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('show');">
+    <i class="bi bi-list"></i>
+</button>
+<div class="sidebar-overlay" onclick="this.classList.remove('show'); document.querySelector('.sidebar').classList.remove('open');"></div>
+
+<div class="sidebar">
+    <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
+    <a href="{% url 'dashboard' %}"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
+    <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
+    <a href="{% url 'admission' %}" class="active"><i class="bi bi-person-plus-fill"></i> Admission</a>
+    <a href="#"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
+    <a href="#"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+</div>
+
+<div class="main">
+    <h4 class="mb-4" style="color: var(--navy);"><i class="bi bi-person-plus me-2"></i>New Admission</h4>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="form-card">
+        <form method="post" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+
+            <div class="section-title">Student Information</div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Full Name (English)</label>
+                    {{ form.full_name }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Full Name (Bengali)</label>
+                    {{ form.full_name_bn }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Father's Name</label>
+                    {{ form.father_name }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Mother's Name</label>
+                    {{ form.mother_name }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Date of Birth</label>
+                    {{ form.date_of_birth }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Gender</label>
+                    {{ form.gender }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Religion</label>
+                    {{ form.religion }}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Photo</label>
+                    {{ form.photo }}
+                </div>
+            </div>
+
+            <div class="section-title">Academic Information</div>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Class</label>
+                    {{ form.student_class }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Section</label>
+                    {{ form.section }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Roll No.</label>
+                    {{ form.roll_number }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Admission Year</label>
+                    {{ form.admission_year }}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">Previous School (if any)</label>
+                    {{ form.previous_school }}
+                </div>
+            </div>
+
+            <div class="section-title">Contact & Address</div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Guardian Phone</label>
+                    {{ form.guardian_phone }}
+                </div>
+                <div class="col-md-6"></div>
+                <div class="col-md-6">
+                    <label class="form-label">Present Address</label>
+                    {{ form.present_address }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Permanent Address</label>
+                    {{ form.permanent_address }}
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-navy">
+                    <i class="bi bi-check-circle me-1"></i> Save Admission
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+</body>
+</html>
