@@ -1,38 +1,113 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Principal Kazi Fariky School And College</title>
+    <title>Principal Kazi Faruky School And College</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        .hero {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 80px 20px;
+        }
+        .stat-card {
+            border: none;
+            border-radius: 12px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .stat-icon {
+            font-size: 2rem;
+            color: #2a5298;
+        }
+        .feature-card {
+            border: none;
+            border-radius: 12px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .feature-icon {
+            font-size: 2.5rem;
+            color: #2a5298;
+        }
+    </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container">
-        <a class="navbar-brand" href="{% url 'dashboard' %}">Principal Kazi Fariky School And College</a>
+        <a class="navbar-brand" href="{% url 'dashboard' %}">
+            <i class="bi bi-mortarboard-fill me-2"></i>Principal Kazi Faruky School And College
+        </a>
         <div>
             <a href="{% url 'dashboard' %}" class="btn btn-outline-light btn-sm me-2">Home</a>
             <a href="{% url 'student_list' %}" class="btn btn-outline-light btn-sm">Students</a>
         </div>
     </div>
 </nav>
-<div class="container mt-5 text-center">
-    <h1 class="mb-4">Principal Kazi Fariky College</h1>
-    <p class="lead">Student Management System</p>
-   <div class="row justify-content-center mt-5">
-    <div class="col-md-4">
-        <div class="card p-4 shadow-sm">
-            <h2>{{ total_students }}</h2>
-            <p>Total Students</p>
+
+<div class="hero text-center">
+    <h1 class="display-4 fw-bold">Principal Kazi Faruky School And College</h1>
+    <p class="lead">Empowering Education Through Technology</p>
+    <a href="{% url 'student_list' %}" class="btn btn-light btn-lg mt-3">
+        <i class="bi bi-people-fill me-2"></i>View Student List
+    </a>
+</div>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-4 mb-4">
+            <div class="card stat-card p-4 text-center shadow-sm">
+                <i class="bi bi-mortarboard stat-icon mb-2"></i>
+                <h2>{{ total_students }}</h2>
+                <p class="text-muted mb-0">Total Students</p>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card stat-card p-4 text-center shadow-sm">
+                <i class="bi bi-book stat-icon mb-2"></i>
+                <h2>{{ total_subjects }}</h2>
+                <p class="text-muted mb-0">Total Subjects</p>
+            </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card p-4 shadow-sm">
-            <h2>{{ total_subjects }}</h2>
-            <p>Total Subjects</p>
+
+    <hr class="my-5">
+
+    <h3 class="text-center mb-4">What You Can Do</h3>
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card feature-card p-4 text-center h-100 shadow-sm">
+                <i class="bi bi-person-plus feature-icon mb-3"></i>
+                <h5>Manage Students</h5>
+                <p class="text-muted">Add, edit, and organize student records with ease.</p>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card feature-card p-4 text-center h-100 shadow-sm">
+                <i class="bi bi-journal-bookmark feature-icon mb-3"></i>
+                <h5>Track Subjects & Marks</h5>
+                <p class="text-muted">Record subjects and marks for every student in one place.</p>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card feature-card p-4 text-center h-100 shadow-sm">
+                <i class="bi bi-search feature-icon mb-3"></i>
+                <h5>Quick Search</h5>
+                <p class="text-muted">Find any student instantly by name.</p>
+            </div>
         </div>
     </div>
 </div>
-    
-    <a href="{% url 'student_list' %}" class="btn btn-primary btn-lg mt-4">View Student List</a>
-</div>
+
+<footer class="text-center text-muted py-4 mt-5">
+    <small>&copy; 2026 Principal Kazi Faruky School And College. All rights reserved.</small>
+</footer>
+
 </body>
 </html>
