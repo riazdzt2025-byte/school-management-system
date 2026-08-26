@@ -7,57 +7,58 @@ Django Groups + Permissions তৈরি করে ডিপার্টমে�
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
+from students.models import (
+    Student, Subject, TransferCertificate, Certificate,
+    SSCRegistration, BoardResult,
+)
 
-# app_label সবসময় "students" — models.py এই app-এর ভেতরেই আছে
-DEPARTMENT_MODELS = {
-    "Admission": [("students", "student"), ("students", "certificate")],
-    "Exam":      [("students", "subject"), ("students", "studentsubject"),
-                  ("students", "sscregistration"), ("students", "boardresult")],
+
+DEPARTMENT_PERMISSIONS = {
+    "Admission": [
+        (Student, ["add", "change", "delete"]),
+        (TransferCertificate, ["add", "change", "delete"]),
+        (Certificate, ["add", "change", "delete"]),
+    ],
+    "Subjects": [
+        (Subject, ["add", "change", "delete"]),
+    ],
+    "Exam": [
+        (SSCRegistration, ["add", "change", "delete"]),
+        (BoardResult, ["add", "change", "delete"]),
+    ],
 }
-
-# সব মডেলের ফ্ল্যাট লিস্ট (view পারমিশন সবাইকে দেওয়ার জন্য)
-ALL_MODELS = [
-    ("students", "student"),
-    ("students", "certificate"),
-    ("students", "subject"),
-    ("students", "studentsubject"),
-    ("students", "sscregistration"),
-    ("students", "boardresult"),
-]
-
-ACTIONS_FULL = ["add", "change", "delete", "view"]
 
 
 class Command(BaseCommand):
-    help = "Create department groups with module-wise permissions"
+    help = "Create/update department groups and report permission changes."
 
     def handle(self, *args, **options):
-        for dept_name, own_models in DEPARTMENT_MODELS.items():
-            group, created = Group.objects.get_or_create(name=dept_name)
+        for group_name, model_permissions in DEPARTMENT_PERMISSIONS.items():
+            group, created = Group.objects.get_or_create(name=group_name)
+            before = set(group.permissions.values_list('codename', flat=True))
+            before_count = len(before)
             group.permissions.clear()
 
-            for app_label, model_name in ALL_MODELS:
-                try:
-                    ct = ContentType.objects.get(app_label=app_label, model=model_name)
-                except ContentType.DoesNotExist:
-                    self.stdout.write(self.style.WARNING(
-                        f"  ContentType পাওয়া যায়নি: {app_label}.{model_name}"
-                    ))
-                    continue
-
-                is_own = (app_label, model_name) in own_models
-                actions = ACTIONS_FULL if is_own else ["view"]
-
+            for model, actions in model_permissions:
+                content_type = ContentType.objects.get_for_model(model)
+                model_name = model._meta.model_name
                 for action in actions:
                     codename = f"{action}_{model_name}"
-                    try:
-                        perm = Permission.objects.get(content_type=ct, codename=codename)
-                        group.permissions.add(perm)
-                    except Permission.DoesNotExist:
-                        self.stdout.write(self.style.WARNING(
-                            f"  Permission পাওয়া যায়নি: {codename}"
-                        ))
+                    permission = Permission.objects.get(
+                        content_type=content_type, codename=codename
+                    )
+                    group.permissions.add(permission)
 
-            self.stdout.write(self.style.SUCCESS(f"✔ Group তৈরি/আপডেট হয়েছে: {dept_name}"))
+            after = set(group.permissions.values_list('codename', flat=True))
+            status = "Created new" if created else "Found existing"
+            self.stdout.write(self.style.SUCCESS(
+                f"{status} group '{group_name}': {before_count} -> {len(after)} permission(s)."
+            ))
+            removed = before - after
+            added = after - before
+            if removed:
+                self.stdout.write(f"  Removed: {', '.join(sorted(removed))}")
+            if added:
+                self.stdout.write(f"  Added:   {', '.join(sorted(added))}")
 
-        self.stdout.write(self.style.SUCCESS("সব Department Group সেটআপ সম্পন্ন হয়েছে।"))
+        self.stdout.write(self.style.SUCCESS("Department groups setup complete."))
