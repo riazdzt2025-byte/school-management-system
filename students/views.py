@@ -4,11 +4,12 @@ from django.http import HttpResponse
 from django.db import transaction
 from .models import (
     Student, Subject, Institution, TransferCertificate, Certificate,
-    SSCRegistration, BoardResult,
+    SSCRegistration, BoardResult, Exam, ExamMark,
 )
 from .forms import (
     StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm,
     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
+    ExamForm,
 )
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
@@ -656,4 +657,114 @@ def result_summary(request):
         'pass_rate': round(pass_count / len(results) * 100, 2) if results else 0,
         'gpa_buckets': gpa_buckets,
         'a_plus_students': [result for result in results if result.grade == 'A+'],
+    })
+
+
+# ---------------- Exam Views ----------------
+
+@login_required
+def exam_list(request):
+    exams = Exam.objects.all().order_by('-session', 'admission_class', 'name')
+    return render(request, 'students/exam_list.html', {'exams': exams})
+
+
+@login_required
+@permission_required('students.add_exam', raise_exception=True)
+def add_exam(request):
+    form = ExamForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Exam created.')
+        return redirect('exam_list')
+    return render(request, 'students/add_exam.html', {'form': form})
+
+
+@login_required
+@permission_required('students.change_exam', raise_exception=True)
+def edit_exam(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    form = ExamForm(request.POST or None, instance=exam)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Exam updated.')
+        return redirect('exam_list')
+    return render(request, 'students/add_exam.html', {'form': form, 'exam': exam})
+
+
+@login_required
+@permission_required('students.delete_exam', raise_exception=True)
+def delete_exam(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    if request.method == 'POST':
+        exam.delete()
+        messages.success(request, 'Exam deleted.')
+        return redirect('exam_list')
+    return render(request, 'students/delete_exam.html', {'exam': exam})
+
+
+@login_required
+@permission_required('students.change_exam', raise_exception=True)
+def toggle_publish_exam(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    exam.is_published = not exam.is_published
+    exam.save(update_fields=['is_published'])
+    status = 'published' if exam.is_published else 'unpublished'
+    messages.success(request, f'Exam result {status}.')
+    return redirect('exam_list')
+
+
+@login_required
+@permission_required('students.add_exammark', raise_exception=True)
+def select_marks_subject(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    subjects = Subject.objects.all().order_by('name')
+    if request.method == 'POST':
+        subject_id = request.POST.get('subject')
+        if subject_id:
+            return redirect('enter_marks', pk=exam.pk, subject_pk=subject_id)
+        messages.error(request, 'Please select a subject.')
+    return render(request, 'students/select_marks_subject.html', {'exam': exam, 'subjects': subjects})
+
+
+@login_required
+@permission_required('students.add_exammark', raise_exception=True)
+def enter_marks(request, pk, subject_pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    subject = get_object_or_404(Subject, pk=subject_pk)
+    students_qs = Student.objects.filter(admission_class=exam.admission_class)
+    if exam.section:
+        students_qs = students_qs.filter(section__iexact=exam.section.strip())
+    students = students_qs.order_by('roll_no', 'name')
+    existing_marks = dict(ExamMark.objects.filter(exam=exam, subject=subject).values_list('student_id', 'marks_obtained'))
+
+    if request.method == 'POST':
+        saved_count = 0
+        skipped_count = 0
+        for student in students:
+            value = request.POST.get(f'marks_{student.pk}', '').strip()
+            if value == '':
+                continue
+            try:
+                marks_value = float(value)
+                if marks_value < 0 or marks_value > subject.full_marks:
+                    skipped_count += 1
+                    continue
+            except ValueError:
+                skipped_count += 1
+                continue
+            ExamMark.objects.update_or_create(
+                exam=exam, student=student, subject=subject,
+                defaults={'marks_obtained': marks_value},
+            )
+            saved_count += 1
+        messages.success(request, f'Marks saved for {saved_count} student(s).')
+        if skipped_count:
+            messages.warning(request, f'{skipped_count} invalid mark(s) were skipped.')
+        return redirect('exam_list')
+
+    students_with_marks = [(student, existing_marks.get(student.pk, '')) for student in students]
+    return render(request, 'students/enter_marks.html', {
+        'exam': exam,
+        'subject': subject,
+        'students_with_marks': students_with_marks,
     })

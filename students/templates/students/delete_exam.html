@@ -1,0 +1,2 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Delete Exam</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="p-5"><main class="container" style="max-width:560px"><h2>Delete Exam?</h2><p>Delete <strong>{{ exam.name }}</strong>? All marks entered for this exam will also be deleted.</p><form method="post">{% csrf_token %}<button class="btn btn-danger">Yes, Delete</button> <a class="btn btn-outline-secondary" href="{% url 'exam_list' %}">Cancel</a></form></main></body></html>

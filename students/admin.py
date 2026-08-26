@@ -5,6 +5,7 @@ admin.site.index_title = "School Management System"
 from .models import (
     Student, Subject, StudentSubject, Institution, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
+    Exam, ExamMark,
 )
 
 
@@ -24,3 +25,5 @@ admin.site.register(TransferCertificate)
 admin.site.register(Certificate)
 admin.site.register(SSCRegistration)
 admin.site.register(BoardResult)
+admin.site.register(Exam)
+admin.site.register(ExamMark)

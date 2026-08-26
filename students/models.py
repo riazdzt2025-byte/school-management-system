@@ -208,3 +208,41 @@ class BoardResult(models.Model):
 
     def __str__(self):
         return f"{self.ssc_registration.student.name} - {self.result_status} ({self.gpa})"
+
+
+class Exam(models.Model):
+    EXAM_TYPE_CHOICES = [
+        ('MID_TERM', 'Mid Term'),
+        ('TERM_FINAL', 'Term Final'),
+        ('OTHER', 'Other'),
+    ]
+
+    name = models.CharField(max_length=100)
+    exam_type = models.CharField(max_length=15, choices=EXAM_TYPE_CHOICES)
+    institution = models.ForeignKey(Institution, on_delete=models.PROTECT, null=True, blank=True)
+    admission_class = models.CharField(max_length=10)
+    section = models.CharField(max_length=5, blank=True, help_text='Leave blank to include all sections')
+    session = models.CharField(max_length=20, help_text='e.g. 2025-2026')
+    exam_date = models.DateField(null=True, blank=True)
+    is_published = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_exam_type_display()}) - Class {self.admission_class}"
+
+
+class ExamMark(models.Model):
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='marks')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='exam_marks')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
+    marks_obtained = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['exam', 'student', 'subject'],
+                name='unique_exam_student_subject',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.student.name} - {self.subject.name} - {self.exam.name}: {self.marks_obtained}"

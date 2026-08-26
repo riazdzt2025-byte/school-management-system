@@ -2,6 +2,7 @@ from django import forms
 from .models import (
     Student, Subject, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
+    Exam,
 )
 
 class StudentForm(forms.ModelForm):
@@ -107,3 +108,18 @@ class SSCExcelImportForm(forms.Form):
     excel_file = forms.FileField(
         widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
     )
+
+
+class ExamForm(forms.ModelForm):
+    class Meta:
+        model = Exam
+        fields = ['name', 'exam_type', 'institution', 'admission_class', 'section', 'session', 'exam_date']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. First Mid Term'}),
+            'exam_type': forms.Select(attrs={'class': 'form-select'}),
+            'institution': forms.Select(attrs={'class': 'form-select'}),
+            'admission_class': forms.TextInput(attrs={'class': 'form-control'}),
+            'section': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Leave blank for all sections'}),
+            'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2025-2026'}),
+            'exam_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        }

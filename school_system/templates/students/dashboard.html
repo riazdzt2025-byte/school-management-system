@@ -219,6 +219,7 @@
     <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
     <a href="{% url 'ssc_registration_list' %}"><i class="bi bi-card-checklist"></i> SSC Registrations</a>
     <a href="{% url 'result_summary' %}"><i class="bi bi-bar-chart-fill"></i> SSC Results</a>
+    <a href="{% url 'exam_list' %}"><i class="bi bi-pencil-square"></i> Exams</a>
    <form method="POST" action="{% url 'logout' %}" style="padding: 12px 20px;">
     {% csrf_token %}
     <button type="submit" style="background: none; border: none; color: rgba(255,255,255,0.75); padding: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 10px;">

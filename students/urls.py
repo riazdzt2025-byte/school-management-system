@@ -27,6 +27,13 @@ urlpatterns = [
     path('ssc-registrations/<int:pk>/add-result/', views.add_board_result, name='add_board_result'),
     path('board-results/<int:pk>/edit/', views.edit_board_result, name='edit_board_result'),
     path('results/summary/', views.result_summary, name='result_summary'),
+    path('exams/', views.exam_list, name='exam_list'),
+    path('exams/add/', views.add_exam, name='add_exam'),
+    path('exams/<int:pk>/edit/', views.edit_exam, name='edit_exam'),
+    path('exams/<int:pk>/delete/', views.delete_exam, name='delete_exam'),
+    path('exams/<int:pk>/publish-toggle/', views.toggle_publish_exam, name='toggle_publish_exam'),
+    path('exams/<int:pk>/select-subject/', views.select_marks_subject, name='select_marks_subject'),
+    path('exams/<int:pk>/marks/<int:subject_pk>/', views.enter_marks, name='enter_marks'),
 path('reports/class-section-summary/', views.class_section_summary, name='class_section_summary'),
     # Subject URLs
     path('subjects/', views.subject_list, name='subject_list'),
