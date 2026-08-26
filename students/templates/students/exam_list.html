@@ -1,2 +1,63 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Exams</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"><style>body{background:#f6f7fa}.sidebar{position:fixed;width:240px;height:100vh;background:#0f2d52;padding:28px 0}.sidebar a{display:block;color:#fff;padding:12px 20px;text-decoration:none}.sidebar a:hover,.sidebar a.active{background:#17406e}.main{margin-left:240px;padding:32px 40px}.card{border:0;box-shadow:0 4px 14px #0f2d5215}</style></head><body><nav class="sidebar"><a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'student_list' %}">Students</a><a href="{% url 'subject_list' %}">Subjects</a><a class="active" href="{% url 'exam_list' %}">Exams</a><a href="{% url 'ssc_registration_list' %}">SSC Registrations</a></nav><main class="main"><div class="d-flex justify-content-between mb-4"><h1>Exams</h1>{% if perms.students.add_exam %}<a href="{% url 'add_exam' %}" class="btn btn-primary">+ Add New Exam</a>{% endif %}</div>{% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}{% endif %}<div class="card"><div class="table-responsive"><table class="table table-striped mb-0"><thead class="table-dark"><tr><th>Name</th><th>Type</th><th>Class</th><th>Session</th><th>Date</th><th>Status</th><th>Action</th></tr></thead><tbody>{% for exam in exams %}<tr><td>{{ exam.name }}</td><td>{{ exam.get_exam_type_display }}</td><td>{{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</td><td>{{ exam.session }}</td><td>{{ exam.exam_date|default:'-' }}</td><td>{% if exam.is_published %}<span class="badge bg-success">Published</span>{% else %}<span class="badge bg-secondary">Unpublished</span>{% endif %}</td><td>{% if perms.students.add_exammark %}<a href="{% url 'select_marks_subject' exam.pk %}" class="btn btn-sm btn-outline-primary">Enter Marks</a>{% endif %}{% if perms.students.change_exam %}<a href="{% url 'edit_exam' exam.pk %}" class="btn btn-sm btn-outline-warning">Edit</a><a href="{% url 'toggle_publish_exam' exam.pk %}" class="btn btn-sm btn-outline-success">{% if exam.is_published %}Unpublish{% else %}Publish{% endif %}</a>{% endif %}{% if perms.students.delete_exam %}<a href="{% url 'delete_exam' exam.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="7" class="text-center py-4">No exams created yet.</td></tr>{% endfor %}</tbody></table></div></div></main></body></html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Exams</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f6f7fa; }
+        .sidebar { position: fixed; width: 240px; height: 100vh; background: #0f2d52; padding: 28px 0; }
+        .sidebar a { display: block; color: #fff; padding: 12px 20px; text-decoration: none; }
+        .sidebar a:hover, .sidebar a.active { background: #17406e; }
+        .main { margin-left: 240px; padding: 32px 40px; }
+        .card { border: 0; box-shadow: 0 4px 14px #0f2d5215; }
+    </style>
+</head>
+<body>
+<nav class="sidebar">
+    <a href="{% url 'dashboard' %}">Dashboard</a>
+    <a href="{% url 'student_list' %}">Students</a>
+    <a href="{% url 'subject_list' %}">Subjects</a>
+    <a class="active" href="{% url 'exam_list' %}">Exams</a>
+    <a href="{% url 'ssc_registration_list' %}">SSC Registrations</a>
+</nav>
+<main class="main">
+    <div class="d-flex justify-content-between mb-4">
+        <h1>Exams</h1>
+        {% if perms.students.add_exam %}
+        <a href="{% url 'add_exam' %}" class="btn btn-primary">+ Add New Exam</a>
+        {% endif %}
+    </div>
+    {% if messages %}
+        {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+    {% endif %}
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-striped mb-0">
+                <thead class="table-dark">
+                    <tr><th>Name</th><th>Type</th><th>Class</th><th>Session</th><th>Date</th><th>Status</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                    {% for exam in exams %}
+                    <tr>
+                        <td>{{ exam.name }}</td>
+                        <td>{{ exam.get_exam_type_display }}</td>
+                        <td>{{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</td>
+                        <td>{{ exam.session }}</td>
+                        <td>{{ exam.exam_date|default:'-' }}</td>
+                        <td>{% if exam.is_published %}<span class="badge bg-success">Published</span>{% else %}<span class="badge bg-secondary">Unpublished</span>{% endif %}</td>
+                        <td>
+                            <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-sm btn-outline-info">Results</a>
+                            {% if perms.students.add_exammark %}<a href="{% url 'select_marks_subject' exam.pk %}" class="btn btn-sm btn-outline-primary">Enter Marks</a>{% endif %}
+                            {% if perms.students.change_exam %}<a href="{% url 'edit_exam' exam.pk %}" class="btn btn-sm btn-outline-warning">Edit</a><a href="{% url 'toggle_publish_exam' exam.pk %}" class="btn btn-sm btn-outline-success">{% if exam.is_published %}Unpublish{% else %}Publish{% endif %}</a>{% endif %}
+                            {% if perms.students.delete_exam %}<a href="{% url 'delete_exam' exam.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}<tr><td colspan="7" class="text-center py-4">No exams created yet.</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+</body>
+</html>

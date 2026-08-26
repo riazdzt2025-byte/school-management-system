@@ -15,6 +15,7 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
 import openpyxl
 from collections import defaultdict
+from .result_utils import build_exam_results
 
 
 
@@ -635,7 +636,7 @@ def edit_board_result(request, pk):
 
 
 @login_required
-def result_summary(request):
+def ssc_result_summary(request):
     session = request.GET.get('session')
     registrations = SSCRegistration.objects.select_related('board_result', 'student').all()
     if session:
@@ -768,3 +769,52 @@ def enter_marks(request, pk, subject_pk):
         'subject': subject,
         'students_with_marks': students_with_marks,
     })
+
+
+# ---------------- Exam Result Views ----------------
+
+@login_required
+def result_sheet(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    subjects, results = build_exam_results(exam)
+    return render(request, 'students/result_sheet.html', {'exam': exam, 'subjects': subjects, 'results': results})
+
+
+@login_required
+def result_summary(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    _, results = build_exam_results(exam)
+    return render(request, 'students/exam_result_summary.html', {'exam': exam, 'results': results})
+
+
+@login_required
+def top_10(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    _, results = build_exam_results(exam)
+    return render(request, 'students/top10.html', {'exam': exam, 'results': [r for r in results if r['position']][:10]})
+
+
+def _exam_result(exam, student_pk):
+    student = get_object_or_404(Student, pk=student_pk)
+    _, results = build_exam_results(exam)
+    return student, next((r for r in results if r['student'].pk == student.pk), None)
+
+
+@login_required
+def student_result_detail(request, pk, student_pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    student, result = _exam_result(exam, student_pk)
+    if not result or not result['has_marks']:
+        messages.error(request, 'No marks found for this student in this exam.')
+        return redirect('exam_result_summary', pk=exam.pk)
+    return render(request, 'students/student_result_detail.html', {'exam': exam, 'result': result})
+
+
+@login_required
+def result_card(request, pk, student_pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    student, result = _exam_result(exam, student_pk)
+    if not result or not result['has_marks']:
+        messages.error(request, 'No marks found for this student in this exam.')
+        return redirect('exam_result_summary', pk=exam.pk)
+    return render(request, 'students/result_card.html', {'exam': exam, 'result': result})
