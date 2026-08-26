@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="bn">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -37,6 +37,25 @@
             border-bottom: 1px solid rgba(255,255,255,0.12);
             margin-bottom: 16px;
             line-height: 1.3;
+        }
+        .user-badge {
+            margin: 0 20px 16px;
+            padding: 10px 12px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 10px;
+            border-left: 3px solid var(--gold);
+        }
+        .user-badge .u-name {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #fff;
+            display: block;
+        }
+        .user-badge .u-dept {
+            font-size: 0.78rem;
+            color: var(--gold);
+            display: block;
+            margin-top: 2px;
         }
         .sidebar a {
             color: rgba(255,255,255,0.75);
@@ -182,9 +201,21 @@
 <div class="sidebar-overlay" onclick="this.classList.remove('show'); document.querySelector('.sidebar').classList.remove('open');"></div>
 <div class="sidebar">
     <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
+
+    <div class="user-badge">
+        <span class="u-name"><i class="bi bi-person-circle me-1"></i>{{ request.user.username }}</span>
+        {% if request.user.is_superuser %}
+            <span class="u-dept">Super Admin (Full Access)</span>
+        {% elif request.user.groups.all %}
+            <span class="u-dept">{{ request.user.groups.first.name }} Department</span>
+        {% else %}
+            <span class="u-dept">No Department</span>
+        {% endif %}
+    </div>
+
     <a href="{% url 'dashboard' %}" class="active"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
     <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
-    <a href="#"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
+    <a href="{% url 'subject_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
     <a href="#"><i class="bi bi-bar-chart-fill"></i> Reports</a>
    <form method="POST" action="{% url 'logout' %}" style="padding: 12px 20px;">
     {% csrf_token %}
@@ -202,7 +233,7 @@
 
     <div class="filter-bar">
         <select class="form-select form-select-sm">
-            <option>সব শ্রেণি</option>
+            <option>All Classes</option>
             <option>Class 6</option>
             <option>Class 7</option>
             <option>Class 8</option>
@@ -210,7 +241,7 @@
             <option>Class 10</option>
         </select>
         <select class="form-select form-select-sm">
-            <option>সব শাখা</option>
+            <option>All Sections</option>
             <option>Section A</option>
             <option>Section B</option>
         </select>

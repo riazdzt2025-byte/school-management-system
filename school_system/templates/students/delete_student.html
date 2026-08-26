@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Delete Student</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container mt-5" style="max-width: 500px;">
+    <h1 class="mb-4">Delete Student</h1>
+    <p>Are you sure you want to delete <strong>{{ student.name }}</strong> ({{ student.student_id }})?</p>
+    <form method="POST">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Yes, Delete</button>
+        <a href="{% url 'student_list' %}" class="btn btn-secondary">No, Cancel</a>
+    </form>
+</div>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Principal Kazi Faruky School And College</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="{% url 'dashboard' %}">Principal Kazi Faruky School And College</a>
+            <div>
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-light btn-sm me-2">Home</a>
+                <form method="POST" action="{% url 'logout' %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-light btn-sm">Logout</button>
+                </form>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5" style="max-width: 500px;">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h4 class="mb-4">Select filters to view student list</h4>
+                <form method="GET" action="{% url 'student_list' %}">
+                    <div class="mb-3">
+                        <label class="form-label">Institution</label>
+                        <select name="institution" id="id_institution" class="form-select" required>
+                            <option value="">-- Select Institution --</option>
+                            {% for inst in institutions %}
+                            <option value="{{ inst.id }}">{{ inst.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Class</label>
+                        <select name="admission_class" id="id_class" class="form-select">
+                            <option value="">-- All Classes --</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Section</label>
+                        <input type="text" name="section" class="form-control" list="section-options" placeholder="e.g. A (leave blank for all sections)">
+                        <datalist id="section-options">
+                            <option value="A">
+                            <option value="B">
+                            <option value="C">
+                        </datalist>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">View List</button>
+                </form>
+                <hr>
+                <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary w-100">View All Students (no filter)</a>
+            </div>
+        </div>
+    </div>
+
+    {{ institutions_data|json_script:"institutions-data" }}
+    <script>
+        const institutionsData = JSON.parse(document.getElementById('institutions-data').textContent);
+        document.getElementById('id_institution').addEventListener('change', function () {
+            const classSelect = document.getElementById('id_class');
+            classSelect.innerHTML = '<option value="">-- All Classes --</option>';
+            const classes = institutionsData[this.value] || [];
+            classes.forEach(function (cls) {
+                const opt = document.createElement('option');
+                opt.value = cls;
+                opt.textContent = cls;
+                classSelect.appendChild(opt);
+            });
+        });
+    </script>
+</body>
+</html>

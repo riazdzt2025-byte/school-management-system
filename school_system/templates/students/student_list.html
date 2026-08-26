@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Principal Kazi Faruky School And College</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        @media print {
+            .d-print-none { display: none !important; }
+            .print-header { display: block !important; }
+            table { font-size: 0.9rem; }
+        }
+        .print-header { display: none; text-align: center; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4 d-print-none">
+    <div class="container">
+        <a class="navbar-brand" href="{% url 'dashboard' %}">Principal Kazi Faruky School And College</a>
+        <div>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-light btn-sm me-2">Home</a>
+            <a href="{% url 'student_list' %}" class="btn btn-outline-light btn-sm">Students</a>
+                     <form method="POST" action="{% url 'logout' %}" style="padding: 12px 20px;">
+    {% csrf_token %}
+    <button type="submit" style="background: none; border: none; color: rgba(255,255,255,0.75); padding: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 10px;">
+        <i class="bi bi-box-arrow-right"></i> Logout
+    </button>
+</form>
+        </div>
+    </div>
+</nav>
+<div class="container mt-5">
+
+    <div class="print-header">
+        <h2>Principal Kazi Faruky School And College</h2>
+        <p>Student List</p>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4 d-print-none">
+        <h1>
+            {% if institution %}
+                {{ institution.name }}
+                {% if selected_class %} — Class {{ selected_class }}{% endif %}
+                {% if selected_section %} ({{ selected_section }}){% endif %}
+            {% else %}
+                Principal Kazi Faruky School And College
+            {% endif %}
+            <small class="text-muted fs-5">Student Management</small>
+        </h1>
+        <div class="d-print-none">
+            <button type="button" class="btn btn-sm btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#filterModal">🔄 Change Filter</button>
+            {% if perms.students.add_student %}
+            <a href="{% url 'add_student' %}" class="btn btn-primary">+ Add New Student</a>
+            <a href="{% url 'import_students' %}" class="btn btn-outline-primary">📥 Import from Excel</a>
+            {% endif %}
+            <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+        </div>
+    </div>
+
+    <table class="table table-striped table-bordered">
+        <thead class="table-primary">
+            <tr>
+                <th>Student ID</th>
+                <th>Name</th>
+                <th>Class</th>
+                <th>Section</th>
+                <th>Roll</th>
+                <th>Gender</th>
+                <th class="d-print-none">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in students %}
+            <tr>
+                <td>{{ student.student_id }}</td>
+                <td>{{ student.name }}</td>
+                <td>{{ student.admission_class }}</td>
+                <td>{{ student.section }}</td>
+                <td>{{ student.roll_no }}</td>
+                <td>{{ student.get_gender_display }}</td>
+                <td class="d-print-none">
+                    <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-info">Details</a>
+                    {% if perms.students.change_student %}
+                    <a href="{% url 'edit_student' student.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
+                    {% endif %}
+                    {% if perms.students.delete_student %}
+                    <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Filter Modal -->
+<div class="modal fade" id="filterModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Select Filters to View Student List</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="GET" action="{% url 'student_list' %}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Institution</label>
+            <select name="institution" id="id_institution" class="form-select" required>
+              <option value="">-- Select Institution --</option>
+              {% for inst in institutions %}
+              <option value="{{ inst.id }}" {% if institution and institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Class</label>
+            <select name="admission_class" id="id_class" class="form-select">
+              <option value="">-- All Classes --</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Section</label>
+            <input type="text" name="section" class="form-control" list="section-options" value="{{ selected_section|default:'' }}" placeholder="e.g. A (leave blank for all sections)">
+            <datalist id="section-options">
+              <option value="A">
+              <option value="B">
+              <option value="C">
+            </datalist>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary">View All Students</a>
+          <button type="submit" class="btn btn-primary">View List</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{{ institutions_data|json_script:"institutions-data" }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script>
+    const institutionsData = JSON.parse(document.getElementById('institutions-data').textContent);
+    const institutionSelect = document.getElementById('id_institution');
+    const classSelect = document.getElementById('id_class');
+    const currentClassValue = "{{ selected_class|default:'' }}";
+
+    function populateClasses(selectedInstitutionId, preSelectValue) {
+        classSelect.innerHTML = '<option value="">-- All Classes --</option>';
+        const classes = institutionsData[selectedInstitutionId] || [];
+        classes.forEach(function (cls) {
+            const opt = document.createElement('option');
+            opt.value = cls;
+            opt.textContent = cls;
+            if (cls === preSelectValue) {
+                opt.selected = true;
+            }
+            classSelect.appendChild(opt);
+        });
+    }
+
+    institutionSelect.addEventListener('change', function () {
+        populateClasses(this.value, '');
+    });
+
+    if (institutionSelect.value) {
+        populateClasses(institutionSelect.value, currentClassValue);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        {% if show_filter_modal %}
+        var filterModalEl = document.getElementById('filterModal');
+        var filterModal = new bootstrap.Modal(filterModalEl);
+        filterModal.show();
+        {% endif %}
+    });
+</script>
+</body>
+</html>

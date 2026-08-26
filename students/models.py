@@ -1,7 +1,19 @@
 from django.db import models
 
-# Create your models here.
-from django.db import models
+
+class Institution(models.Model):
+    name = models.CharField(max_length=200, unique=True)
+    classes = models.CharField(
+        max_length=300,
+        help_text="Enter classes/semesters separated by commas, e.g.: Shishu,1,2,3,4,5"
+    )
+
+    def get_class_list(self):
+        return [c.strip() for c in self.classes.split(',') if c.strip()]
+
+    def __str__(self):
+        return self.name
+
 
 class Student(models.Model):
     GENDER_CHOICES = [
@@ -11,25 +23,37 @@ class Student(models.Model):
     ]
     GROUP_CHOICES = [
         ('SCI', 'Science'),
-        ('BUS', 'Business'),
+        ('BUS', 'Business Studies'),
         ('HUM', 'Humanities'),
+        ('DCS', 'Diploma in Computer Science'),
+        ('DEL', 'Diploma in Electrical'),
+        ('DCV', 'Diploma in Civil'),
+        ('GEN', 'General'),
         ('NON', 'Non-Group'),
     ]
 
+    institution = models.ForeignKey(
+        Institution, on_delete=models.PROTECT, null=True, blank=True
+    )
     form_no = models.CharField(max_length=20, blank=True)
     student_id = models.CharField(max_length=20, unique=True, blank=True)
     name = models.CharField(max_length=100)
     admission_class = models.CharField(max_length=10)
-    section = models.CharField(max_length=5)
-    admission_year = models.IntegerField()
-    roll_no = models.IntegerField()
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
+    section = models.CharField(max_length=5, blank=True)
+    admission_year = models.IntegerField(null=True, blank=True)
+    roll_no = models.IntegerField(null=True, blank=True)
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True)
     religion = models.CharField(max_length=50, blank=True)
     father_name = models.CharField(max_length=100, blank=True)
     contact_no = models.CharField(max_length=20, blank=True)
     guardian_contact_no = models.CharField(max_length=20, blank=True)
     group = models.CharField(max_length=3, choices=GROUP_CHOICES, blank=True)
+
     def save(self, *args, **kwargs):
+        if not self.admission_year:
+            from django.utils import timezone
+            self.admission_year = timezone.now().year
+
         if not self.student_id:
             class_code = str(self.admission_class).zfill(2)
             count = Student.objects.filter(
@@ -39,7 +63,7 @@ class Student(models.Model):
 
             if count > 999:
                 raise ValueError(
-                    f"এই ক্লাসে ({self.admission_class}) {self.admission_year} সালে ৯৯৯ জনের বেশি ভর্তি হয়ে গেছে।"
+                    f"More than 999 students have already been admitted to class ({self.admission_class}) for the year {self.admission_year}."
                 )
 
             self.student_id = f"{self.admission_year}{class_code}{count:03d}"
@@ -49,6 +73,7 @@ class Student(models.Model):
             self.form_no = str(int(last.form_no) + 1) if last and last.form_no.isdigit() else "30001"
 
         super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.name} ({self.student_id})"
 
