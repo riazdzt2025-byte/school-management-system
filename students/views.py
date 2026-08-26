@@ -4,12 +4,12 @@ from django.http import HttpResponse
 from django.db import transaction
 from .models import (
     Student, Subject, Institution, TransferCertificate, Certificate,
-    SSCRegistration, BoardResult, Exam, ExamMark,
+    SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
 )
 from .forms import (
     StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm,
     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
-    ExamForm,
+    ExamForm, GenerateSeatPlanForm,
 )
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
@@ -818,3 +818,120 @@ def result_card(request, pk, student_pk):
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)
     return render(request, 'students/result_card.html', {'exam': exam, 'result': result})
+
+
+# ---------------- Seat Plan Views ----------------
+
+@login_required
+def seat_plan_list(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    seats = SeatPlan.objects.filter(exam=exam).select_related('student')
+    rooms = {}
+    for seat in seats:
+        rooms.setdefault(seat.room_name, {'type': seat.room_type, 'count': 0})['count'] += 1
+    students = Student.objects.filter(admission_class=exam.admission_class)
+    if exam.section:
+        students = students.filter(section__iexact=exam.section.strip())
+    return render(request, 'students/seat_plan_list.html', {
+        'exam': exam, 'rooms': rooms,
+        'total_students': students.count(), 'seated_count': seats.count(),
+    })
+
+
+@login_required
+@permission_required('students.add_seatplan', raise_exception=True)
+def generate_seat_plan(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    students = Student.objects.filter(admission_class=exam.admission_class)
+    if exam.section:
+        students = students.filter(section__iexact=exam.section.strip())
+    students = list(students.order_by('roll_no', 'name'))
+    form = GenerateSeatPlanForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        rooms, errors, room_names = [], [], set()
+        for line in form.cleaned_data['room_config'].splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = [part.strip() for part in line.split(',')]
+            if len(parts) != 3:
+                errors.append(f'Invalid room line: {line}')
+                continue
+            room_name, room_type_raw, capacity_raw = parts
+            room_type_key = room_type_raw.upper()
+            room_type = 'INDOOR' if room_type_key.startswith('IN') else 'OUTDOOR' if room_type_key.startswith('OUT') else None
+            try:
+                capacity = int(capacity_raw)
+            except ValueError:
+                capacity = 0
+            if not room_name or not room_type or capacity <= 0:
+                errors.append(f'Invalid room name, type, or capacity: {line}')
+            elif room_name.lower() in room_names:
+                errors.append(f'Duplicate room name: {room_name}')
+            else:
+                rooms.append((room_name, room_type, capacity))
+                room_names.add(room_name.lower())
+
+        total_capacity = sum(room[2] for room in rooms)
+        if total_capacity < len(students):
+            errors.append(f'Total capacity ({total_capacity}) is less than students ({len(students)}).')
+        if not students:
+            errors.append('No students found for this exam class/section.')
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+        else:
+            with transaction.atomic():
+                SeatPlan.objects.filter(exam=exam).delete()
+                seats = []
+                student_index = 0
+                for room_name, room_type, capacity in rooms:
+                    for seat_no in range(1, capacity + 1):
+                        if student_index >= len(students):
+                            break
+                        seats.append(SeatPlan(
+                            exam=exam, room_name=room_name, room_type=room_type,
+                            student=students[student_index], seat_no=seat_no,
+                        ))
+                        student_index += 1
+                SeatPlan.objects.bulk_create(seats)
+            messages.success(request, f'Seat plan created for {len(students)} student(s) in {len(rooms)} room(s).')
+            return redirect('seat_plan_list', pk=exam.pk)
+    return render(request, 'students/generate_seat_plan.html', {
+        'exam': exam, 'form': form, 'student_count': len(students),
+    })
+
+
+@login_required
+def view_seat_plan_room(request, pk, room_name):
+    exam = get_object_or_404(Exam, pk=pk)
+    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
+    if not seats.exists():
+        messages.error(request, 'No seat plan found for this room.')
+        return redirect('seat_plan_list', pk=exam.pk)
+    return render(request, 'students/view_seat_plan_room.html', {
+        'exam': exam, 'room_name': room_name, 'seats': seats,
+    })
+
+
+@login_required
+def signature_sheet(request, pk, room_name):
+    exam = get_object_or_404(Exam, pk=pk)
+    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
+    if not seats.exists():
+        messages.error(request, 'No seat plan found for this room.')
+        return redirect('seat_plan_list', pk=exam.pk)
+    return render(request, 'students/signature_sheet.html', {
+        'exam': exam, 'room_name': room_name, 'seats': seats,
+    })
+
+
+@login_required
+@permission_required('students.delete_seatplan', raise_exception=True)
+def clear_seat_plan(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    if request.method == 'POST':
+        SeatPlan.objects.filter(exam=exam).delete()
+        messages.success(request, 'Seat plan cleared.')
+        return redirect('seat_plan_list', pk=exam.pk)
+    return render(request, 'students/clear_seat_plan.html', {'exam': exam})

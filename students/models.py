@@ -246,3 +246,26 @@ class ExamMark(models.Model):
 
     def __str__(self):
         return f"{self.student.name} - {self.subject.name} - {self.exam.name}: {self.marks_obtained}"
+
+
+class SeatPlan(models.Model):
+    ROOM_TYPE_CHOICES = [
+        ('INDOOR', 'Indoor'),
+        ('OUTDOOR', 'Outdoor'),
+    ]
+
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='seat_plans')
+    room_name = models.CharField(max_length=50)
+    room_type = models.CharField(max_length=10, choices=ROOM_TYPE_CHOICES, default='INDOOR')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    seat_no = models.PositiveIntegerField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['exam', 'student'], name='unique_exam_seat_student'),
+            models.UniqueConstraint(fields=['exam', 'room_name', 'seat_no'], name='unique_exam_room_seat'),
+        ]
+        ordering = ['room_name', 'seat_no']
+
+    def __str__(self):
+        return f"{self.exam.name} - {self.room_name} Seat {self.seat_no} - {self.student.name}"

@@ -49,6 +49,7 @@
                         <td>
                             <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-sm btn-outline-info">Results</a>
                             {% if perms.students.add_exammark %}<a href="{% url 'select_marks_subject' exam.pk %}" class="btn btn-sm btn-outline-primary">Enter Marks</a>{% endif %}
+                            <a href="{% url 'seat_plan_list' exam.pk %}" class="btn btn-sm btn-outline-dark">Seat Plan</a>
                             {% if perms.students.change_exam %}<a href="{% url 'edit_exam' exam.pk %}" class="btn btn-sm btn-outline-warning">Edit</a><a href="{% url 'toggle_publish_exam' exam.pk %}" class="btn btn-sm btn-outline-success">{% if exam.is_published %}Unpublish{% else %}Publish{% endif %}</a>{% endif %}
                             {% if perms.students.delete_exam %}<a href="{% url 'delete_exam' exam.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
                         </td>

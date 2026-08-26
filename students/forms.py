@@ -2,7 +2,7 @@ from django import forms
 from .models import (
     Student, Subject, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
-    Exam,
+    Exam, SeatPlan,
 )
 
 class StudentForm(forms.ModelForm):
@@ -123,3 +123,23 @@ class ExamForm(forms.ModelForm):
             'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2025-2026'}),
             'exam_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
         }
+
+
+class GenerateSeatPlanForm(forms.Form):
+    room_config = forms.CharField(
+        widget=forms.Textarea(attrs={
+            'class': 'form-control', 'rows': 8,
+            'placeholder': 'Room 101, Indoor, 30\nGround Field, Outdoor, 100',
+        }),
+        help_text='One room per line: Room Name, Type (Indoor/Outdoor), Capacity.',
+    )
+
+
+class GenerateSeatPlanForm(forms.Form):
+    room_config = forms.CharField(
+        widget=forms.Textarea(attrs={
+            'class': 'form-control', 'rows': 8,
+            'placeholder': 'Room 101, Indoor, 30\nGround Field, Outdoor, 100',
+        }),
+        help_text='One room per line: Room Name, Type (Indoor/Outdoor), Capacity.',
+    )
