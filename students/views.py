@@ -42,8 +42,7 @@ def student_list(request):
         if section:
             students = students.filter(section__iexact=section.strip())
     else:
-        students = Student.objects.none()
-        show_filter_modal = True
+        students = Student.objects.all()
 
     return render(request, 'students/student_list.html', {
         'students': students,
