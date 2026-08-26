@@ -1,5 +1,8 @@
 from django import forms
-from .models import Student, Subject, TransferCertificate, Certificate
+from .models import (
+    Student, Subject, TransferCertificate, Certificate,
+    SSCRegistration, BoardResult,
+)
 
 class StudentForm(forms.ModelForm):
     class Meta:
@@ -71,3 +74,36 @@ class CertificateForm(forms.ModelForm):
                 'placeholder': 'e.g. Principal',
             }),
         }
+
+
+class SSCRegistrationForm(forms.ModelForm):
+    class Meta:
+        model = SSCRegistration
+        fields = ['registration_number', 'roll_number', 'session', 'group', 'subjects', 'board', 'center']
+        widgets = {
+            'registration_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'roll_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2025-2026'}),
+            'group': forms.Select(attrs={'class': 'form-select'}),
+            'subjects': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Bangla, English, Math'}),
+            'board': forms.Select(attrs={'class': 'form-select'}),
+            'center': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
+
+class BoardResultForm(forms.ModelForm):
+    class Meta:
+        model = BoardResult
+        fields = ['gpa', 'grade', 'result_status', 'subject_wise_grades']
+        widgets = {
+            'gpa': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '5'}),
+            'grade': forms.Select(attrs={'class': 'form-select'}),
+            'result_status': forms.Select(attrs={'class': 'form-select'}),
+            'subject_wise_grades': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+        }
+
+
+class SSCExcelImportForm(forms.Form):
+    excel_file = forms.FileField(
+        widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
+    )

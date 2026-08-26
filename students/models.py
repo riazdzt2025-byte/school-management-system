@@ -154,3 +154,57 @@ class Certificate(models.Model):
 
     def __str__(self):
         return f"{self.certificate_number} - {self.student.name}"
+
+
+class SSCRegistration(models.Model):
+    GROUP_CHOICES = [
+        ('SCIENCE', 'Science'),
+        ('COMMERCE', 'Business Studies'),
+        ('ARTS', 'Humanities'),
+    ]
+    BOARD_CHOICES = [
+        ('DHAKA', 'Dhaka Board'),
+        ('CHATTOGRAM', 'Chattogram Board'),
+        ('MADRASAH', 'Madrasah Board'),
+        ('TECHNICAL', 'Technical Board'),
+    ]
+
+    student = models.OneToOneField(
+        Student, on_delete=models.CASCADE, related_name='ssc_registration'
+    )
+    registration_number = models.CharField(max_length=30, unique=True)
+    roll_number = models.CharField(max_length=20, blank=True)
+    session = models.CharField(max_length=20, help_text="e.g. 2025-2026")
+    group = models.CharField(max_length=10, choices=GROUP_CHOICES)
+    subjects = models.CharField(max_length=400, blank=True, help_text="Comma-separated subject names")
+    board = models.CharField(max_length=15, choices=BOARD_CHOICES)
+    center = models.CharField(max_length=150, blank=True)
+
+    def get_subject_list(self):
+        return [subject.strip() for subject in self.subjects.split(',') if subject.strip()]
+
+    def __str__(self):
+        return f"{self.registration_number} - {self.student.name}"
+
+
+class BoardResult(models.Model):
+    RESULT_STATUS_CHOICES = [
+        ('PASS', 'Pass'),
+        ('FAIL', 'Fail'),
+    ]
+    GRADE_CHOICES = [
+        ('A+', 'A+'), ('A', 'A'), ('A-', 'A-'),
+        ('B', 'B'), ('C', 'C'), ('D', 'D'), ('F', 'F'),
+    ]
+
+    ssc_registration = models.OneToOneField(
+        SSCRegistration, on_delete=models.CASCADE, related_name='board_result'
+    )
+    gpa = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
+    grade = models.CharField(max_length=2, choices=GRADE_CHOICES, blank=True)
+    result_status = models.CharField(max_length=4, choices=RESULT_STATUS_CHOICES)
+    subject_wise_grades = models.TextField(blank=True, help_text="e.g. Bangla: A+, English: A")
+    published_date = models.DateField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.ssc_registration.student.name} - {self.result_status} ({self.gpa})"

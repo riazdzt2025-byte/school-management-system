@@ -231,6 +231,11 @@
                             {% if perms.students.view_certificate %}
                             <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
                             {% endif %}
+                            {% if student.ssc_registration %}
+                            <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
+                            {% elif perms.students.add_sscregistration %}
+                            <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
+                            {% endif %}
                             {% if perms.students.delete_student %}
                             <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
                             {% endif %}
