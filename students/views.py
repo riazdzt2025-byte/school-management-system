@@ -6,6 +6,8 @@ from .forms import StudentForm, SubjectForm, ExcelImportForm
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
 import openpyxl
+from collections import defaultdict
+
 
 
 @login_required
@@ -16,8 +18,48 @@ def dashboard(request):
         'total_students': total_students,
         'total_subjects': total_subjects,
     })
+@login_required
+def class_section_summary(request):
+    institutions = Institution.objects.all().order_by('name')
+    institution_id = request.GET.get('institution')
+    institution = None
 
+    students_qs = Student.objects.all()
+    if institution_id:
+        institution = get_object_or_404(Institution, pk=institution_id)
+        students_qs = students_qs.filter(institution=institution)
 
+    summary = defaultdict(lambda: {'total': 0, 'male': 0, 'female': 0, 'other': 0})
+
+    for s in students_qs.only('admission_class', 'section', 'gender'):
+        key = (s.admission_class, s.section)
+        summary[key]['total'] += 1
+        if s.gender == 'M':
+            summary[key]['male'] += 1
+        elif s.gender == 'F':
+            summary[key]['female'] += 1
+        else:
+            summary[key]['other'] += 1
+
+    summary_rows = []
+    for (cls, section), counts in summary.items():
+        summary_rows.append({
+            'admission_class': cls,
+            'section': section,
+            **counts,
+        })
+
+    summary_rows.sort(key=lambda r: (r['admission_class'], r['section']))
+
+    grand_total = students_qs.count()
+
+    return render(request, 'students/class_section_summary.html', {
+        'institutions': institutions,
+        'institution': institution,
+        'summary_rows': summary_rows,
+        'grand_total': grand_total,
+    })
+#---------------- Student Views ----------------
 @login_required
 def student_list(request):
     institutions = Institution.objects.all().order_by('name')
@@ -33,16 +75,35 @@ def student_list(request):
     show_filter_modal = False
 
     if request.GET.get('all') == '1':
-        students = Student.objects.all()
+        students = list(Student.objects.all())
     elif institution_id:
         institution = get_object_or_404(Institution, pk=institution_id)
-        students = Student.objects.filter(institution=institution)
+        qs = Student.objects.filter(institution=institution)
         if admission_class:
-            students = students.filter(admission_class=admission_class)
+            qs = qs.filter(admission_class=admission_class)
         if section:
-            students = students.filter(section__iexact=section.strip())
+            qs = qs.filter(section__iexact=section.strip())
+        students = list(qs)
     else:
-        students = Student.objects.all()
+        students = []
+        show_filter_modal = True
+
+    # ---- Duplicate detection ----
+    exact_key_count = defaultdict(int)
+    name_count = defaultdict(int)
+    for s in students:
+        name_key = s.name.strip().lower()
+        exact_key_count[(name_key, s.admission_class, s.section)] += 1
+        name_count[name_key] += 1
+
+    exact_duplicate_ids = set()
+    possible_duplicate_ids = set()
+    for s in students:
+        name_key = s.name.strip().lower()
+        if exact_key_count[(name_key, s.admission_class, s.section)] > 1:
+            exact_duplicate_ids.add(s.id)
+        elif name_count[name_key] > 1:
+            possible_duplicate_ids.add(s.id)
 
     return render(request, 'students/student_list.html', {
         'students': students,
@@ -52,25 +113,65 @@ def student_list(request):
         'institutions': institutions,
         'institutions_data': institutions_data,
         'show_filter_modal': show_filter_modal,
+        'exact_duplicate_ids': exact_duplicate_ids,
+        'possible_duplicate_ids': possible_duplicate_ids,
     })
 
-    institution = get_object_or_404(Institution, pk=institution_id)
-    admission_class = request.GET.get('admission_class')
-    section = request.GET.get('section')
 
-    students = Student.objects.filter(institution=institution)
-    if admission_class:
-        students = students.filter(admission_class=admission_class)
-    if section:
-        students = students.filter(section__iexact=section.strip())
+@login_required
+@permission_required('students.delete_student', raise_exception=True)
+def bulk_delete_students(request):
+    if request.method == 'POST':
+        student_ids = request.POST.getlist('student_ids')
+        deleted_count = Student.objects.filter(pk__in=student_ids).delete()[0]
+        messages.success(request, f"{deleted_count} student(s) deleted.")
 
-    return render(request, 'students/student_list.html', {
-        'students': students,
-        'institution': institution,
-        'selected_class': admission_class,
-        'selected_section': section,
-    })
+        url = reverse('student_list')
+        params = []
+        if request.POST.get('institution'):
+            params.append(f"institution={request.POST.get('institution')}")
+        if request.POST.get('admission_class'):
+            params.append(f"admission_class={request.POST.get('admission_class')}")
+        if request.POST.get('section'):
+            params.append(f"section={request.POST.get('section')}")
+        if params:
+            url += "?" + "&".join(params)
+        return redirect(url)
+    return redirect('student_list')
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+def bulk_update_students(request):
+    if request.method == 'POST':
+        student_ids = request.POST.getlist('student_ids')
+        new_class = request.POST.get('new_class', '').strip()
+        new_section = request.POST.get('new_section', '').strip()
 
+        if not student_ids:
+            messages.error(request, "No students were selected.")
+        elif not new_class and not new_section:
+            messages.error(request, "Please provide a new Class or Section to update.")
+        else:
+            qs = Student.objects.filter(pk__in=student_ids)
+            update_fields = {}
+            if new_class:
+                update_fields['admission_class'] = new_class
+            if new_section:
+                update_fields['section'] = new_section
+            updated_count = qs.update(**update_fields)
+            messages.success(request, f"{updated_count} student(s) updated successfully.")
+
+        url = reverse('student_list')
+        params = []
+        if request.POST.get('institution'):
+            params.append(f"institution={request.POST.get('institution')}")
+        if request.POST.get('admission_class'):
+            params.append(f"admission_class={request.POST.get('admission_class')}")
+        if request.POST.get('section'):
+            params.append(f"section={request.POST.get('section')}")
+        if params:
+            url += "?" + "&".join(params)
+        return redirect(url)
+    return redirect('student_list')
 
 @login_required
 def student_detail(request, pk):
