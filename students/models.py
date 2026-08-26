@@ -48,6 +48,11 @@ class Student(models.Model):
     contact_no = models.CharField(max_length=20, blank=True)
     guardian_contact_no = models.CharField(max_length=20, blank=True)
     group = models.CharField(max_length=3, choices=GROUP_CHOICES, blank=True)
+    STATUS_CHOICES = [
+        ('ACTIVE', 'Active'),
+        ('TRANSFERRED', 'Transferred'),
+    ]
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='ACTIVE')
 
     def save(self, *args, **kwargs):
         if not self.admission_year:
@@ -94,3 +99,27 @@ class StudentSubject(models.Model):
 
     def __str__(self):
         return f"{self.student.name} - {self.subject.name}"
+
+
+class TransferCertificate(models.Model):
+    student = models.OneToOneField(
+        Student, on_delete=models.CASCADE, related_name='transfer_certificate'
+    )
+    tc_number = models.CharField(max_length=20, unique=True, blank=True)
+    issue_date = models.DateField(auto_now_add=True)
+    reason = models.CharField(max_length=200, blank=True)
+    remarks = models.TextField(blank=True)
+    issued_by = models.CharField(max_length=100, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.tc_number:
+            from django.utils import timezone
+            year = timezone.now().year
+            count = TransferCertificate.objects.filter(
+                issue_date__year=year
+            ).count() + 1
+            self.tc_number = f"TC-{year}-{count:03d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.tc_number} - {self.student.name}"

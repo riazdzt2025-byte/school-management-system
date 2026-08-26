@@ -1,8 +1,9 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import HttpResponse
-from .models import Student, Subject, Institution
-from .forms import StudentForm, SubjectForm, ExcelImportForm
+from django.db import transaction
+from .models import Student, Subject, Institution, TransferCertificate
+from .forms import StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
 import openpyxl
@@ -178,6 +179,47 @@ def student_detail(request, pk):
     student = get_object_or_404(Student, pk=pk)
     return render(request, 'students/student_detail.html', {
         'student': student,
+        'subjects': student.subjects.select_related('subject'),
+        'transfer_certificate': getattr(student, 'transfer_certificate', None),
+    })
+
+
+@login_required
+@permission_required('students.add_transfercertificate', raise_exception=True)
+def issue_tc(request, pk):
+    student = get_object_or_404(Student, pk=pk)
+    existing_tc = getattr(student, 'transfer_certificate', None)
+    if existing_tc:
+        messages.info(request, "This student's TC has already been issued.")
+        return redirect('view_tc', pk=existing_tc.pk)
+
+    if request.method == 'POST':
+        form = TransferCertificateForm(request.POST)
+        if form.is_valid():
+            with transaction.atomic():
+                transfer_certificate = form.save(commit=False)
+                transfer_certificate.student = student
+                transfer_certificate.save()
+                student.status = 'TRANSFERRED'
+                student.save(update_fields=['status'])
+            messages.success(request, f"Transfer Certificate {transfer_certificate.tc_number} issued.")
+            return redirect('view_tc', pk=transfer_certificate.pk)
+    else:
+        form = TransferCertificateForm()
+
+    return render(request, 'students/issue_tc.html', {
+        'student': student,
+        'form': form,
+    })
+
+
+@login_required
+def view_tc(request, pk):
+    transfer_certificate = get_object_or_404(TransferCertificate, pk=pk)
+    return render(request, 'students/tc_print.html', {
+        'tc': transfer_certificate,
+        'student': transfer_certificate.student,
+        'transfer_certificate': transfer_certificate,
     })
 
 

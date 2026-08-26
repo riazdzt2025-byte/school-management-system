@@ -1,5 +1,5 @@
 from django import forms
-from .models import Student, Subject
+from .models import Student, Subject, TransferCertificate
 
 class StudentForm(forms.ModelForm):
     class Meta:
@@ -37,3 +37,20 @@ class ExcelImportForm(forms.Form):
         label="Excel ফাইল নির্বাচন করুন (.xlsx)",
         widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
     )
+
+
+class TransferCertificateForm(forms.ModelForm):
+    class Meta:
+        model = TransferCertificate
+        fields = ['reason', 'remarks', 'issued_by']
+        widgets = {
+            'reason': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g. Family relocation',
+            }),
+            'remarks': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'issued_by': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g. Principal',
+            }),
+        }

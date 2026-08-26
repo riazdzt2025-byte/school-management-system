@@ -28,9 +28,27 @@
         <tr><th>Section</th><td>{{ student.section }}</td></tr>
         <tr><th>Roll</th><td>{{ student.roll_no }}</td></tr>
         <tr><th>Gender</th><td>{{ student.get_gender_display }}</td></tr>
+        <tr><th>Status</th><td>
+            {% if student.status == 'TRANSFERRED' %}
+            <span class="badge bg-secondary">Transferred</span>
+            {% else %}
+            <span class="badge bg-success">Active</span>
+            {% endif %}
+        </td></tr>
         <tr><th>Father Name</th><td>{{ student.father_name }}</td></tr>
         <tr><th>Contact No</th><td>{{ student.contact_no }}</td></tr>
     </table>
+
+    {% if transfer_certificate %}
+    <div class="alert alert-warning w-50">
+        <h4>Transfer Certificate Issued</h4>
+        <p class="mb-1"><strong>TC Number:</strong> {{ transfer_certificate.tc_number }}</p>
+        <p class="mb-1"><strong>Issue Date:</strong> {{ transfer_certificate.issue_date }}</p>
+        <a href="{% url 'view_tc' transfer_certificate.pk %}" class="btn btn-primary mt-2" target="_blank">View / Print TC</a>
+    </div>
+    {% elif perms.students.add_transfercertificate %}
+    <a href="{% url 'issue_tc' student.pk %}" class="btn btn-outline-danger mb-4">Issue Transfer Certificate</a>
+    {% endif %}
 
     <h3>Subjects & Marks</h3>
     <table class="table table-striped table-bordered w-50">

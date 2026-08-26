@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transfer Certificate - {{ student.name }}</title>
+    <style>
+        @page { size: A4 landscape; margin: 12mm; }
+        :root { --navy: #0f2d52; --gold: #c9a227; }
+        body { background: #f6f7fa; color: #17212b; font-family: Georgia, serif; margin: 0; padding: 24px; }
+        .certificate { background: #fff; border: 8px double var(--navy); box-sizing: border-box; margin: 0 auto; max-width: 1120px; min-height: 185mm; padding: 18mm 24mm; }
+        .letterhead { border-bottom: 2px solid var(--gold); padding-bottom: 12px; text-align: center; }
+        .letterhead h1 { color: var(--navy); font-size: 28px; margin: 0; }
+        .letterhead p { margin: 6px 0 0; }
+        .title { color: var(--navy); letter-spacing: 2px; margin: 24px 0; text-align: center; text-decoration: underline; }
+        .tc-number { display: flex; justify-content: space-between; margin-bottom: 22px; }
+        .content { font-size: 18px; line-height: 1.8; }
+        .line { border-bottom: 1px dotted #555; display: inline-block; min-width: 220px; }
+        .signature { display: flex; justify-content: space-between; margin-top: 48px; text-align: center; }
+        .signature div { border-top: 1px solid #333; min-width: 190px; padding-top: 8px; }
+        .actions { margin: 18px auto; max-width: 1120px; text-align: center; }
+        button, a { background: var(--navy); border: 0; color: white; cursor: pointer; padding: 10px 18px; text-decoration: none; }
+        @media print { body { background: #fff; padding: 0; } .actions { display: none; } .certificate { max-width: none; } }
+    </style>
+</head>
+<body>
+    <div class="certificate">
+        <header class="letterhead">
+            <h1>Principal Kazi Faruky School And College</h1>
+            <p>Official Transfer Certificate</p>
+        </header>
+
+        <h2 class="title">Transfer Certificate</h2>
+
+        <div class="meta">
+            <span><strong>TC No:</strong> {{ tc.tc_number }}</span>
+            <span><strong>Date:</strong> {{ tc.issue_date|date:'d F, Y' }}</span>
+        </div>
+
+        <div class="content">
+            <p>This is to certify that <strong>{{ student.name }}</strong>,
+                student ID <strong>{{ student.student_id }}</strong>, was a student of
+                class <strong>{{ student.admission_class }}</strong>, section
+                <strong>{{ student.section|default:'-' }}</strong>, roll no.
+                <strong>{{ student.roll_no|default:'-' }}</strong>.</p>
+            <p>Reason for transfer: <span class="line">{{ tc.reason|default:'-' }}</span></p>
+            {% if tc.remarks %}
+            <p>Remarks: {{ tc.remarks }}</p>
+            {% endif %}
+        </div>
+
+        <div class="signature">
+            <div>Guardian</div>
+            <div>{{ tc.issued_by|default:'Authorized Officer' }}</div>
+        </div>
+    </div>
+    <div class="actions">
+        <button onclick="window.print()">Print Certificate</button>
+        <a href="{% url 'student_detail' student.pk %}">Back to Student</a>
+    </div>
+</body>
+</html>

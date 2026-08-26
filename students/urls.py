@@ -14,6 +14,8 @@ urlpatterns = [
     path('edit/<int:pk>/', views.edit_student, name='edit_student'),
     path('delete/<int:pk>/', views.delete_student, name='delete_student'),
     path('detail/<int:pk>/', views.student_detail, name='student_detail'),
+    path('students/<int:pk>/issue-tc/', views.issue_tc, name='issue_tc'),
+    path('tc/<int:pk>/', views.view_tc, name='view_tc'),
 path('reports/class-section-summary/', views.class_section_summary, name='class_section_summary'),
     # Subject URLs
     path('subjects/', views.subject_list, name='subject_list'),

@@ -195,6 +195,7 @@
                         <th>Section</th>
                         <th>Roll</th>
                         <th>Gender</th>
+                        <th>Status</th>
                         <th class="d-print-none">Action</th>
                     </tr>
                 </thead>
@@ -210,10 +211,22 @@
                         <td>{{ student.section }}</td>
                         <td>{{ student.roll_no }}</td>
                         <td>{{ student.get_gender_display }}</td>
+                        <td>
+                            {% if student.status == 'TRANSFERRED' %}
+                            <span class="badge bg-secondary">Transferred</span>
+                            {% else %}
+                            <span class="badge bg-success">Active</span>
+                            {% endif %}
+                        </td>
                         <td class="d-print-none">
                             <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-info">Details</a>
                             {% if perms.students.change_student %}
                             <a href="{% url 'edit_student' student.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
+                            {% endif %}
+                            {% if student.status == 'TRANSFERRED' %}
+                            <span class="badge bg-secondary">Transferred</span>
+                            {% elif perms.students.add_transfercertificate %}
+                            <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
                             {% endif %}
                             {% if perms.students.delete_student %}
                             <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
@@ -222,7 +235,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">No students to show yet — pick a filter to get started.</td>
+                        <td colspan="9" class="text-center text-muted py-4">No students to show yet — pick a filter to get started.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
