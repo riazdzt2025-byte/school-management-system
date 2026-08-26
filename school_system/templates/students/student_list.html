@@ -228,6 +228,9 @@
                             {% elif perms.students.add_transfercertificate %}
                             <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
                             {% endif %}
+                            {% if perms.students.view_certificate %}
+                            <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
+                            {% endif %}
                             {% if perms.students.delete_student %}
                             <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
                             {% endif %}

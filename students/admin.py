@@ -2,7 +2,7 @@ from django.contrib import admin
 admin.site.site_header = "...... High School Administration"
 admin.site.site_title = "...... High School"
 admin.site.index_title = "School Management System"
-from .models import Student, Subject, StudentSubject, Institution, TransferCertificate
+from .models import Student, Subject, StudentSubject, Institution, TransferCertificate, Certificate
 
 
 class StudentSubjectInline(admin.TabularInline):
@@ -18,3 +18,4 @@ admin.site.register(Student, StudentAdmin)
 admin.site.register(Subject)
 admin.site.register(Institution)
 admin.site.register(TransferCertificate)
+admin.site.register(Certificate)

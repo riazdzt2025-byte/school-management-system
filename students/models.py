@@ -123,3 +123,34 @@ class TransferCertificate(models.Model):
 
     def __str__(self):
         return f"{self.tc_number} - {self.student.name}"
+
+
+class Certificate(models.Model):
+    CERTIFICATE_TYPE_CHOICES = [
+        ('CHARACTER', 'Character Certificate'),
+        ('STUDY', 'Study Certificate'),
+        ('BONAFIDE', 'Bonafide Certificate'),
+    ]
+
+    student = models.ForeignKey(
+        Student, on_delete=models.CASCADE, related_name='certificates'
+    )
+    certificate_type = models.CharField(max_length=15, choices=CERTIFICATE_TYPE_CHOICES)
+    certificate_number = models.CharField(max_length=20, unique=True, blank=True)
+    issue_date = models.DateField(auto_now_add=True)
+    purpose = models.CharField(max_length=200, blank=True)
+    issued_by = models.CharField(max_length=100, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.certificate_number:
+            from django.utils import timezone
+            year = timezone.now().year
+            prefix = self.certificate_type[:3]
+            count = Certificate.objects.filter(
+                issue_date__year=year, certificate_type=self.certificate_type
+            ).count() + 1
+            self.certificate_number = f"{prefix}-{year}-{count:03d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.certificate_number} - {self.student.name}"

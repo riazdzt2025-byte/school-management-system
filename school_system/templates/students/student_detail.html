@@ -49,6 +49,9 @@
     {% elif perms.students.add_transfercertificate %}
     <a href="{% url 'issue_tc' student.pk %}" class="btn btn-outline-danger mb-4">Issue Transfer Certificate</a>
     {% endif %}
+    {% if perms.students.view_certificate %}
+    <a href="{% url 'certificate_list' student.pk %}" class="btn btn-outline-secondary btn-sm mb-4">View Certificates</a>
+    {% endif %}
 
     <h3>Subjects & Marks</h3>
     <table class="table table-striped table-bordered w-50">

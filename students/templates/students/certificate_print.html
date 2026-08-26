@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Certificate - {{ student.name }}</title>
+    <style>
+        @page { size: A4 landscape; margin: 12mm; }
+        :root { --navy: #0F2D52; --gold: #C9A227; }
+        body { background: #F6F7FA; color: #17212b; font-family: Georgia, serif; margin: 0; padding: 24px; }
+        .certificate { background: #fff; border: 8px double var(--navy); box-sizing: border-box; margin: 0 auto; max-width: 1120px; min-height: 185mm; padding: 18mm 24mm; }
+        .letterhead { border-bottom: 2px solid var(--gold); padding-bottom: 12px; text-align: center; }
+        .letterhead h1 { color: var(--navy); font-size: 28px; margin: 0; }
+        .letterhead p { margin: 6px 0 0; }
+        .cert-title { color: var(--navy); font-size: 24px; margin: 24px 0; text-align: center; text-decoration: underline; }
+        .cert-number { display: flex; justify-content: space-between; margin-bottom: 22px; }
+        .cert-body { font-size: 18px; line-height: 1.8; }
+        .value { border-bottom: 1px dotted #555; font-weight: 600; padding: 0 4px; }
+        .signature-row { display: flex; justify-content: space-between; margin-top: 55px; text-align: center; }
+        .signature-box { border-top: 1px solid #333; min-width: 200px; padding-top: 8px; }
+        .actions { margin: 18px auto; max-width: 1120px; text-align: center; }
+        button, a { background: var(--navy); border: 0; color: #fff; cursor: pointer; padding: 10px 18px; text-decoration: none; }
+        @media print { body { background: #fff; padding: 0; } .actions { display: none; } .certificate { max-width: none; } }
+    </style>
+</head>
+<body>
+<div class="actions"><button onclick="window.print()">Print Certificate</button> <a href="{% url 'certificate_list' student.pk %}">Back</a></div>
+<div class="certificate">
+    <div class="letterhead"><h1>Principal Kazi Faruky School And College</h1><p>Empowering Education Through Technology</p></div>
+    <div class="cert-title">{{ cert.get_certificate_type_display }}</div>
+    <div class="cert-number"><span><strong>Certificate No:</strong> {{ cert.certificate_number }}</span><span><strong>Date:</strong> {{ cert.issue_date|date:'d F, Y' }}</span></div>
+    <div class="cert-body">
+        <p>This is to certify that <span class="value">{{ student.name }}</span>, son/daughter of <span class="value">{{ student.father_name|default:'-' }}</span>, is/was a student of this institution in Class <span class="value">{{ student.admission_class }}</span>, Section <span class="value">{{ student.section|default:'-' }}</span>, with Student ID <span class="value">{{ student.student_id }}</span>.</p>
+        <p>Purpose: <span class="value">{{ cert.purpose|default:'-' }}</span></p>
+    </div>
+    <div class="signature-row"><div class="signature-box">Issued By ({{ cert.issued_by|default:'-' }})</div><div class="signature-box">Principal's Signature</div></div>
+</div>
+</body>
+</html>

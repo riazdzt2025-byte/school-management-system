@@ -2,8 +2,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import HttpResponse
 from django.db import transaction
-from .models import Student, Subject, Institution, TransferCertificate
-from .forms import StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm
+from .models import Student, Subject, Institution, TransferCertificate, Certificate
+from .forms import StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm, CertificateForm
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
 import openpyxl
@@ -220,6 +220,46 @@ def view_tc(request, pk):
         'tc': transfer_certificate,
         'student': transfer_certificate.student,
         'transfer_certificate': transfer_certificate,
+    })
+
+
+@login_required
+@permission_required('students.add_certificate', raise_exception=True)
+def issue_certificate(request, pk):
+    student = get_object_or_404(Student, pk=pk)
+    if request.method == 'POST':
+        form = CertificateForm(request.POST)
+        if form.is_valid():
+            certificate = form.save(commit=False)
+            certificate.student = student
+            certificate.save()
+            messages.success(request, f"Certificate issued — {certificate.certificate_number}")
+            return redirect('view_certificate', pk=certificate.pk)
+    else:
+        form = CertificateForm()
+
+    return render(request, 'students/issue_certificate.html', {
+        'form': form,
+        'student': student,
+    })
+
+
+@login_required
+def view_certificate(request, pk):
+    certificate = get_object_or_404(Certificate, pk=pk)
+    return render(request, 'students/certificate_print.html', {
+        'cert': certificate,
+        'student': certificate.student,
+    })
+
+
+@login_required
+def certificate_list(request, pk):
+    student = get_object_or_404(Student, pk=pk)
+    certificates = student.certificates.all().order_by('-issue_date', '-pk')
+    return render(request, 'students/certificate_list.html', {
+        'student': student,
+        'certificates': certificates,
     })
 
 

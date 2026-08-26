@@ -10,13 +10,14 @@ from django.contrib.contenttypes.models import ContentType
 
 # app_label সবসময় "students" — models.py এই app-এর ভেতরেই আছে
 DEPARTMENT_MODELS = {
-    "Admission": [("students", "student")],
+    "Admission": [("students", "student"), ("students", "certificate")],
     "Exam":      [("students", "subject"), ("students", "studentsubject")],
 }
 
 # সব মডেলের ফ্ল্যাট লিস্ট (view পারমিশন সবাইকে দেওয়ার জন্য)
 ALL_MODELS = [
     ("students", "student"),
+    ("students", "certificate"),
     ("students", "subject"),
     ("students", "studentsubject"),
 ]

@@ -1,5 +1,5 @@
 from django import forms
-from .models import Student, Subject, TransferCertificate
+from .models import Student, Subject, TransferCertificate, Certificate
 
 class StudentForm(forms.ModelForm):
     class Meta:
@@ -49,6 +49,23 @@ class TransferCertificateForm(forms.ModelForm):
                 'placeholder': 'e.g. Family relocation',
             }),
             'remarks': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'issued_by': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g. Principal',
+            }),
+        }
+
+
+class CertificateForm(forms.ModelForm):
+    class Meta:
+        model = Certificate
+        fields = ['certificate_type', 'purpose', 'issued_by']
+        widgets = {
+            'certificate_type': forms.Select(attrs={'class': 'form-select'}),
+            'purpose': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g. Bank account opening',
+            }),
             'issued_by': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'e.g. Principal',
