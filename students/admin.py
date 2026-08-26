@@ -5,7 +5,8 @@ admin.site.index_title = "School Management System"
 from .models import (
     Student, Subject, StudentSubject, Institution, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
-    Exam, ExamMark, SeatPlan,
+    Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
+    MoneyReceipt, Voucher, SalarySheet,
 )
 
 
@@ -28,3 +29,8 @@ admin.site.register(BoardResult)
 admin.site.register(Exam)
 admin.site.register(ExamMark)
 admin.site.register(SeatPlan)
+admin.site.register(Employee)
+admin.site.register(EmployeeStatusLog)
+admin.site.register(MoneyReceipt)
+admin.site.register(Voucher)
+admin.site.register(SalarySheet)

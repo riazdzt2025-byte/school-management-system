@@ -3,6 +3,7 @@ from .models import (
     Student, Subject, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
     Exam, SeatPlan,
+    Employee, MoneyReceipt, Voucher, SalarySheet,
 )
 
 class StudentForm(forms.ModelForm):
@@ -135,11 +136,45 @@ class GenerateSeatPlanForm(forms.Form):
     )
 
 
-class GenerateSeatPlanForm(forms.Form):
-    room_config = forms.CharField(
-        widget=forms.Textarea(attrs={
-            'class': 'form-control', 'rows': 8,
-            'placeholder': 'Room 101, Indoor, 30\nGround Field, Outdoor, 100',
-        }),
-        help_text='One room per line: Room Name, Type (Indoor/Outdoor), Capacity.',
-    )
+class EmployeeForm(forms.ModelForm):
+    class Meta:
+        model = Employee
+        fields = ['name', 'designation', 'department', 'institution', 'join_date', 'contact_no']
+        widgets = {field: forms.TextInput(attrs={'class': 'form-control'}) for field in ['name', 'designation', 'department', 'contact_no']}
+        widgets.update({
+            'institution': forms.Select(attrs={'class': 'form-select'}),
+            'join_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        })
+
+
+class EmployeeStatusChangeForm(forms.Form):
+    new_status = forms.ChoiceField(choices=Employee.STATUS_CHOICES, widget=forms.Select(attrs={'class': 'form-select'}))
+    reason = forms.CharField(required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}))
+
+
+class MoneyReceiptForm(forms.ModelForm):
+    class Meta:
+        model = MoneyReceipt
+        fields = ['student', 'receipt_no', 'purpose', 'amount', 'date']
+        widgets = {'student': forms.Select(attrs={'class': 'form-select'}), 'receipt_no': forms.TextInput(attrs={'class': 'form-control'}), 'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})}
+
+
+class VoucherForm(forms.ModelForm):
+    class Meta:
+        model = Voucher
+        fields = ['purpose', 'amount', 'date', 'status']
+        widgets = {'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
+
+
+class SalarySheetForm(forms.ModelForm):
+    class Meta:
+        model = SalarySheet
+        fields = ['employee', 'month', 'amount', 'date', 'status']
+        widgets = {'employee': forms.Select(attrs={'class': 'form-select'}), 'month': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
+
+
+class StudentPromotionForm(forms.Form):
+    from_class = forms.CharField(widget=forms.TextInput(attrs={'class': 'form-control'}))
+    from_section = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    to_class = forms.CharField(widget=forms.TextInput(attrs={'class': 'form-control'}))
+    to_section = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))

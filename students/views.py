@@ -1,15 +1,18 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import HttpResponse
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from .models import (
     Student, Subject, Institution, TransferCertificate, Certificate,
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
+    Employee, EmployeeStatusLog, MoneyReceipt, Voucher, SalarySheet,
 )
 from .forms import (
     StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm,
     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
-    ExamForm, GenerateSeatPlanForm,
+    ExamForm, GenerateSeatPlanForm, EmployeeForm, EmployeeStatusChangeForm,
+    MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
 )
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
@@ -935,3 +938,258 @@ def clear_seat_plan(request, pk):
         messages.success(request, 'Seat plan cleared.')
         return redirect('seat_plan_list', pk=exam.pk)
     return render(request, 'students/clear_seat_plan.html', {'exam': exam})
+
+
+# ---------------- Employee (HR) Views ----------------
+
+@login_required
+def employee_list(request):
+    employees = Employee.objects.all().order_by('name')
+    status_filter = request.GET.get('status')
+    if status_filter:
+        employees = employees.filter(status=status_filter)
+    return render(request, 'students/employee_list.html', {
+        'employees': employees, 'status_filter': status_filter,
+        'status_choices': Employee.STATUS_CHOICES,
+    })
+
+
+@login_required
+@permission_required('students.add_employee', raise_exception=True)
+def add_employee(request):
+    form = EmployeeForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Employee added.')
+        return redirect('employee_list')
+    return render(request, 'students/add_employee.html', {'form': form})
+
+
+@login_required
+@permission_required('students.change_employee', raise_exception=True)
+def edit_employee(request, pk):
+    employee = get_object_or_404(Employee, pk=pk)
+    form = EmployeeForm(request.POST or None, instance=employee)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Employee updated.')
+        return redirect('employee_list')
+    return render(request, 'students/add_employee.html', {'form': form, 'employee': employee})
+
+
+@login_required
+@permission_required('students.delete_employee', raise_exception=True)
+def delete_employee(request, pk):
+    employee = get_object_or_404(Employee, pk=pk)
+    if request.method == 'POST':
+        employee.delete()
+        messages.success(request, 'Employee deleted.')
+        return redirect('employee_list')
+    return render(request, 'students/delete_employee.html', {'employee': employee})
+
+
+@login_required
+@permission_required('students.change_employee', raise_exception=True)
+def change_employee_status(request, pk):
+    employee = get_object_or_404(Employee, pk=pk)
+    form = EmployeeStatusChangeForm(request.POST or None, initial={'new_status': employee.status})
+    if request.method == 'POST' and form.is_valid():
+        new_status = form.cleaned_data['new_status']
+        if new_status != employee.status:
+            with transaction.atomic():
+                EmployeeStatusLog.objects.create(
+                    employee=employee, old_status=employee.status,
+                    new_status=new_status, reason=form.cleaned_data['reason'],
+                    changed_by=request.user,
+                )
+                employee.status = new_status
+                employee.save(update_fields=['status'])
+            messages.success(request, f'{employee.name} status updated.')
+        else:
+            messages.info(request, 'Status unchanged.')
+        return redirect('employee_list')
+    return render(request, 'students/change_employee_status.html', {'form': form, 'employee': employee})
+
+
+@login_required
+def employee_status_history(request, pk):
+    employee = get_object_or_404(Employee, pk=pk)
+    logs = employee.status_logs.select_related('changed_by').all()
+    return render(request, 'students/employee_status_history.html', {'employee': employee, 'logs': logs})
+
+
+# ---------------- Accounts Views ----------------
+
+@login_required
+def money_receipt_list(request):
+    receipts = MoneyReceipt.objects.select_related('student', 'created_by').all()
+    return render(request, 'students/money_receipt_list.html', {'receipts': receipts})
+
+
+@login_required
+@permission_required('students.add_moneyreceipt', raise_exception=True)
+def add_money_receipt(request):
+    form = MoneyReceiptForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        receipt = form.save(commit=False)
+        receipt.created_by = request.user
+        receipt.save()
+        messages.success(request, 'Money receipt saved.')
+        return redirect('money_receipt_list')
+    return render(request, 'students/add_money_receipt.html', {'form': form})
+
+
+@login_required
+@permission_required('students.change_moneyreceipt', raise_exception=True)
+def edit_money_receipt(request, pk):
+    receipt = get_object_or_404(MoneyReceipt, pk=pk)
+    form = MoneyReceiptForm(request.POST or None, instance=receipt)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Money receipt updated.')
+        return redirect('money_receipt_list')
+    return render(request, 'students/add_money_receipt.html', {'form': form, 'receipt': receipt})
+
+
+@login_required
+@permission_required('students.delete_moneyreceipt', raise_exception=True)
+def delete_money_receipt(request, pk):
+    receipt = get_object_or_404(MoneyReceipt, pk=pk)
+    if request.method == 'POST':
+        receipt.delete()
+        messages.success(request, 'Money receipt deleted.')
+        return redirect('money_receipt_list')
+    return render(request, 'students/delete_money_receipt.html', {'receipt': receipt})
+
+
+@login_required
+def voucher_list(request):
+    vouchers = Voucher.objects.select_related('created_by').all()
+    return render(request, 'students/voucher_list.html', {'vouchers': vouchers})
+
+
+@login_required
+@permission_required('students.add_voucher', raise_exception=True)
+def add_voucher(request):
+    form = VoucherForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        voucher = form.save(commit=False)
+        voucher.created_by = request.user
+        voucher.save()
+        messages.success(request, 'Voucher saved.')
+        return redirect('voucher_list')
+    return render(request, 'students/add_voucher.html', {'form': form})
+
+
+@login_required
+@permission_required('students.change_voucher', raise_exception=True)
+def edit_voucher(request, pk):
+    voucher = get_object_or_404(Voucher, pk=pk)
+    form = VoucherForm(request.POST or None, instance=voucher)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Voucher updated.')
+        return redirect('voucher_list')
+    return render(request, 'students/add_voucher.html', {'form': form, 'voucher': voucher})
+
+
+@login_required
+@permission_required('students.delete_voucher', raise_exception=True)
+def delete_voucher(request, pk):
+    voucher = get_object_or_404(Voucher, pk=pk)
+    if request.method == 'POST':
+        voucher.delete()
+        messages.success(request, 'Voucher deleted.')
+        return redirect('voucher_list')
+    return render(request, 'students/delete_voucher.html', {'voucher': voucher})
+
+
+@login_required
+def salary_sheet_list(request):
+    salaries = SalarySheet.objects.select_related('employee', 'created_by').all()
+    return render(request, 'students/salary_sheet_list.html', {'salaries': salaries})
+
+
+@login_required
+@permission_required('students.add_salarysheet', raise_exception=True)
+def add_salary_sheet(request):
+    form = SalarySheetForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        salary = form.save(commit=False)
+        salary.created_by = request.user
+        try:
+            salary.save()
+        except IntegrityError:
+            form.add_error('month', 'Salary for this employee and month already exists.')
+        else:
+            messages.success(request, 'Salary sheet saved.')
+            return redirect('salary_sheet_list')
+    return render(request, 'students/add_salary_sheet.html', {'form': form})
+
+
+@login_required
+@permission_required('students.change_salarysheet', raise_exception=True)
+def edit_salary_sheet(request, pk):
+    salary = get_object_or_404(SalarySheet, pk=pk)
+    form = SalarySheetForm(request.POST or None, instance=salary)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Salary sheet updated.')
+        return redirect('salary_sheet_list')
+    return render(request, 'students/add_salary_sheet.html', {'form': form, 'salary': salary})
+
+
+@login_required
+@permission_required('students.delete_salarysheet', raise_exception=True)
+def delete_salary_sheet(request, pk):
+    salary = get_object_or_404(SalarySheet, pk=pk)
+    if request.method == 'POST':
+        salary.delete()
+        messages.success(request, 'Salary sheet deleted.')
+        return redirect('salary_sheet_list')
+    return render(request, 'students/delete_salary_sheet.html', {'salary': salary})
+
+
+@login_required
+def finance_dashboard(request):
+    total_collection = MoneyReceipt.objects.aggregate(total=Sum('amount'))['total'] or 0
+    total_voucher_paid = Voucher.objects.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
+    total_voucher_unpaid = Voucher.objects.filter(status='UNPAID').aggregate(total=Sum('amount'))['total'] or 0
+    total_salary_paid = SalarySheet.objects.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
+    total_salary_unpaid = SalarySheet.objects.filter(status='UNPAID').aggregate(total=Sum('amount'))['total'] or 0
+    return render(request, 'students/finance_dashboard.html', {
+        'finance_cards': [
+            ('Total Collection', total_collection),
+            ('Voucher Paid', total_voucher_paid),
+            ('Voucher Unpaid', total_voucher_unpaid),
+            ('Salary Paid', total_salary_paid),
+            ('Salary Unpaid', total_salary_unpaid),
+        ],
+        'total_collection': total_collection, 'total_voucher_paid': total_voucher_paid,
+        'total_voucher_unpaid': total_voucher_unpaid, 'total_salary_paid': total_salary_paid,
+        'total_salary_unpaid': total_salary_unpaid,
+        'net_balance': total_collection - total_voucher_paid - total_salary_paid,
+        'recent_receipts': MoneyReceipt.objects.select_related('student').all()[:5],
+        'recent_vouchers': Voucher.objects.all()[:5],
+    })
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+def student_promotion(request):
+    form = StudentPromotionForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        students = Student.objects.filter(admission_class=form.cleaned_data['from_class'])
+        if form.cleaned_data['from_section']:
+            students = students.filter(section__iexact=form.cleaned_data['from_section'])
+        count = students.count()
+        if not count:
+            messages.error(request, 'No students found for the selected class/section.')
+        else:
+            updates = {'admission_class': form.cleaned_data['to_class']}
+            if form.cleaned_data['to_section']:
+                updates['section'] = form.cleaned_data['to_section']
+            students.update(**updates)
+            messages.success(request, f'{count} student(s) promoted.')
+            return redirect('student_list')
+    return render(request, 'students/student_promotion.html', {'form': form})

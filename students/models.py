@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -269,3 +270,85 @@ class SeatPlan(models.Model):
 
     def __str__(self):
         return f"{self.exam.name} - {self.room_name} Seat {self.seat_no} - {self.student.name}"
+
+
+class Employee(models.Model):
+    STATUS_CHOICES = [
+        ('ACTIVE', 'Active'),
+        ('RESIGNED', 'Resigned'),
+        ('DEMOTED', 'Demoted'),
+        ('OSD', 'OSD'),
+    ]
+
+    name = models.CharField(max_length=100)
+    designation = models.CharField(max_length=100)
+    department = models.CharField(max_length=100, blank=True)
+    institution = models.ForeignKey(Institution, on_delete=models.PROTECT, null=True, blank=True)
+    join_date = models.DateField()
+    contact_no = models.CharField(max_length=20, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='ACTIVE')
+
+    def __str__(self):
+        return f"{self.name} - {self.designation} ({self.get_status_display()})"
+
+
+class EmployeeStatusLog(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='status_logs')
+    old_status = models.CharField(max_length=10, choices=Employee.STATUS_CHOICES)
+    new_status = models.CharField(max_length=10, choices=Employee.STATUS_CHOICES)
+    reason = models.TextField(blank=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-changed_at']
+
+    def __str__(self):
+        return f"{self.employee.name}: {self.old_status} -> {self.new_status} on {self.changed_at:%Y-%m-%d}"
+
+
+class MoneyReceipt(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='money_receipts')
+    receipt_no = models.CharField(max_length=30, unique=True)
+    purpose = models.CharField(max_length=100)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField()
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='money_receipts_created')
+
+    class Meta:
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f"{self.receipt_no} - {self.student.name} - {self.amount}"
+
+
+class Voucher(models.Model):
+    STATUS_CHOICES = [('PAID', 'Paid'), ('UNPAID', 'Unpaid')]
+    purpose = models.CharField(max_length=150)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='UNPAID')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='vouchers_created')
+
+    class Meta:
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f"{self.purpose} - {self.amount} ({self.get_status_display()})"
+
+
+class SalarySheet(models.Model):
+    STATUS_CHOICES = [('PAID', 'Paid'), ('UNPAID', 'Unpaid')]
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='salary_sheets')
+    month = models.CharField(max_length=20, help_text='e.g. January 2026')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='UNPAID')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='salary_sheets_created')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['employee', 'month'], name='unique_employee_salary_month')]
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f"{self.employee.name} - {self.month} - {self.amount} ({self.get_status_display()})"

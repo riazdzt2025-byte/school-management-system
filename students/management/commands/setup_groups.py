@@ -10,7 +10,8 @@ from django.contrib.contenttypes.models import ContentType
 from students.models import (
     Student, Subject, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
-    Exam, ExamMark, SeatPlan,
+    Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
+    MoneyReceipt, Voucher, SalarySheet,
 )
 
 
@@ -29,6 +30,15 @@ DEPARTMENT_PERMISSIONS = {
         (Exam, ["add", "change", "delete"]),
         (ExamMark, ["add", "change", "delete"]),
         (SeatPlan, ["add", "change", "delete"]),
+    ],
+    "HR": [
+        (Employee, ["add", "change", "delete"]),
+        (EmployeeStatusLog, ["add", "view"]),
+    ],
+    "Accounts": [
+        (MoneyReceipt, ["add", "change", "delete"]),
+        (Voucher, ["add", "change", "delete"]),
+        (SalarySheet, ["add", "change", "delete"]),
         (Exam, ["add", "change", "delete"]),
         (ExamMark, ["add", "change", "delete"]),
     ],
