@@ -26,6 +26,7 @@ from datetime import date
 from uuid import uuid4
 from .result_utils import build_exam_results
 from .audit import record_audit
+from .models import Student, Subject, Institution, Employee
 
 # Import the optional Excel dependency dynamically so this module remains
 # importable in environments where the package is not installed.
@@ -236,6 +237,37 @@ def class_section_summary(request):
         'summary_rows': summary_rows,
         'grand_total': grand_total,
     })
+
+@login_required
+def employee_list(request):
+    institutions = Institution.objects.all().order_by('name')
+    institution_id = request.GET.get('institution')
+    status = request.GET.get('status')
+    institution = None
+
+    employees = Employee.objects.all().order_by('name')
+    if institution_id:
+        institution = get_object_or_404(Institution, pk=institution_id)
+        employees = employees.filter(institution=institution)
+    if status:
+        employees = employees.filter(status=status)
+
+    return render(request, 'students/employee_list.html', {
+        'employees': employees,
+        'institutions': institutions,
+        'institution': institution,
+        'selected_status': status,
+        'status_choices': Employee.STATUS_CHOICES,
+    })
+
+
+@login_required
+def employee_detail(request, pk):
+    employee = get_object_or_404(Employee, pk=pk)
+    return render(request, 'students/employee_detail.html', {
+        'employee': employee,
+    })
+
 #---------------- Student Views ----------------
 @login_required
 def student_list(request):

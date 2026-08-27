@@ -12,6 +12,7 @@
                 <a href="{% url 'dashboard' %}" class="btn btn-outline-light btn-sm me-2">Home</a>
                 <a href="{% url 'student_list' %}" class="btn btn-outline-light btn-sm me-2">Students</a>
                 <a href="{% url 'subject_list' %}" class="btn btn-outline-light btn-sm">Subjects</a>
+                <a href="{% url 'employee_list' %}"><i class="bi bi-person-badge-fill"></i> Employees</a>
                 <form method="POST" action="{% url 'logout' %}" style="display:inline;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-outline-light btn-sm">Logout</button>

@@ -83,15 +83,19 @@ A web-based Student Management System built with Python and Django, inspired by 
    ```
    python manage.py migrate
    ```
-4. Create an admin user
+4. Load the institution data
+   ```
+   python manage.py loaddata students/fixtures/institutions.json
+   ```
+5. Create an admin user
    ```
    python manage.py createsuperuser
    ```
-5. Run the development server
+6. Run the development server
    ```
    python manage.py runserver
    ```
-6. Open in browser
+7. Open in browser
    - Main site: http://127.0.0.1:8000/
    - Admin panel: http://127.0.0.1:8000/admin/
 
