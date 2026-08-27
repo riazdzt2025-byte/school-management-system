@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head><title>{{ application.application_number }}</title></head><body>
+<h1>{{ application.application_number }}</h1><p>{{ application.applicant_name }} | {{ application.institution }} | Class {{ application.requested_class }} {{ application.requested_section }} | {{ application.session }}</p>
+<p>Status: {{ application.get_status_display }} | Next step: {{ application.next_step }}</p>
+<p>Guardian: {{ application.guardian_name }} ({{ application.guardian_contact_no }})</p>
+{% if application.status == 'SUBMITTED' or application.status == 'OFFICE_APPROVED' or application.status == 'ACCOUNT_PENDING' %}<form method="post" action="{% url 'office_approve_application' application.pk %}">{% csrf_token %}<input name="remarks" placeholder="Office remarks"><button type="submit">Approve</button></form>{% endif %}
+{% if application.status == 'SUBMITTED' or application.status == 'OFFICE_APPROVED' or application.status == 'ACCOUNT_PENDING' %}<form method="post" action="{% url 'office_reject_application' application.pk %}">{% csrf_token %}<input name="remarks" placeholder="Rejection remarks"><button type="submit">Reject</button></form>{% endif %}
+{% if application.status == 'OFFICE_APPROVED' %}<form method="post" action="{% url 'office_handoff_application' application.pk %}">{% csrf_token %}<button type="submit">Handoff to Accounts</button></form>{% endif %}
+{% if application.status == 'ACCOUNT_PENDING' %}<form method="post" action="{% url 'accounts_approve_payment' application.pk %}">{% csrf_token %}{{ payment_form.as_p }}<button type="submit">Approve payment and enroll</button></form>{% endif %}
+{% if application.enrolled_student %}<p>Enrolled student: <a href="{% url 'student_detail' application.enrolled_student.pk %}">{{ application.enrolled_student }}</a></p>{% endif %}
+<a href="{% url 'admission_application_list' %}">Back to applications</a>
+</body></html>

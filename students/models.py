@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.db import models
+from uuid import uuid4
+from django.core.serializers.json import DjangoJSONEncoder
 
 
 class Institution(models.Model):
@@ -82,6 +84,109 @@ class Student(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.student_id})"
+
+
+class PromotionBatch(models.Model):
+    session = models.CharField(max_length=20)
+    from_class = models.CharField(max_length=10)
+    from_section = models.CharField(max_length=5, blank=True)
+    to_class = models.CharField(max_length=10)
+    to_section = models.CharField(max_length=5, blank=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='promotion_batches')
+    created_at = models.DateTimeField(auto_now_add=True)
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+    rollback_actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='promotion_rollbacks')
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f"{self.session}: {self.from_class} -> {self.to_class} ({self.created_at:%Y-%m-%d})"
+
+
+class StudentPromotionHistory(models.Model):
+    batch = models.ForeignKey(PromotionBatch, on_delete=models.CASCADE, related_name='student_history')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='promotion_history')
+    source_class = models.CharField(max_length=10)
+    source_section = models.CharField(max_length=5, blank=True)
+    target_class = models.CharField(max_length=10)
+    target_section = models.CharField(max_length=5, blank=True)
+    promoted_at = models.DateTimeField(auto_now_add=True)
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['student__name', 'id']
+        constraints = [models.UniqueConstraint(fields=['batch', 'student'], name='unique_promotion_batch_student')]
+
+    def __str__(self):
+        return f"{self.student} ({self.source_class} -> {self.target_class})"
+
+
+class AuditLog(models.Model):
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    action = models.CharField(max_length=100)
+    model_name = models.CharField(max_length=100)
+    object_id = models.CharField(max_length=100, blank=True)
+    object_repr = models.CharField(max_length=255, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    snapshot = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    details = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+
+    class Meta:
+        ordering = ['-timestamp', '-id']
+
+    def __str__(self):
+        return f"{self.action} {self.model_name} {self.object_id}".strip()
+
+
+class AdmissionApplication(models.Model):
+    STATUS_CHOICES = [
+        ('SUBMITTED', 'Submitted'),
+        ('OFFICE_APPROVED', 'Office approved'),
+        ('ACCOUNT_PENDING', 'Accounts pending'),
+        ('PAYMENT_APPROVED', 'Payment approved'),
+        ('REJECTED', 'Rejected'),
+        ('ENROLLED', 'Enrolled'),
+    ]
+
+    application_number = models.CharField(max_length=30, unique=True, blank=True)
+    institution = models.ForeignKey(Institution, on_delete=models.PROTECT, related_name='admission_applications')
+    applicant_name = models.CharField(max_length=100)
+    date_of_birth = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=1, choices=Student.GENDER_CHOICES, blank=True)
+    religion = models.CharField(max_length=50, blank=True)
+    applicant_contact_no = models.CharField(max_length=20)
+    applicant_address = models.TextField(blank=True)
+    guardian_name = models.CharField(max_length=100)
+    guardian_relation = models.CharField(max_length=50, blank=True)
+    guardian_contact_no = models.CharField(max_length=20)
+    guardian_address = models.TextField(blank=True)
+    requested_class = models.CharField(max_length=10)
+    requested_section = models.CharField(max_length=5, blank=True)
+    session = models.CharField(max_length=20, help_text='e.g. 2026-2027')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='SUBMITTED')
+    office_actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='office_admission_applications')
+    office_action_at = models.DateTimeField(null=True, blank=True)
+    office_remarks = models.TextField(blank=True)
+    account_actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='account_admission_applications')
+    account_action_at = models.DateTimeField(null=True, blank=True)
+    account_remarks = models.TextField(blank=True)
+    payment_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    payment_date = models.DateField(null=True, blank=True)
+    payment_purpose = models.CharField(max_length=100, default='Admission Fee')
+    next_step = models.CharField(max_length=100, blank=True)
+    enrolled_student = models.OneToOneField(Student, on_delete=models.PROTECT, null=True, blank=True, related_name='admission_application')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.application_number:
+            self.application_number = f"APP-{uuid4().hex[:12].upper()}"
+        if not self.next_step:
+            self.next_step = 'Office review'
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.application_number} - {self.applicant_name}"
 
 
 class Subject(models.Model):

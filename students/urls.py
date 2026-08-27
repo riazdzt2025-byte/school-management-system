@@ -3,6 +3,14 @@ from . import views
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
+    path('admission/', views.admission_application_list, name='admission_application_list'),
+    path('admission/new/', views.create_admission_application, name='admission'),
+    path('admission/<int:pk>/', views.admission_application_detail, name='admission_application_detail'),
+    path('admission/<int:pk>/office-approve/', views.office_approve_application, name='office_approve_application'),
+    path('admission/<int:pk>/office-reject/', views.office_reject_application, name='office_reject_application'),
+    path('admission/<int:pk>/office-handoff/', views.office_handoff_application, name='office_handoff_application'),
+    path('accounts/admissions/', views.accounts_admission_queue, name='accounts_admission_queue'),
+    path('accounts/admissions/<int:pk>/approve-payment/', views.accounts_approve_payment, name='accounts_approve_payment'),
 
     # Student URLs
     path('students/', views.student_list, name='student_list'),
@@ -34,6 +42,7 @@ urlpatterns = [
     path('exams/<int:pk>/publish-toggle/', views.toggle_publish_exam, name='toggle_publish_exam'),
     path('exams/<int:pk>/select-subject/', views.select_marks_subject, name='select_marks_subject'),
     path('exams/<int:pk>/marks/<int:subject_pk>/', views.enter_marks, name='enter_marks'),
+    path('exams/<int:pk>/marks/import/', views.import_exam_marks, name='import_exam_marks'),
     path('exams/<int:pk>/seat-plan/', views.seat_plan_list, name='seat_plan_list'),
     path('exams/<int:pk>/seat-plan/generate/', views.generate_seat_plan, name='generate_seat_plan'),
     path('exams/<int:pk>/seat-plan/clear/', views.clear_seat_plan, name='clear_seat_plan'),
@@ -59,6 +68,10 @@ urlpatterns = [
     path('accounts/salaries/<int:pk>/delete/', views.delete_salary_sheet, name='delete_salary_sheet'),
     path('accounts/finance-dashboard/', views.finance_dashboard, name='finance_dashboard'),
     path('students/promotion/', views.student_promotion, name='student_promotion'),
+    path('students/promotion/history/', views.student_promotion_history, name='student_promotion_history'),
+    path('students/promotion/<int:pk>/rollback/', views.rollback_student_promotion, name='rollback_student_promotion'),
+    path('audit/', views.audit_log_list, name='audit_log_list'),
+    path('audit/<int:pk>/', views.audit_log_detail, name='audit_log_detail'),
     path('exams/<int:pk>/result-sheet/', views.result_sheet, name='result_sheet'),
     path('exams/<int:pk>/result-summary/', views.result_summary, name='exam_result_summary'),
     path('exams/<int:pk>/top-10/', views.top_10, name='top_10'),

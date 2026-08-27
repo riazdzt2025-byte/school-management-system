@@ -11,15 +11,19 @@ from students.models import (
     Student, Subject, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
-    MoneyReceipt, Voucher, SalarySheet,
+    MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
+    PromotionBatch, StudentPromotionHistory, AuditLog,
 )
 
 
 DEPARTMENT_PERMISSIONS = {
     "Admission": [
+        (AdmissionApplication, ["add", "change", "view"]),
         (Student, ["add", "change", "delete"]),
         (TransferCertificate, ["add", "change", "delete"]),
         (Certificate, ["add", "change", "delete"]),
+        (PromotionBatch, ["add", "change", "view"]),
+        (StudentPromotionHistory, ["add", "view"]),
     ],
     "Subjects": [
         (Subject, ["add", "change", "delete"]),
@@ -36,11 +40,15 @@ DEPARTMENT_PERMISSIONS = {
         (EmployeeStatusLog, ["add", "view"]),
     ],
     "Accounts": [
+        (AdmissionApplication, ["change", "view"]),
         (MoneyReceipt, ["add", "change", "delete"]),
         (Voucher, ["add", "change", "delete"]),
         (SalarySheet, ["add", "change", "delete"]),
         (Exam, ["add", "change", "delete"]),
         (ExamMark, ["add", "change", "delete"]),
+    ],
+    "Audit": [
+        (AuditLog, ["view"]),
     ],
 }
 

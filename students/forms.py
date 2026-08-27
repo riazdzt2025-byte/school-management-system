@@ -4,6 +4,7 @@ from .models import (
     SSCRegistration, BoardResult,
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet,
+    AdmissionApplication,
 )
 
 class StudentForm(forms.ModelForm):
@@ -23,6 +24,41 @@ class StudentForm(forms.ModelForm):
             'contact_no': forms.TextInput(attrs={'class': 'form-control'}),
             'guardian_contact_no': forms.TextInput(attrs={'class': 'form-control'}),
             'group': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+
+class AdmissionApplicationForm(forms.ModelForm):
+    class Meta:
+        model = AdmissionApplication
+        fields = [
+            'institution', 'applicant_name', 'date_of_birth', 'gender', 'religion',
+            'applicant_contact_no', 'applicant_address', 'guardian_name',
+            'guardian_relation', 'guardian_contact_no', 'guardian_address',
+            'requested_class', 'requested_section', 'session',
+        ]
+        widgets = {
+            'institution': forms.Select(attrs={'class': 'form-select'}),
+            'date_of_birth': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'gender': forms.Select(attrs={'class': 'form-select'}),
+            'applicant_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'guardian_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault('class', 'form-control')
+
+
+class AdmissionPaymentForm(forms.ModelForm):
+    class Meta:
+        model = AdmissionApplication
+        fields = ['payment_amount', 'payment_date', 'payment_purpose', 'account_remarks']
+        widgets = {
+            'payment_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'payment_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'payment_purpose': forms.TextInput(attrs={'class': 'form-control'}),
+            'account_remarks': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
 
 
@@ -126,6 +162,12 @@ class ExamForm(forms.ModelForm):
         }
 
 
+class ExamExcelImportForm(forms.Form):
+    excel_file = forms.FileField(
+        widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
+    )
+
+
 class GenerateSeatPlanForm(forms.Form):
     room_config = forms.CharField(
         widget=forms.Textarea(attrs={
@@ -178,3 +220,12 @@ class StudentPromotionForm(forms.Form):
     from_section = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
     to_class = forms.CharField(widget=forms.TextInput(attrs={'class': 'form-control'}))
     to_section = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    session = forms.CharField(widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2026-2027'}))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        source = (cleaned_data.get('from_class', '').strip(), cleaned_data.get('from_section', '').strip().lower())
+        target = (cleaned_data.get('to_class', '').strip(), cleaned_data.get('to_section', '').strip().lower())
+        if source == target:
+            raise forms.ValidationError('Source and target class/section must be different.')
+        return cleaned_data

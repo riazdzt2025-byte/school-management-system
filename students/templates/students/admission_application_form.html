@@ -1,0 +1,6 @@
+<!doctype html>
+<html><head><title>New Admission Application</title></head><body>
+<h1>New Admission Application</h1>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Submit application</button></form>
+<a href="{% url 'admission_application_list' %}">Application list</a>
+</body></html>
