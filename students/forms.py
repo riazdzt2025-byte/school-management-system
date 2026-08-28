@@ -25,6 +25,24 @@ class StudentForm(forms.ModelForm):
             'group': forms.Select(attrs={'class': 'form-select'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        admission_class = ''
+        if self.instance and self.instance.pk:
+            admission_class = str(self.instance.admission_class)
+        elif self.data.get('admission_class'):
+            admission_class = str(self.data.get('admission_class'))
+        if admission_class in ['9', '10', '11', '12']:
+            self.fields['group'].required = True
+
+    def clean(self):
+        cleaned_data = super().clean()
+        admission_class = cleaned_data.get('admission_class')
+        group = cleaned_data.get('group')
+        if str(admission_class) in ['9', '10', '11', '12'] and not group:
+            self.add_error('group', 'Group is required for classes 9, 10, 11, and 12.')
+        return cleaned_data
+
 
 class SubjectForm(forms.ModelForm):
     class Meta:

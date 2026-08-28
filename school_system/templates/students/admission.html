@@ -109,7 +109,7 @@
                     {{ form.religion }}
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Group</label>
+                    <label class="form-label">Group{% if form.group.field.required %} <span class="text-danger">*</span>{% endif %}</label>
                     {{ form.group }}
                 </div>
             </div>
