@@ -1,0 +1,6 @@
+<!doctype html>
+<html><head><title>Accounts Admission Queue</title></head><body>
+<h1>Accounts Admission Queue</h1>
+<form method="get"><label>Class <input name="admission_class" value="{{ admission_class }}"></label><button type="submit">Filter</button></form>
+<table><tr><th>Application</th><th>Applicant</th><th>Institution</th><th>Class</th><th></th></tr>{% for application in applications %}<tr><td>{{ application.application_number }}</td><td>{{ application.applicant_name }}</td><td>{{ application.institution }}</td><td>{{ application.requested_class }}</td><td><a href="{% url 'admission_application_detail' application.pk %}">Open</a></td></tr>{% empty %}<tr><td colspan="5">No pending payments.</td></tr>{% endfor %}</table>
+</body></html>

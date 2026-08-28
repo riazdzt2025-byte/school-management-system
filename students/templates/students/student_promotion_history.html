@@ -1,0 +1,8 @@
+<!doctype html>
+<html><head><title>Promotion History</title></head><body>
+<h1>Promotion History</h1>
+<a href="{% url 'student_promotion' %}">New promotion</a> | <a href="{% url 'student_list' %}">Students</a>
+<table><tr><th>Session</th><th>Change</th><th>Actor</th><th>Created</th><th>Status</th><th>Action</th></tr>
+{% for batch in batches %}<tr><td>{{ batch.session }}</td><td>{{ batch.from_class }} {{ batch.from_section }} to {{ batch.to_class }} {{ batch.to_section }}</td><td>{{ batch.actor|default:'-' }}</td><td>{{ batch.created_at }}</td><td>{% if batch.rolled_back_at %}Rolled back{% else %}Active{% endif %}</td><td>{% if not batch.rolled_back_at %}<form method="post" action="{% url 'rollback_student_promotion' batch.pk %}">{% csrf_token %}<button type="submit">Rollback</button></form>{% endif %}</td></tr>
+{% empty %}<tr><td colspan="6">No promotion batches found.</td></tr>{% endfor %}</table>
+</body></html>

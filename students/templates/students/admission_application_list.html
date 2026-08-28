@@ -1,0 +1,6 @@
+<!doctype html>
+<html><head><title>Admission Applications</title></head><body>
+<h1>Admission Applications</h1><a href="{% url 'admission' %}">New application</a>
+<form method="get"><label>Status <select name="status"><option value="">All</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button type="submit">Filter</button></form>
+<table><tr><th>Application</th><th>Applicant</th><th>Class</th><th>Status</th><th></th></tr>{% for application in applications %}<tr><td>{{ application.application_number }}</td><td>{{ application.applicant_name }}</td><td>{{ application.requested_class }} {{ application.requested_section }}</td><td>{{ application.get_status_display }}</td><td><a href="{% url 'admission_application_detail' application.pk %}">Open</a></td></tr>{% empty %}<tr><td colspan="5">No applications found.</td></tr>{% endfor %}</table>
+</body></html>

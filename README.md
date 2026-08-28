@@ -23,6 +23,31 @@ A web-based Student Management System built with Python and Django, inspired by 
   - Full Django admin interface for data management
   - Inline subject/marks entry when adding a student
   - Custom branded admin header
+- **Office Module**
+   - Transfer Certificate issue and print workflow
+   - Character, Study, and Bonafide certificate workflow
+   - Class/section student summary with gender counts
+   - SSC registration and board-result storage
+   - Student and SSC registration Excel import
+- **Exam Module**
+   - Exam and subject-wise bulk marks entry
+   - Result sheet, summary, detail result, result card, and top-10 views
+   - Indoor/outdoor seat-plan generation
+   - Teacher signature sheet
+   - Exam publish toggle
+- **Admin/HR Module**
+   - Employee CRUD
+   - Employee status changes and status history
+- **Accounts Module**
+   - Student-wise money receipts
+   - Vouchers with paid/unpaid status
+   - Employee salary sheets
+   - Finance dashboard with collection and expense aggregates
+   - Bulk student promotion by class and section
+- **Access Control**
+   - Django authentication and permission-protected operations
+   - Department groups for Admission, Exam, HR, and Accounts
+   - Creator tracking for money receipts, vouchers, salary sheets, and status changes
 
 ## Tech Stack
 - **Backend:** Python, Django 6.1
@@ -58,24 +83,36 @@ A web-based Student Management System built with Python and Django, inspired by 
    ```
    python manage.py migrate
    ```
-4. Create an admin user
+4. Load the institution data
+   ```
+   python manage.py loaddata students/fixtures/institutions.json
+   ```
+5. Create an admin user
    ```
    python manage.py createsuperuser
    ```
-5. Run the development server
+6. Run the development server
    ```
    python manage.py runserver
    ```
-6. Open in browser
+7. Open in browser
    - Main site: http://127.0.0.1:8000/
    - Admin panel: http://127.0.0.1:8000/admin/
 
 ## Roadmap
+- [ ] Enforce the exam publish flag on every result view and result-card endpoint
+- [ ] Add Excel import for exams and bulk exam marks
+- [ ] Add a proper admission application model and application form workflow
+- [ ] Add Office approval and handoff to Accounts
+- [ ] Add class-wise Accounts confirmation and payment approval
+- [ ] Generate receipt numbers and MoneyReceipt records automatically after approved payment
+- [ ] Add admission-room next-step status and receipt verification workflow
+- [ ] Add promotion history, academic session validation, and rollback support
+- [ ] Add audit history for changes to students, exams, employees, and financial records
+- [ ] Add automated tests for permissions, imports, result publishing, approvals, and receipts
 - [ ] Display subjects and marks on the student detail page
-- [ ] Add login/authentication for staff
 - [ ] Attendance module
-- [ ] Fees management module
-- [ ] Exam results module
+- [ ] Fees and payment workflow enhancements
 - [ ] Switch to PostgreSQL for production
 
 ## Author

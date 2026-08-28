@@ -1,25 +1,39 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseNotAllowed
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
+from django.views.decorators.http import require_POST
 from .models import (
     Student, Subject, Institution, TransferCertificate, Certificate,
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
-    Employee, EmployeeStatusLog, MoneyReceipt, Voucher, SalarySheet,
+    Employee, EmployeeStatusLog, MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
+    PromotionBatch, StudentPromotionHistory, AuditLog,
 )
 from .forms import (
     StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm,
     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
-    ExamForm, GenerateSeatPlanForm, EmployeeForm, EmployeeStatusChangeForm,
+    ExamForm, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm, EmployeeStatusChangeForm,
     MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
+    AdmissionApplicationForm, AdmissionPaymentForm,
 )
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
-import openpyxl
+from django.utils import timezone
+import importlib
 from collections import defaultdict
+from datetime import date
+from uuid import uuid4
 from .result_utils import build_exam_results
+from .audit import record_audit
+from .models import Student, Subject, Institution, Employee
 
+# Import the optional Excel dependency dynamically so this module remains
+# importable in environments where the package is not installed.
+try:
+    openpyxl = importlib.import_module('openpyxl')
+except ModuleNotFoundError:
+    openpyxl = None
 
 
 @login_required
@@ -30,6 +44,158 @@ def dashboard(request):
         'total_students': total_students,
         'total_subjects': total_subjects,
     })
+
+
+# ---------------- Admission Application Views ----------------
+
+@login_required
+@permission_required('students.view_admissionapplication', raise_exception=True)
+def admission_application_list(request):
+    applications = AdmissionApplication.objects.select_related('institution', 'office_actor', 'account_actor').all()
+    status = request.GET.get('status')
+    if status:
+        applications = applications.filter(status=status)
+    return render(request, 'students/admission_application_list.html', {
+        'applications': applications, 'status': status,
+        'status_choices': AdmissionApplication.STATUS_CHOICES,
+    })
+
+
+@login_required
+@permission_required('students.add_admissionapplication', raise_exception=True)
+def create_admission_application(request):
+    form = AdmissionApplicationForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        application = form.save()
+        messages.success(request, f'Application {application.application_number} submitted.')
+        return redirect('admission_application_detail', pk=application.pk)
+    return render(request, 'students/admission_application_form.html', {'form': form})
+
+
+@login_required
+@permission_required('students.view_admissionapplication', raise_exception=True)
+def admission_application_detail(request, pk):
+    application = get_object_or_404(AdmissionApplication.objects.select_related('institution', 'enrolled_student'), pk=pk)
+    payment_form = AdmissionPaymentForm(instance=application)
+    return render(request, 'students/admission_application_detail.html', {
+        'application': application, 'payment_form': payment_form,
+    })
+
+
+def _application_transition(request, pk, action):
+    application = get_object_or_404(AdmissionApplication, pk=pk)
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    now = timezone.now()
+    remarks = request.POST.get('remarks', '').strip()
+    transitions = {
+        'approve': ('SUBMITTED', 'OFFICE_APPROVED', 'Accounts review'),
+        'reject': (('SUBMITTED', 'OFFICE_APPROVED', 'ACCOUNT_PENDING'), 'REJECTED', 'Application rejected'),
+        'handoff': ('OFFICE_APPROVED', 'ACCOUNT_PENDING', 'Payment approval'),
+    }
+    allowed_from, new_status, next_step = transitions[action]
+    if application.status not in ((allowed_from,) if isinstance(allowed_from, str) else allowed_from):
+        messages.error(request, f'Application cannot be {action} from its current status.')
+        return redirect('admission_application_detail', pk=pk)
+    application.status = new_status
+    application.next_step = next_step
+    application.office_actor = request.user
+    application.office_action_at = now
+    application.office_remarks = remarks
+    application.save(update_fields=['status', 'next_step', 'office_actor', 'office_action_at', 'office_remarks'])
+    record_audit(request.user, f'application_{new_status.lower()}', application,
+                 snapshot={'status': new_status}, details={'remarks': remarks})
+    messages.success(request, f'Application {new_status.replace("_", " ").title()}.')
+    return redirect('admission_application_detail', pk=pk)
+
+
+@login_required
+@permission_required('students.change_admissionapplication', raise_exception=True)
+def office_approve_application(request, pk):
+    return _application_transition(request, pk, 'approve')
+
+
+@login_required
+@permission_required('students.change_admissionapplication', raise_exception=True)
+def office_reject_application(request, pk):
+    return _application_transition(request, pk, 'reject')
+
+
+@login_required
+@permission_required('students.change_admissionapplication', raise_exception=True)
+def office_handoff_application(request, pk):
+    return _application_transition(request, pk, 'handoff')
+
+
+@login_required
+@permission_required('students.change_admissionapplication', raise_exception=True)
+def accounts_admission_queue(request):
+    applications = AdmissionApplication.objects.filter(status='ACCOUNT_PENDING').select_related('institution')
+    admission_class = request.GET.get('admission_class', '').strip()
+    if admission_class:
+        applications = applications.filter(requested_class=admission_class)
+    return render(request, 'students/accounts_admission_queue.html', {
+        'applications': applications, 'admission_class': admission_class,
+    })
+
+
+def _new_receipt_number():
+    return f"ADM-{date.today():%Y}-{uuid4().hex[:10].upper()}"
+
+
+@login_required
+@permission_required('students.change_admissionapplication', raise_exception=True)
+def accounts_approve_payment(request, pk):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    with transaction.atomic():
+        application = get_object_or_404(
+            AdmissionApplication.objects.select_for_update(), pk=pk
+        )
+        if application.status != 'ACCOUNT_PENDING':
+            messages.error(request, 'Payment approval is not valid for this application.')
+            return redirect('admission_application_detail', pk=pk)
+        form = AdmissionPaymentForm(request.POST, instance=application)
+        if not form.is_valid():
+            messages.error(request, 'Please provide valid payment details.')
+            return redirect('admission_application_detail', pk=pk)
+        application = form.save(commit=False)
+        application.status = 'PAYMENT_APPROVED'
+        application.account_actor = request.user
+        application.account_action_at = timezone.now()
+        application.next_step = 'Enrollment completed'
+        application.save()
+        student = Student.objects.create(
+            institution=application.institution, name=application.applicant_name,
+            admission_class=application.requested_class, section=application.requested_section,
+            gender=application.gender, religion=application.religion,
+            father_name=application.guardian_name, contact_no=application.applicant_contact_no,
+            guardian_contact_no=application.guardian_contact_no,
+            admission_year=int(application.session[:4]) if application.session[:4].isdigit() else None,
+        )
+        for _ in range(3):
+            try:
+                with transaction.atomic():
+                    receipt = MoneyReceipt.objects.create(
+                        student=student, receipt_no=_new_receipt_number(),
+                        purpose=application.payment_purpose, amount=application.payment_amount,
+                        date=application.payment_date or date.today(), created_by=request.user,
+                    )
+                break
+            except IntegrityError:
+                continue
+        else:
+            raise IntegrityError('Could not generate a unique admission receipt number.')
+        application.enrolled_student = student
+        application.status = 'ENROLLED'
+        application.save(update_fields=['enrolled_student', 'status', 'next_step'])
+        record_audit(
+            request.user, 'payment_approved', application,
+            snapshot={'status': application.status, 'payment_amount': str(application.payment_amount)},
+            details={'receipt_no': receipt.receipt_no, 'student_id': student.student_id},
+        )
+    messages.success(request, f'Application enrolled. Receipt {receipt.receipt_no} created.')
+    return redirect('admission_application_detail', pk=pk)
 @login_required
 def class_section_summary(request):
     institutions = Institution.objects.all().order_by('name')
@@ -71,6 +237,37 @@ def class_section_summary(request):
         'summary_rows': summary_rows,
         'grand_total': grand_total,
     })
+
+@login_required
+def employee_list(request):
+    institutions = Institution.objects.all().order_by('name')
+    institution_id = request.GET.get('institution')
+    status = request.GET.get('status')
+    institution = None
+
+    employees = Employee.objects.all().order_by('name')
+    if institution_id:
+        institution = get_object_or_404(Institution, pk=institution_id)
+        employees = employees.filter(institution=institution)
+    if status:
+        employees = employees.filter(status=status)
+
+    return render(request, 'students/employee_list.html', {
+        'employees': employees,
+        'institutions': institutions,
+        'institution': institution,
+        'selected_status': status,
+        'status_choices': Employee.STATUS_CHOICES,
+    })
+
+
+@login_required
+def employee_detail(request, pk):
+    employee = get_object_or_404(Employee, pk=pk)
+    return render(request, 'students/employee_detail.html', {
+        'employee': employee,
+    })
+
 #---------------- Student Views ----------------
 @login_required
 def student_list(request):
@@ -708,10 +905,15 @@ def delete_exam(request, pk):
 
 @login_required
 @permission_required('students.change_exam', raise_exception=True)
+@require_POST
 def toggle_publish_exam(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
+    previous_status = exam.is_published
     exam.is_published = not exam.is_published
     exam.save(update_fields=['is_published'])
+    record_audit(request.user, 'exam_published' if exam.is_published else 'exam_unpublished', exam,
+                 snapshot={'is_published': exam.is_published},
+                 details={'previous_is_published': previous_status})
     status = 'published' if exam.is_published else 'unpublished'
     messages.success(request, f'Exam result {status}.')
     return redirect('exam_list')
@@ -728,6 +930,78 @@ def select_marks_subject(request, pk):
             return redirect('enter_marks', pk=exam.pk, subject_pk=subject_id)
         messages.error(request, 'Please select a subject.')
     return render(request, 'students/select_marks_subject.html', {'exam': exam, 'subjects': subjects})
+
+
+@login_required
+@permission_required('students.add_exammark', raise_exception=True)
+def import_exam_marks(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    form = ExamExcelImportForm(request.POST or None, request.FILES or None)
+    if request.method == 'POST' and form.is_valid():
+        if openpyxl is None:
+            messages.error(request, 'Excel import is unavailable because openpyxl is not installed.')
+            return render(request, 'students/import_exam_marks.html', {'exam': exam, 'form': form})
+        try:
+            sheet = openpyxl.load_workbook(request.FILES['excel_file'], data_only=True).active
+            headers = [str(value).strip().lower() if value is not None else '' for value in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), ())]
+            if headers[:3] != ['student id', 'subject code', 'marks']:
+                raise ValueError('The first row must contain: Student ID, Subject Code, Marks.')
+
+            validated_rows = []
+            seen = set()
+            errors = []
+            for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+                if not row or all(cell in (None, '') for cell in row):
+                    continue
+                student_id, subject_code, marks = (list(row) + [None] * 3)[:3]
+                student_id = str(student_id).strip() if student_id is not None else ''
+                subject_code = str(subject_code).strip() if subject_code is not None else ''
+                key = (student_id.lower(), subject_code.lower())
+                try:
+                    if not student_id or not subject_code or marks in (None, ''):
+                        raise ValueError('student ID, subject code, and marks are required')
+                    if key in seen:
+                        raise ValueError('duplicate student and subject row')
+                    seen.add(key)
+                    student = Student.objects.filter(student_id=student_id).first()
+                    if not student:
+                        raise ValueError('student was not found')
+                    if (
+                        (exam.institution_id and student.institution_id != exam.institution_id)
+                        or student.admission_class != exam.admission_class
+                        or (
+                            exam.section
+                            and student.section.strip().lower() != exam.section.strip().lower()
+                        )
+                    ):
+                        raise ValueError('student is not a member of this exam class/section')
+                    subject = Subject.objects.filter(code__iexact=subject_code).first()
+                    if not subject:
+                        raise ValueError('subject code was not found')
+                    marks_value = float(marks)
+                    if marks_value != marks_value or marks_value in (float('inf'), float('-inf')):
+                        raise ValueError('marks must be numeric')
+                    if marks_value < 0 or marks_value > subject.full_marks:
+                        raise ValueError(f'marks must be between 0 and {subject.full_marks}')
+                    validated_rows.append((student, subject, marks_value))
+                except (TypeError, ValueError) as exc:
+                    errors.append(f'Row {row_num}: {exc}')
+
+            if errors:
+                messages.error(request, 'Import rejected: ' + ' | '.join(errors[:10]))
+                return render(request, 'students/import_exam_marks.html', {'exam': exam, 'form': form})
+
+            with transaction.atomic():
+                for student, subject, marks_value in validated_rows:
+                    ExamMark.objects.update_or_create(
+                        exam=exam, student=student, subject=subject,
+                        defaults={'marks_obtained': marks_value},
+                    )
+            messages.success(request, f'{len(validated_rows)} mark(s) imported successfully.')
+            return redirect('exam_list')
+        except Exception as exc:
+            messages.error(request, f'Could not import the file: {exc}')
+    return render(request, 'students/import_exam_marks.html', {'exam': exam, 'form': form})
 
 
 @login_required
@@ -779,6 +1053,9 @@ def enter_marks(request, pk, subject_pk):
 @login_required
 def result_sheet(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
     subjects, results = build_exam_results(exam)
     return render(request, 'students/result_sheet.html', {'exam': exam, 'subjects': subjects, 'results': results})
 
@@ -786,6 +1063,9 @@ def result_sheet(request, pk):
 @login_required
 def result_summary(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
     _, results = build_exam_results(exam)
     return render(request, 'students/exam_result_summary.html', {'exam': exam, 'results': results})
 
@@ -793,6 +1073,9 @@ def result_summary(request, pk):
 @login_required
 def top_10(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
     _, results = build_exam_results(exam)
     return render(request, 'students/top10.html', {'exam': exam, 'results': [r for r in results if r['position']][:10]})
 
@@ -806,6 +1089,9 @@ def _exam_result(exam, student_pk):
 @login_required
 def student_result_detail(request, pk, student_pk):
     exam = get_object_or_404(Exam, pk=pk)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
     student, result = _exam_result(exam, student_pk)
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
@@ -816,6 +1102,9 @@ def student_result_detail(request, pk, student_pk):
 @login_required
 def result_card(request, pk, student_pk):
     exam = get_object_or_404(Exam, pk=pk)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
     student, result = _exam_result(exam, student_pk)
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
@@ -996,14 +1285,18 @@ def change_employee_status(request, pk):
     if request.method == 'POST' and form.is_valid():
         new_status = form.cleaned_data['new_status']
         if new_status != employee.status:
+            old_status = employee.status
             with transaction.atomic():
                 EmployeeStatusLog.objects.create(
-                    employee=employee, old_status=employee.status,
+                    employee=employee, old_status=old_status,
                     new_status=new_status, reason=form.cleaned_data['reason'],
                     changed_by=request.user,
                 )
                 employee.status = new_status
                 employee.save(update_fields=['status'])
+                record_audit(request.user, 'employee_status_changed', employee,
+                             snapshot={'status': new_status},
+                             details={'old_status': old_status, 'reason': form.cleaned_data['reason']})
             messages.success(request, f'{employee.name} status updated.')
         else:
             messages.info(request, 'Status unchanged.')
@@ -1179,17 +1472,86 @@ def finance_dashboard(request):
 def student_promotion(request):
     form = StudentPromotionForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
-        students = Student.objects.filter(admission_class=form.cleaned_data['from_class'])
-        if form.cleaned_data['from_section']:
-            students = students.filter(section__iexact=form.cleaned_data['from_section'])
-        count = students.count()
+        data = {key: value.strip() for key, value in form.cleaned_data.items()}
+        with transaction.atomic():
+            students = list(Student.objects.select_for_update().filter(admission_class=data['from_class']))
+            if data['from_section']:
+                students = [student for student in students if student.section.lower() == data['from_section'].lower()]
+            count = len(students)
+            if count:
+                batch = PromotionBatch.objects.create(
+                    session=data['session'], from_class=data['from_class'], from_section=data['from_section'],
+                    to_class=data['to_class'], to_section=data['to_section'], actor=request.user,
+                )
+                histories = []
+                for student in students:
+                    target_section = data['to_section'] or student.section
+                    histories.append(StudentPromotionHistory(
+                        batch=batch, student=student, source_class=student.admission_class,
+                        source_section=student.section, target_class=data['to_class'],
+                        target_section=target_section,
+                    ))
+                    student.admission_class = data['to_class']
+                    student.section = target_section
+                    student.save(update_fields=['admission_class', 'section'])
+                StudentPromotionHistory.objects.bulk_create(histories)
+                record_audit(request.user, 'students_promoted', batch,
+                             snapshot={'session': batch.session, 'student_count': count},
+                             details={'from_class': batch.from_class, 'from_section': batch.from_section,
+                                      'to_class': batch.to_class, 'to_section': batch.to_section})
         if not count:
             messages.error(request, 'No students found for the selected class/section.')
         else:
-            updates = {'admission_class': form.cleaned_data['to_class']}
-            if form.cleaned_data['to_section']:
-                updates['section'] = form.cleaned_data['to_section']
-            students.update(**updates)
             messages.success(request, f'{count} student(s) promoted.')
             return redirect('student_list')
     return render(request, 'students/student_promotion.html', {'form': form})
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+@require_POST
+def rollback_student_promotion(request, pk):
+    with transaction.atomic():
+        batch = get_object_or_404(PromotionBatch.objects.select_for_update(), pk=pk)
+        if batch.rolled_back_at:
+            messages.error(request, 'This promotion batch has already been rolled back.')
+            return redirect('student_promotion_history')
+        restored = 0
+        for history in batch.student_history.select_related('student').select_for_update():
+            student = history.student
+            if (student.admission_class == history.target_class and
+                    student.section == history.target_section):
+                student.admission_class = history.source_class
+                student.section = history.source_section
+                student.save(update_fields=['admission_class', 'section'])
+                history.rolled_back_at = timezone.now()
+                history.save(update_fields=['rolled_back_at'])
+                restored += 1
+        batch.rolled_back_at = timezone.now()
+        batch.rollback_actor = request.user
+        batch.save(update_fields=['rolled_back_at', 'rollback_actor'])
+        record_audit(request.user, 'students_promotion_rollback', batch,
+                     snapshot={'restored_count': restored}, details={'batch_id': batch.pk})
+    messages.success(request, f'{restored} student(s) restored; changed students were left untouched.')
+    return redirect('student_promotion_history')
+
+
+@login_required
+@permission_required('students.view_promotionbatch', raise_exception=True)
+def student_promotion_history(request):
+    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor').all()
+    return render(request, 'students/student_promotion_history.html', {'batches': batches})
+
+
+@login_required
+@permission_required('students.view_auditlog', raise_exception=True)
+def audit_log_list(request):
+    logs = AuditLog.objects.select_related('actor').all()
+    return render(request, 'students/audit_log_list.html', {'logs': logs})
+
+
+@login_required
+@permission_required('students.view_auditlog', raise_exception=True)
+def audit_log_detail(request, pk):
+    log = get_object_or_404(AuditLog.objects.select_related('actor'), pk=pk)
+    return render(request, 'students/audit_log_detail.html', {'log': log})

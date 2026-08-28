@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Student Promotion</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<main class="card p-4 mx-auto mt-5" style="max-width:700px">
+    <h1>Student Promotion</h1>
+    <p class="text-muted">Move students from one class and section to another.</p>
+    {% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-primary">Promote Students</button>
+        <a href="{% url 'student_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        <a href="{% url 'student_promotion_history' %}" class="btn btn-outline-info">Promotion History</a>
+    </form>
+</main>
+</body>
+</html>

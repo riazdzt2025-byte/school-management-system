@@ -6,7 +6,8 @@ from .models import (
     Student, Subject, StudentSubject, Institution, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
-    MoneyReceipt, Voucher, SalarySheet,
+    MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
+    PromotionBatch, StudentPromotionHistory, AuditLog,
 )
 
 
@@ -34,3 +35,22 @@ admin.site.register(EmployeeStatusLog)
 admin.site.register(MoneyReceipt)
 admin.site.register(Voucher)
 admin.site.register(SalarySheet)
+admin.site.register(AdmissionApplication)
+admin.site.register(PromotionBatch)
+admin.site.register(StudentPromotionHistory)
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ['timestamp', 'action', 'model_name', 'object_id', 'actor']
+    list_filter = ['action', 'model_name']
+    readonly_fields = ['actor', 'action', 'model_name', 'object_id', 'object_repr', 'timestamp', 'snapshot', 'details']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Delete Salary Sheet</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="p-5">
+<main class="container" style="max-width:560px">
+    <h2>Delete Salary Sheet?</h2>
+    <p>{{ salary.employee.name }} - {{ salary.month }} - ৳{{ salary.amount }}</p>
+    <form method="post">
+        {% csrf_token %}
+        <button class="btn btn-danger">Yes, Delete</button>
+        <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+</main>
+</body>
+</html>
