@@ -1,6 +1,107 @@
-<!doctype html>
-<html><head><title>Admission Applications</title></head><body>
-<h1>Admission Applications</h1><a href="{% url 'admission' %}">New application</a>
-<form method="get"><label>Status <select name="status"><option value="">All</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button type="submit">Filter</button></form>
-<table><tr><th>Application</th><th>Applicant</th><th>Class</th><th>Status</th><th></th></tr>{% for application in applications %}<tr><td>{{ application.application_number }}</td><td>{{ application.applicant_name }}</td><td>{{ application.requested_class }} {{ application.requested_section }}</td><td>{{ application.get_status_display }}</td><td><a href="{% url 'admission_application_detail' application.pk %}">Open</a></td></tr>{% empty %}<tr><td colspan="5">No applications found.</td></tr>{% endfor %}</table>
-</body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admission Applications — Principal Kazi Faruky School And College</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --navy: #0F2D52; --navy-light: #17406e; --gold: #C9A227; --bg: #F6F7FA; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
+        h1, .brand { font-family: 'Fraunces', serif; }
+        .sidebar { width: 240px; height: 100vh; position: fixed; top: 0; left: 0; background: var(--navy); color: #fff; display: flex; flex-direction: column; padding: 24px 0; overflow-y: auto; }
+        .brand { font-size: 1.15rem; font-weight: 700; padding: 0 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 16px; }
+        .sidebar a { color: rgba(255,255,255,0.75); text-decoration: none; padding: 12px 20px; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; border-left: 3px solid transparent; }
+        .sidebar a:hover, .sidebar a.active { background: var(--navy-light); color: #fff; border-left-color: var(--gold); }
+        .sidebar i { font-size: 1.1rem; width: 20px; }
+        .main { margin-left: 240px; padding: 32px 40px; }
+        .page-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+        .page-header h1 { font-size: 1.6rem; color: var(--navy); }
+        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; border: none; }
+        .btn-navy:hover { background: var(--navy-light); color: #fff; }
+        .table-card { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 14px rgba(15,45,82,0.06); }
+        .table-card table { margin-bottom: 0; }
+        .table-card thead th { background: var(--navy); color: #fff; font-weight: 600; border-bottom: none; font-size: 0.88rem; }
+        .table-card tbody tr:hover { background: rgba(15,45,82,0.03); }
+        .badge-submitted { background: #0d6efd; }
+        .badge-office_approved { background: #6f42c1; }
+        .badge-account_pending { background: #fd7e14; }
+        .badge-enrolled { background: #198754; }
+        .badge-rejected { background: #dc3545; }
+        .menu-toggle { display: none; background: var(--navy); color: #fff; border: none; border-radius: 8px; width: 42px; height: 42px; font-size: 1.2rem; position: fixed; top: 16px; left: 16px; z-index: 1050; }
+        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; }
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 1000; width: 220px; }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; padding: 80px 16px 24px; }
+            .menu-toggle { display: block; }
+            .sidebar-overlay.show { display: block; }
+        }
+    </style>
+</head>
+<body>
+
+<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('show');">
+    <i class="bi bi-list"></i>
+</button>
+<div class="sidebar-overlay" onclick="this.classList.remove('show'); document.querySelector('.sidebar').classList.remove('open');"></div>
+
+<div class="sidebar">
+    <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
+    <a href="{% url 'dashboard' %}"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
+    <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
+    <a href="{% url 'admission_application_list' %}" class="active"><i class="bi bi-file-earmark-person-fill"></i> Admissions</a>
+    <a href="{% url 'employee_list' %}"><i class="bi bi-person-badge-fill"></i> Employees</a>
+    <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+</div>
+
+<div class="main">
+    <div class="page-header">
+        <div>
+            <h1>Admission Applications</h1>
+            <div class="text-muted">Total: {{ applications|length }}</div>
+        </div>
+        <div class="d-flex gap-2">
+            <form method="get" class="d-flex gap-2">
+                <select name="status" class="form-select" onchange="this.form.submit()">
+                    <option value="">-- All Status --</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            <a href="{% url 'admission' %}" class="btn btn-navy">+ New Application</a>
+        </div>
+    </div>
+
+    <div class="table-card">
+        <table class="table table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>Application No.</th>
+                    <th>Applicant Name</th>
+                    <th>Class / Section</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for application in applications %}
+                <tr>
+                    <td>{{ application.application_number }}</td>
+                    <td>{{ application.applicant_name }}</td>
+                    <td>{{ application.requested_class }} {{ application.requested_section }}</td>
+                    <td><span class="badge badge-{{ application.status|lower }}">{{ application.get_status_display }}</span></td>
+                    <td><a href="{% url 'admission_application_detail' application.pk %}" class="btn btn-sm btn-outline-info">Open</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">No applications found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>

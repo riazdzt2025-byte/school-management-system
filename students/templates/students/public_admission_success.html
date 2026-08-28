@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Submitted — Principal Kazi Faruky School And College</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --navy: #0F2D52; --navy-light: #17406e; --gold: #C9A227; --bg: #F6F7FA; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
+        h1, .brand { font-family: 'Fraunces', serif; }
+        .main { padding: 32px 40px; }
+        .page-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+        .page-header h1 { font-size: 1.6rem; color: var(--navy); }
+        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; border: none; }
+        .btn-navy:hover { background: var(--navy-light); color: #fff; }
+        .form-card { background: #fff; border-radius: 14px; padding: 32px; box-shadow: 0 4px 14px rgba(15,45,82,0.06); }
+        @media (max-width: 768px) {
+            .main { padding: 80px 16px 24px; }
+            .form-card { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+<div class="main">
+    <div class="page-header">
+        <div>
+            <h1>Application Submitted</h1>
+            <div class="text-muted">Your admission application has been received.</div>
+        </div>
+        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">← Back to Home</a>
+    </div>
+
+    <div class="form-card">
+        <p class="mb-3">Thank you for submitting your admission application. Please save your application number for future reference.</p>
+        <div class="alert alert-info">
+            <strong>Application Number:</strong> {{ application.application_number }}<br>
+            <strong>Applicant:</strong> {{ application.applicant_name }}<br>
+            <strong>Class:</strong> {{ application.requested_class }} {{ application.requested_section }}<br>
+            <strong>Session:</strong> {{ application.session }}
+        </div>
+        <p class="text-muted">Our office will review your application and contact you shortly. You can use the application number above to check the status.</p>
+    </div>
+</div>
+
+</body>
+</html>

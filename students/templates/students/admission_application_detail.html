@@ -1,12 +1,83 @@
-<!doctype html>
-<html><head><title>{{ application.application_number }}</title></head><body>
-<h1>{{ application.application_number }}</h1><p>{{ application.applicant_name }} | {{ application.institution }} | Class {{ application.requested_class }} {{ application.requested_section }} | {{ application.session }}</p>
-<p>Status: {{ application.get_status_display }} | Next step: {{ application.next_step }}</p>
-<p>Guardian: {{ application.guardian_name }} ({{ application.guardian_contact_no }})</p>
-{% if application.status == 'SUBMITTED' or application.status == 'OFFICE_APPROVED' or application.status == 'ACCOUNT_PENDING' %}<form method="post" action="{% url 'office_approve_application' application.pk %}">{% csrf_token %}<input name="remarks" placeholder="Office remarks"><button type="submit">Approve</button></form>{% endif %}
-{% if application.status == 'SUBMITTED' or application.status == 'OFFICE_APPROVED' or application.status == 'ACCOUNT_PENDING' %}<form method="post" action="{% url 'office_reject_application' application.pk %}">{% csrf_token %}<input name="remarks" placeholder="Rejection remarks"><button type="submit">Reject</button></form>{% endif %}
-{% if application.status == 'OFFICE_APPROVED' %}<form method="post" action="{% url 'office_handoff_application' application.pk %}">{% csrf_token %}<button type="submit">Handoff to Accounts</button></form>{% endif %}
-{% if application.status == 'ACCOUNT_PENDING' %}<form method="post" action="{% url 'accounts_approve_payment' application.pk %}">{% csrf_token %}{{ payment_form.as_p }}<button type="submit">Approve payment and enroll</button></form>{% endif %}
-{% if application.enrolled_student %}<p>Enrolled student: <a href="{% url 'student_detail' application.enrolled_student.pk %}">{{ application.enrolled_student }}</a></p>{% endif %}
-<a href="{% url 'admission_application_list' %}">Back to applications</a>
-</body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ application.application_number }} — PKFSC</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --navy: #0F2D52; --navy-light: #17406e; --gold: #C9A227; }
+        body { font-family: 'Inter', sans-serif; background: #F6F7FA; padding: 40px; }
+        h1 { font-family: 'Fraunces', serif; color: var(--navy); }
+        .card-box { max-width: 700px; margin: 0 auto; background: #fff; border-radius: 14px; box-shadow: 0 4px 14px rgba(15,45,82,0.06); padding: 32px; }
+        .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .info-row span:first-child { color: #6c757d; }
+        .info-row span:last-child { font-weight: 600; text-align: right; }
+        .status-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; background: var(--gold); color: #fff; font-weight: 600; font-size: 0.85rem; margin: 12px 0; }
+        .action-form { margin-top: 20px; padding: 16px; background: #f8f9fa; border-radius: 10px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .action-form input, .action-form select { padding: 8px 12px; border: 1px solid #ccc; border-radius: 8px; flex: 1; min-width: 150px; }
+        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; border: none; padding: 8px 18px; }
+        .btn-danger-o { background: #fff; color: #dc3545; border: 1px solid #dc3545; border-radius: 8px; padding: 8px 18px; }
+        .back-link { display: inline-block; margin-top: 20px; }
+        body { padding: 40px; }
+    </style>
+</head>
+<body>
+    <div class="card-box">
+        <h1>{{ application.application_number }}</h1>
+        <p class="text-muted">{{ application.applicant_name }} — {{ application.institution }}</p>
+        <div class="status-badge">{{ application.get_status_display }}</div>
+
+        <div class="info-row"><span>Requested Class</span><span>{{ application.requested_class }} {{ application.requested_section }}</span></div>
+        <div class="info-row"><span>Session</span><span>{{ application.session }}</span></div>
+        <div class="info-row"><span>Guardian</span><span>{{ application.guardian_name }} ({{ application.guardian_contact_no }})</span></div>
+        <div class="info-row"><span>Next Step</span><span>{{ application.next_step }}</span></div>
+
+        {% if application.status == 'SUBMITTED' or application.status == 'OFFICE_APPROVED' or application.status == 'ACCOUNT_PENDING' %}
+        <div class="action-form">
+            <form method="post" action="{% url 'office_approve_application' application.pk %}" class="d-flex gap-2 flex-grow-1">
+                {% csrf_token %}
+                <input name="remarks" placeholder="Office remarks">
+                <button type="submit" class="btn-navy">✅ Approve</button>
+            </form>
+        </div>
+        <div class="action-form">
+            <form method="post" action="{% url 'office_reject_application' application.pk %}" class="d-flex gap-2 flex-grow-1">
+                {% csrf_token %}
+                <input name="remarks" placeholder="Rejection remarks">
+                <button type="submit" class="btn-danger-o">❌ Reject</button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if application.status == 'OFFICE_APPROVED' %}
+        <div class="action-form">
+            <form method="post" action="{% url 'office_handoff_application' application.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-navy">➡️ Handoff to Accounts</button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if application.status == 'ACCOUNT_PENDING' %}
+        <div class="action-form">
+            <form method="post" action="{% url 'accounts_approve_payment' application.pk %}" class="d-flex flex-column gap-2 w-100">
+                {% csrf_token %}
+                {{ payment_form.as_p }}
+                <button type="submit" class="btn-navy">💰 Approve Payment & Enroll</button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if application.enrolled_student %}
+        <div class="info-row">
+            <span>Enrolled Student</span>
+            <span><a href="{% url 'student_detail' application.enrolled_student.pk %}">{{ application.enrolled_student }}</a></span>
+        </div>
+        {% endif %}
+
+        <a href="{% url 'admission_application_list' %}" class="back-link">← Back to applications</a>
+    </div>
+</body>
+</html>

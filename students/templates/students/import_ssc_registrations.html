@@ -1,2 +1,43 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Import SSC Registrations</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light"><main class="card p-4 mx-auto mt-5" style="max-width:600px"><h2>Import SSC Registrations</h2><p class="text-muted">Columns: Student ID, Registration Number, Roll Number, Session, Group, Subjects, Board</p><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Upload and Import</button> <a class="btn btn-outline-secondary" href="{% url 'ssc_registration_list' %}">Cancel</a></form></main></body></html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Import SSC Registrations — Principal Kazi Faruky School And College</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        body { background: #f8f9fa; font-family: 'Inter', sans-serif; }
+        .import-card { background: #fff; border-radius: 16px; padding: 32px; box-shadow: 0 4px 14px rgba(15,45,82,0.06); max-width: 700px; margin: 40px auto; }
+        .section-title { font-family: 'Fraunces', serif; color: #0F2D52; font-size: 1.1rem; margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #C9A227; }
+        .section-title:first-child { margin-top: 0; }
+        .btn-navy { background: #0F2D52; color: #fff; border-radius: 8px; border: none; }
+        .btn-navy:hover { background: #17406e; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="import-card">
+        <div class="section-title">SSC Registration Import (Class 9-12)</div>
+        <p class="text-muted">Download the template, fill in the data for classes 9-12, and upload the file.</p>
+
+        <div class="mb-3">
+            <a href="{% url 'download_ssc_import_template' %}" class="btn btn-outline-navy">
+                <i class="bi bi-download me-1"></i> Download SSC Import Template
+            </a>
+        </div>
+
+        <div class="alert alert-info">
+            <strong>Columns:</strong> Student ID, Registration Number, Roll Number, Session, Group, Subjects, Board
+        </div>
+
+        <form method="post" enctype="multipart/form-data" class="mt-4">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label">Excel File (.xlsx)</label>
+                {{ form.excel_file }}
+            </div>
+            <button type="submit" class="btn btn-navy">Upload and Import</button>
+            <a href="{% url 'ssc_registration_list' %}" class="btn btn-outline-secondary ms-2">Cancel</a>
+        </form>
+    </div>
+</body>
+</html>

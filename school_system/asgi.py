@@ -14,3 +14,10 @@ from django.core.asgi import get_asgi_application
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'school_system.settings')
 
 application = get_asgi_application()
+
+SCHOOL_INFO = {
+    'name': 'Your School Name',
+    'address': '...',
+    'logo': '...',
+    # ইত্যাদি
+}

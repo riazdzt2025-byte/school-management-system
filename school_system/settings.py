@@ -50,6 +50,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'students.context_processors.school_info',
             ],
         },
     },
@@ -89,4 +90,10 @@ MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
+}
+
+SCHOOL_INFO = {
+    'name': 'Principal Kazi Faruky School And College',
+    'address': 'Rakhalia, Raipur, Lakshmipur',
+    'phone': '+880 1234-567890',
 }

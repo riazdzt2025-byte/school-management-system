@@ -36,13 +36,29 @@ except ModuleNotFoundError:
     openpyxl = None
 
 
+def _is_admin(user):
+    return user.is_superuser or user.is_staff
+
+
+def _filter_qs_for_user(qs, user):
+    if _is_admin(user):
+        return qs
+    return qs.none()
+
+
 @login_required
 def dashboard(request):
-    total_students = Student.objects.count()
+    total_students = Student.objects.filter(status='ACTIVE').count()
     total_subjects = Subject.objects.count()
+    total_institutions = Institution.objects.count()
+    classes = Student.objects.filter(status='ACTIVE').values_list('admission_class', flat=True).distinct().order_by('admission_class')
+    sessions = Student.objects.filter(status='ACTIVE').values_list('admission_year', flat=True).distinct().order_by('-admission_year')
     return render(request, 'students/dashboard.html', {
         'total_students': total_students,
         'total_subjects': total_subjects,
+        'total_institutions': total_institutions,
+        'classes': classes,
+        'sessions': sessions,
     })
 
 
@@ -70,6 +86,16 @@ def create_admission_application(request):
         messages.success(request, f'Application {application.application_number} submitted.')
         return redirect('admission_application_detail', pk=application.pk)
     return render(request, 'students/admission_application_form.html', {'form': form})
+
+
+def public_admission_apply(request):
+    form = AdmissionApplicationForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        application = form.save()
+        return render(request, 'students/public_admission_success.html', {
+            'application': application,
+        })
+    return render(request, 'students/public_admission_form.html', {'form': form})
 
 
 @login_required
@@ -196,6 +222,8 @@ def accounts_approve_payment(request, pk):
         )
     messages.success(request, f'Application enrolled. Receipt {receipt.receipt_no} created.')
     return redirect('admission_application_detail', pk=pk)
+
+
 @login_required
 def class_section_summary(request):
     institutions = Institution.objects.all().order_by('name')
@@ -283,11 +311,15 @@ def student_list(request):
     institution_id = request.GET.get('institution')
     show_filter_modal = False
 
+    qs = Student.objects.all()
+    if not _is_admin(request.user):
+        qs = qs.filter(created_by=request.user)
+
     if request.GET.get('all') == '1':
-        students = list(Student.objects.all())
+        students = list(qs)
     elif institution_id:
         institution = get_object_or_404(Institution, pk=institution_id)
-        qs = Student.objects.filter(institution=institution)
+        qs = qs.filter(institution=institution)
         if admission_class:
             qs = qs.filter(admission_class=admission_class)
         if section:
@@ -478,7 +510,9 @@ def add_student(request):
         form = StudentForm(request.POST)
         if form.is_valid():
             try:
-                student = form.save()
+                student = form.save(commit=False)
+                student.created_by = request.user
+                student.save()
                 messages.success(request, f"Student added — ID: {student.student_id}")
                 if 'save_add_another' in request.POST:
                     url = reverse('add_student')
@@ -537,6 +571,8 @@ def delete_student(request, pk):
 @login_required
 def subject_list(request):
     subjects = Subject.objects.all()
+    if not _is_admin(request.user):
+        subjects = subjects.filter(created_by=request.user)
     return render(request, 'students/subject_list.html', {
         'subjects': subjects,
     })
@@ -548,7 +584,9 @@ def add_subject(request):
     if request.method == 'POST':
         form = SubjectForm(request.POST)
         if form.is_valid():
-            form.save()
+            subject = form.save(commit=False)
+            subject.created_by = request.user
+            subject.save()
             messages.success(request, "Subject added.")
             return redirect('subject_list')
         else:
@@ -650,6 +688,7 @@ def import_students(request):
                         contact_no=str(contact_no).strip() if contact_no else '',
                         guardian_contact_no=str(guardian_contact_no).strip() if guardian_contact_no else '',
                         group=group_code,
+                        created_by=request.user,
                     )
                     success_count += 1
                 except Exception as e:
@@ -696,6 +735,35 @@ def download_import_template(request):
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     response["Content-Disposition"] = 'attachment; filename="student_import_template.xlsx"'
+    wb.save(response)
+    return response
+
+
+@login_required
+def download_ssc_import_template(request):
+    wb = openpyxl.Workbook()
+    sheet = wb.active
+    sheet.title = "SSC Registrations"
+
+    headers = [
+        "Student ID", "Registration Number", "Roll Number", "Session",
+        "Group", "Subjects", "Board",
+    ]
+    sheet.append(headers)
+
+    sheet.append([
+        "2026001", "REG-2026-001", "101", "2025-2026",
+        "Science", "Bangla, English, Math", "Dhaka",
+    ])
+
+    for col in sheet.columns:
+        max_length = max(len(str(cell.value)) for cell in col if cell.value)
+        sheet.column_dimensions[col[0].column_letter].width = max_length + 4
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="ssc_registration_template.xlsx"'
     wb.save(response)
     return response
 
@@ -1450,6 +1518,7 @@ def finance_dashboard(request):
     total_voucher_unpaid = Voucher.objects.filter(status='UNPAID').aggregate(total=Sum('amount'))['total'] or 0
     total_salary_paid = SalarySheet.objects.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
     total_salary_unpaid = SalarySheet.objects.filter(status='UNPAID').aggregate(total=Sum('amount'))['total'] or 0
+    pending_applications = AdmissionApplication.objects.filter(status='ACCOUNT_PENDING').select_related('institution')[:10]
     return render(request, 'students/finance_dashboard.html', {
         'finance_cards': [
             ('Total Collection', total_collection),
@@ -1464,6 +1533,7 @@ def finance_dashboard(request):
         'net_balance': total_collection - total_voucher_paid - total_salary_paid,
         'recent_receipts': MoneyReceipt.objects.select_related('student').all()[:5],
         'recent_vouchers': Voucher.objects.all()[:5],
+        'pending_applications': pending_applications,
     })
 
 

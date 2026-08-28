@@ -21,6 +21,7 @@
             width: 240px; height: 100vh; position: fixed; top: 0; left: 0;
             background: var(--navy); color: #fff; display: flex;
             flex-direction: column; padding: 24px 0;
+            overflow-y: auto;
         }
         .brand { font-size: 1.15rem; font-weight: 700; padding: 0 20px 24px;
             border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 16px; line-height: 1.3; }
@@ -232,10 +233,12 @@
                             {% if perms.students.view_certificate %}
                             <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
                             {% endif %}
+                            {% if student.admission_class in '9,10' %}
                             {% if student.ssc_registration %}
                             <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
                             {% elif perms.students.add_sscregistration %}
                             <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
+                            {% endif %}
                             {% endif %}
                             {% if perms.students.delete_student %}
                             <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
@@ -325,6 +328,17 @@
               <option value="C">
             </datalist>
           </div>
+          <div class="mb-3" id="group-filter-container" style="display: none;">
+            <label class="form-label">Group</label>
+            <select name="group" id="id_group" class="form-select">
+              <option value="">-- All Groups --</option>
+              <option value="SCI">Science</option>
+              <option value="BUS">Business Studies</option>
+              <option value="HUM">Humanities</option>
+              <option value="GEN">General</option>
+              <option value="NON">Non-Group</option>
+            </select>
+          </div>
         </div>
         <div class="modal-footer">
           <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary">View All Students</a>
@@ -343,6 +357,19 @@
     const classSelect = document.getElementById('id_class');
     const currentClassValue = "{{ selected_class|default:'' }}";
 
+    const groupSelect = document.getElementById('id_group');
+    const groupContainer = document.getElementById('group-filter-container');
+
+    function updateGroupVisibility() {
+        const cls = classSelect.value;
+        if (cls && ['9', '10', '11', '12'].includes(cls)) {
+            groupContainer.style.display = 'block';
+        } else {
+            groupContainer.style.display = 'none';
+            groupSelect.value = '';
+        }
+    }
+
     function populateClasses(selectedInstitutionId, preSelectValue) {
         classSelect.innerHTML = '<option value="">-- All Classes --</option>';
         const classes = institutionsData[selectedInstitutionId] || [];
@@ -355,14 +382,19 @@
             }
             classSelect.appendChild(opt);
         });
+        updateGroupVisibility();
     }
 
     institutionSelect.addEventListener('change', function () {
         populateClasses(this.value, '');
     });
 
+    classSelect.addEventListener('change', updateGroupVisibility);
+
     if (institutionSelect.value) {
         populateClasses(institutionSelect.value, currentClassValue);
+    } else {
+        updateGroupVisibility();
     }
 
     document.addEventListener('DOMContentLoaded', function () {

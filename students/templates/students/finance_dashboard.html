@@ -1,1 +1,105 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Accounts</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"><style>body{background:#f6f7fa;padding:32px 40px}h1{color:#0f2d52}.stat{background:#fff;padding:20px;border-radius:12px;box-shadow:0 4px 14px #0f2d5215}.value{font-size:1.5rem;font-weight:bold;color:#0f2d52}.card{border:0;box-shadow:0 4px 14px #0f2d5215}</style></head><body><div class="d-flex justify-content-between align-items-center"><h1>Accounts</h1><a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Dashboard</a></div><div class="row g-3 mt-2">{% for label,value in finance_cards %}<div class="col-md-3"><div class="stat"><small>{{ label }}</small><div class="value">৳ {{ value }}</div></div></div>{% endfor %}<div class="col-md-3"><div class="stat"><small>Net Balance</small><div class="value">৳ {{ net_balance }}</div></div></div></div><div class="my-4"><a href="{% url 'money_receipt_list' %}" class="btn btn-outline-primary">Money Receipts</a> <a href="{% url 'voucher_list' %}" class="btn btn-outline-primary">Vouchers</a> <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-primary">Salary Sheets</a> <a href="{% url 'accounts_admission_queue' %}" class="btn btn-outline-primary">Admission Payments</a> <a href="{% url 'student_promotion' %}" class="btn btn-outline-dark">Student Promotion</a></div><div class="row"><div class="col-md-6"><div class="card p-3"><h5>Recent Receipts</h5>{% for r in recent_receipts %}<p>{{ r.receipt_no }} - {{ r.student.name }} - ৳{{ r.amount }}</p>{% empty %}<p>No receipts yet.</p>{% endfor %}</div></div><div class="col-md-6"><div class="card p-3"><h5>Recent Vouchers</h5>{% for v in recent_vouchers %}<p>{{ v.purpose }} - ৳{{ v.amount }} ({{ v.get_status_display }})</p>{% empty %}<p>No vouchers yet.</p>{% endfor %}</div></div></div></body></html>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Accounts</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f6f7fa; padding: 32px 40px; font-family: 'Inter', sans-serif; }
+        h1 { color: #0f2d52; font-family: 'Fraunces', serif; }
+        .stat { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 14px rgba(15,45,82,0.06); }
+        .value { font-size: 1.5rem; font-weight: bold; color: #0f2d52; }
+        .card { border: 0; box-shadow: 0 4px 14px rgba(15,45,82,0.06); }
+        .sidebar { width: 240px; height: 100vh; position: fixed; top: 0; left: 0; background: var(--navy); color: #fff; display: flex; flex-direction: column; padding: 24px 0; overflow-y: auto; }
+        .main { margin-left: 240px; }
+        .sidebar a { color: rgba(255,255,255,0.75); text-decoration: none; padding: 12px 20px; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
+        .sidebar a:hover { color: #fff; background: var(--navy-light); }
+    </style>
+</head>
+<body>
+<div class="d-flex justify-content-between align-items-center">
+    <h1>Accounts Dashboard</h1>
+    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Dashboard</a>
+</div>
+<div class="row g-3 mt-2">
+    {% for label,value in finance_cards %}
+    <div class="col-md-3">
+        <div class="stat">
+            <small>{{ label }}</small>
+            <div class="value">৳ {{ value }}</div>
+        </div>
+    </div>
+    {% endfor %}
+    <div class="col-md-3">
+        <div class="stat">
+            <small>Net Balance</small>
+            <div class="value">৳ {{ net_balance }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="my-4">
+    <a href="{% url 'money_receipt_list' %}" class="btn btn-outline-primary">Money Receipts</a>
+    <a href="{% url 'voucher_list' %}" class="btn btn-outline-primary">Vouchers</a>
+    <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-primary">Salary Sheets</a>
+    <a href="{% url 'accounts_admission_queue' %}" class="btn btn-outline-primary">Admission Payments</a>
+</div>
+
+{% if pending_applications %}
+<div class="card p-3 mb-4">
+    <h5>Pending Registration Approvals</h5>
+    <p class="text-muted">New registrations waiting for accounts approval.</p>
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>Application No.</th>
+                    <th>Applicant</th>
+                    <th>Institution</th>
+                    <th>Class</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for application in pending_applications %}
+                <tr>
+                    <td>{{ application.application_number }}</td>
+                    <td>{{ application.applicant_name }}</td>
+                    <td>{{ application.institution }}</td>
+                    <td>{{ application.requested_class }} {{ application.requested_section }}</td>
+                    <td><a href="{% url 'admission_application_detail' application.pk %}" class="btn btn-sm btn-outline-info">Review</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if pending_applications|length >= 10 %}
+    <a href="{% url 'accounts_admission_queue' %}" class="btn btn-outline-secondary mt-2">View All Pending</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h5>Recent Receipts</h5>
+            {% for r in recent_receipts %}
+            <p>{{ r.receipt_no }} - {{ r.student.name }} - ৳{{ r.amount }}</p>
+            {% empty %}
+            <p>No receipts yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h5>Recent Vouchers</h5>
+            {% for v in recent_vouchers %}
+            <p>{{ v.purpose }} - ৳{{ v.amount }} ({{ v.get_status_display }})</p>
+            {% empty %}
+            <p>No vouchers yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -51,6 +51,10 @@ class Student(models.Model):
     contact_no = models.CharField(max_length=20, blank=True)
     guardian_contact_no = models.CharField(max_length=20, blank=True)
     group = models.CharField(max_length=3, choices=GROUP_CHOICES, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='students_created'
+    )
     STATUS_CHOICES = [
         ('ACTIVE', 'Active'),
         ('TRANSFERRED', 'Transferred'),
@@ -193,6 +197,10 @@ class Subject(models.Model):
     code = models.CharField(max_length=10, unique=True)
     name = models.CharField(max_length=100)
     full_marks = models.IntegerField(default=100)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='subjects_created'
+    )
 
     def __str__(self):
         return self.name

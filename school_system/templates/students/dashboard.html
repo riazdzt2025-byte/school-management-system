@@ -1,313 +1,109 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Principal Kazi Faruky School And College</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --navy: #0F2D52;
-            --navy-light: #17406e;
-            --gold: #C9A227;
-            --bg: #F6F7FA;
-        }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
-        h1, h2, .brand { font-family: 'Fraunces', serif; }
+{% extends 'students/base.html' %}
 
-        /* Sidebar */
-        .sidebar {
-            width: 240px;
-            height: 100vh;
-            position: fixed;
-            top: 0; left: 0;
-            background: var(--navy);
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            padding: 24px 0;
-        }
-        .brand {
-            font-size: 1.15rem;
-            font-weight: 700;
-            padding: 0 20px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.12);
-            margin-bottom: 16px;
-            line-height: 1.3;
-        }
-        .user-badge {
-            margin: 0 20px 16px;
-            padding: 10px 12px;
-            background: rgba(255,255,255,0.08);
-            border-radius: 10px;
-            border-left: 3px solid var(--gold);
-        }
-        .user-badge .u-name {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #fff;
-            display: block;
-        }
-        .user-badge .u-dept {
-            font-size: 0.78rem;
-            color: var(--gold);
-            display: block;
-            margin-top: 2px;
-        }
-        .sidebar a {
-            color: rgba(255,255,255,0.75);
-            text-decoration: none;
-            padding: 12px 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 0.95rem;
-            border-left: 3px solid transparent;
-            transition: all 0.15s;
-        }
-        .sidebar a:hover, .sidebar a.active {
-            background: var(--navy-light);
-            color: #fff;
-            border-left-color: var(--gold);
-        }
-        .sidebar i { font-size: 1.1rem; width: 20px; }
-        .sidebar-section {
-            color: var(--gold);
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            padding: 14px 20px 4px;
-            text-transform: uppercase;
-        }
-        .sidebar-group {
-            padding-bottom: 8px;
-            margin-bottom: 4px;
-            border-bottom: 1px solid rgba(255,255,255,0.12);
-        }
-        .sidebar-group.inactive { opacity: 0.55; }
-        .sidebar a.sidebar-disabled {
-            color: rgba(255,255,255,0.45);
-            cursor: not-allowed;
-            pointer-events: none;
-        }
+{% block title %}Principal Kazi Faruky School And College{% endblock %}
+{% block print_subtitle %}Dashboard{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
 
-        /* Main */
-        .main { margin-left: 240px; padding: 32px 40px; }
+{% block extra_style %}
+    .hero {
+        background: linear-gradient(120deg, var(--navy) 0%, var(--navy-light) 100%);
+        border-radius: 16px; padding: 40px; color: #fff; position: relative; overflow: hidden;
+    }
+    .hero::after {
+        content: ""; position: absolute; right: -60px; top: -60px;
+        width: 220px; height: 220px; border-radius: 50%; background: rgba(201,162,39,0.15);
+    }
+    .hero h1 { font-size: 1.9rem; margin-bottom: 6px; }
+    .hero p { opacity: 0.85; margin-bottom: 0; }
+    .stat-card { border: none; border-radius: 14px; background: #fff; padding: 24px;
+        box-shadow: 0 4px 14px rgba(15,45,82,0.06); }
+    .stat-icon { width: 46px; height: 46px; border-radius: 10px; background: rgba(201,162,39,0.12);
+        color: var(--gold); display: flex; align-items: center; justify-content: center;
+        font-size: 1.3rem; margin-bottom: 12px; }
+    .stat-card h2 { font-family: 'Fraunces', serif; margin-bottom: 2px; }
+    .feature-card { border: none; border-radius: 14px; background: #fff; padding: 24px;
+        box-shadow: 0 4px 14px rgba(15,45,82,0.06); transition: transform 0.2s; }
+    .feature-card:hover { transform: translateY(-4px); }
+    .feature-icon { color: var(--navy); font-size: 1.6rem; margin-bottom: 10px; }
+    @media (max-width: 768px) {
+        .hero { padding: 28px 20px; }
+        .hero h1 { font-size: 1.3rem; }
+        .hero p { font-size: 0.9rem; }
+        .stat-card, .feature-card { padding: 18px; }
+    }
+{% endblock %}
 
-        .hero {
-            background: linear-gradient(120deg, var(--navy) 0%, var(--navy-light) 100%);
-            border-radius: 16px;
-            padding: 40px;
-            color: #fff;
-            position: relative;
-            overflow: hidden;
-        }
-        .hero::after {
-            content: "";
-            position: absolute;
-            right: -60px; top: -60px;
-            width: 220px; height: 220px;
-            border-radius: 50%;
-            background: rgba(201,162,39,0.15);
-        }
-        .hero h1 { font-size: 1.9rem; margin-bottom: 6px; }
-        .hero p { opacity: 0.85; margin-bottom: 0; }
-
-        /* Filter bar */
-        .filter-bar {
-            background: #fff;
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-top: -24px;
-            margin-inline: 24px;
-            box-shadow: 0 6px 20px rgba(15,45,82,0.08);
-            display: flex;
-            gap: 12px;
-            position: relative;
-            z-index: 2;
-        }
-        .filter-bar select { border-radius: 8px; }
-
-        /* Stat cards */
-        .stat-card {
-            border: none;
-            border-radius: 14px;
-            background: #fff;
-            padding: 24px;
-            box-shadow: 0 4px 14px rgba(15,45,82,0.06);
-        }
-        .stat-icon {
-            width: 46px; height: 46px;
-            border-radius: 10px;
-            background: rgba(201,162,39,0.12);
-            color: var(--gold);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.3rem;
-            margin-bottom: 12px;
-        }
-        .stat-card h2 { font-family: 'Fraunces', serif; margin-bottom: 2px; }
-
-        .feature-card {
-            border: none;
-            border-radius: 14px;
-            background: #fff;
-            padding: 24px;
-            box-shadow: 0 4px 14px rgba(15,45,82,0.06);
-            transition: transform 0.2s;
-        }
-        .feature-card:hover { transform: translateY(-4px); }
-        .feature-icon { color: var(--navy); font-size: 1.6rem; margin-bottom: 10px; }
-            /* Mobile menu toggle button */
-        .menu-toggle {
-            display: none;
-            background: var(--navy);
-            color: #fff;
-            border: none;
-            border-radius: 8px;
-            width: 42px; height: 42px;
-            font-size: 1.2rem;
-            position: fixed;
-            top: 16px; left: 16px;
-            z-index: 1050;
-        }
-
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.4);
-            z-index: 999;
-        }
-
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-                transition: transform 0.25s ease;
-                z-index: 1000;
-                width: 220px;
-            }
-            .sidebar.open { transform: translateX(0); }
-
-            .main {
-                margin-left: 0;
-                padding: 80px 16px 24px;
-            }
-
-            .menu-toggle { display: block; }
-            .sidebar-overlay.show { display: block; }
-
-            .hero { padding: 28px 20px; }
-            .hero h1 { font-size: 1.3rem; }
-            .hero p { font-size: 0.9rem; }
-
-            .filter-bar {
-                flex-direction: column;
-                margin-inline: 0;
-                margin-top: 16px;
-            }
-
-            .stat-card, .feature-card { padding: 18px; }
-        }
-        </style>
-</head>
-<body>
-<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('show');">
-    <i class="bi bi-list"></i>
-</button>
-<div class="sidebar-overlay" onclick="this.classList.remove('show'); document.querySelector('.sidebar').classList.remove('open');"></div>
-<div class="sidebar">
-    <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
-
-    <div class="user-badge">
-        <span class="u-name"><i class="bi bi-person-circle me-1"></i>{{ request.user.username }}</span>
-        {% if request.user.is_superuser %}
-            <span class="u-dept">Super Admin (Full Access)</span>
-        {% elif request.user.groups.all %}
-            <span class="u-dept">{{ request.user.groups.first.name }} Department</span>
-        {% else %}
-            <span class="u-dept">No Department</span>
-        {% endif %}
-    </div>
-
-    <a href="{% url 'dashboard' %}" class="active"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
-    <div class="sidebar-group {% if not perms.students.view_admissionapplication and not perms.students.add_admissionapplication and not perms.students.change_admissionapplication and not perms.students.view_student and not perms.students.add_student and not perms.students.change_student and not perms.students.delete_student and not perms.students.view_subject and not perms.students.add_subject and not perms.students.change_subject and not perms.students.delete_subject and not perms.students.view_sscregistration and not perms.students.add_sscregistration and not perms.students.change_sscregistration and not perms.students.delete_sscregistration and not perms.students.view_boardresult and not perms.students.add_boardresult and not perms.students.change_boardresult and not perms.students.delete_boardresult %}inactive{% endif %}">
-        <div class="sidebar-section">Office{% if not perms.students.view_admissionapplication and not perms.students.add_admissionapplication and not perms.students.change_admissionapplication and not perms.students.view_student and not perms.students.add_student and not perms.students.change_student and not perms.students.delete_student and not perms.students.view_subject and not perms.students.add_subject and not perms.students.change_subject and not perms.students.delete_subject and not perms.students.view_sscregistration and not perms.students.add_sscregistration and not perms.students.change_sscregistration and not perms.students.delete_sscregistration and not perms.students.view_boardresult and not perms.students.add_boardresult and not perms.students.change_boardresult and not perms.students.delete_boardresult %} (Inactive){% endif %}</div>
-        {% if perms.students.view_admissionapplication or perms.students.add_admissionapplication or perms.students.change_admissionapplication %}<a href="{% url 'admission_application_list' %}"><i class="bi bi-person-plus-fill"></i> Admissions</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-person-plus-fill"></i> Admissions</a>{% endif %}
-        {% if perms.students.view_student or perms.students.add_student or perms.students.change_student or perms.students.delete_student %}<a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-people-fill"></i> Students</a>{% endif %}
-        {% if perms.students.view_subject or perms.students.add_subject or perms.students.change_subject or perms.students.delete_subject %}<a href="{% url 'subject_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>{% endif %}
-        {% if perms.students.view_student or perms.students.add_student or perms.students.change_student %}<a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-bar-chart-fill"></i> Reports</a>{% endif %}
-        {% if perms.students.view_sscregistration or perms.students.add_sscregistration or perms.students.change_sscregistration or perms.students.delete_sscregistration %}<a href="{% url 'ssc_registration_list' %}"><i class="bi bi-card-checklist"></i> SSC Registrations</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-card-checklist"></i> SSC Registrations</a>{% endif %}
-        {% if perms.students.view_boardresult or perms.students.add_boardresult or perms.students.change_boardresult or perms.students.delete_boardresult %}<a href="{% url 'result_summary' %}"><i class="bi bi-bar-chart-fill"></i> SSC Results</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-bar-chart-fill"></i> SSC Results</a>{% endif %}
-    </div>
-    <div class="sidebar-group {% if not perms.students.view_exam and not perms.students.add_exam and not perms.students.change_exam %}inactive{% endif %}">
-        <div class="sidebar-section">Exam{% if not perms.students.view_exam and not perms.students.add_exam and not perms.students.change_exam %} (Inactive){% endif %}</div>
-        {% if perms.students.view_exam or perms.students.add_exam or perms.students.change_exam %}<a href="{% url 'exam_list' %}"><i class="bi bi-pencil-square"></i> Exams</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-pencil-square"></i> Exams</a>{% endif %}
-    </div>
-    <div class="sidebar-group {% if not perms.students.view_employee and not perms.students.add_employee and not perms.students.change_employee %}inactive{% endif %}">
-        <div class="sidebar-section">Employees{% if not perms.students.view_employee and not perms.students.add_employee and not perms.students.change_employee %} (Inactive){% endif %}</div>
-        {% if perms.students.view_employee or perms.students.add_employee or perms.students.change_employee %}<a href="{% url 'employee_list' %}"><i class="bi bi-person-badge-fill"></i> Employees</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-person-badge-fill"></i> Employees</a>{% endif %}
-    </div>
-    <div class="sidebar-group {% if not perms.students.view_moneyreceipt and not perms.students.add_moneyreceipt and not perms.students.view_voucher and not perms.students.add_voucher and not perms.students.view_salarysheet and not perms.students.add_salarysheet %}inactive{% endif %}">
-        <div class="sidebar-section">Accounts{% if not perms.students.view_moneyreceipt and not perms.students.add_moneyreceipt and not perms.students.view_voucher and not perms.students.add_voucher and not perms.students.view_salarysheet and not perms.students.add_salarysheet %} (Inactive){% endif %}</div>
-        {% if perms.students.view_moneyreceipt or perms.students.add_moneyreceipt or perms.students.view_voucher or perms.students.add_voucher or perms.students.view_salarysheet or perms.students.add_salarysheet %}<a href="{% url 'finance_dashboard' %}"><i class="bi bi-wallet2"></i> Accounts</a>{% else %}<a class="sidebar-disabled"><i class="bi bi-wallet2"></i> Accounts</a>{% endif %}
-    </div>
-   <form method="POST" action="{% url 'logout' %}" style="padding: 12px 20px;">
-    {% csrf_token %}
-    <button type="submit" style="background: none; border: none; color: rgba(255,255,255,0.75); padding: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 10px;">
-        <i class="bi bi-box-arrow-right"></i> Logout
-    </button>
-</form>
-</div>
-
-<div class="main">
+{% block content %}
     <div class="hero">
         <h1>Principal Kazi Faruky School And College</h1>
         <p>Empowering Education Through Technology</p>
     </div>
 
-    <div class="filter-bar">
-        <select class="form-select form-select-sm">
-            <option>All Classes</option>
-            <option>Class 6</option>
-            <option>Class 7</option>
-            <option>Class 8</option>
-            <option>Class 9</option>
-            <option>Class 10</option>
-        </select>
-        <select class="form-select form-select-sm">
-            <option>All Sections</option>
-            <option>Section A</option>
-            <option>Section B</option>
-        </select>
-    </div>
-
     <div class="row mt-4">
-        <div class="col-md-4 mb-4">
+        <div class="col-md-3 mb-4">
             <div class="stat-card">
                 <div class="stat-icon"><i class="bi bi-mortarboard"></i></div>
                 <h2>{{ total_students }}</h2>
-                <p class="text-muted mb-0">Total Students</p>
+                <p class="text-muted mb-0">Total Active Students</p>
             </div>
         </div>
-        <div class="col-md-4 mb-4">
+        <div class="col-md-3 mb-4">
             <div class="stat-card">
                 <div class="stat-icon"><i class="bi bi-book"></i></div>
                 <h2>{{ total_subjects }}</h2>
                 <p class="text-muted mb-0">Total Subjects</p>
             </div>
         </div>
+        <div class="col-md-3 mb-4">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="bi bi-building"></i></div>
+                <h2>{{ total_institutions }}</h2>
+                <p class="text-muted mb-0">Institutions</p>
+            </div>
+        </div>
+        <div class="col-md-3 mb-4">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="bi bi-calendar-check"></i></div>
+                <h2>{{ sessions|length }}</h2>
+                <p class="text-muted mb-0">Active Sessions</p>
+            </div>
+        </div>
     </div>
 
-    <h5 class="mt-4 mb-3">What You Can Do</h5>
+    <div class="row mt-2">
+        <div class="col-md-6 mb-4">
+            <div class="stat-card">
+                <h5 class="mb-3">All Classes (Active Students)</h5>
+                <div class="d-flex flex-wrap gap-2">
+                    {% for cls in classes %}
+                    <span class="badge bg-primary fs-6">{{ cls }}</span>
+                    {% empty %}
+                    <span class="text-muted">No active students yet.</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="stat-card">
+                <h5 class="mb-3">Active Sessions</h5>
+                <div class="d-flex flex-wrap gap-2">
+                    {% for session in sessions %}
+                    <span class="badge bg-success fs-6">{{ session }}</span>
+                    {% empty %}
+                    <span class="text-muted">No sessions yet.</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h5 class="mt-4 mb-3">Quick Access</h5>
     <div class="row">
         <div class="col-md-4 mb-4">
             <div class="feature-card">
                 <i class="bi bi-person-plus feature-icon"></i>
                 <h6>Manage Students</h6>
-               <p class="text-muted small mb-0">Add, edit, and organize student records with ease.</p>
+                <p class="text-muted small mb-0">Add, edit, and organize student records with ease.</p>
             </div>
         </div>
         <div class="col-md-4 mb-4">
@@ -325,7 +121,4 @@
             </div>
         </div>
     </div>
-</div>
-
-</body>
-</html>
+{% endblock %}

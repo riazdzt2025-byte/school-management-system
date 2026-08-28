@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Principal Kazi Faruky School And College{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy: #0F2D52;
+            --navy-light: #17406e;
+            --gold: #C9A227;
+            --bg: #F6F7FA;
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
+        h1, h2, .brand { font-family: 'Fraunces', serif; }
+
+        .sidebar {
+            width: 240px; height: 100vh; position: fixed; top: 0; left: 0;
+            background: var(--navy); color: #fff; display: flex;
+            flex-direction: column; padding: 24px 0; overflow-y: auto;
+        }
+        .brand { font-size: 1.15rem; font-weight: 700; padding: 0 20px 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 16px; line-height: 1.3; }
+        .user-badge {
+            margin: 0 20px 16px; padding: 10px 12px; background: rgba(255,255,255,0.08);
+            border-radius: 10px; border-left: 3px solid var(--gold);
+        }
+        .user-badge .u-name { font-size: 1rem; font-weight: 600; color: #fff; display: block; }
+        .user-badge .u-dept { font-size: 0.85rem; color: var(--gold); display: block; margin-top: 2px; }
+        .sidebar a { color: rgba(255,255,255,0.75); text-decoration: none; padding: 12px 20px;
+            display: flex; align-items: center; gap: 10px; font-size: 0.95rem;
+            border-left: 3px solid transparent; transition: all 0.15s; }
+        .sidebar a:hover, .sidebar a.active { background: var(--navy-light); color: #fff; border-left-color: var(--gold); }
+        .sidebar i { font-size: 1.1rem; width: 20px; }
+
+        .nav-divider { border-top: 1px solid rgba(255,255,255,0.12); margin: 12px 20px; }
+
+        .nav-group { position: relative; }
+        .nav-group > .group-label {
+            color: rgba(255,255,255,0.75); padding: 12px 20px;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 10px; font-size: 0.95rem; cursor: default; border-left: 3px solid transparent;
+        }
+        .nav-group > .group-label i.bi-chevron-right { font-size: 0.75rem; transition: transform 0.15s; }
+        .nav-group:hover > .group-label { background: var(--navy-light); color: #fff; border-left-color: var(--gold); }
+
+        .flyout {
+            display: none; position: absolute; left: 240px; top: 0;
+            min-width: 220px; background: var(--navy); border-radius: 0 10px 10px 0;
+            box-shadow: 4px 4px 14px rgba(0,0,0,0.2); z-index: 1100; padding: 8px 0;
+        }
+        .nav-group:hover .flyout { display: block; }
+        .flyout a { padding: 10px 18px; font-size: 0.9rem; border-left: none; }
+        .flyout a:hover { background: var(--navy-light); }
+
+        .main { margin-left: 240px; padding: 32px 40px; }
+
+        .school-header {
+            background: var(--navy); color: #fff; padding: 16px 40px;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 12px;
+        }
+        .school-header h1 { font-size: 1.2rem; margin: 0; }
+        .school-header .school-info { font-size: 0.85rem; opacity: 0.9; }
+        .school-header .school-info a { color: var(--gold); text-decoration: none; }
+
+        .page-header {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            flex-wrap: wrap; gap: 16px; margin-bottom: 24px;
+        }
+        .page-header h1 { font-size: 1.6rem; color: var(--navy); margin-bottom: 2px; }
+        .page-header .subtitle { color: #6c757d; font-size: 0.95rem; }
+
+        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; border: none; }
+        .btn-navy:hover { background: var(--navy-light); color: #fff; }
+        .btn-outline-navy { border: 1px solid var(--navy); color: var(--navy); border-radius: 8px; background: #fff; }
+        .btn-outline-navy:hover { background: var(--navy); color: #fff; }
+
+        .table-card {
+            background: #fff; border-radius: 14px; overflow: hidden;
+            box-shadow: 0 4px 14px rgba(15,45,82,0.06);
+        }
+        .table-card table { margin-bottom: 0; }
+        .table-card thead th {
+            background: var(--navy); color: #fff; font-weight: 600;
+            border-bottom: none; font-size: 0.88rem;
+        }
+        .table-card tbody tr:hover { background: rgba(15,45,82,0.03); }
+
+        .print-header { display: none; text-align: center; margin-bottom: 20px; }
+
+        .menu-toggle {
+            display: none; background: var(--navy); color: #fff; border: none;
+            border-radius: 8px; width: 42px; height: 42px; font-size: 1.2rem;
+            position: fixed; top: 16px; left: 16px; z-index: 1050;
+        }
+        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 1000; width: 220px; }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; padding: 80px 16px 24px; }
+            .menu-toggle { display: block; }
+            .sidebar-overlay.show { display: block; }
+            .flyout { position: static; box-shadow: none; border-radius: 0; background: var(--navy-light); }
+            .nav-group:hover .flyout { display: none; }
+            .nav-group.open .flyout { display: block; }
+        }
+
+        @media print {
+            .sidebar, .menu-toggle, .sidebar-overlay { display: none !important; }
+            .main { margin-left: 0 !important; padding: 0 !important; }
+            .d-print-none { display: none !important; }
+            .print-header { display: block !important; }
+            table { font-size: 0.9rem; }
+        }
+
+        {% block extra_style %}{% endblock %}
+    </style>
+</head>
+<body>
+
+<button class="menu-toggle d-print-none" onclick="document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('show');">
+    <i class="bi bi-list"></i>
+</button>
+<div class="sidebar-overlay d-print-none" onclick="this.classList.remove('show'); document.querySelector('.sidebar').classList.remove('open');"></div>
+
+<div class="sidebar d-print-none">
+    <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
+
+    <div class="user-badge">
+        <span class="u-name"><i class="bi bi-person-circle me-1"></i>{{ request.user.username }}</span>
+        {% if request.user.is_superuser %}
+            <span class="u-dept">Super Admin (Full Access)</span>
+        {% elif request.user.groups.all %}
+            <span class="u-dept">{{ request.user.groups.first.name }} Department</span>
+        {% else %}
+            <span class="u-dept">No Department</span>
+        {% endif %}
+        {% if request.user.email %}
+        <span class="u-dept" style="font-size:0.75rem;color:#fff;">{{ request.user.email }}</span>
+        {% endif %}
+        {% if request.user.get_full_name %}
+        <span class="u-dept" style="font-size:0.75rem;color:#fff;">{{ request.user.get_full_name }}</span>
+        {% endif %}
+    </div>
+
+    <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
+
+    <div class="nav-group">
+        <div class="group-label"><span><i class="bi bi-folder-fill"></i> Office</span><i class="bi bi-chevron-right"></i></div>
+        <div class="flyout">
+            <a href="{% url 'admission_application_list' %}"><i class="bi bi-file-earmark-person-fill"></i> Admission</a>
+            <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
+            <a href="{% url 'subject_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
+            <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+            <a href="{% url 'ssc_registration_list' %}"><i class="bi bi-file-earmark-text-fill"></i> SSC Registration</a>
+            <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> Certificates</a>
+        </div>
+    </div>
+
+    <div class="nav-group">
+        <div class="group-label"><span><i class="bi bi-pencil-square"></i> Exam</span><i class="bi bi-chevron-right"></i></div>
+        <div class="flyout">
+            <a href="{% url 'exam_list' %}"><i class="bi bi-journal-check"></i> Exam List</a>
+            <a href="{% url 'exam_result_summary' %}"><i class="bi bi-clipboard-data-fill"></i> Result Summary</a>
+            <a href="{% url 'top_10' %}"><i class="bi bi-trophy-fill"></i> Top 10</a>
+        </div>
+    </div>
+
+    <div class="nav-group">
+        <div class="group-label"><span><i class="bi bi-cash-coin"></i> Accounts</span><i class="bi bi-chevron-right"></i></div>
+        <div class="flyout">
+            <a href="{% url 'money_receipt_list' %}"><i class="bi bi-receipt"></i> Money Receipts</a>
+            <a href="{% url 'voucher_list' %}"><i class="bi bi-file-earmark-ruled-fill"></i> Vouchers</a>
+            <a href="{% url 'salary_sheet_list' %}"><i class="bi bi-wallet-fill"></i> Salary Sheets</a>
+            <a href="{% url 'finance_dashboard' %}"><i class="bi bi-graph-up-arrow"></i> Finance Dashboard</a>
+        </div>
+    </div>
+
+    <div class="nav-group">
+        <div class="group-label"><span><i class="bi bi-person-badge-fill"></i> Employees</span><i class="bi bi-chevron-right"></i></div>
+        <div class="flyout">
+            <a href="{% url 'employee_list' %}"><i class="bi bi-people-fill"></i> Employee List</a>
+            <a href="{% url 'add_employee' %}"><i class="bi bi-person-plus-fill"></i> Add Employee</a>
+        </div>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <form method="POST" action="{% url 'logout' %}" style="padding: 12px 20px;">
+        {% csrf_token %}
+        <button type="submit" style="background: none; border: none; color: rgba(255,255,255,0.75); padding: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 10px;">
+            <i class="bi bi-box-arrow-right"></i> Logout
+        </button>
+    </form>
+</div>
+
+<div class="school-header d-print-none">
+    <h1><i class="bi bi-mortarboard-fill me-2"></i>{% now "Y" %}</h1>
+    <div class="school-info">
+        <strong>{{ SCHOOL_INFO.name|default:"Principal Kazi Faruky School And College" }}</strong><br>
+        {{ SCHOOL_INFO.address|default:"Rakhalia, Raipur, Lakshmipur" }} | Phone: {{ SCHOOL_INFO.phone|default:"+880 1234-567890" }}
+    </div>
+</div>
+
+<div class="main">
+    <div class="print-header">
+        <h2>Principal Kazi Faruky School And College</h2>
+        <p>{% block print_subtitle %}{% endblock %}</p>
+    </div>
+
+    {% block content %}{% endblock %}
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script>
+    if (window.matchMedia('(max-width: 768px)').matches) {
+        document.querySelectorAll('.nav-group > .group-label').forEach(function (label) {
+            label.addEventListener('click', function () {
+                this.parentElement.classList.toggle('open');
+            });
+        });
+    }
+</script>
+{% block extra_script %}{% endblock %}
+</body>
+</html>
