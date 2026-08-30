@@ -194,6 +194,7 @@ class AdmissionApplication(models.Model):
     guardian_contact_no = models.CharField(max_length=20)
     guardian_address = models.TextField(blank=True)
     requested_class = models.CharField(max_length=10)
+    requested_group = models.CharField(max_length=3, choices=Student.GROUP_CHOICES, blank=True)
     requested_section = models.CharField(max_length=5, blank=True)
     session = models.CharField(max_length=20, help_text='e.g. 2026-2027')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='SUBMITTED')

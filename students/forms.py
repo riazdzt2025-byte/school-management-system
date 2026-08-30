@@ -52,7 +52,7 @@ class AdmissionApplicationForm(forms.ModelForm):
             'institution', 'applicant_name', 'date_of_birth', 'gender', 'religion',
             'applicant_contact_no', 'applicant_address', 'guardian_name',
             'guardian_relation', 'guardian_contact_no', 'guardian_address',
-            'requested_class', 'requested_section', 'session',
+            'requested_class', 'requested_group', 'requested_section', 'session',
         ]
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
@@ -60,6 +60,11 @@ class AdmissionApplicationForm(forms.ModelForm):
             'gender': forms.Select(attrs={'class': 'form-select'}),
             'applicant_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
             'guardian_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            # These three start empty and are populated by JS as
+            # Institution -> Class -> Group/Section are chosen in sequence.
+            'requested_class': forms.Select(choices=[('', '-- Select Institution first --')], attrs={'class': 'form-select'}),
+            'requested_group': forms.Select(choices=[('', '-- Select Class first --')], attrs={'class': 'form-select'}),
+            'requested_section': forms.Select(choices=[('', '-- Select Class first --')], attrs={'class': 'form-select'}),
         }
 
     def __init__(self, *args, **kwargs):

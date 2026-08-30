@@ -6,6 +6,7 @@ urlpatterns = [
     path('admission/', views.admission_application_list, name='admission_application_list'),
     path('admission/new/', views.create_admission_application, name='admission'),
     path('admission/apply/', views.public_admission_apply, name='public_admission_apply'),
+    path('admission/dropdown-options/', views.admission_dropdown_options, name='admission_dropdown_options'),
     path('admission/<int:pk>/', views.admission_application_detail, name='admission_application_detail'),
     path('admission/<int:pk>/office-approve/', views.office_approve_application, name='office_approve_application'),
     path('admission/<int:pk>/office-reject/', views.office_reject_application, name='office_reject_application'),

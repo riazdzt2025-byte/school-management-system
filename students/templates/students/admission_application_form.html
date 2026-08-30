@@ -23,3 +23,104 @@
     <a href="{% url 'admission_application_list' %}" class="back-link">← Application list</a>
 </div>
 {% endblock %}
+{% block extra_script %}
+<script>
+    // Institution -> Class list comes from each institution's stored class list.
+    const institutionClasses = {
+        {% for inst in form.institution.field.queryset %}
+        "{{ inst.id }}": [{% for c in inst.get_class_list %}"{{ c }}"{% if not forloop.last %},{% endif %}{% endfor %}]{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    const institutionSelect = document.getElementById('id_institution');
+    const classSelect = document.getElementById('id_requested_class');
+    const groupSelect = document.getElementById('id_requested_group');
+    const sectionSelect = document.getElementById('id_requested_section');
+
+    function setPlaceholder(select, text) {
+        select.innerHTML = '';
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = text;
+        select.appendChild(opt);
+    }
+
+    function populateClasses(institutionId) {
+        setPlaceholder(classSelect, '-- Select Class --');
+        setPlaceholder(groupSelect, '-- Select Class first --');
+        setPlaceholder(sectionSelect, '-- Select Class first --');
+        const classes = institutionClasses[institutionId] || [];
+        classes.forEach(function(cls) {
+            const option = document.createElement('option');
+            option.value = cls;
+            option.textContent = cls;
+            classSelect.appendChild(option);
+        });
+    }
+
+    function populateGroupAndSection(institutionId, admissionClass) {
+        setPlaceholder(groupSelect, 'Loading...');
+        setPlaceholder(sectionSelect, 'Loading...');
+        if (!institutionId || !admissionClass) {
+            setPlaceholder(groupSelect, '-- Select Class first --');
+            setPlaceholder(sectionSelect, '-- Select Class first --');
+            return;
+        }
+        const url = "{% url 'admission_dropdown_options' %}?institution=" + encodeURIComponent(institutionId) + "&admission_class=" + encodeURIComponent(admissionClass);
+        fetch(url)
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                setPlaceholder(groupSelect, '-- Not applicable / N/A --');
+                (data.groups || []).forEach(function(g) {
+                    const opt = document.createElement('option');
+                    opt.value = g.value;
+                    opt.textContent = g.label;
+                    groupSelect.appendChild(opt);
+                });
+
+                setPlaceholder(sectionSelect, '-- Select or type a new section --');
+                (data.sections || []).forEach(function(s) {
+                    const opt = document.createElement('option');
+                    opt.value = s;
+                    opt.textContent = s;
+                    sectionSelect.appendChild(opt);
+                });
+                // Allow entering a brand-new section (e.g. a first-ever section for that class)
+                // by keeping the select editable via a manual "Other" option handled below.
+                const otherOpt = document.createElement('option');
+                otherOpt.value = '__other__';
+                otherOpt.textContent = 'Other (type new section)';
+                sectionSelect.appendChild(otherOpt);
+            });
+    }
+
+    institutionSelect.addEventListener('change', function() {
+        populateClasses(this.value);
+    });
+
+    classSelect.addEventListener('change', function() {
+        populateGroupAndSection(institutionSelect.value, this.value);
+    });
+
+    sectionSelect.addEventListener('change', function() {
+        if (this.value === '__other__') {
+            const typed = prompt('Enter the new section name:');
+            setPlaceholder(this, typed ? typed : '-- Select or type a new section --');
+            if (typed) {
+                const opt = document.createElement('option');
+                opt.value = typed;
+                opt.textContent = typed;
+                opt.selected = true;
+                this.appendChild(opt);
+            }
+        }
+    });
+
+    // Initial state
+    if (institutionSelect.value) {
+        populateClasses(institutionSelect.value);
+    } else {
+        setPlaceholder(classSelect, '-- Select Institution first --');
+    }
+</script>
+{% endblock %}

@@ -826,6 +826,42 @@ def subject_requirements_json(request):
     data = get_applicable_subjects(institution, admission_class, group, religion)
     return JsonResponse(data)
 
+
+def admission_dropdown_options(request):
+    """AJAX endpoint for the admission form: given an institution + class,
+    return the Groups configured for that class (via SubjectRequirement) and
+    the Sections already in use for that institution + class (via Student).
+    Falls back to the full Group list when nothing is configured yet, so the
+    form never blocks admission for a not-yet-configured class."""
+    institution_id = request.GET.get('institution')
+    admission_class = request.GET.get('admission_class', '')
+
+    if not institution_id or not admission_class:
+        return JsonResponse({'groups': [], 'sections': []})
+
+    institution = get_object_or_404(Institution, pk=institution_id)
+
+    group_codes = list(
+        SubjectRequirement.objects.filter(
+            institution=institution, admission_class=admission_class,
+        ).exclude(group='').values_list('group', flat=True).distinct()
+    )
+    if group_codes:
+        group_choices = [(code, label) for code, label in Student.GROUP_CHOICES if code in group_codes]
+    else:
+        group_choices = list(Student.GROUP_CHOICES)
+
+    sections = list(
+        Student.objects.filter(
+            institution=institution, admission_class=admission_class,
+        ).exclude(section='').values_list('section', flat=True).distinct().order_by('section')
+    )
+
+    return JsonResponse({
+        'groups': [{'value': code, 'label': label} for code, label in group_choices],
+        'sections': sections,
+    })
+
 # ---------------- Excel Import ----------------
 
 @login_required
