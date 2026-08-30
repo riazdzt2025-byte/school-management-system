@@ -415,7 +415,6 @@ def student_list(request):
     admission_class = request.GET.get('admission_class')
     section = request.GET.get('section')
     institution_id = request.GET.get('institution')
-    show_filter_modal = False
 
     qs = Student.objects.all()
     if institution is not None:
@@ -436,8 +435,9 @@ def student_list(request):
             qs = qs.filter(section__iexact=section.strip())
         students = list(qs)
     else:
-        students = []
-        show_filter_modal = True
+        # No institution filter chosen yet — send the user to the
+        # dedicated filter page instead of showing an in-page popup.
+        return redirect('student_list_filter')
 
     # ---- Duplicate detection ----
     exact_key_count = defaultdict(int)
@@ -462,10 +462,27 @@ def student_list(request):
         'selected_class': admission_class,
         'selected_section': section,
         'institutions': institutions,
-        'institutions_data': institutions_data,
-        'show_filter_modal': show_filter_modal,
         'exact_duplicate_ids': exact_duplicate_ids,
         'possible_duplicate_ids': possible_duplicate_ids,
+    })
+
+
+@login_required
+def student_list_filter(request):
+    """Dedicated, popup-free page for choosing Institution/Class/Section/Group
+    filters before viewing the student list."""
+    institutions = Institution.objects.all().order_by('name')
+    institutions_data = {
+        str(inst.id): [c.strip() for c in inst.classes.split(',') if c.strip()]
+        for inst in institutions
+    }
+    return render(request, 'students/student_list_filter.html', {
+        'institutions': institutions,
+        'institutions_data': institutions_data,
+        'selected_institution_id': request.GET.get('institution', ''),
+        'selected_class': request.GET.get('admission_class', ''),
+        'selected_section': request.GET.get('section', ''),
+        'selected_group': request.GET.get('group', ''),
     })
 
 
@@ -523,6 +540,39 @@ def bulk_update_students(request):
             url += "?" + "&".join(params)
         return redirect(url)
     return redirect('student_list')
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+def bulk_update_select(request):
+    """Dedicated, popup-free page shown after picking students on the list
+    page and clicking Bulk Update; collects the new class/section then
+    posts on to bulk_update_students."""
+    if request.method != 'POST':
+        return redirect('student_list')
+
+    student_ids = request.POST.getlist('student_ids')
+    if not student_ids:
+        messages.error(request, "No students were selected.")
+        return redirect('student_list')
+
+    institution_id = request.POST.get('institution', '')
+    admission_class = request.POST.get('admission_class', '')
+    section = request.POST.get('section', '')
+
+    institution = Institution.objects.filter(pk=institution_id).first() if institution_id else None
+    classes = [c.strip() for c in institution.classes.split(',') if c.strip()] if institution else []
+    students = Student.objects.filter(pk__in=student_ids)
+
+    return render(request, 'students/bulk_update_students.html', {
+        'students': students,
+        'student_ids': student_ids,
+        'institution': institution,
+        'admission_class': admission_class,
+        'section': section,
+        'classes': classes,
+    })
+
 
 @login_required
 def student_detail(request, pk):

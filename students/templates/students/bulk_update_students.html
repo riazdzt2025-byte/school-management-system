@@ -1,0 +1,67 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Bulk Update Students - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Bulk Update Selected Students</h1>
+        <div class="subtitle">{{ students|length }} student(s) selected. Leave a field blank to keep it unchanged.</div>
+    </div>
+</div>
+
+<div class="table-card p-4 mb-4" style="max-width: 640px;">
+    <form method="POST" action="{% url 'bulk_update_students' %}">
+        {% csrf_token %}
+        <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
+        <input type="hidden" name="admission_class" value="{{ admission_class }}">
+        <input type="hidden" name="section" value="{{ section }}">
+        {% for sid in student_ids %}
+        <input type="hidden" name="student_ids" value="{{ sid }}">
+        {% endfor %}
+
+        <div class="mb-3">
+            <label class="form-label">New Class</label>
+            <select name="new_class" class="form-select">
+                <option value="">-- Keep Current Class --</option>
+                {% for cls in classes %}
+                <option value="{{ cls }}">{{ cls }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">New Section</label>
+            <input type="text" name="new_section" class="form-control" placeholder="e.g. A (leave blank to keep current)">
+        </div>
+
+        <button type="submit" class="btn btn-navy" onclick="return confirm('Update all selected students?');">Update Students</button>
+        <a href="{% url 'student_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+</div>
+
+<h5 class="mb-3">Selected Students</h5>
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>Student ID</th>
+                    <th>Name</th>
+                    <th>Class</th>
+                    <th>Section</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in students %}
+                <tr>
+                    <td>{{ s.student_id }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.admission_class }}</td>
+                    <td>{{ s.section }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

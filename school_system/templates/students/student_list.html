@@ -21,9 +21,9 @@
         </div>
     </div>
     <div class="page-actions">
-        <button type="button" class="btn btn-outline-navy" data-bs-toggle="modal" data-bs-target="#filterModal">
+        <a href="{% url 'student_list_filter' %}" class="btn btn-outline-navy">
             <i class="bi bi-funnel"></i> Change Filter
-        </button>
+        </a>
         {% if perms.students.add_student %}
         <a href="{% url 'add_student' %}" class="btn btn-navy">+ Add New Student</a>
         <a href="{% url 'import_students' %}" class="btn btn-outline-navy">📥 Import from Excel</a>
@@ -51,8 +51,8 @@
             <input type="checkbox" class="form-check-input" id="select-all">
             <label class="form-check-label" for="select-all">Select All</label>
         </div>
-        <button type="button" id="bulk-update-btn" class="btn btn-sm btn-outline-primary" disabled
-            data-bs-toggle="modal" data-bs-target="#bulkUpdateModal">
+        <button type="submit" id="bulk-update-btn" class="btn btn-sm btn-outline-primary" disabled
+            formaction="{% url 'bulk_update_select' %}" formmethod="POST">
             🔄 Bulk Update
         </button>
         <button type="submit" id="bulk-delete-btn" class="btn btn-sm btn-outline-danger" disabled
@@ -132,161 +132,13 @@
     </div>
 </form>
 
-<!-- Bulk Update Modal -->
-<div class="modal fade" id="bulkUpdateModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <form method="POST" action="{% url 'bulk_update_students' %}" id="bulk-update-form">
-        {% csrf_token %}
-        <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
-        <input type="hidden" name="admission_class" value="{{ selected_class|default:'' }}">
-        <input type="hidden" name="section" value="{{ selected_section|default:'' }}">
-        <div id="bulk-update-ids-container"></div>
-
-        <div class="modal-header">
-          <h5 class="modal-title">Bulk Update Selected Students</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <p class="text-muted small"><span id="bulk-selected-count">0</span> student(s) selected. Leave a field blank to keep it unchanged.</p>
-          <div class="mb-3">
-            <label class="form-label">New Class</label>
-            <select name="new_class" id="bulk-new-class" class="form-select">
-              <option value="">-- Keep Current Class --</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">New Section</label>
-            <input type="text" name="new_section" class="form-control" list="section-options" placeholder="e.g. A (leave blank to keep current)">
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-navy"
-                  onclick="return confirm('Update all selected students?');">
-              Update Students
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- Filter Modal -->
-<div class="modal fade" id="filterModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Select Filters to View Student List</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <form method="GET" action="{% url 'student_list' %}">
-        <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label">Institution</label>
-            <select name="institution" id="id_institution" class="form-select" required>
-              <option value="">-- Select Institution --</option>
-              {% for inst in institutions %}
-              <option value="{{ inst.id }}" {% if institution and institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Class</label>
-            <select name="admission_class" id="id_class" class="form-select">
-              <option value="">-- All Classes --</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Section</label>
-            <input type="text" name="section" class="form-control" list="section-options" value="{{ selected_section|default:'' }}" placeholder="e.g. A (leave blank for all sections)">
-            <datalist id="section-options">
-              <option value="A">
-              <option value="B">
-              <option value="C">
-            </datalist>
-          </div>
-          <div class="mb-3" id="group-filter-container" style="display: none;">
-            <label class="form-label">Group</label>
-            <select name="group" id="id_group" class="form-select">
-              <option value="">-- All Groups --</option>
-              <option value="SCI">Science</option>
-              <option value="BUS">Business Studies</option>
-              <option value="HUM">Humanities</option>
-              <option value="GEN">General</option>
-              <option value="NON">Non-Group</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary">View All Students</a>
-          <button type="submit" class="btn btn-navy">View List</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-{{ institutions_data|json_script:"institutions-data" }}
 {% endblock %}
 
 {% block extra_script %}
 <script>
-    const institutionsData = JSON.parse(document.getElementById('institutions-data').textContent);
-    const institutionSelect = document.getElementById('id_institution');
-    const classSelect = document.getElementById('id_class');
-    const currentClassValue = "{{ selected_class|default:'' }}";
-
-    const groupSelect = document.getElementById('id_group');
-    const groupContainer = document.getElementById('group-filter-container');
-
-    function updateGroupVisibility() {
-        const cls = classSelect.value;
-        if (cls && ['9', '10', '11', '12'].includes(cls)) {
-            groupContainer.style.display = 'block';
-        } else {
-            groupContainer.style.display = 'none';
-            groupSelect.value = '';
-        }
-    }
-
-    function populateClasses(selectedInstitutionId, preSelectValue) {
-        classSelect.innerHTML = '<option value="">-- All Classes --</option>';
-        const classes = institutionsData[selectedInstitutionId] || [];
-        classes.forEach(function (cls) {
-            const opt = document.createElement('option');
-            opt.value = cls;
-            opt.textContent = cls;
-            if (cls === preSelectValue) {
-                opt.selected = true;
-            }
-            classSelect.appendChild(opt);
-        });
-        updateGroupVisibility();
-    }
-
-    institutionSelect.addEventListener('change', function () {
-        populateClasses(this.value, '');
-    });
-
-    classSelect.addEventListener('change', updateGroupVisibility);
-
-    if (institutionSelect.value) {
-        populateClasses(institutionSelect.value, currentClassValue);
-    } else {
-        updateGroupVisibility();
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-        {% if show_filter_modal %}
-        var filterModal = new bootstrap.Modal(document.getElementById('filterModal'));
-        filterModal.show();
-        {% endif %}
-    });
     const selectAll = document.getElementById('select-all');
     const rowCheckboxes = document.querySelectorAll('.row-checkbox');
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
-
     const bulkUpdateBtn = document.getElementById('bulk-update-btn');
 
     function updateBulkButtons() {
@@ -302,33 +154,5 @@
         });
     }
     rowCheckboxes.forEach(cb => cb.addEventListener('change', updateBulkButtons));
-
-    // When Bulk Update modal opens, copy checked student IDs + populate class dropdown
-    document.getElementById('bulkUpdateModal').addEventListener('show.bs.modal', function () {
-        const container = document.getElementById('bulk-update-ids-container');
-        container.innerHTML = '';
-        const checked = Array.from(rowCheckboxes).filter(cb => cb.checked);
-
-        document.getElementById('bulk-selected-count').textContent = checked.length;
-
-        checked.forEach(cb => {
-            const hidden = document.createElement('input');
-            hidden.type = 'hidden';
-            hidden.name = 'student_ids';
-            hidden.value = cb.value;
-            container.appendChild(hidden);
-        });
-
-        const bulkClassSelect = document.getElementById('bulk-new-class');
-        bulkClassSelect.innerHTML = '<option value="">-- Keep Current Class --</option>';
-        const instId = "{{ institution.id|default:'' }}";
-        const classes = institutionsData[instId] || [];
-        classes.forEach(function (cls) {
-            const opt = document.createElement('option');
-            opt.value = cls;
-            opt.textContent = cls;
-            bulkClassSelect.appendChild(opt);
-        });
-    });
 </script>
 {% endblock %}
