@@ -23,8 +23,6 @@
     .students-table tr.dup-possible { background: #fffdf3; }
     .students-table .name-cell { font-weight: 600; color: var(--navy); }
     .students-table .id-cell { font-family: monospace; font-size: 0.82rem; color: #6c757d; white-space: nowrap; }
-    .students-table .actions-cell { display: flex; flex-wrap: wrap; gap: 6px; }
-    .students-table .actions-cell .btn { flex: 0 0 auto; }
     .students-table-empty { text-align: center; color: #6c757d; padding: 48px 16px; }
     .print-table-wrapper { display: none; }
     @media print {
@@ -175,43 +173,49 @@
                         {% endif %}
                     </td>
                     <td>
-                        <div class="actions-cell">
-                            <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-info">Details</a>
-                            {% if perms.students.change_student %}
-                            <a href="{% url 'edit_student' student.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
-                            {% endif %}
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                Actions
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="{% url 'student_detail' student.pk %}">Details</a></li>
+                                {% if perms.students.change_student %}
+                                <li><a class="dropdown-item" href="{% url 'edit_student' student.pk %}">Edit</a></li>
+                                {% endif %}
 
-                            {% if selected_department == 'Exam' %}
-                            <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Test</a>
-                            <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Marksheet</a>
-                            {% endif %}
+                                {% if selected_department == 'Exam' %}
+                                <li><a class="dropdown-item" href="{% url 'student_exams' student.pk %}">Test</a></li>
+                                <li><a class="dropdown-item" href="{% url 'student_exams' student.pk %}">Marksheet</a></li>
+                                {% endif %}
 
-                            <a href="{% url 'student_id_card' student.pk %}" class="btn btn-sm btn-outline-secondary">ID Card</a>
+                                <li><a class="dropdown-item" href="{% url 'student_id_card' student.pk %}">ID Card</a></li>
 
-                            {% if selected_department != 'Exam' %}
-                                {% if student.status == 'ACTIVE' %}
-                                    {% if perms.students.add_transfercertificate %}
-                                    <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
+                                {% if selected_department != 'Exam' %}
+                                    {% if student.status == 'ACTIVE' %}
+                                        {% if perms.students.add_transfercertificate %}
+                                        <li><a class="dropdown-item" href="{% url 'issue_tc' student.pk %}">Issue TC</a></li>
+                                        {% endif %}
+                                        {% if perms.students.change_student %}
+                                        <li><a class="dropdown-item" href="{% url 'discontinue_student' student.pk %}">Discontinue</a></li>
+                                        {% endif %}
                                     {% endif %}
-                                    {% if perms.students.change_student %}
-                                    <a href="{% url 'discontinue_student' student.pk %}" class="btn btn-sm btn-outline-warning">Discontinue</a>
+                                    {% if perms.students.view_certificate %}
+                                    <li><a class="dropdown-item" href="{% url 'certificate_list' student.pk %}">Certificates</a></li>
+                                    {% endif %}
+                                    {% if student.admission_class in '9,10' %}
+                                        {% if student.ssc_registration %}
+                                        <li><a class="dropdown-item" href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}">SSC</a></li>
+                                        {% elif perms.students.add_sscregistration %}
+                                        <li><a class="dropdown-item" href="{% url 'add_ssc_registration' student.pk %}">Register SSC</a></li>
+                                        {% endif %}
                                     {% endif %}
                                 {% endif %}
-                                {% if perms.students.view_certificate %}
-                                <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
-                                {% endif %}
-                                {% if student.admission_class in '9,10' %}
-                                    {% if student.ssc_registration %}
-                                    <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
-                                    {% elif perms.students.add_sscregistration %}
-                                    <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
-                                    {% endif %}
-                                {% endif %}
-                            {% endif %}
 
-                            {% if perms.students.delete_student %}
-                            <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
-                            {% endif %}
+                                {% if perms.students.delete_student %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="{% url 'delete_student' student.pk %}">Delete</a></li>
+                                {% endif %}
+                            </ul>
                         </div>
                     </td>
                 </tr>
