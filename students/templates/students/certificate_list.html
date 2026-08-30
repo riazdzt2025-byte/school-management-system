@@ -1,41 +1,45 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Certificates - {{ student.name }}</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <style>
-        :root { --navy: #0F2D52; --navy-light: #17406e; --gold: #C9A227; --bg: #F6F7FA; }
-        body { background: var(--bg); margin: 0; }
-        .sidebar { background: var(--navy); color: #fff; height: 100vh; padding: 24px 0; position: fixed; width: 240px; overflow-y: auto; }
-        .brand { border-bottom: 1px solid rgba(255,255,255,.12); font-size: 1.15rem; font-weight: 700; padding: 0 20px 24px; }
-        .sidebar a { border-left: 3px solid transparent; color: rgba(255,255,255,.75); display: flex; gap: 10px; padding: 12px 20px; text-decoration: none; }
-        .sidebar a:hover, .sidebar a.active { background: var(--navy-light); border-left-color: var(--gold); color: #fff; }
-        .main { margin-left: 240px; padding: 32px 40px; }
-        .table-card { background: #fff; border-radius: 14px; box-shadow: 0 4px 14px rgba(15,45,82,.06); overflow: hidden; }
-        thead th { background: var(--navy) !important; color: #fff !important; }
-        h1 { color: var(--navy); }
-    </style>
-</head>
-<body>
-<div class="sidebar">
-    <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
-    <a href="{% url 'dashboard' %}"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
-    <a href="{% url 'student_list' %}" class="active"><i class="bi bi-people-fill"></i> Students</a>
-    <a href="{% url 'subject_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
-    <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
-</div>
-<div class="main">
-    <div class="d-flex justify-content-between align-items-start mb-4">
-        <div><h1>Certificates</h1><p class="text-muted">{{ student.name }} — {{ student.student_id }}</p></div>
-        {% if perms.students.add_certificate %}<a href="{% url 'issue_certificate' student.pk %}" class="btn btn-primary">+ Issue New Certificate</a>{% endif %}
+{% extends 'students/base.html' %}
+
+{% block title %}Certificates - {{ student.name }} - Principal Kazi Faruky School And College{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Certificates</h1>
+        <div class="subtitle">{{ student.name }} — {{ student.student_id }}</div>
     </div>
-    <div class="table-card"><table class="table table-striped mb-0"><thead><tr><th>Certificate No</th><th>Type</th><th>Purpose</th><th>Issue Date</th><th>Issued By</th><th>Action</th></tr></thead><tbody>
-        {% for cert in certificates %}<tr><td>{{ cert.certificate_number }}</td><td>{{ cert.get_certificate_type_display }}</td><td>{{ cert.purpose|default:'-' }}</td><td>{{ cert.issue_date }}</td><td>{{ cert.issued_by|default:'-' }}</td><td><a href="{% url 'view_certificate' cert.pk %}" class="btn btn-sm btn-outline-info">View / Print</a></td></tr>
-        {% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No certificates issued yet.</td></tr>{% endfor %}
-    </tbody></table></div>
-    <a href="{% url 'student_detail' student.pk %}" class="btn btn-outline-secondary mt-3">Back to Student Details</a>
+    {% if perms.students.add_certificate %}
+        <a href="{% url 'issue_certificate' student.pk %}" class="btn btn-navy"><i class="bi bi-plus-lg me-1"></i>Issue New Certificate</a>
+    {% endif %}
 </div>
-</body>
-</html>
+
+<div class="table-card">
+    <table class="table table-striped mb-0">
+        <thead>
+            <tr>
+                <th>Certificate No</th>
+                <th>Type</th>
+                <th>Purpose</th>
+                <th>Issue Date</th>
+                <th>Issued By</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cert in certificates %}
+            <tr>
+                <td>{{ cert.certificate_number }}</td>
+                <td>{{ cert.get_certificate_type_display }}</td>
+                <td>{{ cert.purpose|default:'-' }}</td>
+                <td>{{ cert.issue_date }}</td>
+                <td>{{ cert.issued_by|default:'-' }}</td>
+                <td><a href="{% url 'view_certificate' cert.pk %}" class="btn btn-sm btn-outline-navy">View / Print</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="text-center text-muted py-4">No certificates issued yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<a href="{% url 'student_detail' student.pk %}" class="btn btn-outline-navy mt-3">Back to Student Details</a>
+{% endblock %}

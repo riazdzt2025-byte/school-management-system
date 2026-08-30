@@ -1,34 +1,27 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{% if subject %}Edit{% else %}Add{% endif %} Subject</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
-    <div class="container">
-        <a class="navbar-brand" href="{% url 'dashboard' %}">Principal Kazi Faruky School And College</a>
-        <div>
-            <a href="{% url 'dashboard' %}" class="btn btn-outline-light btn-sm me-2">Home</a>
-            <a href="{% url 'subject_list' %}" class="btn btn-outline-light btn-sm">Subjects</a>
-        </div>
+{% extends 'students/base.html' %}
+
+{% block title %}{% if subject %}Edit{% else %}Add{% endif %} Subject - Principal Kazi Faruky School And College{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{% if subject %}Edit{% else %}Add New{% endif %} Subject</h1>
+        <div class="subtitle">Subject details</div>
     </div>
-</nav>
-<div class="container mt-5" style="max-width: 500px;">
-    <h2>{% if subject %}Edit{% else %}Add New{% endif %} Subject</h2>
+</div>
 
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+{% endif %}
 
+<div class="table-card p-4" style="max-width:500px">
     <form method="POST">
         {% csrf_token %}
         {{ form.as_p }}
-        <button type="submit" class="btn btn-primary">Save</button>
-        <a href="{% url 'subject_list' %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-navy">Save</button>
+        <a href="{% url 'subject_list' %}" class="btn btn-outline-navy">Cancel</a>
     </form>
 </div>
-</body>
-</html>
+{% endblock %}

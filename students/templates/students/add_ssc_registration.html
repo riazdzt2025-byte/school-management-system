@@ -1,2 +1,21 @@
-<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>SSC Registration</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"><style>body{background:#f6f7fa}.box{max-width:700px;margin:40px auto;background:#fff;padding:30px;border-radius:12px;box-shadow:0 4px 14px #0f2d5215}</style></head><body><main class="box"><h1>{% if registration %}Edit{% else %}New{% endif %} SSC Registration</h1><p class="text-muted">{{ student.name }} — {{ student.student_id }}</p><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Save</button> <a class="btn btn-outline-secondary" href="{% url 'ssc_registration_list' %}">Cancel</a></form></main></body></html>
+{% extends 'students/base.html' %}
+
+{% block title %}{% if registration %}Edit{% else %}New{% endif %} SSC Registration - Principal Kazi Faruky School And College{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{% if registration %}Edit{% else %}New{% endif %} SSC Registration</h1>
+        <div class="subtitle">{{ student.name }} — {{ student.student_id }}</div>
+    </div>
+</div>
+
+<div class="table-card p-4" style="max-width:700px">
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-navy">Save</button>
+        <a class="btn btn-outline-navy" href="{% url 'ssc_registration_list' %}">Cancel</a>
+    </form>
+</div>
+{% endblock %}
