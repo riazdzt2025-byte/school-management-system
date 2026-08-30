@@ -1,0 +1,794 @@
+--- a/students/templates/students/employee_status_history.html
++++ b/students/templates/students/employee_status_history.html
+@@ -1 +1,34 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Status History</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light p-4"><main class="container"><h1>{{ employee.name }} - Status History</h1><p class="text-muted">{{ employee.designation }}</p><div class="card"><table class="table table-striped mb-0"><thead class="table-dark"><tr><th>Date</th><th>From</th><th>To</th><th>Reason</th><th>Changed By</th></tr></thead><tbody>{% for log in logs %}<tr><td>{{ log.changed_at|date:'Y-m-d H:i' }}</td><td>{{ log.get_old_status_display }}</td><td>{{ log.get_new_status_display }}</td><td>{{ log.reason|default:'-' }}</td><td>{{ log.changed_by.username|default:'-' }}</td></tr>{% empty %}<tr><td colspan="5" class="text-center py-4">No status history.</td></tr>{% endfor %}</tbody></table></div><a href="{% url 'employee_list' %}" class="btn btn-outline-secondary mt-3">Back</a></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}{{ employee.name }} - Status History - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>{{ employee.name }} - Status History</h1>
++        <div class="subtitle">{{ employee.designation }}</div>
++    </div>
++</div>
++
++<div class="table-card">
++    <table class="table table-striped mb-0">
++        <thead>
++            <tr><th>Date</th><th>From</th><th>To</th><th>Reason</th><th>Changed By</th></tr>
++        </thead>
++        <tbody>
++            {% for log in logs %}
++            <tr>
++                <td>{{ log.changed_at|date:'Y-m-d H:i' }}</td>
++                <td>{{ log.get_old_status_display }}</td>
++                <td>{{ log.get_new_status_display }}</td>
++                <td>{{ log.reason|default:'-' }}</td>
++                <td>{{ log.changed_by.username|default:'-' }}</td>
++            </tr>
++            {% empty %}
++            <tr><td colspan="5" class="text-center py-4">No status history.</td></tr>
++            {% endfor %}
++        </tbody>
++    </table>
++</div>
++<a href="{% url 'employee_list' %}" class="btn btn-outline-navy mt-3">Back</a>
++{% endblock %}
+--- a/students/templates/students/add_money_receipt.html
++++ b/students/templates/students/add_money_receipt.html
+@@ -1 +1,18 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Money Receipt</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light"><main class="card p-4 mx-auto mt-5" style="max-width:650px"><h1>{% if receipt %}Edit{% else %}New{% endif %} Money Receipt</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Save</button> <a href="{% url 'money_receipt_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}{% if receipt %}Edit{% else %}New{% endif %} Money Receipt - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>{% if receipt %}Edit{% else %}New{% endif %} Money Receipt</h1></div>
++</div>
++
++<div class="table-card p-4">
++    <form method="post">
++        {% csrf_token %}
++        {{ form.as_p }}
++        <button class="btn btn-navy">Save</button>
++        <a href="{% url 'money_receipt_list' %}" class="btn btn-outline-navy">Cancel</a>
++    </form>
++</div>
++{% endblock %}
+--- a/students/templates/students/student_promotion_history.html
++++ b/students/templates/students/student_promotion_history.html
+@@ -1,8 +1,42 @@
+-<!doctype html>
+-<html><head><title>Promotion History</title></head><body>
+-<h1>Promotion History</h1>
+-<a href="{% url 'student_promotion' %}">New promotion</a> | <a href="{% url 'student_list' %}">Students</a>
+-<table><tr><th>Session</th><th>Change</th><th>Actor</th><th>Created</th><th>Status</th><th>Action</th></tr>
+-{% for batch in batches %}<tr><td>{{ batch.session }}</td><td>{{ batch.from_class }} {{ batch.from_section }} to {{ batch.to_class }} {{ batch.to_section }}</td><td>{{ batch.actor|default:'-' }}</td><td>{{ batch.created_at }}</td><td>{% if batch.rolled_back_at %}Rolled back{% else %}Active{% endif %}</td><td>{% if not batch.rolled_back_at %}<form method="post" action="{% url 'rollback_student_promotion' batch.pk %}">{% csrf_token %}<button type="submit">Rollback</button></form>{% endif %}</td></tr>
+-{% empty %}<tr><td colspan="6">No promotion batches found.</td></tr>{% endfor %}</table>
+-</body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}Promotion History - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>Promotion History</h1></div>
++    <div class="d-flex gap-2">
++        <a href="{% url 'student_promotion' %}" class="btn btn-navy">New Promotion</a>
++        <a href="{% url 'student_list' %}" class="btn btn-outline-navy">Students</a>
++    </div>
++</div>
++
++<div class="table-card">
++    <table class="table table-striped mb-0">
++        <thead>
++            <tr><th>Session</th><th>Change</th><th>Actor</th><th>Created</th><th>Status</th><th>Action</th></tr>
++        </thead>
++        <tbody>
++            {% for batch in batches %}
++            <tr>
++                <td>{{ batch.session }}</td>
++                <td>{{ batch.from_class }} {{ batch.from_section }} to {{ batch.to_class }} {{ batch.to_section }}</td>
++                <td>{{ batch.actor|default:'-' }}</td>
++                <td>{{ batch.created_at }}</td>
++                <td>{% if batch.rolled_back_at %}Rolled back{% else %}Active{% endif %}</td>
++                <td>
++                    {% if not batch.rolled_back_at %}
++                    <form method="post" action="{% url 'rollback_student_promotion' batch.pk %}" class="d-inline">
++                        {% csrf_token %}
++                        <button type="submit" class="btn btn-sm btn-outline-danger">Rollback</button>
++                    </form>
++                    {% endif %}
++                </td>
++            </tr>
++            {% empty %}
++            <tr><td colspan="6" class="text-center py-4">No promotion batches found.</td></tr>
++            {% endfor %}
++        </tbody>
++    </table>
++</div>
++{% endblock %}
+--- a/students/templates/students/voucher_list.html
++++ b/students/templates/students/voucher_list.html
+@@ -1 +1,38 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vouchers</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light p-4"><main class="container"><div class="d-flex justify-content-between mb-4"><h1>Vouchers</h1>{% if perms.students.add_voucher %}<a href="{% url 'add_voucher' %}" class="btn btn-primary">+ Add Voucher</a>{% endif %}</div><div class="card"><table class="table table-striped mb-0"><thead class="table-dark"><tr><th>Purpose</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr></thead><tbody>{% for v in vouchers %}<tr><td>{{ v.purpose }}</td><td>৳ {{ v.amount }}</td><td>{{ v.date }}</td><td>{{ v.get_status_display }}</td><td>{{ v.created_by.username|default:'-' }}</td><td>{% if perms.students.change_voucher %}<a href="{% url 'edit_voucher' v.pk %}">Edit</a>{% endif %} {% if perms.students.delete_voucher %}<a href="{% url 'delete_voucher' v.pk %}" class="text-danger">Delete</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="6" class="text-center py-4">No vouchers.</td></tr>{% endfor %}</tbody></table></div><a href="{% url 'finance_dashboard' %}" class="btn btn-outline-secondary mt-3">Back</a></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}Vouchers - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>Vouchers</h1></div>
++    {% if perms.students.add_voucher %}
++    <a href="{% url 'add_voucher' %}" class="btn btn-navy">+ Add Voucher</a>
++    {% endif %}
++</div>
++
++<div class="table-card">
++    <table class="table table-striped mb-0">
++        <thead>
++            <tr><th>Purpose</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr>
++        </thead>
++        <tbody>
++            {% for v in vouchers %}
++            <tr>
++                <td>{{ v.purpose }}</td>
++                <td>৳ {{ v.amount }}</td>
++                <td>{{ v.date }}</td>
++                <td>{{ v.get_status_display }}</td>
++                <td>{{ v.created_by.username|default:'-' }}</td>
++                <td>
++                    {% if perms.students.change_voucher %}<a href="{% url 'edit_voucher' v.pk %}" class="btn btn-sm btn-outline-navy">Edit</a>{% endif %}
++                    {% if perms.students.delete_voucher %}<a href="{% url 'delete_voucher' v.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
++                </td>
++            </tr>
++            {% empty %}
++            <tr><td colspan="6" class="text-center py-4">No vouchers.</td></tr>
++            {% endfor %}
++        </tbody>
++    </table>
++</div>
++<a href="{% url 'finance_dashboard' %}" class="btn btn-outline-navy mt-3">Back</a>
++{% endblock %}
+--- a/students/templates/students/delete_money_receipt.html
++++ b/students/templates/students/delete_money_receipt.html
+@@ -1 +1,18 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Delete Receipt</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="p-5"><main class="container" style="max-width:560px"><h2>Delete Receipt?</h2><p>{{ receipt.receipt_no }} - {{ receipt.student.name }} - ৳{{ receipt.amount }}</p><form method="post">{% csrf_token %}<button class="btn btn-danger">Yes, Delete</button> <a href="{% url 'money_receipt_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}Delete Receipt - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>Delete Receipt?</h1></div>
++</div>
++
++<div class="table-card p-4">
++    <p>{{ receipt.receipt_no }} - {{ receipt.student.name }} - ৳{{ receipt.amount }}</p>
++    <form method="post">
++        {% csrf_token %}
++        <button class="btn btn-danger">Yes, Delete</button>
++        <a href="{% url 'money_receipt_list' %}" class="btn btn-outline-navy">Cancel</a>
++    </form>
++</div>
++{% endblock %}
+--- a/students/templates/students/change_employee_status.html
++++ b/students/templates/students/change_employee_status.html
+@@ -1 +1,19 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Change Employee Status</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light"><main class="card p-4 mx-auto mt-5" style="max-width:560px"><h1>Change Status</h1><p>{{ employee.name }} - Current: <strong>{{ employee.get_status_display }}</strong></p><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Update Status</button> <a href="{% url 'employee_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}Change Status - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>Change Status</h1></div>
++</div>
++
++<div class="table-card p-4">
++    <p>{{ employee.name }} - Current: <strong>{{ employee.get_status_display }}</strong></p>
++    <form method="post">
++        {% csrf_token %}
++        {{ form.as_p }}
++        <button class="btn btn-navy">Update Status</button>
++        <a href="{% url 'employee_list' %}" class="btn btn-outline-navy">Cancel</a>
++    </form>
++</div>
++{% endblock %}
+--- a/students/templates/students/employee_detail.html
++++ b/students/templates/students/employee_detail.html
+@@ -1,32 +1,27 @@
+-<!DOCTYPE html>
+-<html lang="en">
+-<head>
+-    <meta charset="UTF-8">
+-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-    <title>{{ employee.name }} — Employee Details</title>
+-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+-    <style>
+-        :root { --navy: #0F2D52; }
+-        body { font-family: 'Inter', sans-serif; background: #F6F7FA; padding: 40px; }
+-        .card-box { max-width: 600px; margin: 0 auto; background: #fff; border-radius: 14px;
+-            box-shadow: 0 4px 14px rgba(15,45,82,0.06); padding: 32px; }
+-        h2 { color: var(--navy); }
+-        .row-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+-        .row-item span:first-child { color: #6c757d; }
+-        .row-item span:last-child { font-weight: 600; }
+-    </style>
+-</head>
+-<body>
+-    <div class="card-box">
+-        <h2>{{ employee.name }}</h2>
+-        <p class="text-muted">{{ employee.designation }}</p>
+-        <div class="row-item"><span>Department</span><span>{{ employee.department|default:"—" }}</span></div>
+-        <div class="row-item"><span>Institution</span><span>{{ employee.institution.name|default:"—" }}</span></div>
+-        <div class="row-item"><span>Join Date</span><span>{{ employee.join_date }}</span></div>
+-        <div class="row-item"><span>Contact No</span><span>{{ employee.contact_no|default:"—" }}</span></div>
+-        <div class="row-item"><span>Status</span><span>{{ employee.get_status_display }}</span></div>
+-        <a href="{% url 'employee_list' %}" class="btn btn-outline-secondary mt-3">← Back to List</a>
++{% extends 'students/base.html' %}
++
++{% block title %}{{ employee.name }} - Employee Details - {{ block.super }}{% endblock %}
++
++{% block extra_style %}
++    .row-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
++    .row-item span:first-child { color: #6c757d; }
++    .row-item span:last-child { font-weight: 600; }
++{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>{{ employee.name }}</h1>
++        <div class="subtitle">{{ employee.designation }}</div>
+     </div>
+-</body>
+-</html>
+\ No newline at end of file
++</div>
++
++<div class="table-card p-4" style="max-width:600px">
++    <div class="row-item"><span>Department</span><span>{{ employee.department|default:"—" }}</span></div>
++    <div class="row-item"><span>Institution</span><span>{{ employee.institution.name|default:"—" }}</span></div>
++    <div class="row-item"><span>Join Date</span><span>{{ employee.join_date }}</span></div>
++    <div class="row-item"><span>Contact No</span><span>{{ employee.contact_no|default:"—" }}</span></div>
++    <div class="row-item"><span>Status</span><span>{{ employee.get_status_display }}</span></div>
++    <a href="{% url 'employee_list' %}" class="btn btn-outline-navy mt-3">← Back to List</a>
++</div>
++{% endblock %}
+--- a/students/templates/students/employee_list.html
++++ b/students/templates/students/employee_list.html
+@@ -1,201 +1,76 @@
+-<!DOCTYPE html>
+-<html lang="en">
+-<head>
+-    <meta charset="UTF-8">
+-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-    <title>Employees — Principal Kazi Faruky School And College</title>
+-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+-    <style>
+-        :root {
+-            --navy: #0F2D52;
+-            --navy-light: #17406e;
+-            --gold: #C9A227;
+-            --bg: #F6F7FA;
+-        }
+-        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
+-        h1, h2, .brand { font-family: 'Fraunces', serif; }
++{% extends 'students/base.html' %}
+ 
+-        .sidebar {
+-            width: 240px; height: 100vh; position: fixed; top: 0; left: 0;
+-            background: var(--navy); color: #fff; display: flex;
+-            flex-direction: column; padding: 24px 0;
+-            overflow-y: auto;
+-        }
+-        .brand { font-size: 1.15rem; font-weight: 700; padding: 0 20px 24px;
+-            border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 16px; line-height: 1.3; }
+-        .user-badge {
+-            margin: 0 20px 16px; padding: 10px 12px; background: rgba(255,255,255,0.08);
+-            border-radius: 10px; border-left: 3px solid var(--gold);
+-        }
+-        .user-badge .u-name { font-size: 0.9rem; font-weight: 600; color: #fff; display: block; }
+-        .user-badge .u-dept { font-size: 0.78rem; color: var(--gold); display: block; margin-top: 2px; }
+-        .sidebar a { color: rgba(255,255,255,0.75); text-decoration: none; padding: 12px 20px;
+-            display: flex; align-items: center; gap: 10px; font-size: 0.95rem;
+-            border-left: 3px solid transparent; transition: all 0.15s; }
+-        .sidebar a:hover, .sidebar a.active { background: var(--navy-light); color: #fff; border-left-color: var(--gold); }
+-        .sidebar i { font-size: 1.1rem; width: 20px; }
++{% block title %}Employees - {{ block.super }}{% endblock %}
+ 
+-        .main { margin-left: 240px; padding: 32px 40px; }
++{% block print_subtitle %}Employee List{% endblock %}
+ 
+-        .page-header {
+-            display: flex; justify-content: space-between; align-items: flex-start;
+-            flex-wrap: wrap; gap: 16px; margin-bottom: 24px;
+-        }
+-        .page-header h1 { font-size: 1.6rem; color: var(--navy); margin-bottom: 2px; }
+-        .page-header .subtitle { color: #6c757d; font-size: 0.95rem; }
+-
+-        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; border: none; }
+-        .btn-navy:hover { background: var(--navy-light); color: #fff; }
+-        .btn-outline-navy { border: 1px solid var(--navy); color: var(--navy); border-radius: 8px; background: #fff; }
+-        .btn-outline-navy:hover { background: var(--navy); color: #fff; }
+-
+-        .table-card {
+-            background: #fff; border-radius: 14px; overflow: hidden;
+-            box-shadow: 0 4px 14px rgba(15,45,82,0.06);
+-        }
+-        .table-card table { margin-bottom: 0; }
+-        .table-card thead th {
+-            background: var(--navy); color: #fff; font-weight: 600;
+-            border-bottom: none; font-size: 0.88rem;
+-        }
+-        .table-card tbody tr:hover { background: rgba(15,45,82,0.03); }
+-
+-        .badge-active { background: #198754; }
+-        .badge-resigned { background: #6c757d; }
+-        .badge-demoted { background: #dc3545; }
+-        .badge-osd { background: #fd7e14; }
+-
+-        .print-header { display: none; text-align: center; margin-bottom: 20px; }
+-
+-        .menu-toggle {
+-            display: none; background: var(--navy); color: #fff; border: none;
+-            border-radius: 8px; width: 42px; height: 42px; font-size: 1.2rem;
+-            position: fixed; top: 16px; left: 16px; z-index: 1050;
+-        }
+-        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; }
+-
+-        @media (max-width: 768px) {
+-            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 1000; width: 220px; }
+-            .sidebar.open { transform: translateX(0); }
+-            .main { margin-left: 0; padding: 80px 16px 24px; }
+-            .menu-toggle { display: block; }
+-            .sidebar-overlay.show { display: block; }
+-        }
+-
+-        @media print {
+-            .sidebar, .menu-toggle, .sidebar-overlay { display: none !important; }
+-            .main { margin-left: 0 !important; padding: 0 !important; }
+-            .d-print-none { display: none !important; }
+-            .print-header { display: block !important; }
+-            table { font-size: 0.9rem; }
+-        }
+-    </style>
+-</head>
+-<body>
+-
+-<button class="menu-toggle d-print-none" onclick="document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('show');">
+-    <i class="bi bi-list"></i>
+-</button>
+-<div class="sidebar-overlay d-print-none" onclick="this.classList.remove('show'); document.querySelector('.sidebar').classList.remove('open');"></div>
+-
+-<div class="sidebar d-print-none">
+-    <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
+-
+-    <div class="user-badge">
+-        <span class="u-name"><i class="bi bi-person-circle me-1"></i>{{ request.user.username }}</span>
+-        {% if request.user.is_superuser %}
+-            <span class="u-dept">Super Admin (Full Access)</span>
+-        {% elif request.user.groups.all %}
+-            <span class="u-dept">{{ request.user.groups.first.name }} Department</span>
+-        {% else %}
+-            <span class="u-dept">No Department</span>
+-        {% endif %}
+-    </div>
+-
+-    <a href="{% url 'dashboard' %}"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
+-    <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
+-    <a href="{% url 'subject_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
+-    <a href="{% url 'employee_list' %}" class="active"><i class="bi bi-person-badge-fill"></i> Employees</a>
+-    <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+-</div>
+-
+-<div class="main">
+-
+-    <div class="print-header">
+-        <h2>Principal Kazi Faruky School And College</h2>
+-        <p>Employee List</p>
+-    </div>
+-
+-    <div class="page-header d-print-none">
+-        <div>
+-            <h1>Employees</h1>
+-            <div class="subtitle">
+-                {% if institution %}{{ institution.name }}{% else %}All Institutions{% endif %}
+-                — Total: {{ employees|length }}
+-            </div>
+-        </div>
+-        <div class="page-actions d-flex gap-2">
+-            <form method="GET" class="d-flex gap-2">
+-                <select name="institution" class="form-select" onchange="this.form.submit()">
+-                    <option value="">-- All Institutions --</option>
+-                    {% for inst in institutions %}
+-                    <option value="{{ inst.id }}" {% if institution and institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
+-                    {% endfor %}
+-                </select>
+-                <select name="status" class="form-select" onchange="this.form.submit()">
+-                    <option value="">-- All Status --</option>
+-                    {% for code, label in status_choices %}
+-                    <option value="{{ code }}" {% if selected_status == code %}selected{% endif %}>{{ label }}</option>
+-                    {% endfor %}
+-                </select>
+-            </form>
+-            <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
++{% block extra_style %}
++    .badge-active { background: #198754; }
++    .badge-resigned { background: #6c757d; }
++    .badge-demoted { background: #dc3545; }
++    .badge-osd { background: #fd7e14; }
++{% endblock %}
++
++{% block content %}
++<div class="page-header d-print-none">
++    <div>
++        <h1>Employees</h1>
++        <div class="subtitle">
++            {% if institution %}{{ institution.name }}{% else %}All Institutions{% endif %}
++            — Total: {{ employees|length }}
+         </div>
+     </div>
+-
+-    <div class="table-card">
+-        <table class="table table-striped mb-0">
+-            <thead>
+-                <tr>
+-                    <th>Name</th>
+-                    <th>Designation</th>
+-                    <th>Department</th>
+-                    <th>Institution</th>
+-                    <th>Join Date</th>
+-                    <th>Contact</th>
+-                    <th>Status</th>
+-                    <th class="d-print-none">Action</th>
+-                </tr>
+-            </thead>
+-            <tbody>
+-                {% for emp in employees %}
+-                <tr>
+-                    <td>{{ emp.name }}</td>
+-                    <td>{{ emp.designation }}</td>
+-                    <td>{{ emp.department|default:"—" }}</td>
+-                    <td>{{ emp.institution.name|default:"—" }}</td>
+-                    <td>{{ emp.join_date }}</td>
+-                    <td>{{ emp.contact_no|default:"—" }}</td>
+-                    <td>
+-                        <span class="badge badge-{{ emp.status|lower }}">{{ emp.get_status_display }}</span>
+-                    </td>
+-                    <td class="d-print-none">
+-                        <a href="{% url 'employee_detail' emp.pk %}" class="btn btn-sm btn-outline-info">Details</a>
+-                    </td>
+-                </tr>
+-                {% empty %}
+-                <tr>
+-                    <td colspan="8" class="text-center text-muted py-4">No employees found.</td>
+-                </tr>
++    <div class="page-actions d-flex gap-2">
++        <form method="GET" class="d-flex gap-2">
++            <select name="institution" class="form-select" onchange="this.form.submit()">
++                <option value="">-- All Institutions --</option>
++                {% for inst in institutions %}
++                <option value="{{ inst.id }}" {% if institution and institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
++                {% endfor %}
++            </select>
++            <select name="status" class="form-select" onchange="this.form.submit()">
++                <option value="">-- All Status --</option>
++                {% for code, label in status_choices %}
++                <option value="{{ code }}" {% if selected_status == code %}selected{% endif %}>{{ label }}</option>
+                 {% endfor %}
+-            </tbody>
+-        </table>
++            </select>
++        </form>
++        <button onclick="window.print()" class="btn btn-outline-navy">🖨️ Print</button>
+     </div>
+-
+ </div>
+ 
+-<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+-</body>
+-</html>
+\ No newline at end of file
++<div class="table-card">
++    <table class="table table-striped mb-0">
++        <thead>
++            <tr>
++                <th>Name</th>
++                <th>Designation</th>
++                <th>Department</th>
++                <th>Institution</th>
++                <th>Join Date</th>
++                <th>Contact</th>
++                <th>Status</th>
++                <th class="d-print-none">Action</th>
++            </tr>
++        </thead>
++        <tbody>
++            {% for emp in employees %}
++            <tr>
++                <td>{{ emp.name }}</td>
++                <td>{{ emp.designation }}</td>
++                <td>{{ emp.department|default:"—" }}</td>
++                <td>{{ emp.institution.name|default:"—" }}</td>
++                <td>{{ emp.join_date }}</td>
++                <td>{{ emp.contact_no|default:"—" }}</td>
++                <td><span class="badge badge-{{ emp.status|lower }}">{{ emp.get_status_display }}</span></td>
++                <td class="d-print-none">
++                    <a href="{% url 'employee_detail' emp.pk %}" class="btn btn-sm btn-outline-navy">Details</a>
++                </td>
++            </tr>
++            {% empty %}
++            <tr><td colspan="8" class="text-center text-muted py-4">No employees found.</td></tr>
++            {% endfor %}
++        </tbody>
++    </table>
++</div>
++{% endblock %}
+--- a/students/templates/students/salary_sheet_list.html
++++ b/students/templates/students/salary_sheet_list.html
+@@ -1,37 +1,39 @@
+-<!DOCTYPE html>
+-<html>
+-<head>
+-    <meta charset="UTF-8">
+-    <title>Salary Sheets</title>
+-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+-</head>
+-<body class="bg-light p-4">
+-<main class="container">
+-    <div class="d-flex justify-content-between align-items-center mb-4">
+-        <h1>Salary Sheets</h1>
+-        {% if perms.students.add_salarysheet %}<a href="{% url 'add_salary_sheet' %}" class="btn btn-primary">+ Add Salary</a>{% endif %}
+-    </div>
+-    <div class="card">
+-        <table class="table table-striped mb-0">
+-            <thead class="table-dark"><tr><th>Employee</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr></thead>
+-            <tbody>
++{% extends 'students/base.html' %}
++
++{% block title %}Salary Sheets - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>Salary Sheets</h1></div>
++    {% if perms.students.add_salarysheet %}
++    <a href="{% url 'add_salary_sheet' %}" class="btn btn-navy">+ Add Salary</a>
++    {% endif %}
++</div>
++
++<div class="table-card">
++    <table class="table table-striped mb-0">
++        <thead>
++            <tr><th>Employee</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr>
++        </thead>
++        <tbody>
+             {% for salary in salaries %}
+-                <tr>
+-                    <td>{{ salary.employee.name }}</td>
+-                    <td>{{ salary.month }}</td>
+-                    <td>৳ {{ salary.amount }}</td>
+-                    <td>{{ salary.date }}</td>
+-                    <td>{{ salary.get_status_display }}</td>
+-                    <td>{{ salary.created_by.username|default:'-' }}</td>
+-                    <td>{% if perms.students.change_salarysheet %}<a href="{% url 'edit_salary_sheet' salary.pk %}">Edit</a>{% endif %} {% if perms.students.delete_salarysheet %}<a href="{% url 'delete_salary_sheet' salary.pk %}" class="text-danger">Delete</a>{% endif %}</td>
+-                </tr>
++            <tr>
++                <td>{{ salary.employee.name }}</td>
++                <td>{{ salary.month }}</td>
++                <td>৳ {{ salary.amount }}</td>
++                <td>{{ salary.date }}</td>
++                <td>{{ salary.get_status_display }}</td>
++                <td>{{ salary.created_by.username|default:'-' }}</td>
++                <td>
++                    {% if perms.students.change_salarysheet %}<a href="{% url 'edit_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-navy">Edit</a>{% endif %}
++                    {% if perms.students.delete_salarysheet %}<a href="{% url 'delete_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
++                </td>
++            </tr>
+             {% empty %}
+-                <tr><td colspan="7" class="text-center py-4">No salary sheets.</td></tr>
++            <tr><td colspan="7" class="text-center py-4">No salary sheets.</td></tr>
+             {% endfor %}
+-            </tbody>
+-        </table>
+-    </div>
+-    <a href="{% url 'finance_dashboard' %}" class="btn btn-outline-secondary mt-3">Back</a>
+-</main>
+-</body>
+-</html>
++        </tbody>
++    </table>
++</div>
++<a href="{% url 'finance_dashboard' %}" class="btn btn-outline-navy mt-3">Back</a>
++{% endblock %}
+--- a/students/templates/students/delete_employee.html
++++ b/students/templates/students/delete_employee.html
+@@ -1 +1,18 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Delete Employee</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="p-5"><main class="container" style="max-width:560px"><h2>Delete Employee?</h2><p>Delete <strong>{{ employee.name }}</strong>? Its status history will also be removed.</p><form method="post">{% csrf_token %}<button class="btn btn-danger">Yes, Delete</button> <a href="{% url 'employee_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}Delete Employee - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>Delete Employee?</h1></div>
++</div>
++
++<div class="table-card p-4">
++    <p>Delete <strong>{{ employee.name }}</strong>? Its status history will also be removed.</p>
++    <form method="post">
++        {% csrf_token %}
++        <button class="btn btn-danger">Yes, Delete</button>
++        <a href="{% url 'employee_list' %}" class="btn btn-outline-navy">Cancel</a>
++    </form>
++</div>
++{% endblock %}
+--- a/students/templates/students/add_voucher.html
++++ b/students/templates/students/add_voucher.html
+@@ -1 +1,18 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Voucher</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light"><main class="card p-4 mx-auto mt-5" style="max-width:650px"><h1>{% if voucher %}Edit{% else %}New{% endif %} Voucher</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Save</button> <a href="{% url 'voucher_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}{% if voucher %}Edit{% else %}New{% endif %} Voucher - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>{% if voucher %}Edit{% else %}New{% endif %} Voucher</h1></div>
++</div>
++
++<div class="table-card p-4">
++    <form method="post">
++        {% csrf_token %}
++        {{ form.as_p }}
++        <button class="btn btn-navy">Save</button>
++        <a href="{% url 'voucher_list' %}" class="btn btn-outline-navy">Cancel</a>
++    </form>
++</div>
++{% endblock %}
+--- a/students/templates/students/delete_voucher.html
++++ b/students/templates/students/delete_voucher.html
+@@ -1 +1,18 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Delete Voucher</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="p-5"><main class="container" style="max-width:560px"><h2>Delete Voucher?</h2><p>{{ voucher.purpose }} - ৳{{ voucher.amount }}</p><form method="post">{% csrf_token %}<button class="btn btn-danger">Yes, Delete</button> <a href="{% url 'voucher_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}Delete Voucher - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>Delete Voucher?</h1></div>
++</div>
++
++<div class="table-card p-4">
++    <p>{{ voucher.purpose }} - ৳{{ voucher.amount }}</p>
++    <form method="post">
++        {% csrf_token %}
++        <button class="btn btn-danger">Yes, Delete</button>
++        <a href="{% url 'voucher_list' %}" class="btn btn-outline-navy">Cancel</a>
++    </form>
++</div>
++{% endblock %}
+--- a/students/templates/students/add_salary_sheet.html
++++ b/students/templates/students/add_salary_sheet.html
+@@ -1,19 +1,18 @@
+-<!DOCTYPE html>
+-<html>
+-<head>
+-    <meta charset="UTF-8">
+-    <title>Salary Sheet</title>
+-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+-</head>
+-<body class="bg-light">
+-<main class="card p-4 mx-auto mt-5" style="max-width:650px">
+-    <h1>{% if salary %}Edit{% else %}New{% endif %} Salary Sheet</h1>
++{% extends 'students/base.html' %}
++
++{% block title %}{% if salary %}Edit{% else %}New{% endif %} Salary Sheet - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>{% if salary %}Edit{% else %}New{% endif %} Salary Sheet</h1></div>
++</div>
++
++<div class="table-card p-4">
+     <form method="post">
+         {% csrf_token %}
+         {{ form.as_p }}
+-        <button class="btn btn-primary">Save</button>
+-        <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-secondary">Cancel</a>
++        <button class="btn btn-navy">Save</button>
++        <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-navy">Cancel</a>
+     </form>
+-</main>
+-</body>
+-</html>
++</div>
++{% endblock %}
+--- a/students/templates/students/delete_salary_sheet.html
++++ b/students/templates/students/delete_salary_sheet.html
+@@ -1,19 +1,18 @@
+-<!DOCTYPE html>
+-<html>
+-<head>
+-    <meta charset="UTF-8">
+-    <title>Delete Salary Sheet</title>
+-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+-</head>
+-<body class="p-5">
+-<main class="container" style="max-width:560px">
+-    <h2>Delete Salary Sheet?</h2>
++{% extends 'students/base.html' %}
++
++{% block title %}Delete Salary Sheet - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div><h1>Delete Salary Sheet?</h1></div>
++</div>
++
++<div class="table-card p-4">
+     <p>{{ salary.employee.name }} - {{ salary.month }} - ৳{{ salary.amount }}</p>
+     <form method="post">
+         {% csrf_token %}
+         <button class="btn btn-danger">Yes, Delete</button>
+-        <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-secondary">Cancel</a>
++        <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-navy">Cancel</a>
+     </form>
+-</main>
+-</body>
+-</html>
++</div>
++{% endblock %}
+--- a/students/templates/students/student_promotion.html
++++ b/students/templates/students/student_promotion.html
+@@ -1,22 +1,26 @@
+-<!DOCTYPE html>
+-<html>
+-<head>
+-    <meta charset="UTF-8">
+-    <title>Student Promotion</title>
+-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+-</head>
+-<body class="bg-light">
+-<main class="card p-4 mx-auto mt-5" style="max-width:700px">
+-    <h1>Student Promotion</h1>
+-    <p class="text-muted">Move students from one class and section to another.</p>
+-    {% for message in messages %}<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}
++{% extends 'students/base.html' %}
++
++{% block title %}Student Promotion - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>Student Promotion</h1>
++        <div class="subtitle">Move students from one class and section to another.</div>
++    </div>
++</div>
++
++{% for message in messages %}
++<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
++{% endfor %}
++
++<div class="table-card p-4">
+     <form method="post">
+         {% csrf_token %}
+         {{ form.as_p }}
+-        <button class="btn btn-primary">Promote Students</button>
+-        <a href="{% url 'student_list' %}" class="btn btn-outline-secondary">Cancel</a>
+-        <a href="{% url 'student_promotion_history' %}" class="btn btn-outline-info">Promotion History</a>
++        <button class="btn btn-navy">Promote Students</button>
++        <a href="{% url 'student_list' %}" class="btn btn-outline-navy">Cancel</a>
++        <a href="{% url 'student_promotion_history' %}" class="btn btn-outline-navy">Promotion History</a>
+     </form>
+-</main>
+-</body>
+-</html>
++</div>
++{% endblock %}

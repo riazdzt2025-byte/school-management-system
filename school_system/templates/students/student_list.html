@@ -4,6 +4,49 @@
 
 {% block print_subtitle %}Student List{% endblock %}
 
+{% block extra_style %}
+    .student-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 16px;
+    }
+    .student-card {
+        background: #fff; border-radius: 14px; padding: 16px;
+        box-shadow: 0 4px 14px rgba(15,45,82,0.06);
+        border: 1px solid transparent;
+        display: flex; flex-direction: column; gap: 10px;
+        transition: box-shadow 0.15s ease;
+    }
+    .student-card:hover { box-shadow: 0 6px 20px rgba(15,45,82,0.14); }
+    .student-card.dup-exact { border-color: #dc3545; background: #fff6f6; }
+    .student-card.dup-possible { border-color: #ffc107; background: #fffdf3; }
+    .student-card-top {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .student-card-top .left { display: flex; align-items: center; gap: 8px; }
+    .student-card-top .student-id { font-size: 0.8rem; color: #6c757d; font-family: monospace; }
+    .student-card-name { font-size: 1.05rem; font-weight: 600; color: var(--navy); line-height: 1.3; }
+    .student-card-meta {
+        display: flex; flex-wrap: wrap; gap: 6px 16px;
+        font-size: 0.85rem; color: #495057;
+    }
+    .student-card-meta span { white-space: nowrap; }
+    .student-card-meta strong { color: #212529; }
+    .student-card-actions {
+        display: flex; flex-wrap: wrap; gap: 6px;
+        border-top: 1px solid #eef0f3; padding-top: 10px; margin-top: auto;
+    }
+    .student-card-actions .btn { flex: 0 0 auto; }
+    .student-card-empty {
+        grid-column: 1 / -1; text-align: center; color: #6c757d; padding: 48px 16px;
+    }
+    .print-table-wrapper { display: none; }
+    @media print {
+        .student-grid { display: none !important; }
+        .print-table-wrapper { display: block !important; }
+    }
+{% endblock %}
+
 {% block content %}
 <div class="page-header d-print-none">
     <div>
@@ -46,108 +89,124 @@
     <input type="hidden" name="admission_class" value="{{ selected_class|default:'' }}">
     <input type="hidden" name="section" value="{{ selected_section|default:'' }}">
 
-    <div class="d-flex justify-content-between align-items-center mb-2 d-print-none">
+    <div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
         <div class="form-check">
             <input type="checkbox" class="form-check-input" id="select-all">
             <label class="form-check-label" for="select-all">Select All</label>
         </div>
-        <button type="submit" id="bulk-update-btn" class="btn btn-sm btn-outline-primary" disabled
-            formaction="{% url 'bulk_update_select' %}" formmethod="POST">
-            🔄 Bulk Update
-        </button>
-        <button type="submit" id="bulk-delete-btn" class="btn btn-sm btn-outline-danger" disabled
-                onclick="return confirm('Delete all selected students? This cannot be undone.');">
-            🗑️ Delete Selected
-        </button>
+        <div class="d-flex gap-2">
+            <button type="submit" id="bulk-update-btn" class="btn btn-sm btn-outline-primary" disabled
+                formaction="{% url 'bulk_update_select' %}" formmethod="POST">
+                🔄 Bulk Update
+            </button>
+            <button type="submit" id="bulk-delete-btn" class="btn btn-sm btn-outline-danger" disabled
+                    onclick="return confirm('Delete all selected students? This cannot be undone.');">
+                🗑️ Delete Selected
+            </button>
+        </div>
     </div>
 
-    <div class="table-card">
-        <div class="table-responsive">
-            <table class="table table-striped mb-0">
-                <thead>
-                    <tr>
-                        <th class="d-print-none" style="width: 36px;"></th>
-                        <th>Student ID</th>
-                        <th>Name</th>
-                        <th>Class</th>
-                        <th>Section</th>
-                        <th>Roll</th>
-                        <th>Gender</th>
-                        <th>Status</th>
-                        <th class="d-print-none">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for student in students %}
-                    <tr class="{% if student.id in exact_duplicate_ids %}table-danger{% elif student.id in possible_duplicate_ids %}table-warning{% endif %}">
-                        <td class="d-print-none">
-                            <input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}">
-                        </td>
-                        <td>{{ student.student_id }}</td>
-                        <td>{{ student.name }}</td>
-                        <td>{{ student.admission_class }}</td>
-                        <td>{{ student.section }}</td>
-                        <td>{{ student.roll_no }}</td>
-                        <td>{{ student.get_gender_display }}</td>
-                        <td>
-                            {% if student.status == 'TRANSFERRED' %}
-                            <span class="badge bg-secondary">Transferred</span>
-                            {% elif student.status == 'DISCONTINUED' %}
-                            <span class="badge bg-warning text-dark">Discontinued</span>
-                            {% else %}
-                            <span class="badge bg-success">Active</span>
-                            {% endif %}
-                        </td>
-                        <td class="d-print-none">
-                            <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-info">Details</a>
-                            {% if perms.students.change_student %}
-                            <a href="{% url 'edit_student' student.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
-                            {% endif %}
+    <div class="student-grid d-print-none">
+        {% for student in students %}
+        <div class="student-card {% if student.id in exact_duplicate_ids %}dup-exact{% elif student.id in possible_duplicate_ids %}dup-possible{% endif %}">
+            <div class="student-card-top">
+                <div class="left">
+                    <input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}">
+                    <span class="student-id">{{ student.student_id }}</span>
+                </div>
+                {% if student.status == 'TRANSFERRED' %}
+                <span class="badge bg-secondary">Transferred</span>
+                {% elif student.status == 'DISCONTINUED' %}
+                <span class="badge bg-warning text-dark">Discontinued</span>
+                {% else %}
+                <span class="badge bg-success">Active</span>
+                {% endif %}
+            </div>
 
-                            {% if selected_department == 'Exam' %}
-                            <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Test</a>
-                            <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Marksheet</a>
-                            {% endif %}
+            <div class="student-card-name">{{ student.name }}</div>
 
-                            <a href="{% url 'student_id_card' student.pk %}" class="btn btn-sm btn-outline-secondary">ID Card</a>
+            <div class="student-card-meta">
+                <span>Class <strong>{{ student.admission_class }}</strong>{% if student.section %} - <strong>{{ student.section }}</strong>{% endif %}</span>
+                <span>Roll: <strong>{{ student.roll_no|default:"—" }}</strong></span>
+                <span>{{ student.get_gender_display|default:"—" }}</span>
+            </div>
 
-                            {% if selected_department != 'Exam' %}
-                                {% if student.status == 'TRANSFERRED' %}
-                                <span class="badge bg-secondary">Transferred</span>
-                                {% elif student.status == 'DISCONTINUED' %}
-                                <span class="badge bg-warning text-dark">Discontinued</span>
-                                {% else %}
-                                    {% if perms.students.add_transfercertificate %}
-                                    <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
-                                    {% endif %}
-                                    {% if perms.students.change_student %}
-                                    <a href="{% url 'discontinue_student' student.pk %}" class="btn btn-sm btn-outline-warning">Discontinue</a>
-                                    {% endif %}
-                                {% endif %}
-                                {% if perms.students.view_certificate %}
-                                <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
-                                {% endif %}
-                                {% if student.admission_class in '9,10' %}
-                                {% if student.ssc_registration %}
-                                <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
-                                {% elif perms.students.add_sscregistration %}
-                                <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
-                                {% endif %}
-                                {% endif %}
-                            {% endif %}
+            <div class="student-card-actions">
+                <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-info">Details</a>
+                {% if perms.students.change_student %}
+                <a href="{% url 'edit_student' student.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
+                {% endif %}
 
-                            {% if perms.students.delete_student %}
-                            <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="9" class="text-center text-muted py-4">No students to show yet — pick a filter to get started.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                {% if selected_department == 'Exam' %}
+                <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Test</a>
+                <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Marksheet</a>
+                {% endif %}
+
+                <a href="{% url 'student_id_card' student.pk %}" class="btn btn-sm btn-outline-secondary">ID Card</a>
+
+                {% if selected_department != 'Exam' %}
+                    {% if student.status == 'ACTIVE' %}
+                        {% if perms.students.add_transfercertificate %}
+                        <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
+                        {% endif %}
+                        {% if perms.students.change_student %}
+                        <a href="{% url 'discontinue_student' student.pk %}" class="btn btn-sm btn-outline-warning">Discontinue</a>
+                        {% endif %}
+                    {% endif %}
+                    {% if perms.students.view_certificate %}
+                    <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
+                    {% endif %}
+                    {% if student.admission_class in '9,10' %}
+                        {% if student.ssc_registration %}
+                        <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
+                        {% elif perms.students.add_sscregistration %}
+                        <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+
+                {% if perms.students.delete_student %}
+                <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                {% endif %}
+            </div>
+        </div>
+        {% empty %}
+        <div class="student-card-empty">No students to show yet — pick a filter to get started.</div>
+        {% endfor %}
+    </div>
+
+    <div class="print-table-wrapper">
+        <div class="table-card">
+            <div class="table-responsive">
+                <table class="table table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Student ID</th>
+                            <th>Name</th>
+                            <th>Class</th>
+                            <th>Section</th>
+                            <th>Roll</th>
+                            <th>Gender</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in students %}
+                        <tr>
+                            <td>{{ student.student_id }}</td>
+                            <td>{{ student.name }}</td>
+                            <td>{{ student.admission_class }}</td>
+                            <td>{{ student.section }}</td>
+                            <td>{{ student.roll_no }}</td>
+                            <td>{{ student.get_gender_display }}</td>
+                            <td>{{ student.get_status_display }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="text-center text-muted py-4">No students to show.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </form>

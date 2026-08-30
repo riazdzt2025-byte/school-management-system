@@ -1,0 +1,185 @@
+From f9ea1ff6bb34754d1149accf83cf5b2c6d3d4f1a Mon Sep 17 00:00:00 2001
+From: Claude Assistant <assistant@example.com>
+Date: Sun, 30 Aug 2026 16:03:05 +0000
+Subject: [PATCH] Apply UI navigation rules to sample pages
+
+- Move money_receipt_list, add_employee, finance_dashboard to shared
+  base.html layout (sidebar/menubar + single Logout, per project rules)
+- Fix mixed Bengali/English form label in forms.py to English-only
+  (UI text should be English; only data/content may be in Bengali)
+---
+ students/forms.py                             |  2 +-
+ students/templates/students/add_employee.html | 22 ++++++-
+ .../templates/students/finance_dashboard.html | 66 ++++++++++++++++++-
+ .../students/money_receipt_list.html          | 50 +++++++++++++-
+ 4 files changed, 136 insertions(+), 4 deletions(-)
+
+diff --git a/students/forms.py b/students/forms.py
+index e0086ae..cafd4a0 100644
+--- a/students/forms.py
++++ b/students/forms.py
+@@ -124,7 +124,7 @@ class DiscontinueStudentForm(forms.Form):
+ 
+ class ExcelImportForm(forms.Form):
+     excel_file = forms.FileField(
+-        label="Excel ফাইল নির্বাচন করুন (.xlsx)",
++        label="Select Excel File (.xlsx)",
+         widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
+     )
+ 
+diff --git a/students/templates/students/add_employee.html b/students/templates/students/add_employee.html
+index 847d067..70024bb 100644
+--- a/students/templates/students/add_employee.html
++++ b/students/templates/students/add_employee.html
+@@ -1 +1,21 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Employee</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light"><main class="card p-4 mx-auto mt-5" style="max-width:700px"><h1>{% if employee %}Edit{% else %}New{% endif %} Employee</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Save</button> <a href="{% url 'employee_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}{% if employee %}Edit{% else %}New{% endif %} Employee - Principal Kazi Faruky School And College{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>{% if employee %}Edit{% else %}New{% endif %} Employee</h1>
++        <div class="subtitle">Employee record details</div>
++    </div>
++</div>
++
++<div class="table-card p-4" style="max-width:700px">
++    <form method="post">
++        {% csrf_token %}
++        {{ form.as_p }}
++        <button class="btn btn-navy">Save</button>
++        <a href="{% url 'employee_list' %}" class="btn btn-outline-navy">Cancel</a>
++    </form>
++</div>
++{% endblock %}
+diff --git a/students/templates/students/finance_dashboard.html b/students/templates/students/finance_dashboard.html
+index 6100715..67f4361 100644
+--- a/students/templates/students/finance_dashboard.html
++++ b/students/templates/students/finance_dashboard.html
+@@ -1 +1,65 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Accounts</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"><style>body{background:#f6f7fa;padding:32px 40px}h1{color:#0f2d52}.stat{background:#fff;padding:20px;border-radius:12px;box-shadow:0 4px 14px #0f2d5215}.value{font-size:1.5rem;font-weight:bold;color:#0f2d52}.card{border:0;box-shadow:0 4px 14px #0f2d5215}</style></head><body><div class="d-flex justify-content-between align-items-center"><h1>Accounts</h1><a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Dashboard</a></div><div class="row g-3 mt-2">{% for label,value in finance_cards %}<div class="col-md-3"><div class="stat"><small>{{ label }}</small><div class="value">৳ {{ value }}</div></div></div>{% endfor %}<div class="col-md-3"><div class="stat"><small>Net Balance</small><div class="value">৳ {{ net_balance }}</div></div></div></div><div class="my-4"><a href="{% url 'money_receipt_list' %}" class="btn btn-outline-primary">Money Receipts</a> <a href="{% url 'voucher_list' %}" class="btn btn-outline-primary">Vouchers</a> <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-primary">Salary Sheets</a> <a href="{% url 'accounts_admission_queue' %}" class="btn btn-outline-primary">Admission Payments</a> <a href="{% url 'student_promotion' %}" class="btn btn-outline-dark">Student Promotion</a></div><div class="row"><div class="col-md-6"><div class="card p-3"><h5>Recent Receipts</h5>{% for r in recent_receipts %}<p>{{ r.receipt_no }} - {{ r.student.name }} - ৳{{ r.amount }}</p>{% empty %}<p>No receipts yet.</p>{% endfor %}</div></div><div class="col-md-6"><div class="card p-3"><h5>Recent Vouchers</h5>{% for v in recent_vouchers %}<p>{{ v.purpose }} - ৳{{ v.amount }} ({{ v.get_status_display }})</p>{% empty %}<p>No vouchers yet.</p>{% endfor %}</div></div></div></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}Accounts - Principal Kazi Faruky School And College{% endblock %}
++
++{% block extra_style %}
++    .stat { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 14px rgba(15,45,82,0.08); }
++    .stat .value { font-size: 1.5rem; font-weight: bold; color: var(--navy); }
++{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>Accounts</h1>
++        <div class="subtitle">Finance overview and collections</div>
++    </div>
++</div>
++
++<div class="row g-3">
++    {% for label, value in finance_cards %}
++    <div class="col-md-3">
++        <div class="stat">
++            <small>{{ label }}</small>
++            <div class="value">৳ {{ value }}</div>
++        </div>
++    </div>
++    {% endfor %}
++    <div class="col-md-3">
++        <div class="stat">
++            <small>Net Balance</small>
++            <div class="value">৳ {{ net_balance }}</div>
++        </div>
++    </div>
++</div>
++
++<div class="my-4">
++    <a href="{% url 'money_receipt_list' %}" class="btn btn-outline-navy">Money Receipts</a>
++    <a href="{% url 'voucher_list' %}" class="btn btn-outline-navy">Vouchers</a>
++    <a href="{% url 'salary_sheet_list' %}" class="btn btn-outline-navy">Salary Sheets</a>
++    <a href="{% url 'accounts_admission_queue' %}" class="btn btn-outline-navy">Admission Payments</a>
++    <a href="{% url 'student_promotion' %}" class="btn btn-outline-navy">Student Promotion</a>
++</div>
++
++<div class="row">
++    <div class="col-md-6">
++        <div class="table-card p-3">
++            <h5>Recent Receipts</h5>
++            {% for r in recent_receipts %}
++                <p>{{ r.receipt_no }} - {{ r.student.name }} - ৳{{ r.amount }}</p>
++            {% empty %}
++                <p>No receipts yet.</p>
++            {% endfor %}
++        </div>
++    </div>
++    <div class="col-md-6">
++        <div class="table-card p-3">
++            <h5>Recent Vouchers</h5>
++            {% for v in recent_vouchers %}
++                <p>{{ v.purpose }} - ৳{{ v.amount }} ({{ v.get_status_display }})</p>
++            {% empty %}
++                <p>No vouchers yet.</p>
++            {% endfor %}
++        </div>
++    </div>
++</div>
++{% endblock %}
+diff --git a/students/templates/students/money_receipt_list.html b/students/templates/students/money_receipt_list.html
+index 110f33e..b4c7ff9 100644
+--- a/students/templates/students/money_receipt_list.html
++++ b/students/templates/students/money_receipt_list.html
+@@ -1 +1,49 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Money Receipts</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light p-4"><main class="container"><div class="d-flex justify-content-between mb-4"><h1>Money Receipts</h1>{% if perms.students.add_moneyreceipt %}<a href="{% url 'add_money_receipt' %}" class="btn btn-primary">+ Add Receipt</a>{% endif %}</div><div class="card"><table class="table table-striped mb-0"><thead class="table-dark"><tr><th>Receipt</th><th>Student</th><th>Purpose</th><th>Amount</th><th>Date</th><th>Entered By</th><th>Action</th></tr></thead><tbody>{% for r in receipts %}<tr><td>{{ r.receipt_no }}</td><td>{{ r.student.name }}</td><td>{{ r.purpose }}</td><td>৳ {{ r.amount }}</td><td>{{ r.date }}</td><td>{{ r.created_by.username|default:'-' }}</td><td>{% if perms.students.change_moneyreceipt %}<a href="{% url 'edit_money_receipt' r.pk %}">Edit</a>{% endif %} {% if perms.students.delete_moneyreceipt %}<a href="{% url 'delete_money_receipt' r.pk %}" class="text-danger">Delete</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="7" class="text-center py-4">No receipts.</td></tr>{% endfor %}</tbody></table></div><a href="{% url 'finance_dashboard' %}" class="btn btn-outline-secondary mt-3">Back</a></main></body></html>
++{% extends 'students/base.html' %}
++
++{% block title %}Money Receipts - Principal Kazi Faruky School And College{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>Money Receipts</h1>
++        <div class="subtitle">All student payment receipts</div>
++    </div>
++    {% if perms.students.add_moneyreceipt %}
++        <a href="{% url 'add_money_receipt' %}" class="btn btn-navy"><i class="bi bi-plus-lg me-1"></i>Add Receipt</a>
++    {% endif %}
++</div>
++
++<div class="table-card">
++    <table class="table table-striped mb-0">
++        <thead>
++            <tr>
++                <th>Receipt</th>
++                <th>Student</th>
++                <th>Purpose</th>
++                <th>Amount</th>
++                <th>Date</th>
++                <th>Entered By</th>
++                <th>Action</th>
++            </tr>
++        </thead>
++        <tbody>
++            {% for r in receipts %}
++            <tr>
++                <td>{{ r.receipt_no }}</td>
++                <td>{{ r.student.name }}</td>
++                <td>{{ r.purpose }}</td>
++                <td>৳ {{ r.amount }}</td>
++                <td>{{ r.date }}</td>
++                <td>{{ r.created_by.username|default:'-' }}</td>
++                <td>
++                    {% if perms.students.change_moneyreceipt %}<a href="{% url 'edit_money_receipt' r.pk %}">Edit</a>{% endif %}
++                    {% if perms.students.delete_moneyreceipt %}<a href="{% url 'delete_money_receipt' r.pk %}" class="text-danger ms-2">Delete</a>{% endif %}
++                </td>
++            </tr>
++            {% empty %}
++            <tr><td colspan="7" class="text-center py-4">No receipts.</td></tr>
++            {% endfor %}
++        </tbody>
++    </table>
++</div>
++{% endblock %}
+-- 
+2.43.0
+
