@@ -1,2 +1,60 @@
-<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Seat Plan</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"><style>body{background:#f6f7fa;padding:32px 40px}h1{color:#0f2d52}.card{border:0;box-shadow:0 4px 14px #0f2d5215}.stat{display:inline-block;background:#fff;padding:12px 18px;margin-right:10px;border-radius:10px;box-shadow:0 2px 8px #0f2d5210}</style></head><body><h1>Seat Plan</h1><p class="text-muted">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} - Session {{ exam.session }}</p>{% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}{% endif %}<div class="mb-3"><span class="stat">Total Students: <b>{{ total_students }}</b></span><span class="stat">Seated: <b>{{ seated_count }}</b></span></div><div class="d-flex justify-content-end gap-2 mb-3">{% if perms.students.add_seatplan %}<a href="{% url 'generate_seat_plan' exam.pk %}" class="btn btn-primary">{% if rooms %}Regenerate{% else %}Generate{% endif %} Seat Plan</a>{% endif %}{% if rooms and perms.students.delete_seatplan %}<a href="{% url 'clear_seat_plan' exam.pk %}" class="btn btn-outline-danger">Clear</a>{% endif %}<a href="{% url 'exam_list' %}" class="btn btn-outline-secondary">Back</a></div><div class="card"><div class="table-responsive"><table class="table table-striped mb-0"><thead class="table-dark"><tr><th>Room</th><th>Type</th><th>Students</th><th>Action</th></tr></thead><tbody>{% for room_name, info in rooms.items %}<tr><td>{{ room_name }}</td><td>{{ info.type }}</td><td>{{ info.count }}</td><td><a href="{% url 'view_seat_plan_room' exam.pk room_name|urlencode %}" class="btn btn-sm btn-outline-primary">View Seating</a> <a href="{% url 'signature_sheet' exam.pk room_name|urlencode %}" class="btn btn-sm btn-outline-dark">Signature Sheet</a></td></tr>{% empty %}<tr><td colspan="4" class="text-center py-4">No seat plan created yet.</td></tr>{% endfor %}</tbody></table></div></div></body></html>
+{% extends 'students/base.html' %}
+
+{% block title %}Seat Plan - {{ block.super }}{% endblock %}
+
+{% block extra_style %}
+    .stat-box { display: inline-block; background: #fff; padding: 12px 18px; margin-right: 10px; border-radius: 10px; box-shadow: 0 2px 8px rgba(15,45,82,0.06); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Seat Plan</h1>
+        <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} - Session {{ exam.session }}</div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+{% endif %}
+
+<div class="mb-3">
+    <span class="stat-box">Total Students: <b>{{ total_students }}</b></span>
+    <span class="stat-box">Seated: <b>{{ seated_count }}</b></span>
+</div>
+
+<div class="d-flex justify-content-end gap-2 mb-3 d-print-none">
+    {% if perms.students.add_seatplan %}
+    <a href="{% url 'generate_seat_plan' exam.pk %}" class="btn btn-navy">{% if rooms %}Regenerate{% else %}Generate{% endif %} Seat Plan</a>
+    {% endif %}
+    {% if rooms and perms.students.delete_seatplan %}
+    <a href="{% url 'clear_seat_plan' exam.pk %}" class="btn btn-outline-danger">Clear</a>
+    {% endif %}
+    <a href="{% url 'exam_list' %}" class="btn btn-outline-navy">Back</a>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <thead>
+                <tr><th>Room</th><th>Type</th><th>Students</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+                {% for room_name, info in rooms.items %}
+                <tr>
+                    <td>{{ room_name }}</td>
+                    <td>{{ info.type }}</td>
+                    <td>{{ info.count }}</td>
+                    <td>
+                        <a href="{% url 'view_seat_plan_room' exam.pk room_name|urlencode %}" class="btn btn-sm btn-outline-navy">View Seating</a>
+                        <a href="{% url 'signature_sheet' exam.pk room_name|urlencode %}" class="btn btn-sm btn-outline-dark">Signature Sheet</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-center py-4">No seat plan created yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

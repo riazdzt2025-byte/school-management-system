@@ -1,2 +1,26 @@
-<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Select Subject</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"><style>body{background:#f6f7fa}.box{max-width:520px;margin:60px auto;background:#fff;padding:30px;border-radius:12px;box-shadow:0 4px 14px #0f2d5215}</style></head><body><main class="box"><h2>Enter Marks - {{ exam.name }}</h2><p class="text-muted">Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</p><form method="post">{% csrf_token %}<select name="subject" class="form-select" required><option value="">-- Select Subject --</option>{% for subject in subjects %}<option value="{{ subject.pk }}">{{ subject.name }} ({{ subject.full_marks }})</option>{% endfor %}</select><button class="btn btn-primary mt-3">Continue</button> <a class="btn btn-outline-secondary mt-3" href="{% url 'exam_list' %}">Cancel</a></form></main></body></html>
+{% extends 'students/base.html' %}
+
+{% block title %}Select Subject - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Enter Marks - {{ exam.name }}</h1>
+        <div class="subtitle">Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</div>
+    </div>
+</div>
+
+<div class="table-card p-4">
+    <form method="post">
+        {% csrf_token %}
+        <select name="subject" class="form-select" required>
+            <option value="">-- Select Subject --</option>
+            {% for subject in subjects %}
+            <option value="{{ subject.pk }}">{{ subject.name }} ({{ subject.full_marks }})</option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-navy mt-3">Continue</button>
+        <a class="btn btn-outline-navy mt-3" href="{% url 'exam_list' %}">Cancel</a>
+    </form>
+</div>
+{% endblock %}
