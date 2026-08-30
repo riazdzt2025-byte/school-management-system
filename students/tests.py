@@ -272,4 +272,53 @@ class AdmissionApplicationWorkflowTests(TestCase):
 		self.assertEqual(Student.objects.filter(admission_application=self.application).count(), 1)
 		self.assertEqual(MoneyReceipt.objects.filter(student=self.application.enrolled_student).count(), 1)
 
+
+class DepartmentAccessControlTests(TestCase):
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Access Control School', classes='6,7')
+		self.office_user = get_user_model().objects.create_user(username='office_user', password='password')
+		self.accounts_user = get_user_model().objects.create_user(username='accounts_user', password='password')
+		InstitutionAccess.objects.create(user=self.office_user, institution=self.institution, department='Office')
+		InstitutionAccess.objects.create(user=self.accounts_user, institution=self.institution, department='Accounts')
+
+	def test_office_and_accounts_users_can_view_admission_list(self):
+		# Both Office and Accounts users can view admission list.
+		admission_app_ct = ContentType.objects.get_for_model(AdmissionApplication)
+		perm = Permission.objects.get(content_type=admission_app_ct, codename='view_admissionapplication')
+		for user in [self.office_user, self.accounts_user]:
+			user.user_permissions.add(perm)
+		
+		for user, dept in [(self.office_user, 'Office'), (self.accounts_user, 'Accounts')]:
+			self.client.force_login(user)
+			session = self.client.session
+			session['selected_institution_id'] = str(self.institution.pk)
+			session['selected_department'] = dept
+			session.save()
+			response = self.client.get(reverse('admission_application_list'))
+			self.assertEqual(response.status_code, 200)
+
+	def test_institution_filtering_works_in_admission_list(self):
+		# Admission applications are filtered by selected institution.
+		inst1 = Institution.objects.create(name='Inst1', classes='6')
+		self.office_user.user_permissions.add(
+			Permission.objects.get(content_type=ContentType.objects.get_for_model(AdmissionApplication), codename='view_admissionapplication')
+		)
+		InstitutionAccess.objects.create(user=self.office_user, institution=inst1, department='Office')
+		
+		app1 = AdmissionApplication.objects.create(
+			institution=inst1, applicant_name='App1', applicant_contact_no='01800000000',
+			guardian_name='Guard1', guardian_contact_no='01900000000', requested_class='6', session='2026-2027'
+		)
+		
+		self.client.force_login(self.office_user)
+		session = self.client.session
+		session['selected_institution_id'] = str(inst1.pk)
+		session['selected_department'] = 'Office'
+		session.save()
+		
+		response = self.client.get(reverse('admission_application_list'))
+		self.assertEqual(response.status_code, 200)
+		self.assertIn(app1.application_number, str(response.content))
+
 # Create your tests here.
+

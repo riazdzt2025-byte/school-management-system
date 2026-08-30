@@ -1,0 +1,11 @@
+Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...
+test_login_page_lists_only_accessible_institutions (students.tests.InstitutionAwareLoginTests.test_login_page_lists_only_accessible_institutions) ... C:\Users\PKFSCIT-RIAZ\AppData\Roaming\Python\Python314\site-packages\django\core\handlers\base.py:63: UserWarning: No directory at: C:\Users\PKFSCIT-RIAZ\projects\school_system\staticfiles\
+  mw_instance = middleware(adapted_handler)
+ok
+test_selected_institution_and_department_are_saved_on_login (students.tests.InstitutionAwareLoginTests.test_selected_institution_and_department_are_saved_on_login) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 40.054s
+
+OK
+Destroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...

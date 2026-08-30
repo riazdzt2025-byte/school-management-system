@@ -74,6 +74,26 @@ def _filter_by_selected_institution(request, qs, field_name='institution'):
     return qs.filter(**{field_name: institution})
 
 
+def _require_department(required_dept):
+    """Decorator to restrict view access to specific department(s)."""
+    def decorator(view_func):
+        def wrapper(request, *args, **kwargs):
+            selected_dept = request.session.get('selected_department', 'Office')
+            if _is_admin(request.user):
+                return view_func(request, *args, **kwargs)
+            if isinstance(required_dept, (list, tuple)):
+                if selected_dept not in required_dept:
+                    messages.error(request, f'Access denied. This function requires {" or ".join(required_dept)} department.')
+                    return redirect('dashboard')
+            else:
+                if selected_dept != required_dept:
+                    messages.error(request, f'Access denied. This function requires {required_dept} department.')
+                    return redirect('dashboard')
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
 def institution_login(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
@@ -138,8 +158,10 @@ def dashboard(request):
 
 @login_required
 @permission_required('students.view_admissionapplication', raise_exception=True)
+@_require_department(('Office', 'Accounts'))
 def admission_application_list(request):
     applications = AdmissionApplication.objects.select_related('institution', 'office_actor', 'account_actor').all()
+    applications = _filter_by_selected_institution(request, applications)
     status = request.GET.get('status')
     if status:
         applications = applications.filter(status=status)
@@ -151,6 +173,7 @@ def admission_application_list(request):
 
 @login_required
 @permission_required('students.add_admissionapplication', raise_exception=True)
+@_require_department('Office')
 def create_admission_application(request):
     form = AdmissionApplicationForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
@@ -209,26 +232,31 @@ def _application_transition(request, pk, action):
 
 @login_required
 @permission_required('students.change_admissionapplication', raise_exception=True)
+@_require_department('Office')
 def office_approve_application(request, pk):
     return _application_transition(request, pk, 'approve')
 
 
 @login_required
 @permission_required('students.change_admissionapplication', raise_exception=True)
+@_require_department('Office')
 def office_reject_application(request, pk):
     return _application_transition(request, pk, 'reject')
 
 
 @login_required
 @permission_required('students.change_admissionapplication', raise_exception=True)
+@_require_department('Office')
 def office_handoff_application(request, pk):
     return _application_transition(request, pk, 'handoff')
 
 
 @login_required
 @permission_required('students.change_admissionapplication', raise_exception=True)
+@_require_department('Accounts')
 def accounts_admission_queue(request):
     applications = AdmissionApplication.objects.filter(status='ACCOUNT_PENDING').select_related('institution')
+    applications = _filter_by_selected_institution(request, applications)
     admission_class = request.GET.get('admission_class', '').strip()
     if admission_class:
         applications = applications.filter(requested_class=admission_class)
@@ -243,6 +271,7 @@ def _new_receipt_number():
 
 @login_required
 @permission_required('students.change_admissionapplication', raise_exception=True)
+@_require_department('Accounts')
 def accounts_approve_payment(request, pk):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
@@ -300,9 +329,12 @@ def accounts_approve_payment(request, pk):
 def class_section_summary(request):
     institutions = Institution.objects.all().order_by('name')
     institution_id = request.GET.get('institution')
-    institution = None
+    institution = _selected_institution_for_request(request)
+    if not institution_id and institution:
+        institution_id = institution.pk
 
     students_qs = Student.objects.all()
+    students_qs = _filter_by_selected_institution(request, students_qs)
     if institution_id:
         institution = get_object_or_404(Institution, pk=institution_id)
         students_qs = students_qs.filter(institution=institution)
@@ -648,7 +680,7 @@ def delete_student(request, pk):
 
 @login_required
 def subject_list(request):
-    subjects = Subject.objects.all()
+    subjects = Subject.objects.all().order_by('name')
     if not _is_admin(request.user):
         subjects = subjects.filter(created_by=request.user)
     return render(request, 'students/subject_list.html', {
@@ -1662,6 +1694,7 @@ def finance_dashboard(request):
 
 @login_required
 @permission_required('students.change_student', raise_exception=True)
+@_require_department('Office')
 def student_promotion(request):
     form = StudentPromotionForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
@@ -1731,8 +1764,9 @@ def rollback_student_promotion(request, pk):
 
 @login_required
 @permission_required('students.view_promotionbatch', raise_exception=True)
+@_require_department('Office')
 def student_promotion_history(request):
-    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor').all()
+    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor').all().order_by('-created_at')
     return render(request, 'students/student_promotion_history.html', {'batches': batches})
 
 
