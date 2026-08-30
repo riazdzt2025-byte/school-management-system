@@ -10,11 +10,21 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-r6_1dyqr(-s0!v)m-3@yh&15k1rj__i)nw-r*_rgo(h7m1wvps'
+# SECRET_KEY: previously hardcoded in this file and committed to a public repo,
+# so it has been rotated. Set a SECRET_KEY environment variable in production
+# (e.g. Render > Environment) to override this fallback.
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-Px=l@@UFK#iOpiH$2K5z!EkskBj_3%kpy!2)_kS-qRoF90+DuP',
+)
 
-DEBUG = True
+# DEBUG: defaults to True to match previous behaviour for local development.
+# Set DEBUG=False as an environment variable in production.
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['*']
+# ALLOWED_HOSTS: comma-separated list via env var, e.g. "myapp.onrender.com,mydomain.com"
+_allowed_hosts = os.environ.get('ALLOWED_HOSTS', '')
+ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(',') if h.strip()] or ['*']
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 INSTALLED_APPS = [
