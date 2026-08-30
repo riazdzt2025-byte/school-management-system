@@ -206,6 +206,65 @@ class Subject(models.Model):
         return self.name
 
 
+class SubjectRequirement(models.Model):
+    """
+    Defines which subjects apply to which Institution + Class + Group.
+    One row = one subject's rule for a specific class (and group, if applicable).
+    """
+    REQUIREMENT_TYPE_CHOICES = [
+        ('MANDATORY', 'Mandatory'),
+        ('OPTIONAL', 'Optional (student chooses one from the same set)'),
+        ('CONDITIONAL', 'Conditional (auto-added when condition matches)'),
+    ]
+
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='subject_requirements')
+    admission_class = models.CharField(max_length=10, help_text="e.g. 9, 10, 11, 12")
+    group = models.CharField(
+        max_length=3, choices=Student.GROUP_CHOICES, blank=True,
+        help_text="Leave blank if this subject applies regardless of group."
+    )
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='requirements')
+    requirement_type = models.CharField(max_length=12, choices=REQUIREMENT_TYPE_CHOICES, default='MANDATORY')
+    optional_set_key = models.CharField(max_length=50, blank=True)
+    condition_religion = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        ordering = ['institution', 'admission_class', 'group', 'requirement_type', 'subject__name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['institution', 'admission_class', 'group', 'subject'],
+                name='unique_subject_requirement_per_class_group',
+            ),
+        ]
+
+    def __str__(self):
+        scope = f"{self.institution} / Class {self.admission_class}"
+        if self.group:
+            scope += f" / {self.get_group_display()}"
+        return f"{scope} — {self.subject.name} ({self.get_requirement_type_display()})"
+
+
+class StudentSubjectChoice(models.Model):
+    """
+    Records which OPTIONAL subject a specific student chose (e.g. Agriculture vs
+    Higher Math). Mandatory and conditional subjects don't need a row here — they're
+    derived automatically from SubjectRequirement at read-time.
+    """
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='subject_choices')
+    requirement = models.ForeignKey(SubjectRequirement, on_delete=models.CASCADE, related_name='chosen_by')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['student', 'requirement'],
+                name='unique_student_subject_choice',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.student.name} chose {self.requirement.subject.name}"
+
+
 class StudentSubject(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='subjects')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)

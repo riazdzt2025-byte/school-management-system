@@ -1,192 +1,68 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Principal Kazi Faruky School And College</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --navy: #0F2D52;
-            --navy-light: #17406e;
-            --gold: #C9A227;
-            --bg: #F6F7FA;
-        }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
-        h1, h2, .brand { font-family: 'Fraunces', serif; }
+{% extends 'students/base.html' %}
 
-        .sidebar {
-            width: 240px; height: 100vh; position: fixed; top: 0; left: 0;
-            background: var(--navy); color: #fff; display: flex;
-            flex-direction: column; padding: 24px 0;
-            overflow-y: auto;
-        }
-        .brand { font-size: 1.15rem; font-weight: 700; padding: 0 20px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 16px; line-height: 1.3; }
-        .user-badge {
-            margin: 0 20px 16px; padding: 10px 12px; background: rgba(255,255,255,0.08);
-            border-radius: 10px; border-left: 3px solid var(--gold);
-        }
-        .user-badge .u-name { font-size: 0.9rem; font-weight: 600; color: #fff; display: block; }
-        .user-badge .u-dept { font-size: 0.78rem; color: var(--gold); display: block; margin-top: 2px; }
-        .sidebar a { color: rgba(255,255,255,0.75); text-decoration: none; padding: 12px 20px;
-            display: flex; align-items: center; gap: 10px; font-size: 0.95rem;
-            border-left: 3px solid transparent; transition: all 0.15s; }
-        .sidebar a:hover, .sidebar a.active { background: var(--navy-light); color: #fff; border-left-color: var(--gold); }
-        .sidebar i { font-size: 1.1rem; width: 20px; }
+{% block title %}Students - {{ block.super }}{% endblock %}
 
-        .main { margin-left: 240px; padding: 32px 40px; }
+{% block print_subtitle %}Student List{% endblock %}
 
-        .page-header {
-            display: flex; justify-content: space-between; align-items: flex-start;
-            flex-wrap: wrap; gap: 16px; margin-bottom: 24px;
-        }
-        .page-header h1 { font-size: 1.6rem; color: var(--navy); margin-bottom: 2px; }
-        .page-header .subtitle { color: #6c757d; font-size: 0.95rem; }
-        .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-
-        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; border: none; }
-        .btn-navy:hover { background: var(--navy-light); color: #fff; }
-        .btn-outline-navy { border: 1px solid var(--navy); color: var(--navy); border-radius: 8px; background: #fff; }
-        .btn-outline-navy:hover { background: var(--navy); color: #fff; }
-
-        .table-card {
-            background: #fff; border-radius: 14px; overflow: hidden;
-            box-shadow: 0 4px 14px rgba(15,45,82,0.06);
-        }
-        .table-card table { margin-bottom: 0; }
-        .table-card thead th {
-            background: var(--navy); color: #fff; font-weight: 600;
-            border-bottom: none; font-size: 0.88rem;
-        }
-        .table-card tbody tr:hover { background: rgba(15,45,82,0.03); }
-
-        .print-header { display: none; text-align: center; margin-bottom: 20px; }
-
-        .menu-toggle {
-            display: none; background: var(--navy); color: #fff; border: none;
-            border-radius: 8px; width: 42px; height: 42px; font-size: 1.2rem;
-            position: fixed; top: 16px; left: 16px; z-index: 1050;
-        }
-        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; }
-
-        @media (max-width: 768px) {
-            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 1000; width: 220px; }
-            .sidebar.open { transform: translateX(0); }
-            .main { margin-left: 0; padding: 80px 16px 24px; }
-            .menu-toggle { display: block; }
-            .sidebar-overlay.show { display: block; }
-        }
-
-        @media print {
-            .sidebar, .menu-toggle, .sidebar-overlay { display: none !important; }
-            .main { margin-left: 0 !important; padding: 0 !important; }
-            .d-print-none { display: none !important; }
-            .print-header { display: block !important; }
-            table { font-size: 0.9rem; }
-        }
-    </style>
-</head>
-<body>
-
-<button class="menu-toggle d-print-none" onclick="document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('show');">
-    <i class="bi bi-list"></i>
-</button>
-<div class="sidebar-overlay d-print-none" onclick="this.classList.remove('show'); document.querySelector('.sidebar').classList.remove('open');"></div>
-
-<div class="sidebar d-print-none">
-    <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
-
-    <div class="user-badge">
-        <span class="u-name"><i class="bi bi-person-circle me-1"></i>{{ request.user.username }}</span>
-        {% if request.user.is_superuser %}
-            <span class="u-dept">Super Admin (Full Access)</span>
-        {% elif request.user.groups.all %}
-            <span class="u-dept">{{ request.user.groups.first.name }} Department</span>
-        {% else %}
-            <span class="u-dept">No Department</span>
-        {% endif %}
+{% block content %}
+<div class="page-header d-print-none">
+    <div>
+        <h1>
+            {% if institution %}
+                {{ institution.name }}
+            {% else %}
+                Principal Kazi Faruky School And College
+            {% endif %}
+        </h1>
+        <div class="subtitle">
+            Student Management
+            {% if selected_class %} — Class {{ selected_class }}{% endif %}
+            {% if selected_section %} ({{ selected_section }}){% endif %}
+        </div>
     </div>
-
-    <a href="{% url 'dashboard' %}"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
-    <a href="{% url 'student_list' %}" class="active"><i class="bi bi-people-fill"></i> Students</a>
-    <a href="{% url 'subject_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
-    <a href="{% url 'employee_list' %}"><i class="bi bi-person-badge-fill"></i> Employees</a>
-    <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
-    <form method="POST" action="{% url 'logout' %}" style="padding: 12px 20px;">
-        {% csrf_token %}
-        <button type="submit" style="background: none; border: none; color: rgba(255,255,255,0.75); padding: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 10px;">
-            <i class="bi bi-box-arrow-right"></i> Logout
+    <div class="page-actions">
+        <button type="button" class="btn btn-outline-navy" data-bs-toggle="modal" data-bs-target="#filterModal">
+            <i class="bi bi-funnel"></i> Change Filter
         </button>
-    </form>
+        {% if perms.students.add_student %}
+        <a href="{% url 'add_student' %}" class="btn btn-navy">+ Add New Student</a>
+        <a href="{% url 'import_students' %}" class="btn btn-outline-navy">📥 Import from Excel</a>
+        {% endif %}
+        <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+    </div>
 </div>
 
-<div class="main">
+{% if exact_duplicate_ids or possible_duplicate_ids %}
+<div class="alert alert-warning d-print-none">
+    ⚠️ Possible duplicate students found and highlighted below —
+    <span class="badge bg-danger">red</span> = same name, class & section repeated,
+    <span class="badge bg-warning text-dark">yellow</span> = same name in a different class/section. Please review.
+</div>
+{% endif %}
 
-    <div class="print-header">
-        <h2>Principal Kazi Faruky School And College</h2>
-        <p>Student List</p>
+<form method="POST" action="{% url 'bulk_delete_students' %}" id="bulk-form">
+    {% csrf_token %}
+    <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
+    <input type="hidden" name="admission_class" value="{{ selected_class|default:'' }}">
+    <input type="hidden" name="section" value="{{ selected_section|default:'' }}">
+
+    <div class="d-flex justify-content-between align-items-center mb-2 d-print-none">
+        <div class="form-check">
+            <input type="checkbox" class="form-check-input" id="select-all">
+            <label class="form-check-label" for="select-all">Select All</label>
+        </div>
+        <button type="button" id="bulk-update-btn" class="btn btn-sm btn-outline-primary" disabled
+            data-bs-toggle="modal" data-bs-target="#bulkUpdateModal">
+            🔄 Bulk Update
+        </button>
+        <button type="submit" id="bulk-delete-btn" class="btn btn-sm btn-outline-danger" disabled
+                onclick="return confirm('Delete all selected students? This cannot be undone.');">
+            🗑️ Delete Selected
+        </button>
     </div>
 
-    <div class="page-header d-print-none">
-        <div>
-            <h1>
-                {% if institution %}
-                    {{ institution.name }}
-                {% else %}
-                    Principal Kazi Faruky School And College
-                {% endif %}
-            </h1>
-            <div class="subtitle">
-                Student Management
-                {% if selected_class %} — Class {{ selected_class }}{% endif %}
-                {% if selected_section %} ({{ selected_section }}){% endif %}
-            </div>
-        </div>
-        <div class="page-actions">
-            <button type="button" class="btn btn-outline-navy" data-bs-toggle="modal" data-bs-target="#filterModal">
-                <i class="bi bi-funnel"></i> Change Filter
-            </button>
-            {% if perms.students.add_student %}
-            <a href="{% url 'add_student' %}" class="btn btn-navy">+ Add New Student</a>
-            <a href="{% url 'import_students' %}" class="btn btn-outline-navy">📥 Import from Excel</a>
-            {% endif %}
-            <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
-        </div>
-    </div>
-
-        {% if exact_duplicate_ids or possible_duplicate_ids %}
-    <div class="alert alert-warning d-print-none">
-        ⚠️ Possible duplicate students found and highlighted below —
-        <span class="badge bg-danger">red</span> = same name, class & section repeated,
-        <span class="badge bg-warning text-dark">yellow</span> = same name in a different class/section. Please review.
-    </div>
-    {% endif %}
-
-    <form method="POST" action="{% url 'bulk_delete_students' %}" id="bulk-form">
-        {% csrf_token %}
-        <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
-        <input type="hidden" name="admission_class" value="{{ selected_class|default:'' }}">
-        <input type="hidden" name="section" value="{{ selected_section|default:'' }}">
-
-        <div class="d-flex justify-content-between align-items-center mb-2 d-print-none">
-            <div class="form-check">
-                <input type="checkbox" class="form-check-input" id="select-all">
-                <label class="form-check-label" for="select-all">Select All</label>
-            </div>
-           <button type="button" id="bulk-update-btn" class="btn btn-sm btn-outline-primary" disabled
-        data-bs-toggle="modal" data-bs-target="#bulkUpdateModal">
-    🔄 Bulk Update
-</button>
-            <button type="submit" id="bulk-delete-btn" class="btn btn-sm btn-outline-danger" disabled
-                    onclick="return confirm('Delete all selected students? This cannot be undone.');">
-                🗑️ Delete Selected
-            </button>
-        </div>
-
-        <div class="table-card">
+    <div class="table-card">
+        <div class="table-responsive">
             <table class="table table-striped mb-0">
                 <thead>
                     <tr>
@@ -253,7 +129,9 @@
                 </tbody>
             </table>
         </div>
-    </form>
+    </div>
+</form>
+
 <!-- Bulk Update Modal -->
 <div class="modal fade" id="bulkUpdateModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -350,7 +228,9 @@
 </div>
 
 {{ institutions_data|json_script:"institutions-data" }}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+{% endblock %}
+
+{% block extra_script %}
 <script>
     const institutionsData = JSON.parse(document.getElementById('institutions-data').textContent);
     const institutionSelect = document.getElementById('id_institution');
@@ -403,10 +283,9 @@
         filterModal.show();
         {% endif %}
     });
-        const selectAll = document.getElementById('select-all');
+    const selectAll = document.getElementById('select-all');
     const rowCheckboxes = document.querySelectorAll('.row-checkbox');
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
-
 
     const bulkUpdateBtn = document.getElementById('bulk-update-btn');
 
@@ -452,5 +331,4 @@
         });
     });
 </script>
-</body>
-</html>
+{% endblock %}

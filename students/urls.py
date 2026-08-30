@@ -88,4 +88,5 @@ path('reports/class-section-summary/', views.class_section_summary, name='class_
     # Employee URLs
 path('employees/', views.employee_list, name='employee_list'),
 path('employees/<int:pk>/', views.employee_detail, name='employee_detail'),
+path('api/subject-requirements/', views.subject_requirements_json, name='subject_requirements_json'),
 ]

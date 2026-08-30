@@ -1,144 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Admission Application — Principal Kazi Faruky School And College</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        :root { --navy: #0F2D52; --navy-light: #17406e; --gold: #C9A227; --bg: #F6F7FA; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
-        h1, .brand { font-family: 'Fraunces', serif; }
-        .sidebar { width: 240px; height: 100vh; position: fixed; top: 0; left: 0; background: var(--navy); color: #fff; display: flex; flex-direction: column; padding: 24px 0; overflow-y: auto; }
-        .brand { font-size: 1.15rem; font-weight: 700; padding: 0 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 16px; }
-        .sidebar a { color: rgba(255,255,255,0.75); text-decoration: none; padding: 12px 20px; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; border-left: 3px solid transparent; }
-        .sidebar a:hover, .sidebar a.active { background: var(--navy-light); color: #fff; border-left-color: var(--gold); }
-        .sidebar i { font-size: 1.1rem; width: 20px; }
-        .main { margin-left: 240px; padding: 32px 40px; }
-        .page-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
-        .page-header h1 { font-size: 1.6rem; color: var(--navy); }
-        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; border: none; }
-        .btn-navy:hover { background: var(--navy-light); color: #fff; }
-        .form-card { background: #fff; border-radius: 14px; padding: 32px; box-shadow: 0 4px 14px rgba(15,45,82,0.06); }
-        .section-title { font-family: 'Fraunces', serif; color: var(--navy); font-size: 1.1rem; margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--gold); }
-        .section-title:first-child { margin-top: 0; }
-        .menu-toggle { display: none; background: var(--navy); color: #fff; border: none; border-radius: 8px; width: 42px; height: 42px; font-size: 1.2rem; position: fixed; top: 16px; left: 16px; z-index: 1050; }
-        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; }
-        @media (max-width: 768px) {
-            .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 1000; width: 220px; }
-            .sidebar.open { transform: translateX(0); }
-            .main { margin-left: 0; padding: 80px 16px 24px; }
-            .menu-toggle { display: block; }
-            .sidebar-overlay.show { display: block; }
-        }
-    </style>
-</head>
-<body>
+{% extends 'students/base.html' %}
 
-<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('show');">
-    <i class="bi bi-list"></i>
-</button>
-<div class="sidebar-overlay" onclick="this.classList.remove('show'); document.querySelector('.sidebar').classList.remove('open');"></div>
+{% block title %}New Admission Application - {{ block.super }}{% endblock %}
 
-<div class="sidebar">
-    <div class="brand"><i class="bi bi-mortarboard-fill me-1"></i> PKFSC</div>
-    <a href="{% url 'dashboard' %}"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
-    <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
-    <a href="{% url 'admission_application_list' %}" class="active"><i class="bi bi-file-earmark-person-fill"></i> Admissions</a>
-    <a href="{% url 'employee_list' %}"><i class="bi bi-person-badge-fill"></i> Employees</a>
-    <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+{% block print_subtitle %}New Admission Application{% endblock %}
+
+{% block extra_style %}
+.form-card { max-width: 700px; background: #fff; border-radius: 14px; box-shadow: 0 4px 14px rgba(15,45,82,0.06); padding: 32px; }
+.form-card p { margin-bottom: 16px; }
+.form-card label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--navy); }
+.form-card input, .form-card select, .form-card textarea { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 8px; }
+.back-link { display: inline-block; margin-top: 16px; }
+{% endblock %}
+
+{% block content %}
+<div class="form-card">
+    <h1>New Admission Application</h1>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-navy">Submit Application</button>
+    </form>
+    <a href="{% url 'admission_application_list' %}" class="back-link">← Application list</a>
 </div>
-
-<div class="main">
-    <div class="page-header">
-        <div>
-            <h1>New Admission Application</h1>
-            <div class="text-muted">Fill in the details below to submit a new admission application.</div>
-        </div>
-        <a href="{% url 'admission_application_list' %}" class="btn btn-outline-secondary">← Back to Applications</a>
-    </div>
-
-    <div class="form-card">
-        <form method="post" novalidate>
-            {% csrf_token %}
-
-            <div class="section-title">Applicant Information</div>
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Institution</label>
-                    {{ form.institution }}
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Applicant Name</label>
-                    {{ form.applicant_name }}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Date of Birth</label>
-                    {{ form.date_of_birth }}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Gender</label>
-                    {{ form.gender }}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Religion</label>
-                    {{ form.religion }}
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Contact No.</label>
-                    {{ form.applicant_contact_no }}
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Address</label>
-                    {{ form.applicant_address }}
-                </div>
-            </div>
-
-            <div class="section-title">Guardian Information</div>
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Guardian Name</label>
-                    {{ form.guardian_name }}
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Relation</label>
-                    {{ form.guardian_relation }}
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Guardian Contact No.</label>
-                    {{ form.guardian_contact_no }}
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Guardian Address</label>
-                    {{ form.guardian_address }}
-                </div>
-            </div>
-
-            <div class="section-title">Admission Details</div>
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">Requested Class</label>
-                    {{ form.requested_class }}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Section</label>
-                    {{ form.requested_section }}
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Session</label>
-                    {{ form.session }}
-                </div>
-            </div>
-
-            <div class="mt-4 d-flex gap-2">
-                <button type="submit" class="btn btn-navy">Submit Application</button>
-                <a href="{% url 'admission_application_list' %}" class="btn btn-outline-secondary">Cancel</a>
-            </div>
-        </form>
-    </div>
-</div>
-
-</body>
-</html>
+{% endblock %}

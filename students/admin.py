@@ -8,6 +8,7 @@ from .models import (
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog,
+    SubjectRequirement, StudentSubjectChoice,
 )
 
 
@@ -54,3 +55,16 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(SubjectRequirement)
+class SubjectRequirementAdmin(admin.ModelAdmin):
+    list_display = ('institution', 'admission_class', 'group', 'subject', 'requirement_type', 'optional_set_key', 'condition_religion')
+    list_filter = ('institution', 'admission_class', 'group', 'requirement_type')
+    search_fields = ('subject__name', 'subject__code')
+
+
+@admin.register(StudentSubjectChoice)
+class StudentSubjectChoiceAdmin(admin.ModelAdmin):
+    list_display = ('student', 'requirement')
+    search_fields = ('student__name', 'student__student_id')

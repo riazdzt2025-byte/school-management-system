@@ -1,14 +1,14 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import HttpResponse, HttpResponseNotAllowed
+from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from django.views.decorators.http import require_POST
 from .models import (
     Student, Subject, Institution, TransferCertificate, Certificate,
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
     Employee, EmployeeStatusLog, MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
-    PromotionBatch, StudentPromotionHistory, AuditLog,
+    PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
 )
 from .forms import (
     StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm,
@@ -623,6 +623,48 @@ def delete_subject(request, pk):
         return redirect('subject_list')
     return render(request, 'students/delete_subject.html', {'subject': subject})
 
+# ---------------- Subject Requirement Views ----------------
+
+def get_applicable_subjects(institution, admission_class, group='', religion=''):
+    """
+    Returns which subjects apply for a given institution + class + group
+    (+ optional religion for conditional subjects).
+    """
+    qs = SubjectRequirement.objects.filter(
+        institution=institution, admission_class=str(admission_class),
+    ).filter(Q(group='') | Q(group=group)).select_related('subject')
+
+    mandatory = []
+    conditional = []
+    optional_groups = {}
+
+    for req in qs:
+        subject_data = {'id': req.subject.pk, 'code': req.subject.code, 'name': req.subject.name, 'requirement_id': req.pk}
+        if req.requirement_type == 'MANDATORY':
+            mandatory.append(subject_data)
+        elif req.requirement_type == 'CONDITIONAL':
+            if religion and req.condition_religion and religion.strip().lower() == req.condition_religion.strip().lower():
+                conditional.append(subject_data)
+        elif req.requirement_type == 'OPTIONAL':
+            optional_groups.setdefault(req.optional_set_key or 'default', []).append(subject_data)
+
+    return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
+
+
+@login_required
+def subject_requirements_json(request):
+    """AJAX endpoint used by add_student / admission forms to show a dynamic subject checklist."""
+    institution_id = request.GET.get('institution')
+    admission_class = request.GET.get('admission_class', '')
+    group = request.GET.get('group', '')
+    religion = request.GET.get('religion', '')
+
+    if not institution_id or not admission_class:
+        return JsonResponse({'mandatory': [], 'conditional': [], 'optional_groups': {}})
+
+    institution = get_object_or_404(Institution, pk=institution_id)
+    data = get_applicable_subjects(institution, admission_class, group, religion)
+    return JsonResponse(data)
 
 # ---------------- Excel Import ----------------
 
