@@ -1,0 +1,28 @@
+{% extends 'students/base.html' %}
+
+{% block title %}{% if requirement %}Edit{% else %}Assign{% endif %} Subject - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{% if requirement %}Edit Subject Assignment{% else %}Assign Subject{% endif %}</h1>
+        <div class="subtitle">Choose a subject from the master list and pin it to an Institution + Class (+ Group)</div>
+    </div>
+</div>
+
+<div class="table-card p-4" style="max-width: 640px;">
+    <form method="POST">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div class="form-text mb-3">
+            Leave Group blank to apply to all groups. Use "Optional Set" to group subjects a student
+            picks one-of-from (e.g. all "group-a" rows show together as one choice). Use "Condition Religion"
+            only for Conditional subjects (e.g. Islam/Hindu/Christian Religious Studies).
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-navy">Save</button>
+            <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 from django import forms
 from .models import (
-    Student, Subject, TransferCertificate, Certificate,
+    Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet,
@@ -88,12 +88,38 @@ class AdmissionPaymentForm(forms.ModelForm):
 class SubjectForm(forms.ModelForm):
     class Meta:
         model = Subject
-        fields = ['code', 'name', 'full_marks']
+        fields = ['code', 'name', 'full_marks', 'category']
         widgets = {
             'code': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'full_marks': forms.NumberInput(attrs={'class': 'form-control'}),
+            'category': forms.Select(attrs={'class': 'form-select'}),
         }
+
+
+class SubjectRequirementForm(forms.ModelForm):
+    class Meta:
+        model = SubjectRequirement
+        fields = [
+            'institution', 'admission_class', 'group', 'subject',
+            'requirement_type', 'optional_set_key', 'condition_religion',
+        ]
+        widgets = {
+            'institution': forms.Select(attrs={'class': 'form-select'}),
+            'admission_class': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 9, 10, 11, 12'}),
+            'group': forms.Select(attrs={'class': 'form-select'}),
+            'subject': forms.Select(attrs={'class': 'form-select'}),
+            'requirement_type': forms.Select(attrs={'class': 'form-select'}),
+            'optional_set_key': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. group-a (only for Optional)'}),
+            'condition_religion': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Islam (only for Conditional)'}),
+        }
+
+
+class DiscontinueStudentForm(forms.Form):
+    reason = forms.CharField(
+        required=False, label='Reason',
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+    )
 
 
 class ExcelImportForm(forms.Form):

@@ -8,14 +8,37 @@
 <div class="page-header d-print-none">
     <div>
         <h1>Subjects</h1>
-        <div class="subtitle">Subject Management</div>
+        <div class="subtitle">Master subject list — used across Admission, Students and Exam</div>
     </div>
-    {% if perms.students.add_subject %}
-    <a href="{% url 'add_subject' %}" class="btn btn-navy">+ Add New Subject</a>
-    {% endif %}
+    <div class="page-actions">
+        <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-navy">Assign to Institution/Class</a>
+        {% if perms.students.add_subject %}
+        <a href="{% url 'add_subject' %}" class="btn btn-navy">+ Add New Subject</a>
+        {% endif %}
+    </div>
 </div>
 
-<div class="table-card">
+<form method="GET" class="row g-2 mb-3 d-print-none">
+    <div class="col-auto" style="min-width: 240px;">
+        <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Search by name or code">
+    </div>
+    <div class="col-auto">
+        <select name="category" class="form-select">
+            <option value="">-- All Categories --</option>
+            {% for code, label in category_choices %}
+            <option value="{{ code }}" {% if selected_category == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-navy">Filter</button>
+        <a href="{% url 'subject_list' %}" class="btn btn-outline-secondary">Clear</a>
+    </div>
+</form>
+
+{% for label, subjects in grouped_subjects.items %}
+<div class="table-card mb-3">
+    <div class="p-3 pb-0"><h5 class="mb-0">{{ label }}</h5></div>
     <div class="table-responsive">
         <table class="table table-striped mb-0">
             <thead>
@@ -41,11 +64,12 @@
                         {% endif %}
                     </td>
                 </tr>
-                {% empty %}
-                <tr><td colspan="4" class="text-center text-muted py-4">No subjects found.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+{% empty %}
+<div class="table-card p-4 text-center text-muted">No subjects found.</div>
+{% endfor %}
 {% endblock %}

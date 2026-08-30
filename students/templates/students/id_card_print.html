@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ID Card - {{ student.name }}</title>
+    <style>
+        @page { size: A4; margin: 12mm; }
+        :root { --navy: #0f2d52; --gold: #c9a227; }
+        body { background: #f6f7fa; color: #17212b; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 24px; }
+
+        .card-wrap { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; max-width: 900px; margin: 0 auto; }
+
+        .id-card {
+            width: 340px; height: 214px; border-radius: 14px; overflow: hidden;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.18); position: relative;
+            background: #fff; border: 1px solid #d9dee5;
+        }
+        .id-card .band {
+            background: linear-gradient(135deg, var(--navy), #17406e);
+            color: #fff; padding: 10px 14px; text-align: center;
+        }
+        .id-card .band h2 { margin: 0; font-size: 13px; letter-spacing: 0.4px; }
+        .id-card .band p { margin: 2px 0 0; font-size: 9.5px; color: var(--gold); }
+
+        .id-card .body { display: flex; gap: 12px; padding: 12px 14px; }
+        .id-card .photo {
+            width: 78px; height: 92px; border-radius: 6px; border: 2px solid var(--navy);
+            background: #eef1f5; display: flex; align-items: center; justify-content: center;
+            font-size: 26px; font-weight: 700; color: var(--navy); flex-shrink: 0;
+        }
+        .id-card .info { font-size: 11.5px; line-height: 1.55; overflow: hidden; }
+        .id-card .info .name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
+        .id-card .info .row span.label { color: #667085; display: inline-block; min-width: 60px; }
+
+        .id-card .footer {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            border-top: 1px dashed #c9a227; padding: 5px 14px; font-size: 9px;
+            display: flex; justify-content: space-between; color: #667085; background: #fbfaf6;
+        }
+
+        .id-card.back { display: flex; flex-direction: column; justify-content: space-between; padding: 14px; box-sizing: border-box; }
+        .id-card.back .rules { font-size: 9.5px; line-height: 1.6; color: #344054; }
+        .id-card.back .rules li { margin-bottom: 3px; }
+        .id-card.back .sig { display: flex; justify-content: space-between; font-size: 10px; margin-top: 8px; }
+        .id-card.back .sig div { border-top: 1px solid #344054; padding-top: 4px; width: 130px; text-align: center; }
+
+        .actions { max-width: 900px; margin: 20px auto 0; text-align: center; }
+        button, a.btn-link { background: var(--navy); border: 0; color: #fff; cursor: pointer; padding: 10px 18px; text-decoration: none; border-radius: 6px; font-size: 14px; }
+        @media print { body { background: #fff; padding: 0; } .actions { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="card-wrap">
+        <div class="id-card front">
+            <div class="band">
+                <h2>Principal Kazi Faruky School And College</h2>
+                <p>Professor Kazi Faruky Kallan Trust</p>
+            </div>
+            <div class="body">
+                <div class="photo">{{ initials|default:"?" }}</div>
+                <div class="info">
+                    <div class="name">{{ student.name }}</div>
+                    <div class="row"><span class="label">ID</span>{{ student.student_id }}</div>
+                    <div class="row"><span class="label">Class</span>{{ student.admission_class }}{% if student.section %} ({{ student.section }}){% endif %}</div>
+                    <div class="row"><span class="label">Roll</span>{{ student.roll_no|default:"-" }}</div>
+                    <div class="row"><span class="label">Group</span>{{ student.get_group_display|default:"-" }}</div>
+                    <div class="row"><span class="label">Session</span>{{ student.admission_year }}</div>
+                </div>
+            </div>
+            <div class="footer">
+                <span>Father: {{ student.father_name|default:"-" }}</span>
+                <span>{{ student.institution.name }}</span>
+            </div>
+        </div>
+
+        <div class="id-card back">
+            <div class="rules">
+                <strong>If found, please return to:</strong>
+                <p style="margin:4px 0 8px;">{{ student.institution.name }}</p>
+                <ul style="padding-left: 16px;">
+                    <li>This card is the property of the institution.</li>
+                    <li>Must be carried at all times on campus.</li>
+                    <li>Loss must be reported immediately to the Office.</li>
+                    <li>Non-transferable.</li>
+                </ul>
+            </div>
+            <div class="sig">
+                <div>Class Teacher</div>
+                <div>Head of Institution</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button onclick="window.print()">Print ID Card</button>
+        <a href="{% url 'student_detail' student.pk %}" class="btn-link">Back to Student</a>
+    </div>
+</body>
+</html>

@@ -1,0 +1,88 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Subject Assignments - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div>
+        <h1>Subject Assignments</h1>
+        <div class="subtitle">Assign subjects from the master list to an Institution + Class (+ Group), and mark each Mandatory/Optional/Conditional</div>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'subject_list' %}" class="btn btn-outline-navy">Master Subject List</a>
+        {% if perms.students.add_subjectrequirement %}
+        <a href="{% url 'add_subject_requirement' %}" class="btn btn-navy">+ Assign Subject</a>
+        {% endif %}
+    </div>
+</div>
+
+<form method="GET" class="row g-2 mb-3">
+    <div class="col-auto" style="min-width: 220px;">
+        <select name="institution" class="form-select">
+            <option value="">-- All Institutions --</option>
+            {% for inst in institutions %}
+            <option value="{{ inst.id }}" {% if selected_institution_id == inst.id|stringformat:"s" %}selected{% endif %}>{{ inst.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <input type="text" name="admission_class" value="{{ selected_class }}" class="form-control" placeholder="Class e.g. 9">
+    </div>
+    <div class="col-auto">
+        <select name="group" class="form-select">
+            <option value="">-- All Groups --</option>
+            {% for code, label in group_choices %}
+            <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto" style="min-width: 200px;">
+        <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Search subject">
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-navy">Filter</button>
+        <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Clear</a>
+    </div>
+</form>
+
+{% for label, requirements in grouped_requirements.items %}
+<div class="table-card mb-3">
+    <div class="p-3 pb-0"><h5 class="mb-0">{{ label }}</h5></div>
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>Institution</th>
+                    <th>Class</th>
+                    <th>Group</th>
+                    <th>Subject</th>
+                    <th>Optional Set / Condition</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requirements %}
+                <tr>
+                    <td>{{ req.institution.name }}</td>
+                    <td>{{ req.admission_class }}</td>
+                    <td>{{ req.get_group_display|default:"Any" }}</td>
+                    <td>{{ req.subject.code }} — {{ req.subject.name }}</td>
+                    <td>{{ req.optional_set_key|default:req.condition_religion|default:"-" }}</td>
+                    <td>
+                        {% if perms.students.change_subjectrequirement %}
+                        <a href="{% url 'edit_subject_requirement' req.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
+                        {% endif %}
+                        {% if perms.students.delete_subjectrequirement %}
+                        <a href="{% url 'delete_subject_requirement' req.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% empty %}
+<div class="table-card p-4 text-center text-muted">No subject assignments found for this filter.</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Discontinue Student - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Discontinue Student</h1>
+        <div class="subtitle">{{ student.name }} ({{ student.student_id }})</div>
+    </div>
+</div>
+
+<div class="table-card p-4" style="max-width: 560px;">
+    <p>This will mark <strong>{{ student.name }}</strong> as <span class="badge bg-warning text-dark">Discontinued</span>.
+       The student's record is kept, but they will be excluded from active rolls.</p>
+
+    <form method="POST">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div class="d-flex gap-2 mt-3">
+            <button type="submit" class="btn btn-warning">Confirm Discontinue</button>
+            <a href="{% url 'student_detail' student.pk %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

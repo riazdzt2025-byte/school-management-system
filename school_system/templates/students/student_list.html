@@ -92,6 +92,8 @@
                         <td>
                             {% if student.status == 'TRANSFERRED' %}
                             <span class="badge bg-secondary">Transferred</span>
+                            {% elif student.status == 'DISCONTINUED' %}
+                            <span class="badge bg-warning text-dark">Discontinued</span>
                             {% else %}
                             <span class="badge bg-success">Active</span>
                             {% endif %}
@@ -101,21 +103,39 @@
                             {% if perms.students.change_student %}
                             <a href="{% url 'edit_student' student.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
                             {% endif %}
-                            {% if student.status == 'TRANSFERRED' %}
-                            <span class="badge bg-secondary">Transferred</span>
-                            {% elif perms.students.add_transfercertificate %}
-                            <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
+
+                            {% if selected_department == 'Exam' %}
+                            <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Test</a>
+                            <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Marksheet</a>
                             {% endif %}
-                            {% if perms.students.view_certificate %}
-                            <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
+
+                            <a href="{% url 'student_id_card' student.pk %}" class="btn btn-sm btn-outline-secondary">ID Card</a>
+
+                            {% if selected_department != 'Exam' %}
+                                {% if student.status == 'TRANSFERRED' %}
+                                <span class="badge bg-secondary">Transferred</span>
+                                {% elif student.status == 'DISCONTINUED' %}
+                                <span class="badge bg-warning text-dark">Discontinued</span>
+                                {% else %}
+                                    {% if perms.students.add_transfercertificate %}
+                                    <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
+                                    {% endif %}
+                                    {% if perms.students.change_student %}
+                                    <a href="{% url 'discontinue_student' student.pk %}" class="btn btn-sm btn-outline-warning">Discontinue</a>
+                                    {% endif %}
+                                {% endif %}
+                                {% if perms.students.view_certificate %}
+                                <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
+                                {% endif %}
+                                {% if student.admission_class in '9,10' %}
+                                {% if student.ssc_registration %}
+                                <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
+                                {% elif perms.students.add_sscregistration %}
+                                <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
+                                {% endif %}
+                                {% endif %}
                             {% endif %}
-                            {% if student.admission_class in '9,10' %}
-                            {% if student.ssc_registration %}
-                            <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
-                            {% elif perms.students.add_sscregistration %}
-                            <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
-                            {% endif %}
-                            {% endif %}
+
                             {% if perms.students.delete_student %}
                             <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
                             {% endif %}

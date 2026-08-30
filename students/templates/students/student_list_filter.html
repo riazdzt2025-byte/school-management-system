@@ -48,6 +48,16 @@
             </select>
         </div>
 
+        <div class="mb-3">
+            <label class="form-label">Department</label>
+            <select name="department" id="id_department" class="form-select">
+                {% for code, label in department_choices %}
+                <option value="{{ code }}" {% if selected_department == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">Controls which student actions (Test/Marksheet vs Discontinue/TC) are shown on the list.</div>
+        </div>
+
         <div class="d-flex gap-2 mt-4">
             <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary">View All Students</a>
             <button type="submit" class="btn btn-navy">View List</button>

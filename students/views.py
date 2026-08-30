@@ -12,7 +12,8 @@ from .models import (
     PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement, StudentSubjectChoice,
 )
 from .forms import (
-    StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm,
+    StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
+    TransferCertificateForm,
     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
     ExamForm, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm, EmployeeStatusChangeForm,
     MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
@@ -414,7 +415,9 @@ def student_list(request):
     institution = _selected_institution_for_request(request)
     admission_class = request.GET.get('admission_class')
     section = request.GET.get('section')
+    group = request.GET.get('group')
     institution_id = request.GET.get('institution')
+    department = request.GET.get('department') or request.session.get('selected_department') or 'Office'
 
     qs = Student.objects.all()
     if institution is not None:
@@ -433,6 +436,8 @@ def student_list(request):
             qs = qs.filter(admission_class=admission_class)
         if section:
             qs = qs.filter(section__iexact=section.strip())
+        if group:
+            qs = qs.filter(group=group)
         students = list(qs)
     else:
         # No institution filter chosen yet — send the user to the
@@ -461,6 +466,8 @@ def student_list(request):
         'institution': institution,
         'selected_class': admission_class,
         'selected_section': section,
+        'selected_group': group,
+        'selected_department': department,
         'institutions': institutions,
         'exact_duplicate_ids': exact_duplicate_ids,
         'possible_duplicate_ids': possible_duplicate_ids,
@@ -483,6 +490,8 @@ def student_list_filter(request):
         'selected_class': request.GET.get('admission_class', ''),
         'selected_section': request.GET.get('section', ''),
         'selected_group': request.GET.get('group', ''),
+        'department_choices': InstitutionAccess.DEPARTMENT_CHOICES,
+        'selected_department': request.GET.get('department') or request.session.get('selected_department') or 'Office',
     })
 
 
@@ -733,15 +742,82 @@ def delete_student(request, pk):
     return render(request, 'students/delete_student.html', {'student': student})
 
 
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+def discontinue_student(request, pk):
+    student = get_object_or_404(Student, pk=pk)
+    if student.status == 'DISCONTINUED':
+        messages.info(request, "This student is already marked as discontinued.")
+        return redirect('student_detail', pk=student.pk)
+
+    if request.method == 'POST':
+        form = DiscontinueStudentForm(request.POST)
+        if form.is_valid():
+            student.status = 'DISCONTINUED'
+            student.discontinued_at = timezone.now()
+            student.discontinued_reason = form.cleaned_data['reason']
+            student.save(update_fields=['status', 'discontinued_at', 'discontinued_reason'])
+            messages.success(request, f"{student.name} has been marked as discontinued.")
+            record_audit(request.user, 'DISCONTINUE', student, details={'reason': form.cleaned_data['reason']})
+            return redirect('student_list')
+    else:
+        form = DiscontinueStudentForm()
+    return render(request, 'students/discontinue_student.html', {'student': student, 'form': form})
+
+
+@login_required
+def student_id_card(request, pk):
+    student = get_object_or_404(Student, pk=pk)
+    initials = ''.join([part[0].upper() for part in student.name.split() if part])[:2]
+    return render(request, 'students/id_card_print.html', {
+        'student': student,
+        'initials': initials,
+    })
+
+
+@login_required
+def student_exams(request, pk):
+    """Popup-free page listing every exam relevant to this student, with
+    links through to that exam's test result and (once published) marksheet."""
+    student = get_object_or_404(Student, pk=pk)
+    exams = Exam.objects.filter(
+        institution=student.institution,
+        admission_class=student.admission_class,
+    ).filter(Q(section='') | Q(section__iexact=student.section)).order_by('-exam_date', '-id')
+    return render(request, 'students/student_exams.html', {
+        'student': student,
+        'exams': exams,
+    })
+
+
 # ---------------- Subject Views ----------------
 
 @login_required
 def subject_list(request):
-    subjects = Subject.objects.all().order_by('name')
+    subjects = Subject.objects.all()
     if not _is_admin(request.user):
         subjects = subjects.filter(created_by=request.user)
+
+    query = request.GET.get('q', '').strip()
+    if query:
+        subjects = subjects.filter(Q(name__icontains=query) | Q(code__icontains=query))
+
+    category = request.GET.get('category', '')
+    if category:
+        subjects = subjects.filter(category=category)
+
+    grouped = {}
+    for code, label in Subject.CATEGORY_CHOICES:
+        bucket = [s for s in subjects if s.category == code]
+        if bucket:
+            grouped[label] = bucket
+
     return render(request, 'students/subject_list.html', {
         'subjects': subjects,
+        'grouped_subjects': grouped,
+        'category_choices': Subject.CATEGORY_CHOICES,
+        'selected_category': category,
+        'query': query,
     })
 
 
@@ -833,6 +909,94 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
             optional_groups.setdefault(req.optional_set_key or 'default', []).append(subject_data)
 
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
+
+
+@login_required
+def subject_requirement_list(request):
+    """Popup-free page for assigning subjects (from the pre-loaded/custom
+    Subject list) to a specific Institution + Class + Group, marking each
+    Mandatory/Optional/Conditional."""
+    requirements = SubjectRequirement.objects.select_related('institution', 'subject').all()
+
+    institution_id = request.GET.get('institution', '')
+    admission_class = request.GET.get('admission_class', '')
+    group = request.GET.get('group', '')
+    query = request.GET.get('q', '').strip()
+
+    if institution_id:
+        requirements = requirements.filter(institution_id=institution_id)
+    if admission_class:
+        requirements = requirements.filter(admission_class=admission_class)
+    if group:
+        requirements = requirements.filter(group=group)
+    if query:
+        requirements = requirements.filter(Q(subject__name__icontains=query) | Q(subject__code__icontains=query))
+
+    grouped = {}
+    for label_key, label in SubjectRequirement.REQUIREMENT_TYPE_CHOICES:
+        bucket = [r for r in requirements if r.requirement_type == label_key]
+        if bucket:
+            grouped[label] = bucket
+
+    return render(request, 'students/subject_requirement_list.html', {
+        'grouped_requirements': grouped,
+        'institutions': Institution.objects.all().order_by('name'),
+        'group_choices': Student.GROUP_CHOICES,
+        'selected_institution_id': institution_id,
+        'selected_class': admission_class,
+        'selected_group': group,
+        'query': query,
+    })
+
+
+@login_required
+@permission_required('students.add_subjectrequirement', raise_exception=True)
+def add_subject_requirement(request):
+    if request.method == 'POST':
+        form = SubjectRequirementForm(request.POST)
+        if form.is_valid():
+            try:
+                form.save()
+                messages.success(request, "Subject assigned successfully.")
+                return redirect('subject_requirement_list')
+            except IntegrityError:
+                messages.error(request, "This subject is already assigned to that Institution/Class/Group.")
+        else:
+            messages.error(request, "There are errors in the form — please check the fields below.")
+    else:
+        form = SubjectRequirementForm()
+    return render(request, 'students/add_subject_requirement.html', {'form': form})
+
+
+@login_required
+@permission_required('students.change_subjectrequirement', raise_exception=True)
+def edit_subject_requirement(request, pk):
+    requirement = get_object_or_404(SubjectRequirement, pk=pk)
+    if request.method == 'POST':
+        form = SubjectRequirementForm(request.POST, instance=requirement)
+        if form.is_valid():
+            try:
+                form.save()
+                messages.success(request, "Subject assignment updated.")
+                return redirect('subject_requirement_list')
+            except IntegrityError:
+                messages.error(request, "This subject is already assigned to that Institution/Class/Group.")
+        else:
+            messages.error(request, "There are errors in the form — please check the fields below.")
+    else:
+        form = SubjectRequirementForm(instance=requirement)
+    return render(request, 'students/add_subject_requirement.html', {'form': form, 'requirement': requirement})
+
+
+@login_required
+@permission_required('students.delete_subjectrequirement', raise_exception=True)
+def delete_subject_requirement(request, pk):
+    requirement = get_object_or_404(SubjectRequirement, pk=pk)
+    if request.method == 'POST':
+        requirement.delete()
+        messages.success(request, "Subject assignment removed.")
+        return redirect('subject_requirement_list')
+    return render(request, 'students/delete_subject_requirement.html', {'requirement': requirement})
 
 
 @login_required

@@ -86,8 +86,11 @@ class Student(models.Model):
     STATUS_CHOICES = [
         ('ACTIVE', 'Active'),
         ('TRANSFERRED', 'Transferred'),
+        ('DISCONTINUED', 'Discontinued'),
     ]
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='ACTIVE')
+    discontinued_at = models.DateTimeField(null=True, blank=True)
+    discontinued_reason = models.CharField(max_length=255, blank=True)
 
     def save(self, *args, **kwargs):
         if not self.admission_year:
@@ -223,13 +226,26 @@ class AdmissionApplication(models.Model):
 
 
 class Subject(models.Model):
+    CATEGORY_CHOICES = [
+        ('COMPULSORY', 'Compulsory Group'),
+        ('OPTIONAL', 'Optional Group'),
+        ('FOURTH', '4th Subject'),
+        ('VOCATIONAL', 'Vocational'),
+        ('RELIGION', 'Religion & Moral Education'),
+        ('OTHER', 'Other'),
+    ]
+
     code = models.CharField(max_length=10, unique=True)
     name = models.CharField(max_length=100)
     full_marks = models.IntegerField(default=100)
+    category = models.CharField(max_length=12, choices=CATEGORY_CHOICES, default='OTHER')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='subjects_created'
     )
+
+    class Meta:
+        ordering = ['category', 'name']
 
     def __str__(self):
         return self.name
