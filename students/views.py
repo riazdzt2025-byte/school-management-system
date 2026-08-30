@@ -469,6 +469,9 @@ def student_list(request):
         'selected_group': group,
         'selected_department': department,
         'institutions': institutions,
+        'institutions_data': institutions_data,
+        'department_choices': InstitutionAccess.DEPARTMENT_CHOICES,
+        'group_choices': Student.GROUP_CHOICES,
         'exact_duplicate_ids': exact_duplicate_ids,
         'possible_duplicate_ids': possible_duplicate_ids,
     })

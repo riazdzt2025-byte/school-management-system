@@ -45,6 +45,15 @@
         .student-grid { display: none !important; }
         .print-table-wrapper { display: block !important; }
     }
+    .inline-filter-bar {
+        background: #fff; border-radius: 14px; padding: 14px 16px;
+        box-shadow: 0 4px 14px rgba(15,45,82,0.06);
+        margin-bottom: 20px;
+        display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+    }
+    .inline-filter-bar .field { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+    .inline-filter-bar label { font-size: 0.78rem; color: #6c757d; font-weight: 600; }
+    .inline-filter-bar .field.grow { flex: 1 1 160px; }
 {% endblock %}
 
 {% block content %}
@@ -64,9 +73,6 @@
         </div>
     </div>
     <div class="page-actions">
-        <a href="{% url 'student_list_filter' %}" class="btn btn-outline-navy">
-            <i class="bi bi-funnel"></i> Change Filter
-        </a>
         {% if perms.students.add_student %}
         <a href="{% url 'add_student' %}" class="btn btn-navy">+ Add New Student</a>
         <a href="{% url 'import_students' %}" class="btn btn-outline-navy">📥 Import from Excel</a>
@@ -74,6 +80,50 @@
         <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
     </div>
 </div>
+
+<form method="GET" action="{% url 'student_list' %}" class="inline-filter-bar d-print-none" id="inline-filter-form">
+    <div class="field grow">
+        <label for="ilf-institution">Institution</label>
+        <select name="institution" id="ilf-institution" class="form-select form-select-sm" required>
+            {% for inst in institutions %}
+            <option value="{{ inst.id }}" {% if institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label for="ilf-department">Department</label>
+        <select name="department" id="ilf-department" class="form-select form-select-sm">
+            {% for code, label in department_choices %}
+            <option value="{{ code }}" {% if selected_department == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label for="ilf-class">Class</label>
+        <select name="admission_class" id="ilf-class" class="form-select form-select-sm">
+            <option value="">-- All --</option>
+        </select>
+    </div>
+    <div class="field">
+        <label for="ilf-section">Section</label>
+        <input type="text" name="section" id="ilf-section" class="form-control form-control-sm" value="{{ selected_section|default:'' }}" placeholder="e.g. A">
+    </div>
+    <div class="field" id="ilf-group-container" style="display: none;">
+        <label for="ilf-group">Group</label>
+        <select name="group" id="ilf-group" class="form-select form-select-sm">
+            <option value="">-- All --</option>
+            {% for code, label in group_choices %}
+            <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <button type="submit" class="btn btn-sm btn-navy">Apply</button>
+        <a href="{% url 'student_list' %}?all=1" class="btn btn-sm btn-outline-secondary">View All</a>
+    </div>
+</form>
+
+{{ institutions_data|json_script:"ilf-institutions-data" }}
 
 {% if exact_duplicate_ids or possible_duplicate_ids %}
 <div class="alert alert-warning d-print-none">
@@ -233,5 +283,51 @@
         });
     }
     rowCheckboxes.forEach(cb => cb.addEventListener('change', updateBulkButtons));
+
+    // ---- Inline filter bar: cascading class dropdown + group visibility ----
+    (function () {
+        const dataEl = document.getElementById('ilf-institutions-data');
+        if (!dataEl) return;
+        const institutionsData = JSON.parse(dataEl.textContent);
+        const institutionSelect = document.getElementById('ilf-institution');
+        const classSelect = document.getElementById('ilf-class');
+        const groupSelect = document.getElementById('ilf-group');
+        const groupContainer = document.getElementById('ilf-group-container');
+        const currentClassValue = "{{ selected_class|default:'' }}";
+
+        function updateGroupVisibility() {
+            const cls = classSelect.value;
+            if (cls && ['9', '10', '11', '12'].includes(cls)) {
+                groupContainer.style.display = 'flex';
+            } else {
+                groupContainer.style.display = 'none';
+                groupSelect.value = '';
+            }
+        }
+
+        function populateClasses(selectedInstitutionId, preSelectValue) {
+            classSelect.innerHTML = '<option value="">-- All --</option>';
+            const classes = institutionsData[selectedInstitutionId] || [];
+            classes.forEach(function (cls) {
+                const opt = document.createElement('option');
+                opt.value = cls;
+                opt.textContent = cls;
+                if (cls === preSelectValue) {
+                    opt.selected = true;
+                }
+                classSelect.appendChild(opt);
+            });
+            updateGroupVisibility();
+        }
+
+        institutionSelect.addEventListener('change', function () {
+            populateClasses(this.value, '');
+        });
+        classSelect.addEventListener('change', updateGroupVisibility);
+
+        if (institutionSelect.value) {
+            populateClasses(institutionSelect.value, currentClassValue);
+        }
+    })();
 </script>
 {% endblock %}
