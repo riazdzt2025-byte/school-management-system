@@ -20,6 +20,16 @@
             {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors }}</div>{% endif %}
         </div>
         {% endfor %}
+
+        <div class="mb-3" id="subjects-panel" style="display:none;">
+            <label class="form-label">Subjects</label>
+            <div id="subjects-loading" class="text-muted small" style="display:none;">Loading subjects…</div>
+            <div id="subjects-empty" class="text-muted small" style="display:none;">No subject list configured for this institution/class yet.</div>
+            <div id="mandatory-subjects"></div>
+            <div id="conditional-subjects"></div>
+            <div id="optional-subjects"></div>
+        </div>
+
         <button type="submit" class="btn btn-navy">Save</button>
         <button type="submit" name="save_add_another" value="1" class="btn btn-outline-navy">Save & Add Another</button>
         <a href="{% url 'student_list' %}" class="btn btn-outline-secondary">Cancel</a>
@@ -62,5 +72,90 @@
     if (institutionSelect.value) {
         populateClasses(institutionSelect.value, currentClassValue);
     }
+
+    // ---- Mandatory / Optional subject checklist ----
+    const groupSelect = document.getElementById('id_group');
+    const religionInput = document.getElementById('id_religion');
+    const subjectsPanel = document.getElementById('subjects-panel');
+    const subjectsLoading = document.getElementById('subjects-loading');
+    const subjectsEmpty = document.getElementById('subjects-empty');
+    const mandatoryBox = document.getElementById('mandatory-subjects');
+    const conditionalBox = document.getElementById('conditional-subjects');
+    const optionalBox = document.getElementById('optional-subjects');
+    const preChosenIds = new Set([{{ chosen_requirement_ids|join:"," }}]);
+
+    function loadSubjects() {
+        const institutionId = institutionSelect.value;
+        const admissionClass = classSelect.value;
+        if (!institutionId || !admissionClass) {
+            subjectsPanel.style.display = 'none';
+            return;
+        }
+        subjectsPanel.style.display = '';
+        subjectsLoading.style.display = '';
+        subjectsEmpty.style.display = 'none';
+        mandatoryBox.innerHTML = '';
+        conditionalBox.innerHTML = '';
+        optionalBox.innerHTML = '';
+
+        const params = new URLSearchParams({
+            institution: institutionId,
+            admission_class: admissionClass,
+            group: groupSelect ? groupSelect.value : '',
+            religion: religionInput ? religionInput.value : '',
+        });
+
+        fetch("{% url 'subject_requirements_json' %}?" + params.toString())
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                subjectsLoading.style.display = 'none';
+                const hasAny = data.mandatory.length || data.conditional.length || Object.keys(data.optional_groups).length;
+                subjectsEmpty.style.display = hasAny ? 'none' : '';
+
+                data.mandatory.forEach(function(subj) {
+                    mandatoryBox.insertAdjacentHTML('beforeend',
+                        '<div class="form-check">' +
+                        '<input class="form-check-input" type="checkbox" checked disabled>' +
+                        '<input type="hidden" name="requirement_ids" value="' + subj.requirement_id + '">' +
+                        '<label class="form-check-label">' + subj.name + ' (' + subj.code + ') — Mandatory</label>' +
+                        '</div>');
+                });
+
+                data.conditional.forEach(function(subj) {
+                    conditionalBox.insertAdjacentHTML('beforeend',
+                        '<div class="form-check">' +
+                        '<input class="form-check-input" type="checkbox" checked disabled>' +
+                        '<input type="hidden" name="requirement_ids" value="' + subj.requirement_id + '">' +
+                        '<label class="form-check-label">' + subj.name + ' (' + subj.code + ') — Auto-added</label>' +
+                        '</div>');
+                });
+
+                Object.keys(data.optional_groups).forEach(function(key) {
+                    const options = data.optional_groups[key];
+                    const groupName = 'optional_group_' + key;
+                    let html = '<div class="mb-2"><div class="small text-muted">Choose one (' + key + '):</div>';
+                    options.forEach(function(subj) {
+                        const checked = preChosenIds.has(subj.requirement_id) ? 'checked' : '';
+                        html += '<div class="form-check">' +
+                            '<input class="form-check-input" type="radio" name="' + groupName + '" ' +
+                            'value="' + subj.requirement_id + '" ' + checked + ' ' +
+                            'onchange="document.getElementById(\'opt_hidden_' + groupName + '\').value = this.value;">' +
+                            '<label class="form-check-label">' + subj.name + ' (' + subj.code + ')</label>' +
+                            '</div>';
+                    });
+                    const preselected = options.find(function(o) { return preChosenIds.has(o.requirement_id); });
+                    html += '<input type="hidden" id="opt_hidden_' + groupName + '" name="requirement_ids" value="' + (preselected ? preselected.requirement_id : '') + '">';
+                    html += '</div>';
+                    optionalBox.insertAdjacentHTML('beforeend', html);
+                });
+            });
+    }
+
+    [institutionSelect, groupSelect, religionInput].forEach(function(el) {
+        if (el) { el.addEventListener('change', loadSubjects); }
+    });
+    // Class list is repopulated on institution change, so re-run after that settles.
+    classSelect.addEventListener('change', function() { setTimeout(loadSubjects, 50); });
+    if (institutionSelect.value && classSelect.value) { loadSubjects(); }
 </script>
 {% endblock %}

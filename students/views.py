@@ -9,7 +9,7 @@ from .models import (
     Student, Subject, Institution, InstitutionAccess, TransferCertificate, Certificate,
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
     Employee, EmployeeStatusLog, MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
-    PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
+    PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement, StudentSubjectChoice,
 )
 from .forms import (
     StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm,
@@ -673,6 +673,7 @@ def add_student(request):
                 student = form.save(commit=False)
                 student.created_by = request.user
                 student.save()
+                save_student_subject_choices(student, request.POST.getlist('requirement_ids'))
                 messages.success(request, f"Student added — ID: {student.student_id}")
                 if 'save_add_another' in request.POST:
                     url = reverse('add_student')
@@ -703,6 +704,7 @@ def edit_student(request, pk):
         form = StudentForm(request.POST, instance=student)
         if form.is_valid():
             form.save()
+            save_student_subject_choices(student, request.POST.getlist('requirement_ids'))
             messages.success(request, "Student information updated.")
             url = reverse('student_list')
             if student.institution_id:
@@ -712,7 +714,12 @@ def edit_student(request, pk):
             messages.error(request, "There are errors in the form — please check the fields below.")
     else:
         form = StudentForm(instance=student)
-    return render(request, 'students/add_student.html', {'form': form, 'student': student})
+    chosen_requirement_ids = list(
+        StudentSubjectChoice.objects.filter(student=student).values_list('requirement_id', flat=True)
+    )
+    return render(request, 'students/add_student.html', {
+        'form': form, 'student': student, 'chosen_requirement_ids': chosen_requirement_ids,
+    })
 
 
 @login_required
@@ -784,6 +791,23 @@ def delete_subject(request, pk):
     return render(request, 'students/delete_subject.html', {'subject': subject})
 
 # ---------------- Subject Requirement Views ----------------
+
+def save_student_subject_choices(student, requirement_ids):
+    """Replace a student's SubjectRequirement selections (mandatory, conditional,
+    and chosen optional subjects) with the given requirement ids. Ids that don't
+    belong to the student's institution/class are silently ignored."""
+    valid_ids = SubjectRequirement.objects.filter(
+        pk__in=requirement_ids,
+        institution=student.institution,
+        admission_class=str(student.admission_class),
+    ).values_list('pk', flat=True)
+    StudentSubjectChoice.objects.filter(student=student).exclude(requirement_id__in=valid_ids).delete()
+    existing_ids = set(StudentSubjectChoice.objects.filter(student=student).values_list('requirement_id', flat=True))
+    StudentSubjectChoice.objects.bulk_create([
+        StudentSubjectChoice(student=student, requirement_id=req_id)
+        for req_id in valid_ids if req_id not in existing_ids
+    ])
+
 
 def get_applicable_subjects(institution, admission_class, group='', religion=''):
     """
