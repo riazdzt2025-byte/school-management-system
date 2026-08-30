@@ -1,1 +1,19 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Change Employee Status</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light"><main class="card p-4 mx-auto mt-5" style="max-width:560px"><h1>Change Status</h1><p>{{ employee.name }} - Current: <strong>{{ employee.get_status_display }}</strong></p><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Update Status</button> <a href="{% url 'employee_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
+{% extends 'students/base.html' %}
+
+{% block title %}Change Status - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h1>Change Status</h1></div>
+</div>
+
+<div class="table-card p-4">
+    <p>{{ employee.name }} - Current: <strong>{{ employee.get_status_display }}</strong></p>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-navy">Update Status</button>
+        <a href="{% url 'employee_list' %}" class="btn btn-outline-navy">Cancel</a>
+    </form>
+</div>
+{% endblock %}

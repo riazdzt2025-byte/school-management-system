@@ -1,1 +1,18 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Voucher</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light"><main class="card p-4 mx-auto mt-5" style="max-width:650px"><h1>{% if voucher %}Edit{% else %}New{% endif %} Voucher</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Save</button> <a href="{% url 'voucher_list' %}" class="btn btn-outline-secondary">Cancel</a></form></main></body></html>
+{% extends 'students/base.html' %}
+
+{% block title %}{% if voucher %}Edit{% else %}New{% endif %} Voucher - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h1>{% if voucher %}Edit{% else %}New{% endif %} Voucher</h1></div>
+</div>
+
+<div class="table-card p-4">
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-navy">Save</button>
+        <a href="{% url 'voucher_list' %}" class="btn btn-outline-navy">Cancel</a>
+    </form>
+</div>
+{% endblock %}

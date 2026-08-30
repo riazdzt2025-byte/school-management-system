@@ -1,37 +1,39 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Salary Sheets</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light p-4">
-<main class="container">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>Salary Sheets</h1>
-        {% if perms.students.add_salarysheet %}<a href="{% url 'add_salary_sheet' %}" class="btn btn-primary">+ Add Salary</a>{% endif %}
-    </div>
-    <div class="card">
-        <table class="table table-striped mb-0">
-            <thead class="table-dark"><tr><th>Employee</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr></thead>
-            <tbody>
+{% extends 'students/base.html' %}
+
+{% block title %}Salary Sheets - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h1>Salary Sheets</h1></div>
+    {% if perms.students.add_salarysheet %}
+    <a href="{% url 'add_salary_sheet' %}" class="btn btn-navy">+ Add Salary</a>
+    {% endif %}
+</div>
+
+<div class="table-card">
+    <table class="table table-striped mb-0">
+        <thead>
+            <tr><th>Employee</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr>
+        </thead>
+        <tbody>
             {% for salary in salaries %}
-                <tr>
-                    <td>{{ salary.employee.name }}</td>
-                    <td>{{ salary.month }}</td>
-                    <td>৳ {{ salary.amount }}</td>
-                    <td>{{ salary.date }}</td>
-                    <td>{{ salary.get_status_display }}</td>
-                    <td>{{ salary.created_by.username|default:'-' }}</td>
-                    <td>{% if perms.students.change_salarysheet %}<a href="{% url 'edit_salary_sheet' salary.pk %}">Edit</a>{% endif %} {% if perms.students.delete_salarysheet %}<a href="{% url 'delete_salary_sheet' salary.pk %}" class="text-danger">Delete</a>{% endif %}</td>
-                </tr>
+            <tr>
+                <td>{{ salary.employee.name }}</td>
+                <td>{{ salary.month }}</td>
+                <td>৳ {{ salary.amount }}</td>
+                <td>{{ salary.date }}</td>
+                <td>{{ salary.get_status_display }}</td>
+                <td>{{ salary.created_by.username|default:'-' }}</td>
+                <td>
+                    {% if perms.students.change_salarysheet %}<a href="{% url 'edit_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-navy">Edit</a>{% endif %}
+                    {% if perms.students.delete_salarysheet %}<a href="{% url 'delete_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
+                </td>
+            </tr>
             {% empty %}
-                <tr><td colspan="7" class="text-center py-4">No salary sheets.</td></tr>
+            <tr><td colspan="7" class="text-center py-4">No salary sheets.</td></tr>
             {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    <a href="{% url 'finance_dashboard' %}" class="btn btn-outline-secondary mt-3">Back</a>
-</main>
-</body>
-</html>
+        </tbody>
+    </table>
+</div>
+<a href="{% url 'finance_dashboard' %}" class="btn btn-outline-navy mt-3">Back</a>
+{% endblock %}
