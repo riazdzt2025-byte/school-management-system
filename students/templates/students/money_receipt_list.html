@@ -1,1 +1,49 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Money Receipts</title><link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light p-4"><main class="container"><div class="d-flex justify-content-between mb-4"><h1>Money Receipts</h1>{% if perms.students.add_moneyreceipt %}<a href="{% url 'add_money_receipt' %}" class="btn btn-primary">+ Add Receipt</a>{% endif %}</div><div class="card"><table class="table table-striped mb-0"><thead class="table-dark"><tr><th>Receipt</th><th>Student</th><th>Purpose</th><th>Amount</th><th>Date</th><th>Entered By</th><th>Action</th></tr></thead><tbody>{% for r in receipts %}<tr><td>{{ r.receipt_no }}</td><td>{{ r.student.name }}</td><td>{{ r.purpose }}</td><td>৳ {{ r.amount }}</td><td>{{ r.date }}</td><td>{{ r.created_by.username|default:'-' }}</td><td>{% if perms.students.change_moneyreceipt %}<a href="{% url 'edit_money_receipt' r.pk %}">Edit</a>{% endif %} {% if perms.students.delete_moneyreceipt %}<a href="{% url 'delete_money_receipt' r.pk %}" class="text-danger">Delete</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="7" class="text-center py-4">No receipts.</td></tr>{% endfor %}</tbody></table></div><a href="{% url 'finance_dashboard' %}" class="btn btn-outline-secondary mt-3">Back</a></main></body></html>
+{% extends 'students/base.html' %}
+
+{% block title %}Money Receipts - Principal Kazi Faruky School And College{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Money Receipts</h1>
+        <div class="subtitle">All student payment receipts</div>
+    </div>
+    {% if perms.students.add_moneyreceipt %}
+        <a href="{% url 'add_money_receipt' %}" class="btn btn-navy"><i class="bi bi-plus-lg me-1"></i>Add Receipt</a>
+    {% endif %}
+</div>
+
+<div class="table-card">
+    <table class="table table-striped mb-0">
+        <thead>
+            <tr>
+                <th>Receipt</th>
+                <th>Student</th>
+                <th>Purpose</th>
+                <th>Amount</th>
+                <th>Date</th>
+                <th>Entered By</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in receipts %}
+            <tr>
+                <td>{{ r.receipt_no }}</td>
+                <td>{{ r.student.name }}</td>
+                <td>{{ r.purpose }}</td>
+                <td>৳ {{ r.amount }}</td>
+                <td>{{ r.date }}</td>
+                <td>{{ r.created_by.username|default:'-' }}</td>
+                <td>
+                    {% if perms.students.change_moneyreceipt %}<a href="{% url 'edit_money_receipt' r.pk %}">Edit</a>{% endif %}
+                    {% if perms.students.delete_moneyreceipt %}<a href="{% url 'delete_money_receipt' r.pk %}" class="text-danger ms-2">Delete</a>{% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center py-4">No receipts.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

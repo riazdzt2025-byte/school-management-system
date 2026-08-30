@@ -124,7 +124,7 @@ class DiscontinueStudentForm(forms.Form):
 
 class ExcelImportForm(forms.Form):
     excel_file = forms.FileField(
-        label="Excel ফাইল নির্বাচন করুন (.xlsx)",
+        label="Select Excel File (.xlsx)",
         widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
     )
 
