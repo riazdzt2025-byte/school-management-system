@@ -1,11 +1,12 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.contrib.auth import authenticate, login
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q
 from django.views.decorators.http import require_POST
 from .models import (
-    Student, Subject, Institution, TransferCertificate, Certificate,
+    Student, Subject, Institution, InstitutionAccess, TransferCertificate, Certificate,
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
     Employee, EmployeeStatusLog, MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
@@ -40,25 +41,96 @@ def _is_admin(user):
     return user.is_superuser or user.is_staff
 
 
+def _selected_institution_for_request(request):
+    if _is_admin(request.user):
+        return None
+
+    institution_id = request.session.get('selected_institution_id')
+    department = request.session.get('selected_department') or 'Office'
+    if not institution_id:
+        return None
+
+    institution = get_object_or_404(Institution, pk=institution_id)
+    if not InstitutionAccess.objects.filter(
+        user=request.user,
+        institution=institution,
+        department=department,
+        is_active=True,
+    ).exists():
+        return None
+    return institution
+
+
 def _filter_qs_for_user(qs, user):
     if _is_admin(user):
         return qs
     return qs.none()
 
 
+def _filter_by_selected_institution(request, qs, field_name='institution'):
+    institution = _selected_institution_for_request(request)
+    if institution is None:
+        return qs
+    return qs.filter(**{field_name: institution})
+
+
+def institution_login(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+
+    cards = InstitutionAccess.objects.select_related('institution', 'user').order_by('institution__name', 'department')
+    if request.method == 'POST':
+        username = (request.POST.get('username') or '').strip()
+        password = request.POST.get('password') or ''
+        institution_id = request.POST.get('institution_id')
+        department = request.POST.get('department') or ''
+
+        user = authenticate(request, username=username, password=password)
+        access = None
+        if user and (user.is_superuser or user.is_staff):
+            access = {'institution_id': institution_id, 'department': department or 'Office'}
+        elif user:
+            access = InstitutionAccess.objects.filter(
+                user=user,
+                institution_id=institution_id,
+                department=department,
+                is_active=True,
+            ).select_related('institution').first()
+
+        if user is not None and (user.is_superuser or user.is_staff or access is not None):
+            login(request, user)
+            request.session['selected_institution_id'] = str(institution_id) if institution_id else ''
+            request.session['selected_department'] = department or 'Office'
+            return redirect('dashboard')
+
+        messages.error(request, 'Invalid username, password, or institution access.')
+
+    return render(request, 'students/login.html', {'cards': cards})
+
+
 @login_required
 def dashboard(request):
-    total_students = Student.objects.filter(status='ACTIVE').count()
+    selected_institution_id = request.session.get('selected_institution_id')
+    selected_department = request.session.get('selected_department')
+    institution = _selected_institution_for_request(request)
+
+    students_qs = Student.objects.filter(status='ACTIVE')
+    if institution is not None:
+        students_qs = students_qs.filter(institution=institution)
+
+    total_students = students_qs.count()
     total_subjects = Subject.objects.count()
     total_institutions = Institution.objects.count()
-    classes = Student.objects.filter(status='ACTIVE').values_list('admission_class', flat=True).distinct().order_by('admission_class')
-    sessions = Student.objects.filter(status='ACTIVE').values_list('admission_year', flat=True).distinct().order_by('-admission_year')
+    classes = students_qs.values_list('admission_class', flat=True).distinct().order_by('admission_class')
+    sessions = students_qs.values_list('admission_year', flat=True).distinct().order_by('-admission_year')
     return render(request, 'students/dashboard.html', {
         'total_students': total_students,
         'total_subjects': total_subjects,
         'total_institutions': total_institutions,
         'classes': classes,
         'sessions': sessions,
+        'selected_institution': institution,
+        'selected_department': selected_department,
     })
 
 
@@ -271,11 +343,13 @@ def employee_list(request):
     institutions = Institution.objects.all().order_by('name')
     institution_id = request.GET.get('institution')
     status = request.GET.get('status')
-    institution = None
+    institution = _selected_institution_for_request(request)
 
     employees = Employee.objects.all().order_by('name')
     if institution_id:
         institution = get_object_or_404(Institution, pk=institution_id)
+        employees = employees.filter(institution=institution)
+    elif institution is not None:
         employees = employees.filter(institution=institution)
     if status:
         employees = employees.filter(status=status)
@@ -305,21 +379,25 @@ def student_list(request):
         for inst in institutions
     }
 
-    institution = None
+    institution = _selected_institution_for_request(request)
     admission_class = request.GET.get('admission_class')
     section = request.GET.get('section')
     institution_id = request.GET.get('institution')
     show_filter_modal = False
 
     qs = Student.objects.all()
+    if institution is not None:
+        qs = qs.filter(institution=institution)
+    elif institution_id:
+        institution = get_object_or_404(Institution, pk=institution_id)
+        qs = qs.filter(institution=institution)
     if not _is_admin(request.user):
         qs = qs.filter(created_by=request.user)
 
     if request.GET.get('all') == '1':
         students = list(qs)
-    elif institution_id:
-        institution = get_object_or_404(Institution, pk=institution_id)
-        qs = qs.filter(institution=institution)
+    elif institution_id or institution is not None:
+        qs = qs.filter(institution=institution) if institution is not None else qs
         if admission_class:
             qs = qs.filter(admission_class=admission_class)
         if section:
@@ -815,10 +893,11 @@ def download_ssc_import_template(request):
 @login_required
 def ssc_registration_list(request):
     registrations = SSCRegistration.objects.select_related('student', 'board_result').all()
+    registrations = _filter_by_selected_institution(request, registrations, 'student__institution')
     session = request.GET.get('session')
     if session:
         registrations = registrations.filter(session=session)
-    sessions = SSCRegistration.objects.values_list('session', flat=True).distinct().order_by('session')
+    sessions = registrations.values_list('session', flat=True).distinct().order_by('session')
     return render(request, 'students/ssc_registration_list.html', {
         'registrations': registrations,
         'sessions': sessions,
@@ -976,6 +1055,7 @@ def ssc_result_summary(request):
 @login_required
 def exam_list(request):
     exams = Exam.objects.all().order_by('-session', 'admission_class', 'name')
+    exams = _filter_by_selected_institution(request, exams)
     return render(request, 'students/exam_list.html', {'exams': exams})
 
 
@@ -1338,20 +1418,7 @@ def clear_seat_plan(request, pk):
         return redirect('seat_plan_list', pk=exam.pk)
     return render(request, 'students/clear_seat_plan.html', {'exam': exam})
 
-
 # ---------------- Employee (HR) Views ----------------
-
-@login_required
-def employee_list(request):
-    employees = Employee.objects.all().order_by('name')
-    status_filter = request.GET.get('status')
-    if status_filter:
-        employees = employees.filter(status=status_filter)
-    return render(request, 'students/employee_list.html', {
-        'employees': employees, 'status_filter': status_filter,
-        'status_choices': Employee.STATUS_CHOICES,
-    })
-
 
 @login_required
 @permission_required('students.add_employee', raise_exception=True)
@@ -1426,6 +1493,7 @@ def employee_status_history(request, pk):
 @login_required
 def money_receipt_list(request):
     receipts = MoneyReceipt.objects.select_related('student', 'created_by').all()
+    receipts = _filter_by_selected_institution(request, receipts, 'student__institution')
     return render(request, 'students/money_receipt_list.html', {'receipts': receipts})
 
 
@@ -1510,6 +1578,7 @@ def delete_voucher(request, pk):
 @login_required
 def salary_sheet_list(request):
     salaries = SalarySheet.objects.select_related('employee', 'created_by').all()
+    salaries = _filter_by_selected_institution(request, salaries, 'employee__institution')
     return render(request, 'students/salary_sheet_list.html', {'salaries': salaries})
 
 
@@ -1555,12 +1624,24 @@ def delete_salary_sheet(request, pk):
 
 @login_required
 def finance_dashboard(request):
-    total_collection = MoneyReceipt.objects.aggregate(total=Sum('amount'))['total'] or 0
-    total_voucher_paid = Voucher.objects.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
-    total_voucher_unpaid = Voucher.objects.filter(status='UNPAID').aggregate(total=Sum('amount'))['total'] or 0
-    total_salary_paid = SalarySheet.objects.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
-    total_salary_unpaid = SalarySheet.objects.filter(status='UNPAID').aggregate(total=Sum('amount'))['total'] or 0
-    pending_applications = AdmissionApplication.objects.filter(status='ACCOUNT_PENDING').select_related('institution')[:10]
+    institution = _selected_institution_for_request(request)
+    receipts_qs = MoneyReceipt.objects.select_related('student')
+    voucher_qs = Voucher.objects.all()
+    salary_qs = SalarySheet.objects.select_related('employee')
+    if institution is not None:
+        receipts_qs = receipts_qs.filter(student__institution=institution)
+        voucher_qs = voucher_qs.filter()
+        salary_qs = salary_qs.filter(employee__institution=institution)
+
+    total_collection = receipts_qs.aggregate(total=Sum('amount'))['total'] or 0
+    total_voucher_paid = voucher_qs.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
+    total_voucher_unpaid = voucher_qs.filter(status='UNPAID').aggregate(total=Sum('amount'))['total'] or 0
+    total_salary_paid = salary_qs.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
+    total_salary_unpaid = salary_qs.filter(status='UNPAID').aggregate(total=Sum('amount'))['total'] or 0
+    pending_applications = AdmissionApplication.objects.filter(status='ACCOUNT_PENDING').select_related('institution')
+    if institution is not None:
+        pending_applications = pending_applications.filter(institution=institution)
+    pending_applications = pending_applications[:10]
     return render(request, 'students/finance_dashboard.html', {
         'finance_cards': [
             ('Total Collection', total_collection),
@@ -1573,8 +1654,8 @@ def finance_dashboard(request):
         'total_voucher_unpaid': total_voucher_unpaid, 'total_salary_paid': total_salary_paid,
         'total_salary_unpaid': total_salary_unpaid,
         'net_balance': total_collection - total_voucher_paid - total_salary_paid,
-        'recent_receipts': MoneyReceipt.objects.select_related('student').all()[:5],
-        'recent_vouchers': Voucher.objects.all()[:5],
+        'recent_receipts': receipts_qs[:5],
+        'recent_vouchers': voucher_qs[:5],
         'pending_applications': pending_applications,
     })
 

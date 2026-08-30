@@ -1,46 +1,202 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Login - Principal Kazi Faruky School And College</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Professor Kazi Faruky Kallan Trust</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            background: linear-gradient(135deg, #0f2d52 0%, #1f4d7a 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 32px 16px;
         }
-        .login-card {
-            background: white;
-            border-radius: 12px;
-            padding: 40px;
-            max-width: 400px;
-            width: 100%;
+        .trust-shell {
+            width: min(1100px, 100%);
+            background: rgba(255,255,255,0.96);
+            border-radius: 18px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+            overflow: hidden;
+        }
+        .brand-band {
+            background: linear-gradient(135deg, #0f2d52 0%, #1b3d63 100%);
+            color: #fff;
+            padding: 32px 28px;
+        }
+        .brand-band h1 {
+            font-size: clamp(1.6rem, 2vw, 2.4rem);
+            margin: 0;
+            font-weight: 700;
+        }
+        .brand-band p {
+            margin: 8px 0 0;
+            opacity: 0.9;
+        }
+        .institution-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 18px;
+            padding: 28px;
+            background: #f5f7fa;
+        }
+        .institution-card {
+            background: #fff;
+            border: 1px solid #e7edf7;
+            border-radius: 16px;
+            padding: 18px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+        }
+        .institution-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 22px rgba(15, 45, 82, 0.08);
+        }
+        .institution-card.active {
+            border-color: #0f2d52;
+            box-shadow: 0 8px 18px rgba(15, 45, 82, 0.09);
+        }
+        .institution-card h3 {
+            margin: 0 0 8px;
+            font-size: 1.3rem;
+            color: #0f2d52;
+        }
+        .institution-card small {
+            color: #5a6d87;
+            display: block;
+            margin-bottom: 12px;
+        }
+        .department-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .department-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            background: #eef3fb;
+            color: #244d75;
+            border: 1px solid transparent;
+        }
+        .department-pill.active {
+            background: #0f2d52;
+            color: #fff;
+        }
+        .login-form {
+            display: none;
+            background: #fff;
+            border-top: 1px solid #e9eef6;
+            padding: 28px;
+        }
+        .login-form.active {
+            display: block;
+        }
+        .save-user-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 14px;
+            color: #355980;
+            font-size: 0.9rem;
+        }
+        .alert-danger {
+            margin-bottom: 16px;
         }
     </style>
 </head>
 <body>
-<div class="login-card shadow">
-    <h3 class="text-center mb-4">Principal Kazi Faruky School And College</h3>
-    <p class="text-center text-muted mb-4">Login to continue</p>
-
-    {% if form.errors %}
-    <div class="alert alert-danger">Incorrect username or password.</div>
-    {% endif %}
-
-    <form method="POST">
-        {% csrf_token %}
-        <div class="mb-3">
-            <label class="form-label">Username</label>
-            <input type="text" name="username" class="form-control" required autofocus>
+    <div class="trust-shell">
+        <div class="brand-band">
+            <h1>Professor Kazi Faruky Kallan Trust</h1>
+            <p>Choose your institution and department to continue.</p>
         </div>
-        <div class="mb-3">
-            <label class="form-label">Password</label>
-            <input type="password" name="password" class="form-control" required>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-danger m-3 mb-0">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        <div class="institution-grid">
+            {% for access in cards %}
+                <div class="institution-card{% if forloop.first %} active{% endif %}" data-institution-id="{{ access.institution.id }}" data-department="{{ access.department }}">
+                    <h3>{{ access.institution.name }}</h3>
+                    <small>Institution access</small>
+                    <div class="department-pills">
+                        <span class="department-pill active">{{ access.department }}</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100 select-institution">Open Access</button>
+                </div>
+            {% empty %}
+                <div class="alert alert-warning w-100 mb-0">No institution access has been assigned for this account yet.</div>
+            {% endfor %}
         </div>
-        <button type="submit" class="btn btn-primary w-100">Login</button>
-    </form>
-</div>
+
+        <form method="POST" class="login-form active" id="loginForm">
+            {% csrf_token %}
+            <input type="hidden" name="institution_id" id="institution_id" value="{{ cards.0.institution.id|default:'' }}">
+            <input type="hidden" name="department" id="department" value="{{ cards.0.department|default:'Office' }}">
+
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Username</label>
+                    <input type="text" name="username" id="username" class="form-control" required autocomplete="username">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Password</label>
+                    <input type="password" name="password" id="password" class="form-control" required autocomplete="current-password">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                </div>
+            </div>
+
+            <div class="save-user-row">
+                <input type="checkbox" id="saveUsername" name="save_username" value="1">
+                <label for="saveUsername">Save username</label>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const cards = document.querySelectorAll('.institution-card');
+        const loginForm = document.getElementById('loginForm');
+        const institutionIdField = document.getElementById('institution_id');
+        const departmentField = document.getElementById('department');
+        const usernameField = document.getElementById('username');
+        const saveBox = document.getElementById('saveUsername');
+
+        const savedUsernameKey = 'school_trust_saved_username';
+        const savedUsername = localStorage.getItem(savedUsernameKey);
+        if (savedUsername) {
+            usernameField.value = savedUsername;
+            saveBox.checked = true;
+        }
+
+        cards.forEach((card) => {
+            card.addEventListener('click', function () {
+                cards.forEach((item) => item.classList.remove('active'));
+                this.classList.add('active');
+                const institutionId = this.dataset.institutionId;
+                const department = this.dataset.department;
+                institutionIdField.value = institutionId;
+                departmentField.value = department;
+            });
+        });
+
+        loginForm.addEventListener('submit', function () {
+            if (saveBox.checked) {
+                localStorage.setItem(savedUsernameKey, usernameField.value.trim());
+            } else {
+                localStorage.removeItem(savedUsernameKey);
+            }
+        });
+    </script>
 </body>
 </html>

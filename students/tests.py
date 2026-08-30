@@ -14,8 +14,8 @@ except ModuleNotFoundError:
 	Workbook = None
 
 from .models import (
-	AdmissionApplication, AuditLog, Exam, ExamMark, Institution, MoneyReceipt,
-	PromotionBatch, Student, Subject,
+	AdmissionApplication, AuditLog, Exam, ExamMark, Institution, InstitutionAccess,
+	MoneyReceipt, PromotionBatch, Student, Subject,
 )
 
 
@@ -147,6 +147,64 @@ class ExamWorkflowTests(TestCase):
 		self.assertContains(response, 'not a member of this exam class/section')
 		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 0)
 
+
+
+class InstitutionAwareLoginTests(TestCase):
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Trust Campus', classes='6,7,8')
+		self.other_institution = Institution.objects.create(name='City Campus', classes='6,7,8')
+		self.user = get_user_model().objects.create_user(username='office_user', password='password')
+		InstitutionAccess.objects.create(user=self.user, institution=self.institution, department='Office')
+		InstitutionAccess.objects.create(user=self.user, institution=self.other_institution, department='Exam')
+
+	def test_login_page_lists_only_accessible_institutions(self):
+		response = self.client.get(reverse('login'))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Trust Campus')
+		self.assertContains(response, 'City Campus')
+		self.assertContains(response, 'Office')
+		self.assertContains(response, 'Exam')
+
+	def test_selected_institution_and_department_are_saved_on_login(self):
+		response = self.client.post(reverse('login'), {
+			'username': 'office_user',
+			'password': 'password',
+			'institution_id': str(self.institution.pk),
+			'department': 'Office',
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertEqual(self.client.session.get('selected_institution_id'), str(self.institution.pk))
+		self.assertEqual(self.client.session.get('selected_department'), 'Office')
+
+
+class UIConsistencyTests(TestCase):
+	def setUp(self):
+		self.user = get_user_model().objects.create_user(username='ui_user', password='password')
+		self.client.force_login(self.user)
+
+	def test_dashboard_excludes_quick_access_section_and_duplicate_logout(self):
+		response = self.client.get(reverse('dashboard'))
+		self.assertEqual(response.status_code, 200)
+		self.assertNotContains(response, 'Quick Search')
+		self.assertNotContains(response, 'Quick Access')
+		self.assertEqual(response.content.decode('utf-8').count('Logout'), 1)
+
+	def test_selected_institution_filters_student_list(self):
+		inst_a = Institution.objects.create(name='Alpha Campus', classes='6,7')
+		inst_b = Institution.objects.create(name='Beta Campus', classes='6,7')
+		InstitutionAccess.objects.create(user=self.user, institution=inst_a, department='Office')
+		InstitutionAccess.objects.create(user=self.user, institution=inst_b, department='Exam')
+		Student.objects.create(institution=inst_a, student_id='A001', name='Alpha Student', admission_class='6', section='A', admission_year=2026)
+		Student.objects.create(institution=inst_b, student_id='B001', name='Beta Student', admission_class='6', section='A', admission_year=2026)
+		session = self.client.session
+		session['selected_institution_id'] = str(inst_a.pk)
+		session['selected_department'] = 'Office'
+		session.save()
+
+		response = self.client.get(reverse('student_list'))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Alpha Student')
+		self.assertNotContains(response, 'Beta Student')
 
 
 class AdmissionApplicationWorkflowTests(TestCase):

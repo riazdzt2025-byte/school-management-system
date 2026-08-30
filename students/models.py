@@ -18,6 +18,34 @@ class Institution(models.Model):
         return self.name
 
 
+class InstitutionAccess(models.Model):
+    DEPARTMENT_CHOICES = [
+        ('Office', 'Office'),
+        ('Exam', 'Exam'),
+        ('Accounts', 'Accounts'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='institution_accesses',
+    )
+    institution = models.ForeignKey(
+        Institution,
+        on_delete=models.CASCADE,
+        related_name='institution_accesses',
+    )
+    department = models.CharField(max_length=30, choices=DEPARTMENT_CHOICES)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('user', 'institution', 'department')
+        ordering = ['institution__name', 'department']
+
+    def __str__(self):
+        return f"{self.user.username} -> {self.institution.name} ({self.department})"
+
+
 class Student(models.Model):
     GENDER_CHOICES = [
         ('M', 'Male'),

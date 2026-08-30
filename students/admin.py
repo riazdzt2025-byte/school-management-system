@@ -3,7 +3,7 @@ admin.site.site_header = "...... High School Administration"
 admin.site.site_title = "...... High School"
 admin.site.index_title = "School Management System"
 from .models import (
-    Student, Subject, StudentSubject, Institution, TransferCertificate, Certificate,
+    Student, Subject, StudentSubject, Institution, InstitutionAccess, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
@@ -24,6 +24,7 @@ class StudentAdmin(admin.ModelAdmin):
 admin.site.register(Student, StudentAdmin)
 admin.site.register(Subject)
 admin.site.register(Institution)
+admin.site.register(InstitutionAccess)
 admin.site.register(TransferCertificate)
 admin.site.register(Certificate)
 admin.site.register(SSCRegistration)
