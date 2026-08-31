@@ -176,6 +176,84 @@ def admission_application_list(request):
 
 
 @login_required
+@permission_required('students.view_admissionapplication', raise_exception=True)
+@_require_department(('Office', 'Accounts'))
+def download_admission_sheet(request):
+    """Export the Admission Applications list as an Excel workbook — one
+    sheet per Institution, so 'all institutions' downloads a single file
+    a user can flip between. Honours the same Institution/status filters
+    as the Admission Applications list page."""
+    if openpyxl is None:
+        messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
+        return redirect('admission_application_list')
+
+    applications = AdmissionApplication.objects.select_related(
+        'institution', 'enrolled_student'
+    ).order_by('institution__name', 'requested_class', 'applicant_name')
+    applications = _filter_by_selected_institution(request, applications)
+    status = request.GET.get('status')
+    if status:
+        applications = applications.filter(status=status)
+
+    by_institution = defaultdict(list)
+    for application in applications:
+        by_institution[application.institution.name].append(application)
+
+    headers = [
+        "Application No.", "Applicant Name", "Date of Birth", "Gender", "Religion",
+        "Contact No", "Address", "Guardian Name", "Relation", "Guardian Contact No",
+        "Guardian Address", "Class", "Group", "Section", "Session", "Status",
+        "Payment Amount", "Payment Date", "Enrolled Student ID", "Submitted At",
+    ]
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    def sheet_name_for(name):
+        # Excel sheet names: 31 chars max, no : \ / ? * [ ]
+        safe = "".join(c for c in name if c not in ':\\/?*[]').strip()
+        return (safe or "Institution")[:31]
+
+    institution_names = sorted(by_institution.keys()) or ["No Applications"]
+    for institution_name in institution_names:
+        sheet = wb.create_sheet(title=sheet_name_for(institution_name))
+        sheet.append(headers)
+        for application in by_institution.get(institution_name, []):
+            sheet.append([
+                application.application_number,
+                application.applicant_name,
+                application.date_of_birth.isoformat() if application.date_of_birth else "",
+                application.get_gender_display() if application.gender else "",
+                application.religion,
+                application.applicant_contact_no,
+                application.applicant_address,
+                application.guardian_name,
+                application.guardian_relation,
+                application.guardian_contact_no,
+                application.guardian_address,
+                application.requested_class,
+                application.get_requested_group_display() if application.requested_group else "",
+                application.requested_section,
+                application.session,
+                application.get_status_display(),
+                float(application.payment_amount),
+                application.payment_date.isoformat() if application.payment_date else "",
+                application.enrolled_student.student_id if application.enrolled_student else "",
+                timezone.localtime(application.submitted_at).strftime("%Y-%m-%d %H:%M"),
+            ])
+        for col in sheet.columns:
+            max_length = max((len(str(cell.value)) for cell in col if cell.value), default=8)
+            sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="admission_sheet.xlsx"'
+    wb.save(response)
+    return response
+
+
+@login_required
 @permission_required('students.add_admissionapplication', raise_exception=True)
 @_require_department('Office')
 def create_admission_application(request):

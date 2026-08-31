@@ -4,6 +4,7 @@ from . import views
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('admission/', views.admission_application_list, name='admission_application_list'),
+    path('admission/download-sheet/', views.download_admission_sheet, name='download_admission_sheet'),
     path('admission/new/', views.create_admission_application, name='admission'),
     path('admission/apply/', views.public_admission_apply, name='public_admission_apply'),
     path('admission/dropdown-options/', views.admission_dropdown_options, name='admission_dropdown_options'),
