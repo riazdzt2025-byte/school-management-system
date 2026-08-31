@@ -1,0 +1,1038 @@
+From e3f418e53d733e1a5513697d27f8052634a40b79 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sun, 30 Aug 2026 09:40:29 +0000
+Subject: [PATCH] Student & Subjects module: discontinue status, ID card,
+ test/marksheet actions, department-aware list filters, categorized subject
+ master list, and subject-requirement assignment UI
+
+- Add DISCONTINUED status (with reason/date) to Student, plus a confirm-page flow
+- Add a full printable Student ID Card (front/back)
+- Add a Test/Marksheet page per student linking to exam results and result cards
+- Wire the existing Group filter on the student list (was present in UI but unused)
+- Add a Department context filter (Office/Exam/Accounts) that changes which actions show
+- Add Subject.category (Compulsory/Optional/4th Subject/Vocational/Religion/Other)
+- Rebuild the Subjects page as a searchable, category-grouped list
+- Add a full Subject Assignment CRUD flow (SubjectRequirement) so institution/class/group
+  subject setup no longer requires the Django admin
+- Add a seed_subjects management command preloading common Bangladesh curriculum subjects
+---
+ .../templates/students/student_list.html      |  46 +++--
+ students/forms.py                             |  30 +++-
+ students/management/commands/seed_subjects.py |  69 +++++++
+ ...ptions_student_discontinued_at_and_more.py |  37 ++++
+ students/models.py                            |  16 ++
+ .../students/add_subject_requirement.html     |  28 +++
+ students/templates/students/base.html         |   1 +
+ .../students/delete_subject_requirement.html  |  24 +++
+ .../students/discontinue_student.html         |  26 +++
+ .../templates/students/id_card_print.html     | 100 +++++++++++
+ .../templates/students/student_exams.html     |  55 ++++++
+ .../students/student_list_filter.html         |  10 ++
+ students/templates/students/subject_list.html |  40 ++++-
+ .../students/subject_requirement_list.html    |  88 +++++++++
+ students/urls.py                              |   7 +
+ students/views.py                             | 168 +++++++++++++++++-
+ 16 files changed, 720 insertions(+), 25 deletions(-)
+ create mode 100644 students/management/commands/seed_subjects.py
+ create mode 100644 students/migrations/0019_alter_subject_options_student_discontinued_at_and_more.py
+ create mode 100644 students/templates/students/add_subject_requirement.html
+ create mode 100644 students/templates/students/delete_subject_requirement.html
+ create mode 100644 students/templates/students/discontinue_student.html
+ create mode 100644 students/templates/students/id_card_print.html
+ create mode 100644 students/templates/students/student_exams.html
+ create mode 100644 students/templates/students/subject_requirement_list.html
+
+diff --git a/school_system/templates/students/student_list.html b/school_system/templates/students/student_list.html
+index 763466f..d51637a 100644
+--- a/school_system/templates/students/student_list.html
++++ b/school_system/templates/students/student_list.html
+@@ -92,6 +92,8 @@
+                         <td>
+                             {% if student.status == 'TRANSFERRED' %}
+                             <span class="badge bg-secondary">Transferred</span>
++                            {% elif student.status == 'DISCONTINUED' %}
++                            <span class="badge bg-warning text-dark">Discontinued</span>
+                             {% else %}
+                             <span class="badge bg-success">Active</span>
+                             {% endif %}
+@@ -101,21 +103,39 @@
+                             {% if perms.students.change_student %}
+                             <a href="{% url 'edit_student' student.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
+                             {% endif %}
+-                            {% if student.status == 'TRANSFERRED' %}
+-                            <span class="badge bg-secondary">Transferred</span>
+-                            {% elif perms.students.add_transfercertificate %}
+-                            <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
+-                            {% endif %}
+-                            {% if perms.students.view_certificate %}
+-                            <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
+-                            {% endif %}
+-                            {% if student.admission_class in '9,10' %}
+-                            {% if student.ssc_registration %}
+-                            <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
+-                            {% elif perms.students.add_sscregistration %}
+-                            <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
++
++                            {% if selected_department == 'Exam' %}
++                            <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Test</a>
++                            <a href="{% url 'student_exams' student.pk %}" class="btn btn-sm btn-outline-primary">Marksheet</a>
+                             {% endif %}
++
++                            <a href="{% url 'student_id_card' student.pk %}" class="btn btn-sm btn-outline-secondary">ID Card</a>
++
++                            {% if selected_department != 'Exam' %}
++                                {% if student.status == 'TRANSFERRED' %}
++                                <span class="badge bg-secondary">Transferred</span>
++                                {% elif student.status == 'DISCONTINUED' %}
++                                <span class="badge bg-warning text-dark">Discontinued</span>
++                                {% else %}
++                                    {% if perms.students.add_transfercertificate %}
++                                    <a href="{% url 'issue_tc' student.pk %}" class="btn btn-sm btn-outline-dark">Issue TC</a>
++                                    {% endif %}
++                                    {% if perms.students.change_student %}
++                                    <a href="{% url 'discontinue_student' student.pk %}" class="btn btn-sm btn-outline-warning">Discontinue</a>
++                                    {% endif %}
++                                {% endif %}
++                                {% if perms.students.view_certificate %}
++                                <a href="{% url 'certificate_list' student.pk %}" class="btn btn-sm btn-outline-secondary">Certificates</a>
++                                {% endif %}
++                                {% if student.admission_class in '9,10' %}
++                                {% if student.ssc_registration %}
++                                <a href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}" class="btn btn-sm btn-outline-secondary">SSC</a>
++                                {% elif perms.students.add_sscregistration %}
++                                <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-sm btn-outline-dark">Register SSC</a>
++                                {% endif %}
++                                {% endif %}
+                             {% endif %}
++
+                             {% if perms.students.delete_student %}
+                             <a href="{% url 'delete_student' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                             {% endif %}
+diff --git a/students/forms.py b/students/forms.py
+index 099d266..e0086ae 100644
+--- a/students/forms.py
++++ b/students/forms.py
+@@ -1,6 +1,6 @@
+ from django import forms
+ from .models import (
+-    Student, Subject, TransferCertificate, Certificate,
++    Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
+     SSCRegistration, BoardResult,
+     Exam, SeatPlan,
+     Employee, MoneyReceipt, Voucher, SalarySheet,
+@@ -88,14 +88,40 @@ class AdmissionPaymentForm(forms.ModelForm):
+ class SubjectForm(forms.ModelForm):
+     class Meta:
+         model = Subject
+-        fields = ['code', 'name', 'full_marks']
++        fields = ['code', 'name', 'full_marks', 'category']
+         widgets = {
+             'code': forms.TextInput(attrs={'class': 'form-control'}),
+             'name': forms.TextInput(attrs={'class': 'form-control'}),
+             'full_marks': forms.NumberInput(attrs={'class': 'form-control'}),
++            'category': forms.Select(attrs={'class': 'form-select'}),
+         }
+ 
+ 
++class SubjectRequirementForm(forms.ModelForm):
++    class Meta:
++        model = SubjectRequirement
++        fields = [
++            'institution', 'admission_class', 'group', 'subject',
++            'requirement_type', 'optional_set_key', 'condition_religion',
++        ]
++        widgets = {
++            'institution': forms.Select(attrs={'class': 'form-select'}),
++            'admission_class': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 9, 10, 11, 12'}),
++            'group': forms.Select(attrs={'class': 'form-select'}),
++            'subject': forms.Select(attrs={'class': 'form-select'}),
++            'requirement_type': forms.Select(attrs={'class': 'form-select'}),
++            'optional_set_key': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. group-a (only for Optional)'}),
++            'condition_religion': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Islam (only for Conditional)'}),
++        }
++
++
++class DiscontinueStudentForm(forms.Form):
++    reason = forms.CharField(
++        required=False, label='Reason',
++        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
++    )
++
++
+ class ExcelImportForm(forms.Form):
+     excel_file = forms.FileField(
+         label="Excel ফাইল নির্বাচন করুন (.xlsx)",
+diff --git a/students/management/commands/seed_subjects.py b/students/management/commands/seed_subjects.py
+new file mode 100644
+index 0000000..dd60985
+--- /dev/null
++++ b/students/management/commands/seed_subjects.py
+@@ -0,0 +1,69 @@
++from django.core.management.base import BaseCommand
++from students.models import Subject
++
++
++# Pre-loaded, commonly-used subjects under the current Bangladesh national
++# curriculum (SSC/HSC level). Institutions can still add their own custom
++# subjects from the Subjects page if something here doesn't fit.
++SUBJECTS = [
++    # code, name, full_marks, category
++    ('BAN1', 'Bangla 1st Paper', 100, 'COMPULSORY'),
++    ('BAN2', 'Bangla 2nd Paper', 100, 'COMPULSORY'),
++    ('ENG1', 'English 1st Paper', 100, 'COMPULSORY'),
++    ('ENG2', 'English 2nd Paper', 100, 'COMPULSORY'),
++    ('MATH', 'General Mathematics', 100, 'COMPULSORY'),
++    ('ICT', 'Information & Communication Technology', 50, 'COMPULSORY'),
++    ('BGS', 'Bangladesh & Global Studies', 100, 'COMPULSORY'),
++    ('SCI-GEN', 'General Science', 100, 'COMPULSORY'),
++    ('CAREER', 'Career Education', 50, 'COMPULSORY'),
++    ('HPE', 'Health & Physical Education', 50, 'COMPULSORY'),
++    ('ART', 'Art & Culture', 50, 'COMPULSORY'),
++
++    ('PHY', 'Physics', 100, 'OPTIONAL'),
++    ('CHEM', 'Chemistry', 100, 'OPTIONAL'),
++    ('BIO', 'Biology', 100, 'OPTIONAL'),
++    ('HMATH', 'Higher Mathematics', 100, 'OPTIONAL'),
++    ('AGRI', 'Agriculture Studies', 100, 'OPTIONAL'),
++    ('ACC', 'Accounting', 100, 'OPTIONAL'),
++    ('BOM', 'Business Organization & Management', 100, 'OPTIONAL'),
++    ('FIN', 'Finance, Banking & Insurance', 100, 'OPTIONAL'),
++    ('ECO', 'Economics', 100, 'OPTIONAL'),
++    ('CIVICS', 'Civics & Good Governance', 100, 'OPTIONAL'),
++    ('HISTORY', 'History of Bangladesh & World Civilization', 100, 'OPTIONAL'),
++    ('GEO', 'Geography & Environment', 100, 'OPTIONAL'),
++    ('LOGIC', 'Logic', 100, 'OPTIONAL'),
++    ('SOC', 'Sociology', 100, 'OPTIONAL'),
++    ('PSY', 'Psychology', 100, 'OPTIONAL'),
++
++    ('ISLAM', 'Islam & Moral Education', 100, 'RELIGION'),
++    ('HINDU', 'Hindu Religion & Moral Education', 100, 'RELIGION'),
++    ('CHRIS', 'Christian Religion & Moral Education', 100, 'RELIGION'),
++    ('BUDDHIST', 'Buddhist Religion & Moral Education', 100, 'RELIGION'),
++
++    ('DCS', 'Computer & Information Technology (Vocational)', 100, 'VOCATIONAL'),
++    ('DEL', 'Electrical Works & Services (Vocational)', 100, 'VOCATIONAL'),
++    ('DCV', 'Civil Construction & Maintenance (Vocational)', 100, 'VOCATIONAL'),
++
++    ('ENG3', 'General Science (4th Subject)', 100, 'FOURTH'),
++    ('MATH4', 'Higher Mathematics (4th Subject)', 100, 'FOURTH'),
++    ('AGRI4', 'Agriculture Studies (4th Subject)', 100, 'FOURTH'),
++]
++
++
++class Command(BaseCommand):
++    help = "Load the pre-loaded Bangladesh-curriculum subject list into the Subject master list."
++
++    def handle(self, *args, **options):
++        created, skipped = 0, 0
++        for code, name, full_marks, category in SUBJECTS:
++            _, was_created = Subject.objects.get_or_create(
++                code=code,
++                defaults={'name': name, 'full_marks': full_marks, 'category': category},
++            )
++            if was_created:
++                created += 1
++            else:
++                skipped += 1
++        self.stdout.write(self.style.SUCCESS(
++            f"Seed complete: {created} subject(s) created, {skipped} already existed."
++        ))
+diff --git a/students/migrations/0019_alter_subject_options_student_discontinued_at_and_more.py b/students/migrations/0019_alter_subject_options_student_discontinued_at_and_more.py
+new file mode 100644
+index 0000000..b61b4ea
+--- /dev/null
++++ b/students/migrations/0019_alter_subject_options_student_discontinued_at_and_more.py
+@@ -0,0 +1,37 @@
++# Generated by Django 6.1 on 2026-08-30 09:39
++
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('students', '0018_admissionapplication_requested_group'),
++    ]
++
++    operations = [
++        migrations.AlterModelOptions(
++            name='subject',
++            options={'ordering': ['category', 'name']},
++        ),
++        migrations.AddField(
++            model_name='student',
++            name='discontinued_at',
++            field=models.DateTimeField(blank=True, null=True),
++        ),
++        migrations.AddField(
++            model_name='student',
++            name='discontinued_reason',
++            field=models.CharField(blank=True, max_length=255),
++        ),
++        migrations.AddField(
++            model_name='subject',
++            name='category',
++            field=models.CharField(choices=[('COMPULSORY', 'Compulsory Group'), ('OPTIONAL', 'Optional Group'), ('FOURTH', '4th Subject'), ('VOCATIONAL', 'Vocational'), ('RELIGION', 'Religion & Moral Education'), ('OTHER', 'Other')], default='OTHER', max_length=12),
++        ),
++        migrations.AlterField(
++            model_name='student',
++            name='status',
++            field=models.CharField(choices=[('ACTIVE', 'Active'), ('TRANSFERRED', 'Transferred'), ('DISCONTINUED', 'Discontinued')], default='ACTIVE', max_length=15),
++        ),
++    ]
+diff --git a/students/models.py b/students/models.py
+index 55e7bae..37d6925 100644
+--- a/students/models.py
++++ b/students/models.py
+@@ -86,8 +86,11 @@ class Student(models.Model):
+     STATUS_CHOICES = [
+         ('ACTIVE', 'Active'),
+         ('TRANSFERRED', 'Transferred'),
++        ('DISCONTINUED', 'Discontinued'),
+     ]
+     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='ACTIVE')
++    discontinued_at = models.DateTimeField(null=True, blank=True)
++    discontinued_reason = models.CharField(max_length=255, blank=True)
+ 
+     def save(self, *args, **kwargs):
+         if not self.admission_year:
+@@ -223,14 +226,27 @@ class AdmissionApplication(models.Model):
+ 
+ 
+ class Subject(models.Model):
++    CATEGORY_CHOICES = [
++        ('COMPULSORY', 'Compulsory Group'),
++        ('OPTIONAL', 'Optional Group'),
++        ('FOURTH', '4th Subject'),
++        ('VOCATIONAL', 'Vocational'),
++        ('RELIGION', 'Religion & Moral Education'),
++        ('OTHER', 'Other'),
++    ]
++
+     code = models.CharField(max_length=10, unique=True)
+     name = models.CharField(max_length=100)
+     full_marks = models.IntegerField(default=100)
++    category = models.CharField(max_length=12, choices=CATEGORY_CHOICES, default='OTHER')
+     created_by = models.ForeignKey(
+         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+         null=True, blank=True, related_name='subjects_created'
+     )
+ 
++    class Meta:
++        ordering = ['category', 'name']
++
+     def __str__(self):
+         return self.name
+ 
+diff --git a/students/templates/students/add_subject_requirement.html b/students/templates/students/add_subject_requirement.html
+new file mode 100644
+index 0000000..4ec7628
+--- /dev/null
++++ b/students/templates/students/add_subject_requirement.html
+@@ -0,0 +1,28 @@
++{% extends 'students/base.html' %}
++
++{% block title %}{% if requirement %}Edit{% else %}Assign{% endif %} Subject - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>{% if requirement %}Edit Subject Assignment{% else %}Assign Subject{% endif %}</h1>
++        <div class="subtitle">Choose a subject from the master list and pin it to an Institution + Class (+ Group)</div>
++    </div>
++</div>
++
++<div class="table-card p-4" style="max-width: 640px;">
++    <form method="POST">
++        {% csrf_token %}
++        {{ form.as_p }}
++        <div class="form-text mb-3">
++            Leave Group blank to apply to all groups. Use "Optional Set" to group subjects a student
++            picks one-of-from (e.g. all "group-a" rows show together as one choice). Use "Condition Religion"
++            only for Conditional subjects (e.g. Islam/Hindu/Christian Religious Studies).
++        </div>
++        <div class="d-flex gap-2">
++            <button type="submit" class="btn btn-navy">Save</button>
++            <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Cancel</a>
++        </div>
++    </form>
++</div>
++{% endblock %}
+diff --git a/students/templates/students/base.html b/students/templates/students/base.html
+index ca54421..b16601a 100644
+--- a/students/templates/students/base.html
++++ b/students/templates/students/base.html
+@@ -192,6 +192,7 @@
+             <a href="{% url 'admission_application_list' %}"><i class="bi bi-file-earmark-person-fill"></i> Admission</a>
+             <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
+             <a href="{% url 'subject_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
++            <a href="{% url 'subject_requirement_list' %}"><i class="bi bi-diagram-3-fill"></i> Subject Assignments</a>
+             <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+             <a href="{% url 'ssc_registration_list' %}"><i class="bi bi-file-earmark-text-fill"></i> SSC Registration</a>
+             <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> Certificates</a>
+diff --git a/students/templates/students/delete_subject_requirement.html b/students/templates/students/delete_subject_requirement.html
+new file mode 100644
+index 0000000..3885a38
+--- /dev/null
++++ b/students/templates/students/delete_subject_requirement.html
+@@ -0,0 +1,24 @@
++{% extends 'students/base.html' %}
++
++{% block title %}Remove Subject Assignment - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>Remove Subject Assignment</h1>
++        <div class="subtitle">{{ requirement.subject.name }} — {{ requirement.institution.name }} / Class {{ requirement.admission_class }}</div>
++    </div>
++</div>
++
++<div class="table-card p-4" style="max-width: 560px;">
++    <p>Are you sure you want to remove this subject assignment? Students who already chose this
++       subject will keep their historical marks, but it will no longer be offered going forward.</p>
++    <form method="POST">
++        {% csrf_token %}
++        <div class="d-flex gap-2">
++            <button type="submit" class="btn btn-danger">Confirm Remove</button>
++            <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Cancel</a>
++        </div>
++    </form>
++</div>
++{% endblock %}
+diff --git a/students/templates/students/discontinue_student.html b/students/templates/students/discontinue_student.html
+new file mode 100644
+index 0000000..d18b223
+--- /dev/null
++++ b/students/templates/students/discontinue_student.html
+@@ -0,0 +1,26 @@
++{% extends 'students/base.html' %}
++
++{% block title %}Discontinue Student - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header">
++    <div>
++        <h1>Discontinue Student</h1>
++        <div class="subtitle">{{ student.name }} ({{ student.student_id }})</div>
++    </div>
++</div>
++
++<div class="table-card p-4" style="max-width: 560px;">
++    <p>This will mark <strong>{{ student.name }}</strong> as <span class="badge bg-warning text-dark">Discontinued</span>.
++       The student's record is kept, but they will be excluded from active rolls.</p>
++
++    <form method="POST">
++        {% csrf_token %}
++        {{ form.as_p }}
++        <div class="d-flex gap-2 mt-3">
++            <button type="submit" class="btn btn-warning">Confirm Discontinue</button>
++            <a href="{% url 'student_detail' student.pk %}" class="btn btn-outline-secondary">Cancel</a>
++        </div>
++    </form>
++</div>
++{% endblock %}
+diff --git a/students/templates/students/id_card_print.html b/students/templates/students/id_card_print.html
+new file mode 100644
+index 0000000..bca38e6
+--- /dev/null
++++ b/students/templates/students/id_card_print.html
+@@ -0,0 +1,100 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>ID Card - {{ student.name }}</title>
++    <style>
++        @page { size: A4; margin: 12mm; }
++        :root { --navy: #0f2d52; --gold: #c9a227; }
++        body { background: #f6f7fa; color: #17212b; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 24px; }
++
++        .card-wrap { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; max-width: 900px; margin: 0 auto; }
++
++        .id-card {
++            width: 340px; height: 214px; border-radius: 14px; overflow: hidden;
++            box-shadow: 0 4px 18px rgba(0,0,0,0.18); position: relative;
++            background: #fff; border: 1px solid #d9dee5;
++        }
++        .id-card .band {
++            background: linear-gradient(135deg, var(--navy), #17406e);
++            color: #fff; padding: 10px 14px; text-align: center;
++        }
++        .id-card .band h2 { margin: 0; font-size: 13px; letter-spacing: 0.4px; }
++        .id-card .band p { margin: 2px 0 0; font-size: 9.5px; color: var(--gold); }
++
++        .id-card .body { display: flex; gap: 12px; padding: 12px 14px; }
++        .id-card .photo {
++            width: 78px; height: 92px; border-radius: 6px; border: 2px solid var(--navy);
++            background: #eef1f5; display: flex; align-items: center; justify-content: center;
++            font-size: 26px; font-weight: 700; color: var(--navy); flex-shrink: 0;
++        }
++        .id-card .info { font-size: 11.5px; line-height: 1.55; overflow: hidden; }
++        .id-card .info .name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
++        .id-card .info .row span.label { color: #667085; display: inline-block; min-width: 60px; }
++
++        .id-card .footer {
++            position: absolute; bottom: 0; left: 0; right: 0;
++            border-top: 1px dashed #c9a227; padding: 5px 14px; font-size: 9px;
++            display: flex; justify-content: space-between; color: #667085; background: #fbfaf6;
++        }
++
++        .id-card.back { display: flex; flex-direction: column; justify-content: space-between; padding: 14px; box-sizing: border-box; }
++        .id-card.back .rules { font-size: 9.5px; line-height: 1.6; color: #344054; }
++        .id-card.back .rules li { margin-bottom: 3px; }
++        .id-card.back .sig { display: flex; justify-content: space-between; font-size: 10px; margin-top: 8px; }
++        .id-card.back .sig div { border-top: 1px solid #344054; padding-top: 4px; width: 130px; text-align: center; }
++
++        .actions { max-width: 900px; margin: 20px auto 0; text-align: center; }
++        button, a.btn-link { background: var(--navy); border: 0; color: #fff; cursor: pointer; padding: 10px 18px; text-decoration: none; border-radius: 6px; font-size: 14px; }
++        @media print { body { background: #fff; padding: 0; } .actions { display: none; } }
++    </style>
++</head>
++<body>
++    <div class="card-wrap">
++        <div class="id-card front">
++            <div class="band">
++                <h2>Principal Kazi Faruky School And College</h2>
++                <p>Professor Kazi Faruky Kallan Trust</p>
++            </div>
++            <div class="body">
++                <div class="photo">{{ initials|default:"?" }}</div>
++                <div class="info">
++                    <div class="name">{{ student.name }}</div>
++                    <div class="row"><span class="label">ID</span>{{ student.student_id }}</div>
++                    <div class="row"><span class="label">Class</span>{{ student.admission_class }}{% if student.section %} ({{ student.section }}){% endif %}</div>
++                    <div class="row"><span class="label">Roll</span>{{ student.roll_no|default:"-" }}</div>
++                    <div class="row"><span class="label">Group</span>{{ student.get_group_display|default:"-" }}</div>
++                    <div class="row"><span class="label">Session</span>{{ student.admission_year }}</div>
++                </div>
++            </div>
++            <div class="footer">
++                <span>Father: {{ student.father_name|default:"-" }}</span>
++                <span>{{ student.institution.name }}</span>
++            </div>
++        </div>
++
++        <div class="id-card back">
++            <div class="rules">
++                <strong>If found, please return to:</strong>
++                <p style="margin:4px 0 8px;">{{ student.institution.name }}</p>
++                <ul style="padding-left: 16px;">
++                    <li>This card is the property of the institution.</li>
++                    <li>Must be carried at all times on campus.</li>
++                    <li>Loss must be reported immediately to the Office.</li>
++                    <li>Non-transferable.</li>
++                </ul>
++            </div>
++            <div class="sig">
++                <div>Class Teacher</div>
++                <div>Head of Institution</div>
++            </div>
++        </div>
++    </div>
++
++    <div class="actions">
++        <button onclick="window.print()">Print ID Card</button>
++        <a href="{% url 'student_detail' student.pk %}" class="btn-link">Back to Student</a>
++    </div>
++</body>
++</html>
+diff --git a/students/templates/students/student_exams.html b/students/templates/students/student_exams.html
+new file mode 100644
+index 0000000..4403027
+--- /dev/null
++++ b/students/templates/students/student_exams.html
+@@ -0,0 +1,55 @@
++{% extends 'students/base.html' %}
++
++{% block title %}Tests & Marksheets - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header d-print-none">
++    <div>
++        <h1>{{ student.name }}</h1>
++        <div class="subtitle">Tests & Marksheets — {{ student.student_id }}, Class {{ student.admission_class }}{% if student.section %} ({{ student.section }}){% endif %}</div>
++    </div>
++    <a href="{% url 'student_detail' student.pk %}" class="btn btn-outline-navy">Back to Student</a>
++</div>
++
++<div class="table-card">
++    <div class="table-responsive">
++        <table class="table table-striped mb-0">
++            <thead>
++                <tr>
++                    <th>Exam</th>
++                    <th>Type</th>
++                    <th>Session</th>
++                    <th>Status</th>
++                    <th>Action</th>
++                </tr>
++            </thead>
++            <tbody>
++                {% for exam in exams %}
++                <tr>
++                    <td>{{ exam.name }}</td>
++                    <td>{{ exam.get_exam_type_display }}</td>
++                    <td>{{ exam.session }}</td>
++                    <td>
++                        {% if exam.is_published %}
++                        <span class="badge bg-success">Published</span>
++                        {% else %}
++                        <span class="badge bg-secondary">Not Published</span>
++                        {% endif %}
++                    </td>
++                    <td>
++                        <a href="{% url 'student_result_detail' exam.pk student.pk %}" class="btn btn-sm btn-outline-info">Test Result</a>
++                        {% if exam.is_published %}
++                        <a href="{% url 'result_card' exam.pk student.pk %}" class="btn btn-sm btn-outline-dark">Marksheet</a>
++                        {% else %}
++                        <button class="btn btn-sm btn-outline-secondary" disabled title="Marksheet available after result is published">Marksheet</button>
++                        {% endif %}
++                    </td>
++                </tr>
++                {% empty %}
++                <tr><td colspan="5" class="text-center text-muted py-4">No exams found for this student yet.</td></tr>
++                {% endfor %}
++            </tbody>
++        </table>
++    </div>
++</div>
++{% endblock %}
+diff --git a/students/templates/students/student_list_filter.html b/students/templates/students/student_list_filter.html
+index 061c5da..040d3a3 100644
+--- a/students/templates/students/student_list_filter.html
++++ b/students/templates/students/student_list_filter.html
+@@ -48,6 +48,16 @@
+             </select>
+         </div>
+ 
++        <div class="mb-3">
++            <label class="form-label">Department</label>
++            <select name="department" id="id_department" class="form-select">
++                {% for code, label in department_choices %}
++                <option value="{{ code }}" {% if selected_department == code %}selected{% endif %}>{{ label }}</option>
++                {% endfor %}
++            </select>
++            <div class="form-text">Controls which student actions (Test/Marksheet vs Discontinue/TC) are shown on the list.</div>
++        </div>
++
+         <div class="d-flex gap-2 mt-4">
+             <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary">View All Students</a>
+             <button type="submit" class="btn btn-navy">View List</button>
+diff --git a/students/templates/students/subject_list.html b/students/templates/students/subject_list.html
+index af09ff7..5fc8e1f 100644
+--- a/students/templates/students/subject_list.html
++++ b/students/templates/students/subject_list.html
+@@ -8,14 +8,37 @@
+ <div class="page-header d-print-none">
+     <div>
+         <h1>Subjects</h1>
+-        <div class="subtitle">Subject Management</div>
++        <div class="subtitle">Master subject list — used across Admission, Students and Exam</div>
++    </div>
++    <div class="page-actions">
++        <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-navy">Assign to Institution/Class</a>
++        {% if perms.students.add_subject %}
++        <a href="{% url 'add_subject' %}" class="btn btn-navy">+ Add New Subject</a>
++        {% endif %}
+     </div>
+-    {% if perms.students.add_subject %}
+-    <a href="{% url 'add_subject' %}" class="btn btn-navy">+ Add New Subject</a>
+-    {% endif %}
+ </div>
+ 
+-<div class="table-card">
++<form method="GET" class="row g-2 mb-3 d-print-none">
++    <div class="col-auto" style="min-width: 240px;">
++        <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Search by name or code">
++    </div>
++    <div class="col-auto">
++        <select name="category" class="form-select">
++            <option value="">-- All Categories --</option>
++            {% for code, label in category_choices %}
++            <option value="{{ code }}" {% if selected_category == code %}selected{% endif %}>{{ label }}</option>
++            {% endfor %}
++        </select>
++    </div>
++    <div class="col-auto">
++        <button type="submit" class="btn btn-outline-navy">Filter</button>
++        <a href="{% url 'subject_list' %}" class="btn btn-outline-secondary">Clear</a>
++    </div>
++</form>
++
++{% for label, subjects in grouped_subjects.items %}
++<div class="table-card mb-3">
++    <div class="p-3 pb-0"><h5 class="mb-0">{{ label }}</h5></div>
+     <div class="table-responsive">
+         <table class="table table-striped mb-0">
+             <thead>
+@@ -41,11 +64,12 @@
+                         {% endif %}
+                     </td>
+                 </tr>
+-                {% empty %}
+-                <tr><td colspan="4" class="text-center text-muted py-4">No subjects found.</td></tr>
+                 {% endfor %}
+             </tbody>
+         </table>
+     </div>
+ </div>
+-{% endblock %}
+\ No newline at end of file
++{% empty %}
++<div class="table-card p-4 text-center text-muted">No subjects found.</div>
++{% endfor %}
++{% endblock %}
+diff --git a/students/templates/students/subject_requirement_list.html b/students/templates/students/subject_requirement_list.html
+new file mode 100644
+index 0000000..0ea6b16
+--- /dev/null
++++ b/students/templates/students/subject_requirement_list.html
+@@ -0,0 +1,88 @@
++{% extends 'students/base.html' %}
++
++{% block title %}Subject Assignments - {{ block.super }}{% endblock %}
++
++{% block content %}
++<div class="page-header d-print-none">
++    <div>
++        <h1>Subject Assignments</h1>
++        <div class="subtitle">Assign subjects from the master list to an Institution + Class (+ Group), and mark each Mandatory/Optional/Conditional</div>
++    </div>
++    <div class="page-actions">
++        <a href="{% url 'subject_list' %}" class="btn btn-outline-navy">Master Subject List</a>
++        {% if perms.students.add_subjectrequirement %}
++        <a href="{% url 'add_subject_requirement' %}" class="btn btn-navy">+ Assign Subject</a>
++        {% endif %}
++    </div>
++</div>
++
++<form method="GET" class="row g-2 mb-3">
++    <div class="col-auto" style="min-width: 220px;">
++        <select name="institution" class="form-select">
++            <option value="">-- All Institutions --</option>
++            {% for inst in institutions %}
++            <option value="{{ inst.id }}" {% if selected_institution_id == inst.id|stringformat:"s" %}selected{% endif %}>{{ inst.name }}</option>
++            {% endfor %}
++        </select>
++    </div>
++    <div class="col-auto">
++        <input type="text" name="admission_class" value="{{ selected_class }}" class="form-control" placeholder="Class e.g. 9">
++    </div>
++    <div class="col-auto">
++        <select name="group" class="form-select">
++            <option value="">-- All Groups --</option>
++            {% for code, label in group_choices %}
++            <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
++            {% endfor %}
++        </select>
++    </div>
++    <div class="col-auto" style="min-width: 200px;">
++        <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Search subject">
++    </div>
++    <div class="col-auto">
++        <button type="submit" class="btn btn-outline-navy">Filter</button>
++        <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Clear</a>
++    </div>
++</form>
++
++{% for label, requirements in grouped_requirements.items %}
++<div class="table-card mb-3">
++    <div class="p-3 pb-0"><h5 class="mb-0">{{ label }}</h5></div>
++    <div class="table-responsive">
++        <table class="table table-striped mb-0">
++            <thead>
++                <tr>
++                    <th>Institution</th>
++                    <th>Class</th>
++                    <th>Group</th>
++                    <th>Subject</th>
++                    <th>Optional Set / Condition</th>
++                    <th>Action</th>
++                </tr>
++            </thead>
++            <tbody>
++                {% for req in requirements %}
++                <tr>
++                    <td>{{ req.institution.name }}</td>
++                    <td>{{ req.admission_class }}</td>
++                    <td>{{ req.get_group_display|default:"Any" }}</td>
++                    <td>{{ req.subject.code }} — {{ req.subject.name }}</td>
++                    <td>{{ req.optional_set_key|default:req.condition_religion|default:"-" }}</td>
++                    <td>
++                        {% if perms.students.change_subjectrequirement %}
++                        <a href="{% url 'edit_subject_requirement' req.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
++                        {% endif %}
++                        {% if perms.students.delete_subjectrequirement %}
++                        <a href="{% url 'delete_subject_requirement' req.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
++                        {% endif %}
++                    </td>
++                </tr>
++                {% endfor %}
++            </tbody>
++        </table>
++    </div>
++</div>
++{% empty %}
++<div class="table-card p-4 text-center text-muted">No subject assignments found for this filter.</div>
++{% endfor %}
++{% endblock %}
+diff --git a/students/urls.py b/students/urls.py
+index f9b9494..2d954f3 100644
+--- a/students/urls.py
++++ b/students/urls.py
+@@ -26,6 +26,9 @@ urlpatterns = [
+     path('ssc-registrations/import/template/', views.download_ssc_import_template, name='download_ssc_import_template'),
+     path('edit/<int:pk>/', views.edit_student, name='edit_student'),
+     path('delete/<int:pk>/', views.delete_student, name='delete_student'),
++    path('students/<int:pk>/discontinue/', views.discontinue_student, name='discontinue_student'),
++    path('students/<int:pk>/id-card/', views.student_id_card, name='student_id_card'),
++    path('students/<int:pk>/exams/', views.student_exams, name='student_exams'),
+     path('detail/<int:pk>/', views.student_detail, name='student_detail'),
+     path('students/<int:pk>/issue-tc/', views.issue_tc, name='issue_tc'),
+     path('tc/<int:pk>/', views.view_tc, name='view_tc'),
+@@ -88,6 +91,10 @@ path('reports/class-section-summary/', views.class_section_summary, name='class_
+     path('subjects/add/', views.add_subject, name='add_subject'),
+     path('subjects/edit/<int:pk>/', views.edit_subject, name='edit_subject'),
+     path('subjects/delete/<int:pk>/', views.delete_subject, name='delete_subject'),
++    path('subject-requirements/', views.subject_requirement_list, name='subject_requirement_list'),
++    path('subject-requirements/add/', views.add_subject_requirement, name='add_subject_requirement'),
++    path('subject-requirements/<int:pk>/edit/', views.edit_subject_requirement, name='edit_subject_requirement'),
++    path('subject-requirements/<int:pk>/delete/', views.delete_subject_requirement, name='delete_subject_requirement'),
+     # Employee URLs
+ path('employees/', views.employee_list, name='employee_list'),
+ path('employees/<int:pk>/', views.employee_detail, name='employee_detail'),
+diff --git a/students/views.py b/students/views.py
+index 09df244..22fe647 100644
+--- a/students/views.py
++++ b/students/views.py
+@@ -12,7 +12,8 @@ from .models import (
+     PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement, StudentSubjectChoice,
+ )
+ from .forms import (
+-    StudentForm, SubjectForm, ExcelImportForm, TransferCertificateForm,
++    StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
++    TransferCertificateForm,
+     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
+     ExamForm, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm, EmployeeStatusChangeForm,
+     MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
+@@ -414,7 +415,9 @@ def student_list(request):
+     institution = _selected_institution_for_request(request)
+     admission_class = request.GET.get('admission_class')
+     section = request.GET.get('section')
++    group = request.GET.get('group')
+     institution_id = request.GET.get('institution')
++    department = request.GET.get('department') or request.session.get('selected_department') or 'Office'
+ 
+     qs = Student.objects.all()
+     if institution is not None:
+@@ -433,6 +436,8 @@ def student_list(request):
+             qs = qs.filter(admission_class=admission_class)
+         if section:
+             qs = qs.filter(section__iexact=section.strip())
++        if group:
++            qs = qs.filter(group=group)
+         students = list(qs)
+     else:
+         # No institution filter chosen yet — send the user to the
+@@ -461,6 +466,8 @@ def student_list(request):
+         'institution': institution,
+         'selected_class': admission_class,
+         'selected_section': section,
++        'selected_group': group,
++        'selected_department': department,
+         'institutions': institutions,
+         'exact_duplicate_ids': exact_duplicate_ids,
+         'possible_duplicate_ids': possible_duplicate_ids,
+@@ -483,6 +490,8 @@ def student_list_filter(request):
+         'selected_class': request.GET.get('admission_class', ''),
+         'selected_section': request.GET.get('section', ''),
+         'selected_group': request.GET.get('group', ''),
++        'department_choices': InstitutionAccess.DEPARTMENT_CHOICES,
++        'selected_department': request.GET.get('department') or request.session.get('selected_department') or 'Office',
+     })
+ 
+ 
+@@ -733,15 +742,82 @@ def delete_student(request, pk):
+     return render(request, 'students/delete_student.html', {'student': student})
+ 
+ 
++@login_required
++@permission_required('students.change_student', raise_exception=True)
++def discontinue_student(request, pk):
++    student = get_object_or_404(Student, pk=pk)
++    if student.status == 'DISCONTINUED':
++        messages.info(request, "This student is already marked as discontinued.")
++        return redirect('student_detail', pk=student.pk)
++
++    if request.method == 'POST':
++        form = DiscontinueStudentForm(request.POST)
++        if form.is_valid():
++            student.status = 'DISCONTINUED'
++            student.discontinued_at = timezone.now()
++            student.discontinued_reason = form.cleaned_data['reason']
++            student.save(update_fields=['status', 'discontinued_at', 'discontinued_reason'])
++            messages.success(request, f"{student.name} has been marked as discontinued.")
++            record_audit(request.user, 'DISCONTINUE', student, details={'reason': form.cleaned_data['reason']})
++            return redirect('student_list')
++    else:
++        form = DiscontinueStudentForm()
++    return render(request, 'students/discontinue_student.html', {'student': student, 'form': form})
++
++
++@login_required
++def student_id_card(request, pk):
++    student = get_object_or_404(Student, pk=pk)
++    initials = ''.join([part[0].upper() for part in student.name.split() if part])[:2]
++    return render(request, 'students/id_card_print.html', {
++        'student': student,
++        'initials': initials,
++    })
++
++
++@login_required
++def student_exams(request, pk):
++    """Popup-free page listing every exam relevant to this student, with
++    links through to that exam's test result and (once published) marksheet."""
++    student = get_object_or_404(Student, pk=pk)
++    exams = Exam.objects.filter(
++        institution=student.institution,
++        admission_class=student.admission_class,
++    ).filter(Q(section='') | Q(section__iexact=student.section)).order_by('-exam_date', '-id')
++    return render(request, 'students/student_exams.html', {
++        'student': student,
++        'exams': exams,
++    })
++
++
+ # ---------------- Subject Views ----------------
+ 
+ @login_required
+ def subject_list(request):
+-    subjects = Subject.objects.all().order_by('name')
++    subjects = Subject.objects.all()
+     if not _is_admin(request.user):
+         subjects = subjects.filter(created_by=request.user)
++
++    query = request.GET.get('q', '').strip()
++    if query:
++        subjects = subjects.filter(Q(name__icontains=query) | Q(code__icontains=query))
++
++    category = request.GET.get('category', '')
++    if category:
++        subjects = subjects.filter(category=category)
++
++    grouped = {}
++    for code, label in Subject.CATEGORY_CHOICES:
++        bucket = [s for s in subjects if s.category == code]
++        if bucket:
++            grouped[label] = bucket
++
+     return render(request, 'students/subject_list.html', {
+         'subjects': subjects,
++        'grouped_subjects': grouped,
++        'category_choices': Subject.CATEGORY_CHOICES,
++        'selected_category': category,
++        'query': query,
+     })
+ 
+ 
+@@ -835,6 +911,94 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
+     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
+ 
+ 
++@login_required
++def subject_requirement_list(request):
++    """Popup-free page for assigning subjects (from the pre-loaded/custom
++    Subject list) to a specific Institution + Class + Group, marking each
++    Mandatory/Optional/Conditional."""
++    requirements = SubjectRequirement.objects.select_related('institution', 'subject').all()
++
++    institution_id = request.GET.get('institution', '')
++    admission_class = request.GET.get('admission_class', '')
++    group = request.GET.get('group', '')
++    query = request.GET.get('q', '').strip()
++
++    if institution_id:
++        requirements = requirements.filter(institution_id=institution_id)
++    if admission_class:
++        requirements = requirements.filter(admission_class=admission_class)
++    if group:
++        requirements = requirements.filter(group=group)
++    if query:
++        requirements = requirements.filter(Q(subject__name__icontains=query) | Q(subject__code__icontains=query))
++
++    grouped = {}
++    for label_key, label in SubjectRequirement.REQUIREMENT_TYPE_CHOICES:
++        bucket = [r for r in requirements if r.requirement_type == label_key]
++        if bucket:
++            grouped[label] = bucket
++
++    return render(request, 'students/subject_requirement_list.html', {
++        'grouped_requirements': grouped,
++        'institutions': Institution.objects.all().order_by('name'),
++        'group_choices': Student.GROUP_CHOICES,
++        'selected_institution_id': institution_id,
++        'selected_class': admission_class,
++        'selected_group': group,
++        'query': query,
++    })
++
++
++@login_required
++@permission_required('students.add_subjectrequirement', raise_exception=True)
++def add_subject_requirement(request):
++    if request.method == 'POST':
++        form = SubjectRequirementForm(request.POST)
++        if form.is_valid():
++            try:
++                form.save()
++                messages.success(request, "Subject assigned successfully.")
++                return redirect('subject_requirement_list')
++            except IntegrityError:
++                messages.error(request, "This subject is already assigned to that Institution/Class/Group.")
++        else:
++            messages.error(request, "There are errors in the form — please check the fields below.")
++    else:
++        form = SubjectRequirementForm()
++    return render(request, 'students/add_subject_requirement.html', {'form': form})
++
++
++@login_required
++@permission_required('students.change_subjectrequirement', raise_exception=True)
++def edit_subject_requirement(request, pk):
++    requirement = get_object_or_404(SubjectRequirement, pk=pk)
++    if request.method == 'POST':
++        form = SubjectRequirementForm(request.POST, instance=requirement)
++        if form.is_valid():
++            try:
++                form.save()
++                messages.success(request, "Subject assignment updated.")
++                return redirect('subject_requirement_list')
++            except IntegrityError:
++                messages.error(request, "This subject is already assigned to that Institution/Class/Group.")
++        else:
++            messages.error(request, "There are errors in the form — please check the fields below.")
++    else:
++        form = SubjectRequirementForm(instance=requirement)
++    return render(request, 'students/add_subject_requirement.html', {'form': form, 'requirement': requirement})
++
++
++@login_required
++@permission_required('students.delete_subjectrequirement', raise_exception=True)
++def delete_subject_requirement(request, pk):
++    requirement = get_object_or_404(SubjectRequirement, pk=pk)
++    if request.method == 'POST':
++        requirement.delete()
++        messages.success(request, "Subject assignment removed.")
++        return redirect('subject_requirement_list')
++    return render(request, 'students/delete_subject_requirement.html', {'requirement': requirement})
++
++
+ @login_required
+ def subject_requirements_json(request):
+     """AJAX endpoint used by add_student / admission forms to show a dynamic subject checklist."""
+-- 
+2.43.0
+

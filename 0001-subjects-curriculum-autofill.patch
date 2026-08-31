@@ -1,0 +1,1180 @@
+From 0fc4ee2862281dc0f29265b0065e30d4ad26064a Mon Sep 17 00:00:00 2001
+From: Claude Assistant <assistant@example.com>
+Date: Mon, 31 Aug 2026 04:51:19 +0000
+Subject: [PATCH] Remove standalone Subjects page; add curriculum auto-fill for
+ Subject Assignments
+
+- Delete the standalone Subjects master-list page (views/urls/templates).
+  New subjects can now be created inline from the Assign Subject form.
+- Add students/curriculum_data.py with Bangladesh curriculum defaults for
+  Primary, Junior Secondary, SSC (group-wise) and HSC (group-wise) classes.
+- Add students/curriculum_apply.py, a shared idempotent helper used by both
+  the seed_subject_requirements management command and the new
+  'Auto-fill from Curriculum' button on the Subject Assignments page.
+- SubjectRequirementForm now supports creating a brand-new Subject inline
+  (code/name/full marks/category) instead of requiring the old master list.
+- Sidebar: remove the standalone 'Subjects' and 'Subject Assignments' nav
+  links; Subject Assignments is now reached as a contextual tab from the
+  Students and Admission pages instead.
+---
+ .../templates/students/student_list.html      |   6 +
+ students/curriculum_apply.py                  |  60 +++++
+ students/curriculum_data.py                   | 219 ++++++++++++++++++
+ students/forms.py                             |  54 +++++
+ .../commands/seed_subject_requirements.py     | 129 ++---------
+ students/management/commands/seed_subjects.py |  49 +---
+ students/templates/students/add_subject.html  |  27 ---
+ .../students/add_subject_requirement.html     |  85 ++++++-
+ .../students/admission_application_list.html  |   6 +
+ students/templates/students/base.html         |   2 -
+ .../templates/students/delete_subject.html    |  18 --
+ students/templates/students/subject_list.html |  75 ------
+ .../students/subject_requirement_list.html    |  34 ++-
+ students/urls.py                              |  10 +-
+ students/views.py                             | 130 +++++------
+ 15 files changed, 544 insertions(+), 360 deletions(-)
+ create mode 100644 students/curriculum_apply.py
+ create mode 100644 students/curriculum_data.py
+ delete mode 100644 students/templates/students/add_subject.html
+ delete mode 100644 students/templates/students/delete_subject.html
+ delete mode 100644 students/templates/students/subject_list.html
+
+diff --git a/school_system/templates/students/student_list.html b/school_system/templates/students/student_list.html
+index e1e4e8e..dd23d0f 100644
+--- a/school_system/templates/students/student_list.html
++++ b/school_system/templates/students/student_list.html
+@@ -61,10 +61,16 @@
+         <a href="{% url 'add_student' %}" class="btn btn-navy">+ Add New Student</a>
+         <a href="{% url 'import_students' %}" class="btn btn-outline-navy">📥 Import from Excel</a>
+         {% endif %}
++        <a href="{% url 'subject_requirement_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📚 Subject Assignments</a>
+         <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+     </div>
+ </div>
+ 
++<div class="d-flex gap-2 mb-3 d-print-none" role="tablist">
++    <span class="btn btn-sm btn-navy disabled">Students</span>
++    <a href="{% url 'subject_requirement_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-sm btn-outline-secondary">Subject Assignments</a>
++</div>
++
+ <form method="GET" action="{% url 'student_list' %}" class="inline-filter-bar d-print-none" id="inline-filter-form">
+     <div class="field grow">
+         <label for="ilf-institution">Institution</label>
+diff --git a/students/curriculum_apply.py b/students/curriculum_apply.py
+new file mode 100644
+index 0000000..936f04e
+--- /dev/null
++++ b/students/curriculum_apply.py
+@@ -0,0 +1,60 @@
++"""Apply the built-in Bangladesh-curriculum defaults (see curriculum_data.py)
++to a specific Institution + Class, creating Subject and SubjectRequirement
++rows as needed. Safe to re-run — existing rows are left untouched, so an
++admin's manual edits are never overwritten."""
++
++from .models import Subject, SubjectRequirement
++from .curriculum_data import SUBJECTS, curriculum_for_class
++
++_SUBJECT_LOOKUP = {code: (name, full_marks, category) for code, name, full_marks, category in SUBJECTS}
++
++
++def _get_or_create_subject(code):
++    if code not in _SUBJECT_LOOKUP:
++        return None
++    name, full_marks, category = _SUBJECT_LOOKUP[code]
++    subject, _ = Subject.objects.get_or_create(
++        code=code, defaults={'name': name, 'full_marks': full_marks, 'category': category},
++    )
++    return subject
++
++
++def _apply_rows(institution, admission_class, group, rows):
++    created = 0
++    for code, req_type, opt_key, condition_religion in rows:
++        subject = _get_or_create_subject(code)
++        if subject is None:
++            continue
++        _, was_created = SubjectRequirement.objects.get_or_create(
++            institution=institution,
++            admission_class=admission_class,
++            group=group,
++            subject=subject,
++            defaults={
++                'requirement_type': req_type,
++                'optional_set_key': opt_key,
++                'condition_religion': condition_religion,
++            },
++        )
++        if was_created:
++            created += 1
++    return created
++
++
++def apply_curriculum(institution, admission_class, group=''):
++    """Create the default SubjectRequirement rows for this Institution +
++    Class (+ Group, if given). Returns the number of rows created.
++    Returns None if this class isn't covered by the built-in curriculum
++    (e.g. a diploma semester) so the caller can tell the user to add rows
++    manually instead."""
++    common_rows, group_rows = curriculum_for_class(admission_class)
++    if common_rows is None:
++        return None
++
++    created = _apply_rows(institution, admission_class, '', common_rows)
++    if group and group in group_rows:
++        created += _apply_rows(institution, admission_class, group, group_rows[group])
++    elif not group:
++        for group_code, rows in group_rows.items():
++            created += _apply_rows(institution, admission_class, group_code, rows)
++    return created
+diff --git a/students/curriculum_data.py b/students/curriculum_data.py
+new file mode 100644
+index 0000000..98cbf17
+--- /dev/null
++++ b/students/curriculum_data.py
+@@ -0,0 +1,219 @@
++"""
++Reference data for Bangladesh's national curriculum, used to auto-populate
++SubjectRequirement rows for a given Institution + Class (+ Group).
++
++This is a practical starting point, not a legal document — boards and
++institutions vary slightly and syllabi change over time. Every row created
++from this data can still be edited or deleted afterwards from the Subject
++Assignments page; nothing here is locked.
++
++Layout:
++    SUBJECTS            -- master list of (code, name, full_marks, category)
++                           used to get_or_create Subject rows on demand.
++    PRIMARY_CLASSES     -- classes with compulsory-only subjects, no groups.
++    JUNIOR_CLASSES      -- classes with compulsory-only subjects, no groups.
++    SSC_CLASSES / SSC_COMMON / SSC_GROUPS       -- class 9-10, group-wise.
++    HSC_CLASSES / HSC_COMMON / HSC_GROUPS       -- class 11-12, group-wise.
++    VOCATIONAL_CLASSES / VOCATIONAL_COMMON / VOCATIONAL_GROUPS -- SSC(Voc).
++"""
++
++# ---- Master subject list ----------------------------------------------
++# (code, name, full_marks, category)
++SUBJECTS = [
++    # Compulsory / core
++    ('BAN1', 'Bangla 1st Paper', 100, 'COMPULSORY'),
++    ('BAN2', 'Bangla 2nd Paper', 100, 'COMPULSORY'),
++    ('BAN', 'Bangla', 100, 'COMPULSORY'),
++    ('ENG1', 'English 1st Paper', 100, 'COMPULSORY'),
++    ('ENG2', 'English 2nd Paper', 100, 'COMPULSORY'),
++    ('ENG', 'English', 100, 'COMPULSORY'),
++    ('MATH', 'General Mathematics', 100, 'COMPULSORY'),
++    ('ICT', 'Information & Communication Technology', 50, 'COMPULSORY'),
++    ('BGS', 'Bangladesh & Global Studies', 100, 'COMPULSORY'),
++    ('SCI-GEN', 'General Science', 100, 'COMPULSORY'),
++    ('CAREER', 'Career Education', 50, 'COMPULSORY'),
++    ('HPE', 'Health & Physical Education', 50, 'COMPULSORY'),
++    ('ART', 'Art & Culture', 50, 'COMPULSORY'),
++
++    # Optional / group subjects (SSC & HSC Science/Business/Humanities)
++    ('PHY', 'Physics', 100, 'OPTIONAL'),
++    ('CHEM', 'Chemistry', 100, 'OPTIONAL'),
++    ('BIO', 'Biology', 100, 'OPTIONAL'),
++    ('HMATH', 'Higher Mathematics', 100, 'OPTIONAL'),
++    ('AGRI', 'Agriculture Studies', 100, 'OPTIONAL'),
++    ('ACC', 'Accounting', 100, 'OPTIONAL'),
++    ('BOM', 'Business Organization & Management', 100, 'OPTIONAL'),
++    ('FIN', 'Finance, Banking & Insurance', 100, 'OPTIONAL'),
++    ('ECO', 'Economics', 100, 'OPTIONAL'),
++    ('CIVICS', 'Civics & Good Governance', 100, 'OPTIONAL'),
++    ('HISTORY', 'History of Bangladesh & World Civilization', 100, 'OPTIONAL'),
++    ('GEO', 'Geography & Environment', 100, 'OPTIONAL'),
++    ('LOGIC', 'Logic', 100, 'OPTIONAL'),
++    ('SOC', 'Sociology', 100, 'OPTIONAL'),
++    ('PSY', 'Psychology', 100, 'OPTIONAL'),
++    ('STAT', 'Statistics', 100, 'OPTIONAL'),
++    ('PMS', 'Production Management & Marketing', 100, 'OPTIONAL'),
++    ('SOCWORK', 'Social Work', 100, 'OPTIONAL'),
++    ('ISLHIST', 'Islamic History & Culture', 100, 'OPTIONAL'),
++
++    # Religion (conditional — one auto-added per student's religion)
++    ('ISLAM', 'Islam & Moral Education', 100, 'RELIGION'),
++    ('HINDU', 'Hindu Religion & Moral Education', 100, 'RELIGION'),
++    ('CHRIS', 'Christian Religion & Moral Education', 100, 'RELIGION'),
++    ('BUDDHIST', 'Buddhist Religion & Moral Education', 100, 'RELIGION'),
++
++    # Vocational trades (SSC Vocational)
++    ('DCS', 'Computer & Information Technology (Vocational)', 100, 'VOCATIONAL'),
++    ('DEL', 'Electrical Works & Services (Vocational)', 100, 'VOCATIONAL'),
++    ('DCV', 'Civil Construction & Maintenance (Vocational)', 100, 'VOCATIONAL'),
++
++    # 4th subject variants
++    ('ENG3', 'General Science (4th Subject)', 100, 'FOURTH'),
++    ('MATH4', 'Higher Mathematics (4th Subject)', 100, 'FOURTH'),
++    ('AGRI4', 'Agriculture Studies (4th Subject)', 100, 'FOURTH'),
++    ('STAT4', 'Statistics (4th Subject)', 100, 'FOURTH'),
++]
++
++# ---- Primary (no groups) -----------------------------------------------
++PRIMARY_CLASSES = ['Shishu', '1', '2', '3', '4', '5']
++PRIMARY_COMMON = [
++    ('BAN', 'MANDATORY', '', ''),
++    ('ENG', 'MANDATORY', '', ''),
++    ('MATH', 'MANDATORY', '', ''),
++    ('BGS', 'MANDATORY', '', ''),
++    ('SCI-GEN', 'MANDATORY', '', ''),
++    ('ART', 'MANDATORY', '', ''),
++    ('HPE', 'MANDATORY', '', ''),
++    ('ISLAM', 'CONDITIONAL', '', 'Islam'),
++    ('HINDU', 'CONDITIONAL', '', 'Hindu'),
++    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
++    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
++]
++
++# ---- Junior secondary (no groups) --------------------------------------
++JUNIOR_CLASSES = ['6', '7', '8']
++JUNIOR_COMMON = [
++    ('BAN1', 'MANDATORY', '', ''),
++    ('BAN2', 'MANDATORY', '', ''),
++    ('ENG1', 'MANDATORY', '', ''),
++    ('ENG2', 'MANDATORY', '', ''),
++    ('MATH', 'MANDATORY', '', ''),
++    ('ICT', 'MANDATORY', '', ''),
++    ('BGS', 'MANDATORY', '', ''),
++    ('SCI-GEN', 'MANDATORY', '', ''),
++    ('CAREER', 'MANDATORY', '', ''),
++    ('HPE', 'MANDATORY', '', ''),
++    ('ART', 'MANDATORY', '', ''),
++    ('ISLAM', 'CONDITIONAL', '', 'Islam'),
++    ('HINDU', 'CONDITIONAL', '', 'Hindu'),
++    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
++    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
++]
++
++# ---- SSC (class 9-10), group-wise --------------------------------------
++SSC_CLASSES = ['9', '10']
++SSC_COMMON = [
++    ('BAN1', 'MANDATORY', '', ''),
++    ('BAN2', 'MANDATORY', '', ''),
++    ('ENG1', 'MANDATORY', '', ''),
++    ('ENG2', 'MANDATORY', '', ''),
++    ('ICT', 'MANDATORY', '', ''),
++    ('BGS', 'MANDATORY', '', ''),
++    ('CAREER', 'MANDATORY', '', ''),
++    ('HPE', 'MANDATORY', '', ''),
++    ('ART', 'MANDATORY', '', ''),
++    ('ISLAM', 'CONDITIONAL', '', 'Islam'),
++    ('HINDU', 'CONDITIONAL', '', 'Hindu'),
++    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
++    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
++]
++SSC_GROUPS = {
++    'SCI': [
++        ('MATH', 'MANDATORY', '', ''),
++        ('PHY', 'MANDATORY', '', ''),
++        ('CHEM', 'MANDATORY', '', ''),
++        ('BIO', 'OPTIONAL', 'sci_4th', ''),
++        ('HMATH', 'OPTIONAL', 'sci_4th', ''),
++    ],
++    'BUS': [
++        ('MATH', 'MANDATORY', '', ''),
++        ('ACC', 'MANDATORY', '', ''),
++        ('BOM', 'MANDATORY', '', ''),
++        ('FIN', 'OPTIONAL', 'bus_4th', ''),
++        ('ECO', 'OPTIONAL', 'bus_4th', ''),
++    ],
++    'HUM': [
++        ('SCI-GEN', 'MANDATORY', '', ''),
++        ('CIVICS', 'OPTIONAL', 'hum_elective_1', ''),
++        ('HISTORY', 'OPTIONAL', 'hum_elective_1', ''),
++        ('GEO', 'OPTIONAL', 'hum_elective_1', ''),
++        ('ECO', 'OPTIONAL', 'hum_elective_1', ''),
++        ('LOGIC', 'OPTIONAL', 'hum_elective_2', ''),
++        ('SOC', 'OPTIONAL', 'hum_elective_2', ''),
++        ('PSY', 'OPTIONAL', 'hum_elective_2', ''),
++        ('MATH', 'OPTIONAL', 'hum_elective_2', ''),
++    ],
++    # SSC Vocational trades — same class numbers (9-10) as general SSC, but
++    # a separate group. Merged into SSC_GROUPS below so a Vocational
++    # institution's 9/10 + DCS/DEL/DCV combination is still found.
++    'DCS': [('DCS', 'MANDATORY', '', '')],
++    'DEL': [('DEL', 'MANDATORY', '', '')],
++    'DCV': [('DCV', 'MANDATORY', '', '')],
++}
++
++# ---- HSC (class 11-12), group-wise --------------------------------------
++HSC_CLASSES = ['11', '12']
++HSC_COMMON = [
++    ('BAN1', 'MANDATORY', '', ''),
++    ('BAN2', 'MANDATORY', '', ''),
++    ('ENG1', 'MANDATORY', '', ''),
++    ('ENG2', 'MANDATORY', '', ''),
++    ('ICT', 'MANDATORY', '', ''),
++    ('ISLAM', 'CONDITIONAL', '', 'Islam'),
++    ('HINDU', 'CONDITIONAL', '', 'Hindu'),
++    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
++    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
++]
++HSC_GROUPS = {
++    'SCI': [
++        ('PHY', 'MANDATORY', '', ''),
++        ('CHEM', 'MANDATORY', '', ''),
++        ('BIO', 'OPTIONAL', 'sci_4th', ''),
++        ('HMATH', 'OPTIONAL', 'sci_4th', ''),
++    ],
++    'BUS': [
++        ('ACC', 'MANDATORY', '', ''),
++        ('FIN', 'MANDATORY', '', ''),
++        ('BOM', 'MANDATORY', '', ''),
++        ('PMS', 'OPTIONAL', 'bus_4th', ''),
++        ('STAT', 'OPTIONAL', 'bus_4th', ''),
++    ],
++    'HUM': [
++        ('CIVICS', 'MANDATORY', '', ''),
++        ('ECO', 'OPTIONAL', 'hum_elective_1', ''),
++        ('HISTORY', 'OPTIONAL', 'hum_elective_1', ''),
++        ('ISLHIST', 'OPTIONAL', 'hum_elective_1', ''),
++        ('GEO', 'OPTIONAL', 'hum_elective_1', ''),
++        ('LOGIC', 'OPTIONAL', 'hum_elective_2', ''),
++        ('SOC', 'OPTIONAL', 'hum_elective_2', ''),
++        ('SOCWORK', 'OPTIONAL', 'hum_elective_2', ''),
++        ('PSY', 'OPTIONAL', 'hum_elective_2', ''),
++        ('STAT', 'OPTIONAL', 'hum_elective_2', ''),
++    ],
++}
++
++
++def curriculum_for_class(admission_class):
++    """Return (common_rows, group_rows_dict) for a given class label, or
++    (None, None) if this class isn't covered by the built-in curriculum
++    (e.g. a diploma semester) — the caller should skip auto-fill in that case."""
++    cls = str(admission_class).strip()
++    if cls in PRIMARY_CLASSES:
++        return PRIMARY_COMMON, {}
++    if cls in JUNIOR_CLASSES:
++        return JUNIOR_COMMON, {}
++    if cls in HSC_CLASSES:
++        return HSC_COMMON, HSC_GROUPS
++    if cls in SSC_CLASSES:
++        return SSC_COMMON, SSC_GROUPS
++    return None, None
+diff --git a/students/forms.py b/students/forms.py
+index cafd4a0..4934037 100644
+--- a/students/forms.py
++++ b/students/forms.py
+@@ -98,6 +98,28 @@ class SubjectForm(forms.ModelForm):
+ 
+ 
+ class SubjectRequirementForm(forms.ModelForm):
++    """Assign a subject to an Institution/Class/Group. The Subjects master
++    page was removed, so this form also supports creating a brand-new
++    subject on the fly: pick "-- Add a new subject --" in the Subject
++    dropdown and fill in the extra fields that appear below it."""
++
++    new_subject_code = forms.CharField(
++        required=False, label='New Subject Code',
++        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. STAT'}),
++    )
++    new_subject_name = forms.CharField(
++        required=False, label='New Subject Name',
++        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Statistics'}),
++    )
++    new_subject_full_marks = forms.IntegerField(
++        required=False, label='Full Marks', initial=100,
++        widget=forms.NumberInput(attrs={'class': 'form-control'}),
++    )
++    new_subject_category = forms.ChoiceField(
++        required=False, label='Category', choices=Subject.CATEGORY_CHOICES, initial='OTHER',
++        widget=forms.Select(attrs={'class': 'form-select'}),
++    )
++
+     class Meta:
+         model = SubjectRequirement
+         fields = [
+@@ -114,6 +136,38 @@ class SubjectRequirementForm(forms.ModelForm):
+             'condition_religion': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Islam (only for Conditional)'}),
+         }
+ 
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self.fields['subject'].required = False
++        self.fields['subject'].empty_label = "-- Choose existing, or add a new subject below --"
++
++    def clean(self):
++        cleaned = super().clean()
++        subject = cleaned.get('subject')
++        code = cleaned.get('new_subject_code', '').strip()
++        name = cleaned.get('new_subject_name', '').strip()
++
++        if not subject and not (code and name):
++            raise forms.ValidationError(
++                "Choose an existing subject, or fill in both a code and name to add a new one."
++            )
++        if not subject and code and Subject.objects.filter(code__iexact=code).exists():
++            self.add_error('new_subject_code', "A subject with this code already exists — pick it from the dropdown instead.")
++        return cleaned
++
++    def save(self, commit=True):
++        instance = super().save(commit=False)
++        if not instance.subject_id and self.cleaned_data.get('new_subject_code'):
++            instance.subject = Subject.objects.create(
++                code=self.cleaned_data['new_subject_code'].strip(),
++                name=self.cleaned_data['new_subject_name'].strip(),
++                full_marks=self.cleaned_data.get('new_subject_full_marks') or 100,
++                category=self.cleaned_data.get('new_subject_category') or 'OTHER',
++            )
++        if commit:
++            instance.save()
++        return instance
++
+ 
+ class DiscontinueStudentForm(forms.Form):
+     reason = forms.CharField(
+diff --git a/students/management/commands/seed_subject_requirements.py b/students/management/commands/seed_subject_requirements.py
+index 06a8312..4478fc3 100644
+--- a/students/management/commands/seed_subject_requirements.py
++++ b/students/management/commands/seed_subject_requirements.py
+@@ -1,74 +1,23 @@
+ from django.core.management.base import BaseCommand, CommandError
+-from students.models import Institution, Subject, SubjectRequirement
+-
+-
+-# Standard Bangladesh SSC (class 9-10) group-wise subject structure under the
+-# NCTB curriculum. This is a reference starting point, not a legal document —
+-# institutions can add, edit, or delete individual rows afterwards from the
+-# "Subject Requirements" page, since exact syllabi can vary slightly by board
+-# / institution and do change over time.
+-#
+-# Each entry: (subject_code, requirement_type, optional_set_key, condition_religion)
+-# These are applied with group='' (i.e. common/compulsory across every group).
+-COMMON_REQUIREMENTS = [
+-    ('BAN1', 'MANDATORY', '', ''),
+-    ('BAN2', 'MANDATORY', '', ''),
+-    ('ENG1', 'MANDATORY', '', ''),
+-    ('ENG2', 'MANDATORY', '', ''),
+-    ('ICT', 'MANDATORY', '', ''),
+-    ('BGS', 'MANDATORY', '', ''),
+-    ('CAREER', 'MANDATORY', '', ''),
+-    ('HPE', 'MANDATORY', '', ''),
+-    ('ART', 'MANDATORY', '', ''),
+-    ('ISLAM', 'CONDITIONAL', '', 'Islam'),
+-    ('HINDU', 'CONDITIONAL', '', 'Hindu'),
+-    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
+-    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
+-]
+-
+-GROUP_REQUIREMENTS = {
+-    'SCI': [
+-        ('MATH', 'MANDATORY', '', ''),
+-        ('PHY', 'MANDATORY', '', ''),
+-        ('CHEM', 'MANDATORY', '', ''),
+-        ('BIO', 'OPTIONAL', 'sci_4th', ''),
+-        ('HMATH', 'OPTIONAL', 'sci_4th', ''),
+-    ],
+-    'BUS': [
+-        ('MATH', 'MANDATORY', '', ''),
+-        ('ACC', 'MANDATORY', '', ''),
+-        ('BOM', 'MANDATORY', '', ''),
+-        ('FIN', 'OPTIONAL', 'bus_4th', ''),
+-        ('ECO', 'OPTIONAL', 'bus_4th', ''),
+-    ],
+-    'HUM': [
+-        ('SCI-GEN', 'MANDATORY', '', ''),
+-        ('CIVICS', 'OPTIONAL', 'hum_elective_1', ''),
+-        ('HISTORY', 'OPTIONAL', 'hum_elective_1', ''),
+-        ('GEO', 'OPTIONAL', 'hum_elective_1', ''),
+-        ('ECO', 'OPTIONAL', 'hum_elective_1', ''),
+-        ('LOGIC', 'OPTIONAL', 'hum_elective_2', ''),
+-        ('SOC', 'OPTIONAL', 'hum_elective_2', ''),
+-        ('PSY', 'OPTIONAL', 'hum_elective_2', ''),
+-        ('MATH', 'OPTIONAL', 'hum_elective_2', ''),
+-    ],
+-}
+-
+-SSC_CLASSES = ['9', '10']
++from students.models import Institution
++from students.curriculum_apply import apply_curriculum
++from students.curriculum_data import curriculum_for_class
+ 
+ 
+ class Command(BaseCommand):
+     help = (
+-        "Auto-populate standard SSC (class 9-10) SubjectRequirement rows — "
+-        "compulsory subjects plus Science/Business Studies/Humanities group "
+-        "subjects — for one institution or all institutions. Existing rows "
+-        "are left untouched (safe to re-run)."
++        "Auto-populate SubjectRequirement rows from the built-in Bangladesh "
++        "curriculum (Primary, Junior Secondary, SSC and HSC, group-wise "
++        "where applicable) for one institution or all institutions. "
++        "Existing rows are left untouched (safe to re-run). This is the "
++        "same logic the 'Auto-fill from Curriculum' button on the Subject "
++        "Assignments page uses."
+     )
+ 
+     def add_arguments(self, parser):
+         parser.add_argument(
+             '--institution', type=int, default=None,
+-            help='Institution ID to seed. If omitted, seeds every institution that has class 9 or 10.',
++            help='Institution ID to seed. If omitted, seeds every institution.',
+         )
+ 
+     def handle(self, *args, **options):
+@@ -80,58 +29,30 @@ class Command(BaseCommand):
+         else:
+             institutions = Institution.objects.all()
+ 
+-        missing_codes = set()
+         created_total = 0
+-        skipped_total = 0
+         touched_institutions = 0
++        skipped_classes = set()
+ 
+         for institution in institutions:
+-            classes_here = [c for c in institution.get_class_list() if c in SSC_CLASSES]
+-            if not classes_here:
+-                continue
+-            touched_institutions += 1
+-
++            classes_here = institution.get_class_list()
++            covered_any = False
+             for admission_class in classes_here:
+-                created_total += self._apply_rows(
+-                    institution, admission_class, group='', rows=COMMON_REQUIREMENTS,
+-                    missing_codes=missing_codes,
+-                )
+-                for group_code, rows in GROUP_REQUIREMENTS.items():
+-                    created_total += self._apply_rows(
+-                        institution, admission_class, group=group_code, rows=rows,
+-                        missing_codes=missing_codes,
+-                    )
+-
+-        if missing_codes:
++                common_rows, _ = curriculum_for_class(admission_class)
++                if common_rows is None:
++                    skipped_classes.add(admission_class)
++                    continue
++                covered_any = True
++                created_total += apply_curriculum(institution, admission_class)
++            if covered_any:
++                touched_institutions += 1
++
++        if skipped_classes:
+             self.stdout.write(self.style.WARNING(
+-                "Some subject codes referenced here don't exist in the Subject master list "
+-                "(run 'python manage.py seed_subjects' first): " + ', '.join(sorted(missing_codes))
++                "These class labels aren't covered by the built-in curriculum "
++                "and were skipped (add their subjects manually): " + ', '.join(sorted(skipped_classes))
+             ))
+ 
+         self.stdout.write(self.style.SUCCESS(
+             f"Done — {touched_institutions} institution(s) processed, "
+             f"{created_total} SubjectRequirement row(s) created (existing rows were left as-is)."
+         ))
+-
+-    def _apply_rows(self, institution, admission_class, group, rows, missing_codes):
+-        created = 0
+-        for code, req_type, opt_key, condition_religion in rows:
+-            try:
+-                subject = Subject.objects.get(code=code)
+-            except Subject.DoesNotExist:
+-                missing_codes.add(code)
+-                continue
+-            _, was_created = SubjectRequirement.objects.get_or_create(
+-                institution=institution,
+-                admission_class=admission_class,
+-                group=group,
+-                subject=subject,
+-                defaults={
+-                    'requirement_type': req_type,
+-                    'optional_set_key': opt_key,
+-                    'condition_religion': condition_religion,
+-                },
+-            )
+-            if was_created:
+-                created += 1
+-        return created
+diff --git a/students/management/commands/seed_subjects.py b/students/management/commands/seed_subjects.py
+index dd60985..c98d53c 100644
+--- a/students/management/commands/seed_subjects.py
++++ b/students/management/commands/seed_subjects.py
+@@ -1,53 +1,6 @@
+ from django.core.management.base import BaseCommand
+ from students.models import Subject
+-
+-
+-# Pre-loaded, commonly-used subjects under the current Bangladesh national
+-# curriculum (SSC/HSC level). Institutions can still add their own custom
+-# subjects from the Subjects page if something here doesn't fit.
+-SUBJECTS = [
+-    # code, name, full_marks, category
+-    ('BAN1', 'Bangla 1st Paper', 100, 'COMPULSORY'),
+-    ('BAN2', 'Bangla 2nd Paper', 100, 'COMPULSORY'),
+-    ('ENG1', 'English 1st Paper', 100, 'COMPULSORY'),
+-    ('ENG2', 'English 2nd Paper', 100, 'COMPULSORY'),
+-    ('MATH', 'General Mathematics', 100, 'COMPULSORY'),
+-    ('ICT', 'Information & Communication Technology', 50, 'COMPULSORY'),
+-    ('BGS', 'Bangladesh & Global Studies', 100, 'COMPULSORY'),
+-    ('SCI-GEN', 'General Science', 100, 'COMPULSORY'),
+-    ('CAREER', 'Career Education', 50, 'COMPULSORY'),
+-    ('HPE', 'Health & Physical Education', 50, 'COMPULSORY'),
+-    ('ART', 'Art & Culture', 50, 'COMPULSORY'),
+-
+-    ('PHY', 'Physics', 100, 'OPTIONAL'),
+-    ('CHEM', 'Chemistry', 100, 'OPTIONAL'),
+-    ('BIO', 'Biology', 100, 'OPTIONAL'),
+-    ('HMATH', 'Higher Mathematics', 100, 'OPTIONAL'),
+-    ('AGRI', 'Agriculture Studies', 100, 'OPTIONAL'),
+-    ('ACC', 'Accounting', 100, 'OPTIONAL'),
+-    ('BOM', 'Business Organization & Management', 100, 'OPTIONAL'),
+-    ('FIN', 'Finance, Banking & Insurance', 100, 'OPTIONAL'),
+-    ('ECO', 'Economics', 100, 'OPTIONAL'),
+-    ('CIVICS', 'Civics & Good Governance', 100, 'OPTIONAL'),
+-    ('HISTORY', 'History of Bangladesh & World Civilization', 100, 'OPTIONAL'),
+-    ('GEO', 'Geography & Environment', 100, 'OPTIONAL'),
+-    ('LOGIC', 'Logic', 100, 'OPTIONAL'),
+-    ('SOC', 'Sociology', 100, 'OPTIONAL'),
+-    ('PSY', 'Psychology', 100, 'OPTIONAL'),
+-
+-    ('ISLAM', 'Islam & Moral Education', 100, 'RELIGION'),
+-    ('HINDU', 'Hindu Religion & Moral Education', 100, 'RELIGION'),
+-    ('CHRIS', 'Christian Religion & Moral Education', 100, 'RELIGION'),
+-    ('BUDDHIST', 'Buddhist Religion & Moral Education', 100, 'RELIGION'),
+-
+-    ('DCS', 'Computer & Information Technology (Vocational)', 100, 'VOCATIONAL'),
+-    ('DEL', 'Electrical Works & Services (Vocational)', 100, 'VOCATIONAL'),
+-    ('DCV', 'Civil Construction & Maintenance (Vocational)', 100, 'VOCATIONAL'),
+-
+-    ('ENG3', 'General Science (4th Subject)', 100, 'FOURTH'),
+-    ('MATH4', 'Higher Mathematics (4th Subject)', 100, 'FOURTH'),
+-    ('AGRI4', 'Agriculture Studies (4th Subject)', 100, 'FOURTH'),
+-]
++from students.curriculum_data import SUBJECTS
+ 
+ 
+ class Command(BaseCommand):
+diff --git a/students/templates/students/add_subject.html b/students/templates/students/add_subject.html
+deleted file mode 100644
+index 91da3c0..0000000
+--- a/students/templates/students/add_subject.html
++++ /dev/null
+@@ -1,27 +0,0 @@
+-{% extends 'students/base.html' %}
+-
+-{% block title %}{% if subject %}Edit{% else %}Add{% endif %} Subject - Principal Kazi Faruky School And College{% endblock %}
+-
+-{% block content %}
+-<div class="page-header">
+-    <div>
+-        <h1>{% if subject %}Edit{% else %}Add New{% endif %} Subject</h1>
+-        <div class="subtitle">Subject details</div>
+-    </div>
+-</div>
+-
+-{% if messages %}
+-    {% for message in messages %}
+-        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+-    {% endfor %}
+-{% endif %}
+-
+-<div class="table-card p-4" style="max-width:500px">
+-    <form method="POST">
+-        {% csrf_token %}
+-        {{ form.as_p }}
+-        <button type="submit" class="btn btn-navy">Save</button>
+-        <a href="{% url 'subject_list' %}" class="btn btn-outline-navy">Cancel</a>
+-    </form>
+-</div>
+-{% endblock %}
+diff --git a/students/templates/students/add_subject_requirement.html b/students/templates/students/add_subject_requirement.html
+index 4ec7628..6d59860 100644
+--- a/students/templates/students/add_subject_requirement.html
++++ b/students/templates/students/add_subject_requirement.html
+@@ -6,14 +6,73 @@
+ <div class="page-header">
+     <div>
+         <h1>{% if requirement %}Edit Subject Assignment{% else %}Assign Subject{% endif %}</h1>
+-        <div class="subtitle">Choose a subject from the master list and pin it to an Institution + Class (+ Group)</div>
++        <div class="subtitle">Pin a subject to an Institution + Class (+ Group) — pick an existing subject, or add a new one below</div>
+     </div>
+ </div>
+ 
+ <div class="table-card p-4" style="max-width: 640px;">
+-    <form method="POST">
++    <form method="POST" id="subject-requirement-form">
+         {% csrf_token %}
+-        {{ form.as_p }}
++
++        {% if form.non_field_errors %}
++        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
++        {% endif %}
++
++        <div class="mb-3">
++            <label class="form-label">Institution</label>
++            {{ form.institution }}
++        </div>
++        <div class="mb-3">
++            <label class="form-label">Class</label>
++            {{ form.admission_class }}
++        </div>
++        <div class="mb-3">
++            <label class="form-label">Group</label>
++            {{ form.group }}
++        </div>
++
++        <div class="mb-3">
++            <label class="form-label">Subject</label>
++            {{ form.subject }}
++            {{ form.subject.errors }}
++        </div>
++
++        <div id="new-subject-box" class="p-3 mb-3" style="background:#f8f9fb; border-radius:10px; display:none;">
++            <div class="fw-semibold mb-2">New Subject Details</div>
++            <div class="row g-2">
++                <div class="col-6">
++                    <label class="form-label">Code</label>
++                    {{ form.new_subject_code }}
++                    {{ form.new_subject_code.errors }}
++                </div>
++                <div class="col-6">
++                    <label class="form-label">Full Marks</label>
++                    {{ form.new_subject_full_marks }}
++                </div>
++                <div class="col-8">
++                    <label class="form-label">Name</label>
++                    {{ form.new_subject_name }}
++                </div>
++                <div class="col-4">
++                    <label class="form-label">Category</label>
++                    {{ form.new_subject_category }}
++                </div>
++            </div>
++        </div>
++
++        <div class="mb-3">
++            <label class="form-label">Requirement Type</label>
++            {{ form.requirement_type }}
++        </div>
++        <div class="mb-3">
++            <label class="form-label">Optional Set</label>
++            {{ form.optional_set_key }}
++        </div>
++        <div class="mb-3">
++            <label class="form-label">Condition Religion</label>
++            {{ form.condition_religion }}
++        </div>
++
+         <div class="form-text mb-3">
+             Leave Group blank to apply to all groups. Use "Optional Set" to group subjects a student
+             picks one-of-from (e.g. all "group-a" rows show together as one choice). Use "Condition Religion"
+@@ -26,3 +85,23 @@
+     </form>
+ </div>
+ {% endblock %}
++
++{% block extra_script %}
++<script>
++    (function () {
++        const subjectSelect = document.getElementById('{{ form.subject.id_for_label }}');
++        const newSubjectBox = document.getElementById('new-subject-box');
++
++        function syncVisibility() {
++            if (!subjectSelect.value) {
++                newSubjectBox.style.display = 'block';
++            } else {
++                newSubjectBox.style.display = 'none';
++            }
++        }
++
++        subjectSelect.addEventListener('change', syncVisibility);
++        syncVisibility();
++    })();
++</script>
++{% endblock %}
+diff --git a/students/templates/students/admission_application_list.html b/students/templates/students/admission_application_list.html
+index 64a22d9..fdc02e4 100644
+--- a/students/templates/students/admission_application_list.html
++++ b/students/templates/students/admission_application_list.html
+@@ -28,9 +28,15 @@
+             </select>
+         </form>
+         <a href="{% url 'admission' %}" class="btn btn-navy">+ New Application</a>
++        <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-navy">📚 Subject Assignments</a>
+     </div>
+ </div>
+ 
++<div class="d-flex gap-2 mb-3 d-print-none" role="tablist">
++    <span class="btn btn-sm btn-navy disabled">Admission</span>
++    <a href="{% url 'subject_requirement_list' %}" class="btn btn-sm btn-outline-secondary">Subject Assignments</a>
++</div>
++
+ <div class="table-card">
+     <div class="table-responsive">
+         <table class="table table-striped mb-0">
+diff --git a/students/templates/students/base.html b/students/templates/students/base.html
+index 3740607..1df1f00 100644
+--- a/students/templates/students/base.html
++++ b/students/templates/students/base.html
+@@ -191,8 +191,6 @@
+         <div class="flyout">
+             <a href="{% url 'admission_application_list' %}"><i class="bi bi-file-earmark-person-fill"></i> Admission</a>
+             <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
+-            <a href="{% url 'subject_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subjects</a>
+-            <a href="{% url 'subject_requirement_list' %}"><i class="bi bi-diagram-3-fill"></i> Subject Assignments</a>
+             <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+             <a href="{% url 'ssc_registration_list' %}"><i class="bi bi-file-earmark-text-fill"></i> SSC Registration</a>
+             <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> Certificates</a>
+diff --git a/students/templates/students/delete_subject.html b/students/templates/students/delete_subject.html
+deleted file mode 100644
+index 5b56767..0000000
+--- a/students/templates/students/delete_subject.html
++++ /dev/null
+@@ -1,18 +0,0 @@
+-{% extends 'students/base.html' %}
+-
+-{% block title %}Delete Subject - Principal Kazi Faruky School And College{% endblock %}
+-
+-{% block content %}
+-<div class="page-header">
+-    <h1>Confirm Subject Deletion</h1>
+-</div>
+-
+-<div class="table-card p-4" style="max-width:500px">
+-    <p>Are you sure you want to delete <strong>{{ subject.name }}</strong>?</p>
+-    <form method="POST">
+-        {% csrf_token %}
+-        <button type="submit" class="btn btn-danger">Yes, Delete</button>
+-        <a href="{% url 'subject_list' %}" class="btn btn-outline-navy">Cancel</a>
+-    </form>
+-</div>
+-{% endblock %}
+diff --git a/students/templates/students/subject_list.html b/students/templates/students/subject_list.html
+deleted file mode 100644
+index 5fc8e1f..0000000
+--- a/students/templates/students/subject_list.html
++++ /dev/null
+@@ -1,75 +0,0 @@
+-{% extends 'students/base.html' %}
+-
+-{% block title %}Subjects - {{ block.super }}{% endblock %}
+-
+-{% block print_subtitle %}Subject List{% endblock %}
+-
+-{% block content %}
+-<div class="page-header d-print-none">
+-    <div>
+-        <h1>Subjects</h1>
+-        <div class="subtitle">Master subject list — used across Admission, Students and Exam</div>
+-    </div>
+-    <div class="page-actions">
+-        <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-navy">Assign to Institution/Class</a>
+-        {% if perms.students.add_subject %}
+-        <a href="{% url 'add_subject' %}" class="btn btn-navy">+ Add New Subject</a>
+-        {% endif %}
+-    </div>
+-</div>
+-
+-<form method="GET" class="row g-2 mb-3 d-print-none">
+-    <div class="col-auto" style="min-width: 240px;">
+-        <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Search by name or code">
+-    </div>
+-    <div class="col-auto">
+-        <select name="category" class="form-select">
+-            <option value="">-- All Categories --</option>
+-            {% for code, label in category_choices %}
+-            <option value="{{ code }}" {% if selected_category == code %}selected{% endif %}>{{ label }}</option>
+-            {% endfor %}
+-        </select>
+-    </div>
+-    <div class="col-auto">
+-        <button type="submit" class="btn btn-outline-navy">Filter</button>
+-        <a href="{% url 'subject_list' %}" class="btn btn-outline-secondary">Clear</a>
+-    </div>
+-</form>
+-
+-{% for label, subjects in grouped_subjects.items %}
+-<div class="table-card mb-3">
+-    <div class="p-3 pb-0"><h5 class="mb-0">{{ label }}</h5></div>
+-    <div class="table-responsive">
+-        <table class="table table-striped mb-0">
+-            <thead>
+-                <tr>
+-                    <th>Code</th>
+-                    <th>Name</th>
+-                    <th>Full Marks</th>
+-                    <th>Action</th>
+-                </tr>
+-            </thead>
+-            <tbody>
+-                {% for subject in subjects %}
+-                <tr>
+-                    <td>{{ subject.code }}</td>
+-                    <td>{{ subject.name }}</td>
+-                    <td>{{ subject.full_marks }}</td>
+-                    <td>
+-                        {% if perms.students.change_subject %}
+-                        <a href="{% url 'edit_subject' subject.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
+-                        {% endif %}
+-                        {% if perms.students.delete_subject %}
+-                        <a href="{% url 'delete_subject' subject.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+-                        {% endif %}
+-                    </td>
+-                </tr>
+-                {% endfor %}
+-            </tbody>
+-        </table>
+-    </div>
+-</div>
+-{% empty %}
+-<div class="table-card p-4 text-center text-muted">No subjects found.</div>
+-{% endfor %}
+-{% endblock %}
+diff --git a/students/templates/students/subject_requirement_list.html b/students/templates/students/subject_requirement_list.html
+index 0ea6b16..ce55567 100644
+--- a/students/templates/students/subject_requirement_list.html
++++ b/students/templates/students/subject_requirement_list.html
+@@ -6,16 +6,20 @@
+ <div class="page-header d-print-none">
+     <div>
+         <h1>Subject Assignments</h1>
+-        <div class="subtitle">Assign subjects from the master list to an Institution + Class (+ Group), and mark each Mandatory/Optional/Conditional</div>
++        <div class="subtitle">Assign subjects to an Institution + Class (+ Group), and mark each Mandatory/Optional/Conditional</div>
+     </div>
+     <div class="page-actions">
+-        <a href="{% url 'subject_list' %}" class="btn btn-outline-navy">Master Subject List</a>
+         {% if perms.students.add_subjectrequirement %}
+-        <a href="{% url 'add_subject_requirement' %}" class="btn btn-navy">+ Assign Subject</a>
++        <a href="{% url 'add_subject_requirement' %}?institution={{ selected_institution_id }}&admission_class={{ selected_class }}&group={{ selected_group }}" class="btn btn-navy">+ Assign Subject</a>
+         {% endif %}
+     </div>
+ </div>
+ 
++<div class="d-flex gap-2 mb-3 d-print-none">
++    <a href="{% url 'student_list_filter' %}" class="btn btn-sm btn-outline-secondary">← Students</a>
++    <a href="{% url 'admission_application_list' %}" class="btn btn-sm btn-outline-secondary">← Admission</a>
++</div>
++
+ <form method="GET" class="row g-2 mb-3">
+     <div class="col-auto" style="min-width: 220px;">
+         <select name="institution" class="form-select">
+@@ -45,6 +49,30 @@
+     </div>
+ </form>
+ 
++{% if selected_institution_id and selected_class and perms.students.add_subjectrequirement %}
++<div class="table-card p-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
++    <div>
++        <div class="fw-semibold">Auto-fill from Bangladesh Curriculum</div>
++        <div class="text-muted" style="font-size:0.85rem;">
++            {% if can_auto_fill %}
++                Adds the standard compulsory{% if selected_group %} and {{ selected_group }} group{% endif %} subjects for Class {{ selected_class }}. Existing rows are never overwritten — review and edit afterwards.
++            {% else %}
++                Class "{{ selected_class }}" isn't covered by the built-in curriculum — add its subjects manually with "+ Assign Subject" above.
++            {% endif %}
++        </div>
++    </div>
++    {% if can_auto_fill %}
++    <form method="POST" action="{% url 'auto_populate_subject_requirements' %}">
++        {% csrf_token %}
++        <input type="hidden" name="institution" value="{{ selected_institution_id }}">
++        <input type="hidden" name="admission_class" value="{{ selected_class }}">
++        <input type="hidden" name="group" value="{{ selected_group }}">
++        <button type="submit" class="btn btn-navy">✨ Auto-fill from Curriculum</button>
++    </form>
++    {% endif %}
++</div>
++{% endif %}
++
+ {% for label, requirements in grouped_requirements.items %}
+ <div class="table-card mb-3">
+     <div class="p-3 pb-0"><h5 class="mb-0">{{ label }}</h5></div>
+diff --git a/students/urls.py b/students/urls.py
+index 2d954f3..a668343 100644
+--- a/students/urls.py
++++ b/students/urls.py
+@@ -86,12 +86,12 @@ urlpatterns = [
+     path('exams/<int:pk>/result/<int:student_pk>/', views.student_result_detail, name='student_result_detail'),
+     path('exams/<int:pk>/result-card/<int:student_pk>/', views.result_card, name='result_card'),
+ path('reports/class-section-summary/', views.class_section_summary, name='class_section_summary'),
+-    # Subject URLs
+-    path('subjects/', views.subject_list, name='subject_list'),
+-    path('subjects/add/', views.add_subject, name='add_subject'),
+-    path('subjects/edit/<int:pk>/', views.edit_subject, name='edit_subject'),
+-    path('subjects/delete/<int:pk>/', views.delete_subject, name='delete_subject'),
++    # Subject Assignment URLs (the old standalone "Subjects" master-list
++    # page was removed — new subjects are created inline from the Assign
++    # Subject form, and default assignments come from the curriculum
++    # auto-fill below)
+     path('subject-requirements/', views.subject_requirement_list, name='subject_requirement_list'),
++    path('subject-requirements/auto-fill/', views.auto_populate_subject_requirements, name='auto_populate_subject_requirements'),
+     path('subject-requirements/add/', views.add_subject_requirement, name='add_subject_requirement'),
+     path('subject-requirements/<int:pk>/edit/', views.edit_subject_requirement, name='edit_subject_requirement'),
+     path('subject-requirements/<int:pk>/delete/', views.delete_subject_requirement, name='delete_subject_requirement'),
+diff --git a/students/views.py b/students/views.py
+index 23af83c..a32404a 100644
+--- a/students/views.py
++++ b/students/views.py
+@@ -4,7 +4,10 @@ from django.contrib.auth import authenticate, login
+ from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
+ from django.db import IntegrityError, transaction
+ from django.db.models import Sum, Q
++from django.urls import reverse
+ from django.views.decorators.http import require_POST
++from .curriculum_data import curriculum_for_class
++from .curriculum_apply import apply_curriculum
+ from .models import (
+     Student, Subject, Institution, InstitutionAccess, TransferCertificate, Certificate,
+     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
+@@ -794,80 +797,12 @@ def student_exams(request, pk):
+ 
+ 
+ # ---------------- Subject Views ----------------
+-
+-@login_required
+-def subject_list(request):
+-    subjects = Subject.objects.all()
+-    if not _is_admin(request.user):
+-        subjects = subjects.filter(created_by=request.user)
+-
+-    query = request.GET.get('q', '').strip()
+-    if query:
+-        subjects = subjects.filter(Q(name__icontains=query) | Q(code__icontains=query))
+-
+-    category = request.GET.get('category', '')
+-    if category:
+-        subjects = subjects.filter(category=category)
+-
+-    grouped = {}
+-    for code, label in Subject.CATEGORY_CHOICES:
+-        bucket = [s for s in subjects if s.category == code]
+-        if bucket:
+-            grouped[label] = bucket
+-
+-    return render(request, 'students/subject_list.html', {
+-        'subjects': subjects,
+-        'grouped_subjects': grouped,
+-        'category_choices': Subject.CATEGORY_CHOICES,
+-        'selected_category': category,
+-        'query': query,
+-    })
+-
+-
+-@login_required
+-@permission_required('students.add_subject', raise_exception=True)
+-def add_subject(request):
+-    if request.method == 'POST':
+-        form = SubjectForm(request.POST)
+-        if form.is_valid():
+-            subject = form.save(commit=False)
+-            subject.created_by = request.user
+-            subject.save()
+-            messages.success(request, "Subject added.")
+-            return redirect('subject_list')
+-        else:
+-            messages.error(request, "There are errors in the form — please check the fields below.")
+-    else:
+-        form = SubjectForm()
+-    return render(request, 'students/add_subject.html', {'form': form})
+-
+-
+-@login_required
+-@permission_required('students.change_subject', raise_exception=True)
+-def edit_subject(request, pk):
+-    subject = get_object_or_404(Subject, pk=pk)
+-    if request.method == 'POST':
+-        form = SubjectForm(request.POST, instance=subject)
+-        if form.is_valid():
+-            form.save()
+-            messages.success(request, "Subject information updated.")
+-            return redirect('subject_list')
+-        else:
+-            messages.error(request, "There are errors in the form — please check the fields below.")
+-    else:
+-        form = SubjectForm(instance=subject)
+-    return render(request, 'students/add_subject.html', {'form': form, 'subject': subject})
+-
+-
+-@login_required
+-@permission_required('students.delete_subject', raise_exception=True)
+-def delete_subject(request, pk):
+-    subject = get_object_or_404(Subject, pk=pk)
+-    if request.method == 'POST':
+-        subject.delete()
+-        messages.success(request, "Subject deleted.")
+-        return redirect('subject_list')
+-    return render(request, 'students/delete_subject.html', {'subject': subject})
++#
++# NOTE: the standalone "Subjects" master-list page was removed — Subject
++# rows are now created either automatically by the curriculum auto-fill
++# (see auto_populate_subject_requirements below) or inline from the Subject
++# Assignment form via SubjectRequirementForm's new-subject fields. The
++# Subject model itself is unchanged and still used by both.
+ 
+ # ---------------- Subject Requirement Views ----------------
+ 
+@@ -941,6 +876,11 @@ def subject_requirement_list(request):
+         if bucket:
+             grouped[label] = bucket
+ 
++    can_auto_fill = False
++    if institution_id and admission_class:
++        common_rows, _ = curriculum_for_class(admission_class)
++        can_auto_fill = common_rows is not None
++
+     return render(request, 'students/subject_requirement_list.html', {
+         'grouped_requirements': grouped,
+         'institutions': Institution.objects.all().order_by('name'),
+@@ -949,9 +889,45 @@ def subject_requirement_list(request):
+         'selected_class': admission_class,
+         'selected_group': group,
+         'query': query,
++        'can_auto_fill': can_auto_fill,
+     })
+ 
+ 
++@login_required
++@permission_required('students.add_subjectrequirement', raise_exception=True)
++@require_POST
++def auto_populate_subject_requirements(request):
++    """Auto-fill SubjectRequirement rows for an Institution + Class (+ Group)
++    from the built-in Bangladesh-curriculum data. Idempotent — never
++    overwrites or duplicates rows an admin has already added/edited."""
++    institution_id = request.POST.get('institution')
++    admission_class = request.POST.get('admission_class', '').strip()
++    group = request.POST.get('group', '').strip()
++
++    if not institution_id or not admission_class:
++        messages.error(request, "Pick an Institution and Class before auto-filling.")
++        return redirect('subject_requirement_list')
++
++    institution = get_object_or_404(Institution, pk=institution_id)
++    created = apply_curriculum(institution, admission_class, group)
++
++    if created is None:
++        messages.warning(
++            request,
++            f"Class \"{admission_class}\" isn't covered by the built-in curriculum — "
++            "please add its subjects manually below."
++        )
++    elif created == 0:
++        messages.info(request, "Nothing new to add — this Institution/Class/Group is already fully assigned.")
++    else:
++        messages.success(request, f"Auto-fill complete — {created} subject assignment(s) added. Review and edit as needed below.")
++
++    return redirect(
++        f"{reverse('subject_requirement_list')}?institution={institution_id}"
++        f"&admission_class={admission_class}&group={group}"
++    )
++
++
+ @login_required
+ @permission_required('students.add_subjectrequirement', raise_exception=True)
+ def add_subject_requirement(request):
+@@ -967,7 +943,11 @@ def add_subject_requirement(request):
+         else:
+             messages.error(request, "There are errors in the form — please check the fields below.")
+     else:
+-        form = SubjectRequirementForm()
++        form = SubjectRequirementForm(initial={
++            'institution': request.GET.get('institution') or None,
++            'admission_class': request.GET.get('admission_class', ''),
++            'group': request.GET.get('group', ''),
++        })
+     return render(request, 'students/add_subject_requirement.html', {'form': form})
+ 
+ 
+-- 
+2.43.0
+
