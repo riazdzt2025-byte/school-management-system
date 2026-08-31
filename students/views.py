@@ -299,11 +299,23 @@ def accounts_approve_payment(request, pk):
         student = Student.objects.create(
             institution=application.institution, name=application.applicant_name,
             admission_class=application.requested_class, section=application.requested_section,
+            group=application.requested_group,
             gender=application.gender, religion=application.religion,
             father_name=application.guardian_name, contact_no=application.applicant_contact_no,
             guardian_contact_no=application.guardian_contact_no,
             admission_year=int(application.session[:4]) if application.session[:4].isdigit() else None,
         )
+        # Auto-assign Mandatory/Conditional subjects from the Subject
+        # Assignments table (same source the "Add Student" form uses).
+        # Optional subjects still need a manual pick, so leave those for
+        # the office to complete afterwards from the student's Edit page.
+        applicable = get_applicable_subjects(
+            application.institution, application.requested_class,
+            group=application.requested_group, religion=application.religion,
+        )
+        auto_requirement_ids = [s['requirement_id'] for s in applicable['mandatory'] + applicable['conditional']]
+        if auto_requirement_ids:
+            save_student_subject_choices(student, auto_requirement_ids)
         for _ in range(3):
             try:
                 with transaction.atomic():
