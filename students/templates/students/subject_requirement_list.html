@@ -6,14 +6,18 @@
 <div class="page-header d-print-none">
     <div>
         <h1>Subject Assignments</h1>
-        <div class="subtitle">Assign subjects from the master list to an Institution + Class (+ Group), and mark each Mandatory/Optional/Conditional</div>
+        <div class="subtitle">Assign subjects to an Institution + Class (+ Group), and mark each Mandatory/Optional/Conditional</div>
     </div>
     <div class="page-actions">
-        <a href="{% url 'subject_list' %}" class="btn btn-outline-navy">Master Subject List</a>
         {% if perms.students.add_subjectrequirement %}
-        <a href="{% url 'add_subject_requirement' %}" class="btn btn-navy">+ Assign Subject</a>
+        <a href="{% url 'add_subject_requirement' %}?institution={{ selected_institution_id }}&admission_class={{ selected_class }}&group={{ selected_group }}" class="btn btn-navy">+ Assign Subject</a>
         {% endif %}
     </div>
+</div>
+
+<div class="d-flex gap-2 mb-3 d-print-none">
+    <a href="{% url 'student_list_filter' %}" class="btn btn-sm btn-outline-secondary">← Students</a>
+    <a href="{% url 'admission_application_list' %}" class="btn btn-sm btn-outline-secondary">← Admission</a>
 </div>
 
 <form method="GET" class="row g-2 mb-3">
@@ -44,6 +48,30 @@
         <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Clear</a>
     </div>
 </form>
+
+{% if selected_institution_id and selected_class and perms.students.add_subjectrequirement %}
+<div class="table-card p-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+        <div class="fw-semibold">Auto-fill from Bangladesh Curriculum</div>
+        <div class="text-muted" style="font-size:0.85rem;">
+            {% if can_auto_fill %}
+                Adds the standard compulsory{% if selected_group %} and {{ selected_group }} group{% endif %} subjects for Class {{ selected_class }}. Existing rows are never overwritten — review and edit afterwards.
+            {% else %}
+                Class "{{ selected_class }}" isn't covered by the built-in curriculum — add its subjects manually with "+ Assign Subject" above.
+            {% endif %}
+        </div>
+    </div>
+    {% if can_auto_fill %}
+    <form method="POST" action="{% url 'auto_populate_subject_requirements' %}">
+        {% csrf_token %}
+        <input type="hidden" name="institution" value="{{ selected_institution_id }}">
+        <input type="hidden" name="admission_class" value="{{ selected_class }}">
+        <input type="hidden" name="group" value="{{ selected_group }}">
+        <button type="submit" class="btn btn-navy">✨ Auto-fill from Curriculum</button>
+    </form>
+    {% endif %}
+</div>
+{% endif %}
 
 {% for label, requirements in grouped_requirements.items %}
 <div class="table-card mb-3">

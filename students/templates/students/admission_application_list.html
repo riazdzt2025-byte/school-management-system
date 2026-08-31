@@ -28,7 +28,13 @@
             </select>
         </form>
         <a href="{% url 'admission' %}" class="btn btn-navy">+ New Application</a>
+        <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-navy">📚 Subject Assignments</a>
     </div>
+</div>
+
+<div class="d-flex gap-2 mb-3 d-print-none" role="tablist">
+    <span class="btn btn-sm btn-navy disabled">Admission</span>
+    <a href="{% url 'subject_requirement_list' %}" class="btn btn-sm btn-outline-secondary">Subject Assignments</a>
 </div>
 
 <div class="table-card">

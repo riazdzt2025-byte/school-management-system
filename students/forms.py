@@ -98,6 +98,28 @@ class SubjectForm(forms.ModelForm):
 
 
 class SubjectRequirementForm(forms.ModelForm):
+    """Assign a subject to an Institution/Class/Group. The Subjects master
+    page was removed, so this form also supports creating a brand-new
+    subject on the fly: pick "-- Add a new subject --" in the Subject
+    dropdown and fill in the extra fields that appear below it."""
+
+    new_subject_code = forms.CharField(
+        required=False, label='New Subject Code',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. STAT'}),
+    )
+    new_subject_name = forms.CharField(
+        required=False, label='New Subject Name',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Statistics'}),
+    )
+    new_subject_full_marks = forms.IntegerField(
+        required=False, label='Full Marks', initial=100,
+        widget=forms.NumberInput(attrs={'class': 'form-control'}),
+    )
+    new_subject_category = forms.ChoiceField(
+        required=False, label='Category', choices=Subject.CATEGORY_CHOICES, initial='OTHER',
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+
     class Meta:
         model = SubjectRequirement
         fields = [
@@ -113,6 +135,38 @@ class SubjectRequirementForm(forms.ModelForm):
             'optional_set_key': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. group-a (only for Optional)'}),
             'condition_religion': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. Islam (only for Conditional)'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['subject'].required = False
+        self.fields['subject'].empty_label = "-- Choose existing, or add a new subject below --"
+
+    def clean(self):
+        cleaned = super().clean()
+        subject = cleaned.get('subject')
+        code = cleaned.get('new_subject_code', '').strip()
+        name = cleaned.get('new_subject_name', '').strip()
+
+        if not subject and not (code and name):
+            raise forms.ValidationError(
+                "Choose an existing subject, or fill in both a code and name to add a new one."
+            )
+        if not subject and code and Subject.objects.filter(code__iexact=code).exists():
+            self.add_error('new_subject_code', "A subject with this code already exists — pick it from the dropdown instead.")
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if not instance.subject_id and self.cleaned_data.get('new_subject_code'):
+            instance.subject = Subject.objects.create(
+                code=self.cleaned_data['new_subject_code'].strip(),
+                name=self.cleaned_data['new_subject_name'].strip(),
+                full_marks=self.cleaned_data.get('new_subject_full_marks') or 100,
+                category=self.cleaned_data.get('new_subject_category') or 'OTHER',
+            )
+        if commit:
+            instance.save()
+        return instance
 
 
 class DiscontinueStudentForm(forms.Form):

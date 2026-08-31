@@ -86,12 +86,12 @@ urlpatterns = [
     path('exams/<int:pk>/result/<int:student_pk>/', views.student_result_detail, name='student_result_detail'),
     path('exams/<int:pk>/result-card/<int:student_pk>/', views.result_card, name='result_card'),
 path('reports/class-section-summary/', views.class_section_summary, name='class_section_summary'),
-    # Subject URLs
-    path('subjects/', views.subject_list, name='subject_list'),
-    path('subjects/add/', views.add_subject, name='add_subject'),
-    path('subjects/edit/<int:pk>/', views.edit_subject, name='edit_subject'),
-    path('subjects/delete/<int:pk>/', views.delete_subject, name='delete_subject'),
+    # Subject Assignment URLs (the old standalone "Subjects" master-list
+    # page was removed — new subjects are created inline from the Assign
+    # Subject form, and default assignments come from the curriculum
+    # auto-fill below)
     path('subject-requirements/', views.subject_requirement_list, name='subject_requirement_list'),
+    path('subject-requirements/auto-fill/', views.auto_populate_subject_requirements, name='auto_populate_subject_requirements'),
     path('subject-requirements/add/', views.add_subject_requirement, name='add_subject_requirement'),
     path('subject-requirements/<int:pk>/edit/', views.edit_subject_requirement, name='edit_subject_requirement'),
     path('subject-requirements/<int:pk>/delete/', views.delete_subject_requirement, name='delete_subject_requirement'),

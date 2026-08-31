@@ -6,14 +6,73 @@
 <div class="page-header">
     <div>
         <h1>{% if requirement %}Edit Subject Assignment{% else %}Assign Subject{% endif %}</h1>
-        <div class="subtitle">Choose a subject from the master list and pin it to an Institution + Class (+ Group)</div>
+        <div class="subtitle">Pin a subject to an Institution + Class (+ Group) — pick an existing subject, or add a new one below</div>
     </div>
 </div>
 
 <div class="table-card p-4" style="max-width: 640px;">
-    <form method="POST">
+    <form method="POST" id="subject-requirement-form">
         {% csrf_token %}
-        {{ form.as_p }}
+
+        {% if form.non_field_errors %}
+        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label class="form-label">Institution</label>
+            {{ form.institution }}
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Class</label>
+            {{ form.admission_class }}
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Group</label>
+            {{ form.group }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Subject</label>
+            {{ form.subject }}
+            {{ form.subject.errors }}
+        </div>
+
+        <div id="new-subject-box" class="p-3 mb-3" style="background:#f8f9fb; border-radius:10px; display:none;">
+            <div class="fw-semibold mb-2">New Subject Details</div>
+            <div class="row g-2">
+                <div class="col-6">
+                    <label class="form-label">Code</label>
+                    {{ form.new_subject_code }}
+                    {{ form.new_subject_code.errors }}
+                </div>
+                <div class="col-6">
+                    <label class="form-label">Full Marks</label>
+                    {{ form.new_subject_full_marks }}
+                </div>
+                <div class="col-8">
+                    <label class="form-label">Name</label>
+                    {{ form.new_subject_name }}
+                </div>
+                <div class="col-4">
+                    <label class="form-label">Category</label>
+                    {{ form.new_subject_category }}
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Requirement Type</label>
+            {{ form.requirement_type }}
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Optional Set</label>
+            {{ form.optional_set_key }}
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Condition Religion</label>
+            {{ form.condition_religion }}
+        </div>
+
         <div class="form-text mb-3">
             Leave Group blank to apply to all groups. Use "Optional Set" to group subjects a student
             picks one-of-from (e.g. all "group-a" rows show together as one choice). Use "Condition Religion"
@@ -25,4 +84,24 @@
         </div>
     </form>
 </div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+    (function () {
+        const subjectSelect = document.getElementById('{{ form.subject.id_for_label }}');
+        const newSubjectBox = document.getElementById('new-subject-box');
+
+        function syncVisibility() {
+            if (!subjectSelect.value) {
+                newSubjectBox.style.display = 'block';
+            } else {
+                newSubjectBox.style.display = 'none';
+            }
+        }
+
+        subjectSelect.addEventListener('change', syncVisibility);
+        syncVisibility();
+    })();
+</script>
 {% endblock %}

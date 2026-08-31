@@ -4,7 +4,10 @@ from django.contrib.auth import authenticate, login
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q
+from django.urls import reverse
 from django.views.decorators.http import require_POST
+from .curriculum_data import curriculum_for_class
+from .curriculum_apply import apply_curriculum
 from .models import (
     Student, Subject, Institution, InstitutionAccess, TransferCertificate, Certificate,
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
@@ -794,80 +797,12 @@ def student_exams(request, pk):
 
 
 # ---------------- Subject Views ----------------
-
-@login_required
-def subject_list(request):
-    subjects = Subject.objects.all()
-    if not _is_admin(request.user):
-        subjects = subjects.filter(created_by=request.user)
-
-    query = request.GET.get('q', '').strip()
-    if query:
-        subjects = subjects.filter(Q(name__icontains=query) | Q(code__icontains=query))
-
-    category = request.GET.get('category', '')
-    if category:
-        subjects = subjects.filter(category=category)
-
-    grouped = {}
-    for code, label in Subject.CATEGORY_CHOICES:
-        bucket = [s for s in subjects if s.category == code]
-        if bucket:
-            grouped[label] = bucket
-
-    return render(request, 'students/subject_list.html', {
-        'subjects': subjects,
-        'grouped_subjects': grouped,
-        'category_choices': Subject.CATEGORY_CHOICES,
-        'selected_category': category,
-        'query': query,
-    })
-
-
-@login_required
-@permission_required('students.add_subject', raise_exception=True)
-def add_subject(request):
-    if request.method == 'POST':
-        form = SubjectForm(request.POST)
-        if form.is_valid():
-            subject = form.save(commit=False)
-            subject.created_by = request.user
-            subject.save()
-            messages.success(request, "Subject added.")
-            return redirect('subject_list')
-        else:
-            messages.error(request, "There are errors in the form — please check the fields below.")
-    else:
-        form = SubjectForm()
-    return render(request, 'students/add_subject.html', {'form': form})
-
-
-@login_required
-@permission_required('students.change_subject', raise_exception=True)
-def edit_subject(request, pk):
-    subject = get_object_or_404(Subject, pk=pk)
-    if request.method == 'POST':
-        form = SubjectForm(request.POST, instance=subject)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Subject information updated.")
-            return redirect('subject_list')
-        else:
-            messages.error(request, "There are errors in the form — please check the fields below.")
-    else:
-        form = SubjectForm(instance=subject)
-    return render(request, 'students/add_subject.html', {'form': form, 'subject': subject})
-
-
-@login_required
-@permission_required('students.delete_subject', raise_exception=True)
-def delete_subject(request, pk):
-    subject = get_object_or_404(Subject, pk=pk)
-    if request.method == 'POST':
-        subject.delete()
-        messages.success(request, "Subject deleted.")
-        return redirect('subject_list')
-    return render(request, 'students/delete_subject.html', {'subject': subject})
+#
+# NOTE: the standalone "Subjects" master-list page was removed — Subject
+# rows are now created either automatically by the curriculum auto-fill
+# (see auto_populate_subject_requirements below) or inline from the Subject
+# Assignment form via SubjectRequirementForm's new-subject fields. The
+# Subject model itself is unchanged and still used by both.
 
 # ---------------- Subject Requirement Views ----------------
 
@@ -941,6 +876,11 @@ def subject_requirement_list(request):
         if bucket:
             grouped[label] = bucket
 
+    can_auto_fill = False
+    if institution_id and admission_class:
+        common_rows, _ = curriculum_for_class(admission_class)
+        can_auto_fill = common_rows is not None
+
     return render(request, 'students/subject_requirement_list.html', {
         'grouped_requirements': grouped,
         'institutions': Institution.objects.all().order_by('name'),
@@ -949,7 +889,43 @@ def subject_requirement_list(request):
         'selected_class': admission_class,
         'selected_group': group,
         'query': query,
+        'can_auto_fill': can_auto_fill,
     })
+
+
+@login_required
+@permission_required('students.add_subjectrequirement', raise_exception=True)
+@require_POST
+def auto_populate_subject_requirements(request):
+    """Auto-fill SubjectRequirement rows for an Institution + Class (+ Group)
+    from the built-in Bangladesh-curriculum data. Idempotent — never
+    overwrites or duplicates rows an admin has already added/edited."""
+    institution_id = request.POST.get('institution')
+    admission_class = request.POST.get('admission_class', '').strip()
+    group = request.POST.get('group', '').strip()
+
+    if not institution_id or not admission_class:
+        messages.error(request, "Pick an Institution and Class before auto-filling.")
+        return redirect('subject_requirement_list')
+
+    institution = get_object_or_404(Institution, pk=institution_id)
+    created = apply_curriculum(institution, admission_class, group)
+
+    if created is None:
+        messages.warning(
+            request,
+            f"Class \"{admission_class}\" isn't covered by the built-in curriculum — "
+            "please add its subjects manually below."
+        )
+    elif created == 0:
+        messages.info(request, "Nothing new to add — this Institution/Class/Group is already fully assigned.")
+    else:
+        messages.success(request, f"Auto-fill complete — {created} subject assignment(s) added. Review and edit as needed below.")
+
+    return redirect(
+        f"{reverse('subject_requirement_list')}?institution={institution_id}"
+        f"&admission_class={admission_class}&group={group}"
+    )
 
 
 @login_required
@@ -967,7 +943,11 @@ def add_subject_requirement(request):
         else:
             messages.error(request, "There are errors in the form — please check the fields below.")
     else:
-        form = SubjectRequirementForm()
+        form = SubjectRequirementForm(initial={
+            'institution': request.GET.get('institution') or None,
+            'admission_class': request.GET.get('admission_class', ''),
+            'group': request.GET.get('group', ''),
+        })
     return render(request, 'students/add_subject_requirement.html', {'form': form})
 
 
