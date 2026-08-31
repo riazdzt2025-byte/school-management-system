@@ -571,6 +571,78 @@ def student_list(request):
 
 
 @login_required
+def download_student_list(request):
+    """Export the currently filtered Student List as an Excel workbook.
+    Honours the same Institution/Class/Section/Group/all filters as the
+    Student List page."""
+    if openpyxl is None:
+        messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
+        return redirect('student_list')
+
+    institution = _selected_institution_for_request(request)
+    admission_class = request.GET.get('admission_class')
+    section = request.GET.get('section')
+    group = request.GET.get('group')
+    institution_id = request.GET.get('institution')
+
+    qs = Student.objects.select_related('institution').all()
+    if institution is not None:
+        qs = qs.filter(institution=institution)
+    elif institution_id:
+        institution = get_object_or_404(Institution, pk=institution_id)
+        qs = qs.filter(institution=institution)
+    if not _is_admin(request.user):
+        qs = qs.filter(created_by=request.user)
+
+    if request.GET.get('all') != '1':
+        if admission_class:
+            qs = qs.filter(admission_class=admission_class)
+        if section:
+            qs = qs.filter(section__iexact=section.strip())
+        if group:
+            qs = qs.filter(group=group)
+
+    qs = qs.order_by('admission_class', 'section', 'roll_no', 'name')
+
+    headers = [
+        "Student ID", "Name", "Class", "Section", "Roll No", "Gender", "Religion",
+        "Father's Name", "Contact No", "Guardian Contact No", "Group",
+        "Admission Year", "Status",
+    ]
+    wb = openpyxl.Workbook()
+    sheet = wb.active
+    sheet.title = "Students"
+    sheet.append(headers)
+    for student in qs:
+        sheet.append([
+            student.student_id,
+            student.name,
+            student.admission_class,
+            student.section,
+            student.roll_no,
+            student.get_gender_display() if student.gender else "",
+            student.religion,
+            student.father_name,
+            student.contact_no,
+            student.guardian_contact_no,
+            student.get_group_display() if student.group else "",
+            student.admission_year,
+            student.get_status_display(),
+        ])
+    for col in sheet.columns:
+        max_length = max((len(str(cell.value)) for cell in col if cell.value), default=8)
+        sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
+
+    filename = f"student_list_{institution.name.replace(' ', '_') if institution else 'all'}.xlsx"
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+
+@login_required
 def student_list_filter(request):
     """Dedicated, popup-free page for choosing Institution/Class/Section/Group
     filters before viewing the student list."""

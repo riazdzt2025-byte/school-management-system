@@ -62,6 +62,7 @@
         <a href="{% url 'import_students' %}" class="btn btn-outline-navy">📥 Import from Excel</a>
         {% endif %}
         <a href="{% url 'subject_requirement_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📚 Subject Assignments</a>
+        <a href="{% url 'download_student_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&section={{ selected_section|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
         <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
     </div>
 </div>
