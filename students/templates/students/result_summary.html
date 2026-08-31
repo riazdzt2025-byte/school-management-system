@@ -1,39 +1,80 @@
 {% extends 'students/base.html' %}
 
-{% block title %}Salary Sheets - {{ block.super }}{% endblock %}
+{% block title %}SSC Result Summary - {{ block.super }}{% endblock %}
+
+{% block print_subtitle %}SSC Result Summary{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div><h1>Salary Sheets</h1></div>
-    {% if perms.students.add_salarysheet %}
-    <a href="{% url 'add_salary_sheet' %}" class="btn btn-navy">+ Add Salary</a>
-    {% endif %}
+<div class="page-header d-print-none">
+    <div><h1>SSC Result Summary</h1></div>
+    <form method="GET" class="d-flex gap-2">
+        <select name="session" class="form-select" onchange="this.form.submit()">
+            <option value="">All Sessions</option>
+            {% for item in sessions %}
+            <option value="{{ item }}" {% if item == selected_session %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="table-card p-3 text-center">
+            <div class="text-muted" style="font-size:0.8rem;">Registered</div>
+            <div class="fs-3 fw-bold">{{ total_registered }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="table-card p-3 text-center">
+            <div class="text-muted" style="font-size:0.8rem;">Results Published</div>
+            <div class="fs-3 fw-bold">{{ total_published }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="table-card p-3 text-center">
+            <div class="text-muted" style="font-size:0.8rem;">Pass / Fail</div>
+            <div class="fs-3 fw-bold text-success">{{ pass_count }}<span class="text-danger fs-6"> / {{ fail_count }}</span></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="table-card p-3 text-center">
+            <div class="text-muted" style="font-size:0.8rem;">Pass Rate</div>
+            <div class="fs-3 fw-bold">{{ pass_rate }}%</div>
+        </div>
+    </div>
+</div>
+
+<div class="table-card mb-3">
+    <div class="p-3 pb-0"><h5 class="mb-0">GPA Distribution</h5></div>
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <thead><tr><th>GPA Range</th><th>Students</th></tr></thead>
+            <tbody>
+                {% for range, count in gpa_buckets.items %}
+                <tr><td>{{ range }}</td><td>{{ count }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <div class="table-card">
-    <table class="table table-striped mb-0">
-        <thead>
-            <tr><th>Employee</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr>
-        </thead>
-        <tbody>
-            {% for salary in salaries %}
-            <tr>
-                <td>{{ salary.employee.name }}</td>
-                <td>{{ salary.month }}</td>
-                <td>৳ {{ salary.amount }}</td>
-                <td>{{ salary.date }}</td>
-                <td>{{ salary.get_status_display }}</td>
-                <td>{{ salary.created_by.username|default:'-' }}</td>
-                <td>
-                    {% if perms.students.change_salarysheet %}<a href="{% url 'edit_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-navy">Edit</a>{% endif %}
-                    {% if perms.students.delete_salarysheet %}<a href="{% url 'delete_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
-                </td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="7" class="text-center py-4">No salary sheets.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="p-3 pb-0"><h5 class="mb-0">GPA 5.00 (A+) Students</h5></div>
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <thead><tr><th>Student</th><th>Registration</th><th>Roll</th></tr></thead>
+            <tbody>
+                {% for result in a_plus_students %}
+                <tr>
+                    <td>{{ result.ssc_registration.student.name }}</td>
+                    <td>{{ result.ssc_registration.registration_number }}</td>
+                    <td>{{ result.ssc_registration.roll_number }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" class="text-center py-4">No A+ results yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
-<a href="{% url 'finance_dashboard' %}" class="btn btn-outline-navy mt-3">Back</a>
 {% endblock %}
