@@ -1276,11 +1276,16 @@ def ssc_registration_list(request):
     session = request.GET.get('session')
     if session:
         registrations = registrations.filter(session=session)
+    group = request.GET.get('group')
+    if group:
+        registrations = registrations.filter(group=group)
     sessions = registrations.values_list('session', flat=True).distinct().order_by('session')
     return render(request, 'students/ssc_registration_list.html', {
         'registrations': registrations,
         'sessions': sessions,
         'selected_session': session,
+        'group_choices': SSCRegistration.GROUP_CHOICES,
+        'selected_group': group,
     })
 
 

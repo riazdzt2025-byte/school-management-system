@@ -8,11 +8,17 @@
     <a class="btn btn-outline-navy" href="{% url 'import_ssc_registrations' %}">Import Excel</a>
 </div>
 
-<form method="get" class="mb-3">
+<form method="get" class="mb-3 d-flex gap-2">
     <select name="session" class="form-select" style="max-width:240px" onchange="this.form.submit()">
         <option value="">All Sessions</option>
         {% for item in sessions %}
             <option value="{{ item }}" {% if item == selected_session %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+    </select>
+    <select name="group" class="form-select" style="max-width:240px" onchange="this.form.submit()">
+        <option value="">All Groups</option>
+        {% for code, label in group_choices %}
+            <option value="{{ code }}" {% if code == selected_group %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
     </select>
 </form>
