@@ -732,6 +732,56 @@ def bulk_update_students(request):
 
 @login_required
 @permission_required('students.change_student', raise_exception=True)
+def auto_register_students(request):
+    """'Auto Registration All' — for each selected student, add their
+    Mandatory/Conditional subjects (from Subject Assignments) if missing.
+    Never removes or overwrites a subject a student already has, so it's
+    safe to run repeatedly on a class/section as new requirements are added."""
+    if request.method != 'POST':
+        return redirect('student_list')
+
+    student_ids = request.POST.getlist('student_ids')
+    if not student_ids:
+        messages.error(request, "No students were selected.")
+        return redirect('student_list')
+
+    students = Student.objects.filter(pk__in=student_ids).select_related('institution')
+    students_updated = 0
+    subjects_added = 0
+    for student in students:
+        added = auto_assign_mandatory_subjects(student)
+        if added:
+            students_updated += 1
+            subjects_added += added
+
+    if subjects_added:
+        messages.success(
+            request,
+            f"Auto Registration complete: added {subjects_added} subject(s) across {students_updated} student(s)."
+        )
+    else:
+        messages.info(request, "Auto Registration: every selected student already has their mandatory/conditional subjects.")
+
+    record_audit(
+        request.user, 'auto_registration', None, model_name='students.Student',
+        details={'student_ids': student_ids, 'students_updated': students_updated, 'subjects_added': subjects_added},
+    )
+
+    url = reverse('student_list')
+    params = []
+    if request.POST.get('institution'):
+        params.append(f"institution={request.POST.get('institution')}")
+    if request.POST.get('admission_class'):
+        params.append(f"admission_class={request.POST.get('admission_class')}")
+    if request.POST.get('section'):
+        params.append(f"section={request.POST.get('section')}")
+    if params:
+        url += "?" + "&".join(params)
+    return redirect(url)
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
 def bulk_update_select(request):
     """Dedicated, popup-free page shown after picking students on the list
     page and clicking Bulk Update; collects the new class/section then
@@ -994,6 +1044,29 @@ def save_student_subject_choices(student, requirement_ids):
         StudentSubjectChoice(student=student, requirement_id=req_id)
         for req_id in valid_ids if req_id not in existing_ids
     ])
+
+
+def auto_assign_mandatory_subjects(student):
+    """'Auto Registration': add this student's Mandatory/Conditional subjects
+    (from the SubjectRequirement table for their institution/class/group/
+    religion) without touching any Optional subject they've already chosen.
+    Safe to re-run — only ever adds subjects the student doesn't have yet.
+    Returns how many subjects were added."""
+    applicable = get_applicable_subjects(
+        student.institution, student.admission_class,
+        group=student.group, religion=student.religion,
+    )
+    requirement_ids = [s['requirement_id'] for s in applicable['mandatory'] + applicable['conditional']]
+    if not requirement_ids:
+        return 0
+    existing_ids = set(
+        StudentSubjectChoice.objects.filter(student=student).values_list('requirement_id', flat=True)
+    )
+    to_add = [rid for rid in requirement_ids if rid not in existing_ids]
+    StudentSubjectChoice.objects.bulk_create([
+        StudentSubjectChoice(student=student, requirement_id=rid) for rid in to_add
+    ])
+    return len(to_add)
 
 
 def get_applicable_subjects(institution, admission_class, group='', religion=''):

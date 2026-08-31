@@ -22,6 +22,7 @@ urlpatterns = [
         path('students/bulk-delete/', views.bulk_delete_students, name='bulk_delete_students'),
     path('students/bulk-update/', views.bulk_update_students, name='bulk_update_students'),
     path('students/bulk-update/select/', views.bulk_update_select, name='bulk_update_select'),
+    path('students/auto-register/', views.auto_register_students, name='auto_register_students'),
     path('add/', views.add_student, name='add_student'),
     path('students/import/', views.import_students, name='import_students'),
     path('students/import/template/', views.download_import_template, name='download_import_template'),

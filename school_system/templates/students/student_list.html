@@ -140,6 +140,11 @@
                 formaction="{% url 'bulk_update_select' %}" formmethod="POST">
                 🔄 Bulk Update
             </button>
+            <button type="submit" id="bulk-auto-register-btn" class="btn btn-sm btn-outline-success" disabled
+                    formaction="{% url 'auto_register_students' %}" formmethod="POST"
+                    title="Add each selected student's Mandatory/Conditional subjects — never removes existing ones.">
+                ⚡ Auto Registration
+            </button>
             <button type="submit" id="bulk-delete-btn" class="btn btn-sm btn-outline-danger" disabled
                     onclick="return confirm('Delete all selected students? This cannot be undone.');">
                 🗑️ Delete Selected
@@ -277,11 +282,13 @@
     const rowCheckboxes = document.querySelectorAll('.row-checkbox');
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     const bulkUpdateBtn = document.getElementById('bulk-update-btn');
+    const bulkAutoRegisterBtn = document.getElementById('bulk-auto-register-btn');
 
     function updateBulkButtons() {
         const anyChecked = Array.from(rowCheckboxes).some(cb => cb.checked);
         bulkDeleteBtn.disabled = !anyChecked;
         bulkUpdateBtn.disabled = !anyChecked;
+        bulkAutoRegisterBtn.disabled = !anyChecked;
     }
 
     if (selectAll) {
