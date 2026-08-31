@@ -13,6 +13,7 @@ from .models import (
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
     Employee, EmployeeStatusLog, MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement, StudentSubjectChoice,
+    SectionCapacity,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -368,6 +369,16 @@ def accounts_approve_payment(request, pk):
         if not form.is_valid():
             messages.error(request, 'Please provide valid payment details.')
             return redirect('admission_application_detail', pk=pk)
+        if not SectionCapacity.has_room(
+            application.institution, application.requested_class, application.requested_section
+        ):
+            messages.error(
+                request,
+                f'Section {application.requested_section} of class {application.requested_class} '
+                'is already at its student limit. Reassign the section before approving payment.'
+            )
+            return redirect('admission_application_detail', pk=pk)
+
         application = form.save(commit=False)
         application.status = 'PAYMENT_APPROVED'
         application.account_actor = request.user

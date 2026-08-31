@@ -8,7 +8,7 @@ from .models import (
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog,
-    SubjectRequirement, StudentSubjectChoice,
+    SubjectRequirement, StudentSubjectChoice, SectionCapacity,
 )
 
 
@@ -69,3 +69,10 @@ class SubjectRequirementAdmin(admin.ModelAdmin):
 class StudentSubjectChoiceAdmin(admin.ModelAdmin):
     list_display = ('student', 'requirement')
     search_fields = ('student__name', 'student__student_id')
+
+
+@admin.register(SectionCapacity)
+class SectionCapacityAdmin(admin.ModelAdmin):
+    list_display = ('institution', 'admission_class', 'section', 'capacity')
+    list_filter = ('institution', 'admission_class')
+    search_fields = ('admission_class', 'section')

@@ -4,7 +4,7 @@ from .models import (
     SSCRegistration, BoardResult,
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet,
-    AdmissionApplication,
+    AdmissionApplication, SectionCapacity,
 )
 
 class StudentForm(forms.ModelForm):
@@ -42,6 +42,13 @@ class StudentForm(forms.ModelForm):
         group = cleaned_data.get('group')
         if str(admission_class) in ['9', '10', '11', '12'] and not group:
             self.add_error('group', 'Group is required for classes 9, 10, 11, and 12.')
+
+        institution = cleaned_data.get('institution')
+        section = cleaned_data.get('section')
+        if institution and admission_class and section:
+            exclude_id = self.instance.pk if self.instance and self.instance.pk else None
+            if not SectionCapacity.has_room(institution, admission_class, section, exclude_student_id=exclude_id):
+                self.add_error('section', f'Section {section} is already at its student limit.')
         return cleaned_data
 
 

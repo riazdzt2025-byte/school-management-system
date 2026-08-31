@@ -121,6 +121,68 @@ class Student(models.Model):
         return f"{self.name} ({self.student_id})"
 
 
+class SectionCapacity(models.Model):
+    """সিট লিমিট: একটা Institution + Class + Section-এ সর্বোচ্চ কতজন
+    ACTIVE ছাত্র ভর্তি করা যাবে তা নির্ধারণ করে। কোনো রো না থাকলে
+    সেই Class/Section-এ কোনো সীমা প্রযোজ্য নয়।"""
+    institution = models.ForeignKey(
+        Institution, on_delete=models.CASCADE, related_name='section_capacities'
+    )
+    admission_class = models.CharField(max_length=10)
+    section = models.CharField(max_length=5, blank=True)
+    capacity = models.PositiveIntegerField(default=45)
+
+    class Meta:
+        ordering = ['institution', 'admission_class', 'section']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['institution', 'admission_class', 'section'],
+                name='unique_section_capacity',
+            ),
+        ]
+
+    def __str__(self):
+        label = f"{self.institution} / Class {self.admission_class}"
+        if self.section:
+            label += f" / Section {self.section}"
+        return f"{label} (limit {self.capacity})"
+
+    @classmethod
+    def seats_taken(cls, institution, admission_class, section):
+        return Student.objects.filter(
+            institution=institution,
+            admission_class=admission_class,
+            section=section,
+            status='ACTIVE',
+        ).count()
+
+    @classmethod
+    def get_limit(cls, institution, admission_class, section):
+        try:
+            return cls.objects.get(
+                institution=institution, admission_class=admission_class, section=section
+            ).capacity
+        except cls.DoesNotExist:
+            return None
+
+    @classmethod
+    def has_room(cls, institution, admission_class, section, exclude_student_id=None):
+        """কনফিগার করা লিমিট থাকলে সিট খালি আছে কিনা যাচাই করে।
+        কোনো লিমিট কনফিগার না থাকলে সবসময় True (unrestricted)।"""
+        limit = cls.get_limit(institution, admission_class, section)
+        if limit is None:
+            return True
+        taken = cls.seats_taken(institution, admission_class, section)
+        if exclude_student_id:
+            already_counted = Student.objects.filter(
+                pk=exclude_student_id, institution=institution,
+                admission_class=admission_class, section=section, status='ACTIVE',
+            ).exists()
+            if already_counted:
+                taken -= 1
+        return taken < limit
+
+
 class PromotionBatch(models.Model):
     session = models.CharField(max_length=20)
     from_class = models.CharField(max_length=10)
