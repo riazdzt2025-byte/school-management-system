@@ -120,6 +120,26 @@ class Student(models.Model):
     def __str__(self):
         return f"{self.name} ({self.student_id})"
 
+    def last_registration(self):
+        """সবচেয়ে সাম্প্রতিক (রোলব্যাক হয়নি এমন) প্রমোশন থেকে এই ছাত্রের
+        আগের রেজিস্ট্রেশন তথ্য — Year (batch.session), Class, Section, Roll।
+        কোনো প্রমোশন হিস্ট্রি না থাকলে None।"""
+        history = (
+            self.promotion_history
+            .filter(rolled_back_at__isnull=True)
+            .select_related('batch')
+            .order_by('-promoted_at')
+            .first()
+        )
+        if not history:
+            return None
+        return {
+            'year': history.batch.session,
+            'admission_class': history.source_class,
+            'section': history.source_section,
+            'roll_no': history.source_roll_no,
+        }
+
 
 class SectionCapacity(models.Model):
     """সিট লিমিট: একটা Institution + Class + Section-এ সর্বোচ্চ কতজন
@@ -206,6 +226,7 @@ class StudentPromotionHistory(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='promotion_history')
     source_class = models.CharField(max_length=10)
     source_section = models.CharField(max_length=5, blank=True)
+    source_roll_no = models.IntegerField(null=True, blank=True)
     target_class = models.CharField(max_length=10)
     target_section = models.CharField(max_length=5, blank=True)
     promoted_at = models.DateTimeField(auto_now_add=True)

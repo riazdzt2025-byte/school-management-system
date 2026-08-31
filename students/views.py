@@ -819,6 +819,7 @@ def student_detail(request, pk):
         'student': student,
         'subjects': student.subjects.select_related('subject'),
         'transfer_certificate': getattr(student, 'transfer_certificate', None),
+        'last_registration': student.last_registration(),
     })
 
 
@@ -2269,8 +2270,8 @@ def student_promotion(request):
                     target_section = data['to_section'] or student.section
                     histories.append(StudentPromotionHistory(
                         batch=batch, student=student, source_class=student.admission_class,
-                        source_section=student.section, target_class=data['to_class'],
-                        target_section=target_section,
+                        source_section=student.section, source_roll_no=student.roll_no,
+                        target_class=data['to_class'], target_section=target_section,
                     ))
                     student.admission_class = data['to_class']
                     student.section = target_section

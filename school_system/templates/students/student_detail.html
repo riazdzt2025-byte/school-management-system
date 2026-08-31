@@ -29,6 +29,18 @@
     </table>
 </div>
 
+{% if last_registration %}
+<div class="table-card mb-4" style="max-width: 640px;">
+    <table class="table table-bordered mb-0">
+        <tr><th colspan="2">Last Registration</th></tr>
+        <tr><th>Year</th><td>{{ last_registration.year }}</td></tr>
+        <tr><th>Class</th><td>{{ last_registration.admission_class }}</td></tr>
+        <tr><th>Section</th><td>{{ last_registration.section|default:"—" }}</td></tr>
+        <tr><th>Roll</th><td>{{ last_registration.roll_no|default:"—" }}</td></tr>
+    </table>
+</div>
+{% endif %}
+
 {% if transfer_certificate %}
 <div class="alert alert-warning" style="max-width: 640px;">
     <h4>Transfer Certificate Issued</h4>
