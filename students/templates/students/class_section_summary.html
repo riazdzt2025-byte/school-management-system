@@ -1,23 +1,16 @@
 {% extends 'students/base.html' %}
 
-{% block title %}Employees - {{ block.super }}{% endblock %}
+{% block title %}Class/Section Report - {{ block.super }}{% endblock %}
 
-{% block print_subtitle %}Employee List{% endblock %}
-
-{% block extra_style %}
-.badge-active { background: #198754; }
-.badge-resigned { background: #6c757d; }
-.badge-demoted { background: #dc3545; }
-.badge-osd { background: #fd7e14; }
-{% endblock %}
+{% block print_subtitle %}Class/Section Summary{% endblock %}
 
 {% block content %}
 <div class="page-header d-print-none">
     <div>
-        <h1>Employees</h1>
+        <h1>Class / Section Report</h1>
         <div class="subtitle">
             {% if institution %}{{ institution.name }}{% else %}All Institutions{% endif %}
-            — Total: {{ employees|length }}
+            — Total students: {{ grand_total }}
         </div>
     </div>
     <div class="page-actions d-flex gap-2">
@@ -26,12 +19,6 @@
                 <option value="">-- All Institutions --</option>
                 {% for inst in institutions %}
                 <option value="{{ inst.id }}" {% if institution and institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
-                {% endfor %}
-            </select>
-            <select name="status" class="form-select" onchange="this.form.submit()">
-                <option value="">-- All Status --</option>
-                {% for code, label in status_choices %}
-                <option value="{{ code }}" {% if selected_status == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
         </form>
@@ -44,38 +31,37 @@
         <table class="table table-striped mb-0">
             <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>Designation</th>
-                    <th>Department</th>
-                    <th>Institution</th>
-                    <th>Join Date</th>
-                    <th>Contact</th>
-                    <th>Status</th>
-                    <th class="d-print-none">Action</th>
+                    <th>Class</th>
+                    <th>Section</th>
+                    <th>Total</th>
+                    <th>Male</th>
+                    <th>Female</th>
+                    <th>Other</th>
                 </tr>
             </thead>
             <tbody>
-                {% for emp in employees %}
+                {% for row in summary_rows %}
                 <tr>
-                    <td>{{ emp.name }}</td>
-                    <td>{{ emp.designation }}</td>
-                    <td>{{ emp.department|default:"—" }}</td>
-                    <td>{{ emp.institution.name|default:"—" }}</td>
-                    <td>{{ emp.join_date }}</td>
-                    <td>{{ emp.contact_no|default:"—" }}</td>
-                    <td>
-                        <span class="badge badge-{{ emp.status|lower }}">{{ emp.get_status_display }}</span>
-                    </td>
-                    <td class="d-print-none">
-                        <a href="{% url 'employee_detail' emp.pk %}" class="btn btn-sm btn-outline-info">Details</a>
-                    </td>
+                    <td>{{ row.admission_class }}</td>
+                    <td>{{ row.section|default:"-" }}</td>
+                    <td>{{ row.total }}</td>
+                    <td>{{ row.male }}</td>
+                    <td>{{ row.female }}</td>
+                    <td>{{ row.other }}</td>
                 </tr>
                 {% empty %}
-                <tr>
-                    <td colspan="8" class="text-center text-muted py-4">No employees found.</td>
-                </tr>
+                <tr><td colspan="6" class="text-center py-4">No students found for this filter.</td></tr>
                 {% endfor %}
             </tbody>
+            {% if summary_rows %}
+            <tfoot>
+                <tr class="fw-semibold">
+                    <td colspan="2">Grand Total</td>
+                    <td>{{ grand_total }}</td>
+                    <td colspan="3"></td>
+                </tr>
+            </tfoot>
+            {% endif %}
         </table>
     </div>
 </div>
