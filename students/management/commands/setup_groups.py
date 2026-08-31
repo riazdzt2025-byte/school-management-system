@@ -25,6 +25,18 @@ DEPARTMENT_PERMISSIONS = {
         (PromotionBatch, ["add", "change", "view"]),
         (StudentPromotionHistory, ["add", "view"]),
     ],
+    # Matches the "Office" department option on the institution login screen
+    # (InstitutionAccess.department). Without this group, an "Office"
+    # department login has no Django permission for the Admission tab and
+    # gets a 403 Forbidden. Same permission set as "Admission" above.
+    "Office": [
+        (AdmissionApplication, ["add", "change", "view"]),
+        (Student, ["add", "change", "delete"]),
+        (TransferCertificate, ["add", "change", "delete"]),
+        (Certificate, ["add", "change", "delete"]),
+        (PromotionBatch, ["add", "change", "view"]),
+        (StudentPromotionHistory, ["add", "view"]),
+    ],
     "Subjects": [
         (Subject, ["add", "change", "delete"]),
     ],
