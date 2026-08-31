@@ -15,9 +15,10 @@
        subject will keep their historical marks, but it will no longer be offered going forward.</p>
     <form method="POST">
         {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next_qs }}">
         <div class="d-flex gap-2">
             <button type="submit" class="btn btn-danger">Confirm Remove</button>
-            <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Cancel</a>
+            <a href="{% url 'subject_requirement_list' %}{% if next_qs %}?{{ next_qs }}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
         </div>
     </form>
 </div>

@@ -97,6 +97,7 @@ path('reports/class-section-summary/', views.class_section_summary, name='class_
     path('subject-requirements/add/', views.add_subject_requirement, name='add_subject_requirement'),
     path('subject-requirements/<int:pk>/edit/', views.edit_subject_requirement, name='edit_subject_requirement'),
     path('subject-requirements/<int:pk>/delete/', views.delete_subject_requirement, name='delete_subject_requirement'),
+    path('subject-requirements/<int:pk>/quick-type/', views.quick_update_requirement_type, name='quick_update_requirement_type'),
     # Employee URLs
 path('employees/', views.employee_list, name='employee_list'),
 path('employees/<int:pk>/', views.employee_detail, name='employee_detail'),

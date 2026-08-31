@@ -10,7 +10,7 @@
     </div>
     <div class="page-actions">
         {% if perms.students.add_subjectrequirement %}
-        <a href="{% url 'add_subject_requirement' %}?institution={{ selected_institution_id }}&admission_class={{ selected_class }}&group={{ selected_group }}" class="btn btn-navy">+ Assign Subject</a>
+        <a href="{% url 'add_subject_requirement' %}?institution={{ selected_institution_id }}&admission_class={{ selected_class }}&group={{ selected_group }}&next={{ current_querystring|urlencode }}" class="btn btn-navy">+ Assign Subject</a>
         {% endif %}
     </div>
 </div>
@@ -20,9 +20,9 @@
     <a href="{% url 'admission_application_list' %}" class="btn btn-sm btn-outline-secondary">← Admission</a>
 </div>
 
-<form method="GET" class="row g-2 mb-3">
+<form method="GET" class="row g-2 mb-3" id="subject-req-filter-form">
     <div class="col-auto" style="min-width: 220px;">
-        <select name="institution" class="form-select">
+        <select name="institution" id="sr-institution" class="form-select">
             <option value="">-- All Institutions --</option>
             {% for inst in institutions %}
             <option value="{{ inst.id }}" {% if selected_institution_id == inst.id|stringformat:"s" %}selected{% endif %}>{{ inst.name }}</option>
@@ -30,7 +30,10 @@
         </select>
     </div>
     <div class="col-auto">
-        <input type="text" name="admission_class" value="{{ selected_class }}" class="form-control" placeholder="Class e.g. 9">
+        <select name="admission_class" id="sr-class" class="form-select">
+            <option value="">-- All Classes --</option>
+            {% if selected_class %}<option value="{{ selected_class }}" selected>{{ selected_class }}</option>{% endif %}
+        </select>
     </div>
     <div class="col-auto">
         <select name="group" class="form-select">
@@ -48,6 +51,8 @@
         <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Clear</a>
     </div>
 </form>
+
+{{ institutions_data|json_script:"sr-institutions-data" }}
 
 {% if selected_institution_id and selected_class and perms.students.add_subjectrequirement %}
 <div class="table-card p-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -96,12 +101,21 @@
                     <td>{{ req.get_group_display|default:"Any" }}</td>
                     <td>{{ req.subject.code }} — {{ req.subject.name }}</td>
                     <td>{{ req.optional_set_key|default:req.condition_religion|default:"-" }}</td>
-                    <td>
+                    <td class="d-flex gap-1 align-items-center flex-wrap">
                         {% if perms.students.change_subjectrequirement %}
-                        <a href="{% url 'edit_subject_requirement' req.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
+                        <form method="POST" action="{% url 'quick_update_requirement_type' req.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ current_querystring }}">
+                            <select name="requirement_type" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+                                {% for code, label in requirement_type_choices %}
+                                <option value="{{ code }}" {% if req.requirement_type == code %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                        <a href="{% url 'edit_subject_requirement' req.pk %}?next={{ current_querystring|urlencode }}" class="btn btn-sm btn-outline-warning">Edit</a>
                         {% endif %}
                         {% if perms.students.delete_subjectrequirement %}
-                        <a href="{% url 'delete_subject_requirement' req.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                        <a href="{% url 'delete_subject_requirement' req.pk %}?next={{ current_querystring|urlencode }}" class="btn btn-sm btn-outline-danger">Delete</a>
                         {% endif %}
                     </td>
                 </tr>
@@ -113,4 +127,39 @@
 {% empty %}
 <div class="table-card p-4 text-center text-muted">No subject assignments found for this filter.</div>
 {% endfor %}
+{% endblock %}
+
+{% block extra_script %}
+<script>
+    (function () {
+        const dataEl = document.getElementById('sr-institutions-data');
+        if (!dataEl) return;
+        const institutionsData = JSON.parse(dataEl.textContent);
+        const institutionSelect = document.getElementById('sr-institution');
+        const classSelect = document.getElementById('sr-class');
+        const currentClassValue = "{{ selected_class|default:'' }}";
+
+        function populateClasses(selectedInstitutionId, preSelectValue) {
+            classSelect.innerHTML = '<option value="">-- All Classes --</option>';
+            const classes = institutionsData[selectedInstitutionId] || [];
+            classes.forEach(function (cls) {
+                const opt = document.createElement('option');
+                opt.value = cls;
+                opt.textContent = cls;
+                if (cls === preSelectValue) {
+                    opt.selected = true;
+                }
+                classSelect.appendChild(opt);
+            });
+        }
+
+        institutionSelect.addEventListener('change', function () {
+            populateClasses(this.value, '');
+        });
+
+        if (institutionSelect.value) {
+            populateClasses(institutionSelect.value, currentClassValue);
+        }
+    })();
+</script>
 {% endblock %}

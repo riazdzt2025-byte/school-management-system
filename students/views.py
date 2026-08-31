@@ -1011,6 +1011,17 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
 
 
+def _subject_requirement_list_redirect(request):
+    """Redirect back to the Subject Assignments list, preserving whatever
+    institution/class/group/q filters the user was viewing (passed through
+    as a 'next' querystring) instead of always resetting to the unfiltered list."""
+    next_qs = request.POST.get('next') or request.GET.get('next') or ''
+    url = reverse('subject_requirement_list')
+    if next_qs:
+        url = f"{url}?{next_qs}"
+    return redirect(url)
+
+
 @login_required
 def subject_requirement_list(request):
     """Popup-free page for assigning subjects (from the pre-loaded/custom
@@ -1043,15 +1054,24 @@ def subject_requirement_list(request):
         common_rows, _ = curriculum_for_class(admission_class)
         can_auto_fill = common_rows is not None
 
+    institutions = Institution.objects.all().order_by('name')
+    institutions_data = {
+        str(inst.id): [c.strip() for c in inst.classes.split(',') if c.strip()]
+        for inst in institutions
+    }
+
     return render(request, 'students/subject_requirement_list.html', {
         'grouped_requirements': grouped,
-        'institutions': Institution.objects.all().order_by('name'),
+        'institutions': institutions,
+        'institutions_data': institutions_data,
         'group_choices': Student.GROUP_CHOICES,
+        'requirement_type_choices': SubjectRequirement.REQUIREMENT_TYPE_CHOICES,
         'selected_institution_id': institution_id,
         'selected_class': admission_class,
         'selected_group': group,
         'query': query,
         'can_auto_fill': can_auto_fill,
+        'current_querystring': request.GET.urlencode(),
     })
 
 
@@ -1093,55 +1113,82 @@ def auto_populate_subject_requirements(request):
 @login_required
 @permission_required('students.add_subjectrequirement', raise_exception=True)
 def add_subject_requirement(request):
+    next_qs = request.GET.get('next', '')
     if request.method == 'POST':
         form = SubjectRequirementForm(request.POST)
         if form.is_valid():
             try:
                 form.save()
                 messages.success(request, "Subject assigned successfully.")
-                return redirect('subject_requirement_list')
+                return _subject_requirement_list_redirect(request)
             except IntegrityError:
                 messages.error(request, "This subject is already assigned to that Institution/Class/Group.")
         else:
             messages.error(request, "There are errors in the form — please check the fields below.")
+        next_qs = request.POST.get('next', next_qs)
     else:
         form = SubjectRequirementForm(initial={
             'institution': request.GET.get('institution') or None,
             'admission_class': request.GET.get('admission_class', ''),
             'group': request.GET.get('group', ''),
         })
-    return render(request, 'students/add_subject_requirement.html', {'form': form})
+    return render(request, 'students/add_subject_requirement.html', {'form': form, 'next_qs': next_qs})
 
 
 @login_required
 @permission_required('students.change_subjectrequirement', raise_exception=True)
 def edit_subject_requirement(request, pk):
     requirement = get_object_or_404(SubjectRequirement, pk=pk)
+    next_qs = request.GET.get('next', '')
     if request.method == 'POST':
         form = SubjectRequirementForm(request.POST, instance=requirement)
         if form.is_valid():
             try:
                 form.save()
                 messages.success(request, "Subject assignment updated.")
-                return redirect('subject_requirement_list')
+                return _subject_requirement_list_redirect(request)
             except IntegrityError:
                 messages.error(request, "This subject is already assigned to that Institution/Class/Group.")
         else:
             messages.error(request, "There are errors in the form — please check the fields below.")
+        next_qs = request.POST.get('next', next_qs)
     else:
         form = SubjectRequirementForm(instance=requirement)
-    return render(request, 'students/add_subject_requirement.html', {'form': form, 'requirement': requirement})
+    return render(request, 'students/add_subject_requirement.html', {
+        'form': form, 'requirement': requirement, 'next_qs': next_qs,
+    })
 
 
 @login_required
 @permission_required('students.delete_subjectrequirement', raise_exception=True)
 def delete_subject_requirement(request, pk):
     requirement = get_object_or_404(SubjectRequirement, pk=pk)
+    next_qs = request.GET.get('next', request.POST.get('next', ''))
     if request.method == 'POST':
         requirement.delete()
         messages.success(request, "Subject assignment removed.")
-        return redirect('subject_requirement_list')
-    return render(request, 'students/delete_subject_requirement.html', {'requirement': requirement})
+        return _subject_requirement_list_redirect(request)
+    return render(request, 'students/delete_subject_requirement.html', {
+        'requirement': requirement, 'next_qs': next_qs,
+    })
+
+
+@login_required
+@permission_required('students.change_subjectrequirement', raise_exception=True)
+@require_POST
+def quick_update_requirement_type(request, pk):
+    """Change just the Mandatory/Optional/Conditional dropdown from the list
+    page, without opening the full edit form."""
+    requirement = get_object_or_404(SubjectRequirement, pk=pk)
+    new_type = request.POST.get('requirement_type')
+    valid_types = dict(SubjectRequirement.REQUIREMENT_TYPE_CHOICES)
+    if new_type in valid_types:
+        requirement.requirement_type = new_type
+        requirement.save(update_fields=['requirement_type'])
+        messages.success(request, f"Marked as {valid_types[new_type]}.")
+    else:
+        messages.error(request, "Invalid requirement type.")
+    return _subject_requirement_list_redirect(request)
 
 
 @login_required

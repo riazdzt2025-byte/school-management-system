@@ -13,6 +13,7 @@
 <div class="table-card p-4" style="max-width: 640px;">
     <form method="POST" id="subject-requirement-form">
         {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next_qs }}">
 
         {% if form.non_field_errors %}
         <div class="alert alert-danger">{{ form.non_field_errors }}</div>
@@ -80,7 +81,7 @@
         </div>
         <div class="d-flex gap-2">
             <button type="submit" class="btn btn-navy">Save</button>
-            <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Cancel</a>
+            <a href="{% url 'subject_requirement_list' %}{% if next_qs %}?{{ next_qs }}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
         </div>
     </form>
 </div>
