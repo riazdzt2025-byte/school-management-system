@@ -2,6 +2,7 @@ from django.test import TestCase
 
 from io import BytesIO
 from unittest import skipUnless
+from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -14,7 +15,7 @@ except ModuleNotFoundError:
 	Workbook = None
 
 from .models import (
-	AdmissionApplication, AuditLog, AttendanceRecord, Exam, ExamMark, Institution, InstitutionAccess,
+	AdmissionApplication, AuditLog, AttendanceRecord, Employee, EmployeeStatusLog, Exam, ExamMark, Institution, InstitutionAccess,
 	MoneyReceipt, PromotionBatch, Student, Subject,
 )
 from .permissions import ensure_default_groups
@@ -303,6 +304,53 @@ class StudentDetailPageTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Exam Results')
 		self.assertContains(response, 'Math')
+
+
+class EmployeeDetailPageTests(TestCase):
+	def setUp(self):
+		self.user = get_user_model().objects.create_superuser(username='admin', password='password')
+		self.client.force_login(self.user)
+		self.institution = Institution.objects.create(name='Test School', classes='6,7,8')
+		self.employee = Employee.objects.create(
+			name='John Doe', designation='Teacher', department='Science',
+			institution=self.institution, join_date=date(2020, 1, 15), contact_no='01700000000'
+		)
+
+	def test_employee_detail_page_loads(self):
+		"""Test that employee detail page loads successfully."""
+		response = self.client.get(reverse('employee_detail', args=[self.employee.pk]))
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'John Doe')
+		self.assertContains(response, 'Teacher')
+		self.assertContains(response, 'Overview')
+
+	def test_employee_detail_shows_status_history(self):
+		"""Test that employee detail page displays status history."""
+		EmployeeStatusLog.objects.create(
+			employee=self.employee, old_status='ACTIVE', new_status='OSD',
+			reason='On Special Duty', changed_by=self.user
+		)
+		
+		response = self.client.get(reverse('employee_detail', args=[self.employee.pk]))
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Status History')
+		self.assertContains(response, 'On Special Duty')
+
+	def test_employee_detail_shows_attendance_records(self):
+		"""Test that employee detail page displays attendance records."""
+		from datetime import date
+		AttendanceRecord.objects.create(
+			employee=self.employee, date=date.today(), status='P',
+			institution=self.institution, created_by=self.user
+		)
+		
+		response = self.client.get(reverse('employee_detail', args=[self.employee.pk]))
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Attendance')
+		self.assertContains(response, 'Present')
 
 
 class InstitutionAwareLoginTests(TestCase):

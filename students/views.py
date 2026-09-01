@@ -739,8 +739,37 @@ def employee_list(request):
 @login_required
 def employee_detail(request, pk):
     employee = get_object_or_404(Employee, pk=pk)
+    
+    # Get status history
+    status_logs = employee.status_logs.all()
+    
+    # Get attendance records (last 30 days)
+    from datetime import timedelta, date
+    thirty_days_ago = date.today() - timedelta(days=30)
+    attendance_records = AttendanceRecord.objects.filter(
+        employee=employee,
+        date__gte=thirty_days_ago
+    ).order_by('-date')
+    
+    # Calculate attendance rate
+    attendance_rate = 0
+    if attendance_records.exists():
+        present_count = attendance_records.filter(status='P').count()
+        total_count = attendance_records.count()
+        attendance_rate = round((present_count / total_count * 100), 1) if total_count > 0 else 0
+    
+    # Slice attendance records for display
+    attendance_records_display = attendance_records[:30]
+    
+    # Get salary/finance info if available
+    salary_records = employee.salary_sheets.all().order_by('-month')[:12] if hasattr(employee, 'salary_sheets') else []
+    
     return render(request, 'students/employee_detail.html', {
         'employee': employee,
+        'status_logs': status_logs,
+        'attendance_records': attendance_records_display,
+        'attendance_rate': attendance_rate,
+        'salary_records': salary_records,
     })
 
 #---------------- Student Views ----------------
