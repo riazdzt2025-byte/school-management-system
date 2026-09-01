@@ -31,4 +31,21 @@
     </table>
 </div>
 <a href="{% url 'employee_list' %}" class="btn btn-outline-navy mt-3">Back</a>
+{% endblock %}{% extends 'students/base.html' %}
+
+{% block title %}{% if receipt %}Edit{% else %}New{% endif %} Money Receipt - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h1>{% if receipt %}Edit{% else %}New{% endif %} Money Receipt</h1></div>
+</div>
+
+<div class="table-card p-4">
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-navy">Save</button>
+        <a href="{% url 'money_receipt_list' %}" class="btn btn-outline-navy">Cancel</a>
+    </form>
+</div>
 {% endblock %}

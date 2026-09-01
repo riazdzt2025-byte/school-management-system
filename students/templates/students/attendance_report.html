@@ -1,0 +1,49 @@
+{% extends 'students/dashboard.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Attendance Report</h4>
+        </div>
+        <div class="card-body">
+            {% if records %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Institution</th>
+                                <th>Student / Employee</th>
+                                <th>Status</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in records %}
+                            <tr>
+                                <td>{{ record.date }}</td>
+                                <td>{{ record.institution.name }}</td>
+                                <td>
+                                    {% if record.student %}
+                                        {{ record.student.name }}
+                                    {% elif record.employee %}
+                                        {{ record.employee.name }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td>{{ record.get_status_display }}</td>
+                                <td>{{ record.remarks|default:'-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="alert alert-info mb-0">No attendance records found.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,110 @@
+{% extends 'students/dashboard.html' %}
+{% load student_filters %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Mark {% if mark_type == 'STUDENT' %}Student{% else %}Employee{% endif %} Attendance</h4>
+            <span class="badge bg-light text-dark">{{ attendance_date }}</span>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                {% if mark_type == 'STUDENT' %}
+                                    <th>Student ID</th>
+                                    <th>Class / Section</th>
+                                {% else %}
+                                    <th>Designation</th>
+                                    <th>Department</th>
+                                {% endif %}
+                                <th>Status</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if mark_type == 'STUDENT' %}
+                                {% for student in students %}
+                                    {% with existing=attendance_data|get_item:student.id %}
+                                    <tr>
+                                        <td>{{ student.name }}</td>
+                                        <td>{{ student.student_id }}</td>
+                                        <td>{{ student.admission_class }} - {{ student.section }}</td>
+                                        <td>
+                                            <select name="status_{{ student.id }}" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                {% for val, label in status_choices %}
+                                                    <option value="{{ val }}" {% if existing|get_nested:'status' == val %}selected{% endif %}>
+                                                        {{ label }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="text" name="remarks_{{ student.id }}" class="form-control form-control-sm" 
+                                                   value="{{ existing|get_nested:'remarks' }}" placeholder="Optional">
+                                        </td>
+                                    </tr>
+                                    {% endwith %}
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No students found for this class/section.</td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                {% for employee in employees %}
+                                    {% with existing=attendance_data|get_item:employee.id %}
+                                    <tr>
+                                        <td>{{ employee.name }}</td>
+                                        <td>{{ employee.designation }}</td>
+                                        <td>{{ employee.department }}</td>
+                                        <td>
+                                            <select name="status_{{ employee.id }}" class="form-select form-select-sm">
+                                                <option value="">-- Select --</option>
+                                                {% for val, label in status_choices %}
+                                                    <option value="{{ val }}" {% if existing|get_nested:'status' == val %}selected{% endif %}>
+                                                        {{ label }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="text" name="remarks_{{ employee.id }}" class="form-control form-control-sm" 
+                                                   value="{{ existing|get_nested:'remarks' }}" placeholder="Optional">
+                                        </td>
+                                    </tr>
+                                    {% endwith %}
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No active employees found.</td>
+                                    </tr>
+                                {% endfor %}
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-success">Save Attendance</button>
+                    <a href="{% url 'attendance_report' %}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .form-select-sm, .form-control-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
+
+

@@ -607,6 +607,44 @@ class EmployeeStatusLog(models.Model):
         return f"{self.employee.name}: {self.old_status} -> {self.new_status} on {self.changed_at:%Y-%m-%d}"
 
 
+class AttendanceRecord(models.Model):
+    STATUS_CHOICES = [
+        ('P', 'Present'),
+        ('A', 'Absent'),
+        ('L', 'Late'),
+        ('H', 'Holiday'),
+    ]
+
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='attendance_records')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendance_records', null=True, blank=True)
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='attendance_records', null=True, blank=True)
+    date = models.DateField()
+    status = models.CharField(max_length=1, choices=STATUS_CHOICES, default='P')
+    remarks = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='attendance_records_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['institution', 'student', 'date'],
+                name='unique_student_attendance_per_day',
+                condition=models.Q(student__isnull=False),
+            ),
+            models.UniqueConstraint(
+                fields=['institution', 'employee', 'date'],
+                name='unique_employee_attendance_per_day',
+                condition=models.Q(employee__isnull=False),
+            ),
+        ]
+
+    def __str__(self):
+        target = self.student or self.employee
+        target_name = target.name if target else 'Unknown'
+        return f"{target_name} - {self.date} - {self.get_status_display()}"
+
+
 class MoneyReceipt(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='money_receipts')
     receipt_no = models.CharField(max_length=30, unique=True)

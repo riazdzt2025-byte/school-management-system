@@ -3,7 +3,7 @@ from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
     SSCRegistration, BoardResult,
     Exam, SeatPlan,
-    Employee, MoneyReceipt, Voucher, SalarySheet,
+    Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
     AdmissionApplication, SectionCapacity,
 )
 
@@ -339,3 +339,37 @@ class StudentPromotionForm(forms.Form):
         if source == target:
             raise forms.ValidationError('Source and target class/section must be different.')
         return cleaned_data
+
+
+class AttendanceMarkingForm(forms.ModelForm):
+    """Mark attendance for a single student or employee on a specific date."""
+    class Meta:
+        model = AttendanceRecord
+        fields = ['date', 'status', 'remarks']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'status': forms.Select(attrs={'class': 'form-select'}),
+            'remarks': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Optional notes'}),
+        }
+
+
+class DailyAttendanceSelectionForm(forms.Form):
+    """Select date, class, and section to mark attendance for multiple students."""
+    date = forms.DateField(
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        label='Attendance Date'
+    )
+    admission_class = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 9 or 10'}),
+        label='Class'
+    )
+    section = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. A (optional)'}),
+        label='Section'
+    )
+    mark_type = forms.ChoiceField(
+        choices=[('STUDENT', 'Mark Student Attendance'), ('EMPLOYEE', 'Mark Employee Attendance')],
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Mark Attendance For'
+    )

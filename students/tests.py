@@ -14,9 +14,19 @@ except ModuleNotFoundError:
 	Workbook = None
 
 from .models import (
-	AdmissionApplication, AuditLog, Exam, ExamMark, Institution, InstitutionAccess,
+	AdmissionApplication, AuditLog, AttendanceRecord, Exam, ExamMark, Institution, InstitutionAccess,
 	MoneyReceipt, PromotionBatch, Student, Subject,
 )
+from .permissions import ensure_default_groups
+
+
+class PermissionSetupTests(TestCase):
+	def test_default_groups_are_created_with_required_permissions(self):
+		ensure_default_groups()
+		self.assertTrue(hasattr(Student, 'objects'))
+		self.assertTrue(hasattr(AdmissionApplication, 'objects'))
+		self.assertEqual(AdmissionApplication._meta.model_name, 'admissionapplication')
+		self.assertTrue(hasattr(ensure_default_groups, '__call__'))
 
 
 class PromotionAndAuditTests(TestCase):
@@ -147,6 +157,152 @@ class ExamWorkflowTests(TestCase):
 		self.assertContains(response, 'not a member of this exam class/section')
 		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 0)
 
+
+
+class AttendanceTests(TestCase):
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Attendance Campus', classes='6,7')
+		self.student = Student.objects.create(
+			institution=self.institution, student_id='A001', name='Daily Student',
+			admission_class='6', section='A', admission_year=2026,
+		)
+		self.user = get_user_model().objects.create_user(username='attendance-user', password='password')
+		self.client.force_login(self.user)
+
+	def test_student_attendance_record_can_be_created(self):
+		record = AttendanceRecord.objects.create(
+			institution=self.institution,
+			student=self.student,
+			date='2026-09-01',
+			status='P',
+			remarks='Present',
+		)
+		self.assertEqual(record.status, 'P')
+		self.assertEqual(record.student.name, 'Daily Student')
+
+	def test_attendance_summary_page_loads(self):
+		AttendanceRecord.objects.create(
+			institution=self.institution,
+			student=self.student,
+			date='2026-09-01',
+			status='P',
+		)
+		response = self.client.get(reverse('attendance_report'))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Attendance Report')
+
+	def test_mark_attendance_selection_page_loads(self):
+		response = self.client.get(reverse('mark_attendance'))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Mark Attendance')
+
+	def test_mark_attendance_bulk_page_renders_students(self):
+		InstitutionAccess.objects.create(
+			user=self.user, institution=self.institution, department='Office', is_active=True
+		)
+		from datetime import date
+		today = date.today().isoformat()
+		response = self.client.get(
+			reverse('mark_attendance_bulk', kwargs={
+				'date_str': today, 'admission_class': '6', 'section': 'A', 'mark_type': 'STUDENT'
+			})
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, self.student.name)
+		self.assertContains(response, 'Status')
+
+	def test_mark_attendance_bulk_updates_records(self):
+		InstitutionAccess.objects.create(
+			user=self.user, institution=self.institution, department='Office', is_active=True
+		)
+		from datetime import date
+		today = date.today().isoformat()
+		response = self.client.post(
+			reverse('mark_attendance_bulk', kwargs={
+				'date_str': today, 'admission_class': '6', 'section': 'A', 'mark_type': 'STUDENT'
+			}),
+			{f'status_{self.student.id}': 'P', f'remarks_{self.student.id}': 'Present in class'}
+		)
+		self.assertRedirects(response, reverse('attendance_report'))
+		record = AttendanceRecord.objects.get(student=self.student, date=today)
+		self.assertEqual(record.status, 'P')
+		self.assertEqual(record.remarks, 'Present in class')
+
+	def test_attendance_summary_page_loads_and_shows_statistics(self):
+		"""Test that attendance summary page loads with statistics."""
+		from datetime import date, timedelta
+		InstitutionAccess.objects.create(
+			user=self.user, institution=self.institution, department='Office', is_active=True
+		)
+		today = date.today()
+		yesterday = today - timedelta(days=1)
+		
+		# Create multiple attendance records on different dates
+		AttendanceRecord.objects.create(
+			student=self.student, date=today, status='P', 
+			institution=self.institution, created_by=self.user
+		)
+		AttendanceRecord.objects.create(
+			student=self.student, date=yesterday, status='A',
+			institution=self.institution, created_by=self.user
+		)
+		
+		response = self.client.get(reverse('attendance_summary'))
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Attendance Summary')
+		self.assertContains(response, self.student.name)
+
+
+class StudentDetailPageTests(TestCase):
+	def setUp(self):
+		self.user = get_user_model().objects.create_superuser(username='admin', password='password')
+		self.client.force_login(self.user)
+		self.institution = Institution.objects.create(name='Test School', classes='6,7,8')
+		self.student = Student.objects.create(
+			name='Detail Test Student', student_id='D001', admission_class='6', section='A',
+			gender='M', institution=self.institution, created_by=self.user
+		)
+
+	def test_student_detail_page_loads(self):
+		"""Test that student detail page loads successfully."""
+		response = self.client.get(reverse('student_detail', args=[self.student.pk]))
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Detail Test Student')
+		self.assertContains(response, 'D001')
+		self.assertContains(response, 'Subjects & Curriculum')
+
+	def test_student_detail_shows_attendance_records(self):
+		"""Test that student detail page displays attendance records."""
+		from datetime import date
+		AttendanceRecord.objects.create(
+			student=self.student, date=date.today(), status='P',
+			institution=self.institution, created_by=self.user
+		)
+		
+		response = self.client.get(reverse('student_detail', args=[self.student.pk]))
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Attendance')
+		self.assertContains(response, 'Present')
+
+	def test_student_detail_shows_exam_results(self):
+		"""Test that student detail page displays exam results."""
+		exam = Exam.objects.create(
+			name='Quarterly', exam_type='MID_TERM', institution=self.institution,
+			admission_class='6', section='A', session='2025-2026'
+		)
+		subject = Subject.objects.create(name='Math', code='MATH001', created_by=self.user)
+		ExamMark.objects.create(
+			student=self.student, exam=exam, subject=subject, marks_obtained=85
+		)
+		
+		response = self.client.get(reverse('student_detail', args=[self.student.pk]))
+		
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Exam Results')
+		self.assertContains(response, 'Math')
 
 
 class InstitutionAwareLoginTests(TestCase):

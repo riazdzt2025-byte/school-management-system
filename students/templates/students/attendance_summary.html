@@ -1,0 +1,142 @@
+{% extends 'students/dashboard.html' %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">Attendance Summary</h4>
+        </div>
+        <div class="card-body">
+            <form method="get" class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label for="start_date" class="form-label">Start Date</label>
+                    <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-3">
+                    <label for="end_date" class="form-label">End Date</label>
+                    <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary w-100">Filter</button>
+                </div>
+            </form>
+            
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="alert alert-info mb-0">
+                        <strong>Period:</strong> {{ start_date|date:'M d, Y' }} to {{ end_date|date:'M d, Y' }}<br>
+                        <strong>Total Records:</strong> {{ total_records }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Student Attendance Summary -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Student Attendance Summary</h5>
+        </div>
+        <div class="card-body">
+            {% if student_summary %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Student ID</th>
+                                <th>Name</th>
+                                <th>Class / Section</th>
+                                <th class="text-center">Present</th>
+                                <th class="text-center">Absent</th>
+                                <th class="text-center">Late</th>
+                                <th class="text-center">Holiday</th>
+                                <th class="text-center">Total</th>
+                                <th class="text-center">Attendance %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in student_summary %}
+                                <tr>
+                                    <td>{{ item.student.student_id }}</td>
+                                    <td>{{ item.student.name }}</td>
+                                    <td>{{ item.student.admission_class }} - {{ item.student.section }}</td>
+                                    <td class="text-center"><span class="badge bg-success">{{ item.present }}</span></td>
+                                    <td class="text-center"><span class="badge bg-danger">{{ item.absent }}</span></td>
+                                    <td class="text-center"><span class="badge bg-warning">{{ item.late }}</span></td>
+                                    <td class="text-center"><span class="badge bg-info">{{ item.holiday }}</span></td>
+                                    <td class="text-center"><strong>{{ item.total }}</strong></td>
+                                    <td class="text-center">
+                                        {% if item.attendance_rate >= 80 %}
+                                            <span class="badge bg-success">{{ item.attendance_rate }}%</span>
+                                        {% elif item.attendance_rate >= 70 %}
+                                            <span class="badge bg-warning">{{ item.attendance_rate }}%</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">{{ item.attendance_rate }}%</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="alert alert-info mb-0">No student attendance records found for this period.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Employee Attendance Summary -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Employee Attendance Summary</h5>
+        </div>
+        <div class="card-body">
+            {% if employee_summary %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Designation</th>
+                                <th>Department</th>
+                                <th class="text-center">Present</th>
+                                <th class="text-center">Absent</th>
+                                <th class="text-center">Late</th>
+                                <th class="text-center">Holiday</th>
+                                <th class="text-center">Total</th>
+                                <th class="text-center">Attendance %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in employee_summary %}
+                                <tr>
+                                    <td>{{ item.employee.name }}</td>
+                                    <td>{{ item.employee.designation }}</td>
+                                    <td>{{ item.employee.department }}</td>
+                                    <td class="text-center"><span class="badge bg-success">{{ item.present }}</span></td>
+                                    <td class="text-center"><span class="badge bg-danger">{{ item.absent }}</span></td>
+                                    <td class="text-center"><span class="badge bg-warning">{{ item.late }}</span></td>
+                                    <td class="text-center"><span class="badge bg-info">{{ item.holiday }}</span></td>
+                                    <td class="text-center"><strong>{{ item.total }}</strong></td>
+                                    <td class="text-center">
+                                        {% if item.attendance_rate >= 80 %}
+                                            <span class="badge bg-success">{{ item.attendance_rate }}%</span>
+                                        {% elif item.attendance_rate >= 70 %}
+                                            <span class="badge bg-warning">{{ item.attendance_rate }}%</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">{{ item.attendance_rate }}%</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="alert alert-info mb-0">No employee attendance records found for this period.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

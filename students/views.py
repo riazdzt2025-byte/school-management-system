@@ -11,9 +11,9 @@ from .curriculum_apply import apply_curriculum
 from .models import (
     Student, Subject, Institution, InstitutionAccess, TransferCertificate, Certificate,
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
-    Employee, EmployeeStatusLog, MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
-    PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement, StudentSubjectChoice,
-    SectionCapacity,
+    Employee, EmployeeStatusLog, AttendanceRecord, MoneyReceipt, Voucher, SalarySheet,
+    AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
+    StudentSubjectChoice, SectionCapacity,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -21,7 +21,7 @@ from .forms import (
     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
     ExamForm, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm, EmployeeStatusChangeForm,
     MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
-    AdmissionApplicationForm, AdmissionPaymentForm,
+    AdmissionApplicationForm, AdmissionPaymentForm, AttendanceMarkingForm, DailyAttendanceSelectionForm,
 )
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
@@ -32,6 +32,7 @@ from datetime import date
 from uuid import uuid4
 from .result_utils import build_exam_results
 from .audit import record_audit
+from .permissions import sync_user_department_permissions
 from .models import Student, Subject, Institution, Employee
 
 # Import the optional Excel dependency dynamically so this module remains
@@ -124,6 +125,7 @@ def institution_login(request):
 
         if user is not None and (user.is_superuser or user.is_staff or access is not None):
             login(request, user)
+            sync_user_department_permissions(user)
             request.session['selected_institution_id'] = str(institution_id) if institution_id else ''
             request.session['selected_department'] = department or 'Office'
             return redirect('dashboard')
@@ -475,6 +477,240 @@ def class_section_summary(request):
         'grand_total': grand_total,
     })
 
+
+@login_required
+def attendance_report(request):
+    institution = _selected_institution_for_request(request)
+    records = AttendanceRecord.objects.select_related('student', 'employee', 'institution').order_by('-date', '-created_at')
+    if institution is not None:
+        records = records.filter(institution=institution)
+    return render(request, 'students/attendance_report.html', {
+        'records': records,
+        'institution': institution,
+        'status_choices': AttendanceRecord.STATUS_CHOICES,
+    })
+
+
+@login_required
+@_require_department(('Office', 'Exam'))
+def mark_attendance(request):
+    """Select date, class, and section to mark attendance for students or employees."""
+    institution = _selected_institution_for_request(request)
+    form = DailyAttendanceSelectionForm(request.POST or None)
+    
+    if form.is_valid():
+        selected_date = form.cleaned_data['date']
+        admission_class = form.cleaned_data['admission_class'].strip()
+        section = form.cleaned_data['section'].strip()
+        mark_type = form.cleaned_data['mark_type']
+        
+        return redirect('mark_attendance_bulk', date_str=selected_date.isoformat(), admission_class=admission_class, section=section, mark_type=mark_type)
+    
+    return render(request, 'students/mark_attendance_select.html', {
+        'form': form,
+        'institution': institution,
+    })
+
+
+@login_required
+@_require_department(('Office', 'Exam'))
+def mark_attendance_bulk(request, date_str, admission_class, section, mark_type):
+    """Mark attendance for multiple students or employees in a class/section on a specific date."""
+    from datetime import datetime
+    institution = _selected_institution_for_request(request)
+    
+    try:
+        attendance_date = datetime.fromisoformat(date_str).date()
+    except (ValueError, TypeError):
+        messages.error(request, 'Invalid date format.')
+        return redirect('mark_attendance')
+    
+    if mark_type == 'STUDENT':
+        students = Student.objects.filter(
+            admission_class=admission_class,
+            status='ACTIVE',
+        )
+        if section:
+            students = students.filter(section=section)
+        if institution:
+            students = students.filter(institution=institution)
+        students = students.order_by('name')
+        
+        if request.method == 'POST':
+            records_created = 0
+            for student in students:
+                status_key = f'status_{student.id}'
+                if status_key in request.POST:
+                    status = request.POST.get(status_key)
+                    remarks = request.POST.get(f'remarks_{student.id}', '')
+                    try:
+                        AttendanceRecord.objects.update_or_create(
+                            institution=institution or student.institution,
+                            student=student,
+                            date=attendance_date,
+                            defaults={'status': status, 'remarks': remarks, 'created_by': request.user}
+                        )
+                        records_created += 1
+                    except Exception as e:
+                        messages.warning(request, f'Error marking {student.name}: {str(e)}')
+            
+            if records_created > 0:
+                messages.success(request, f'Marked attendance for {records_created} student(s).')
+                record_audit(request.user, 'attendance_marked', Student, details={'count': records_created, 'date': str(attendance_date)})
+            return redirect('attendance_report')
+        
+        # Build form data with existing records
+        attendance_data = {}
+        existing = AttendanceRecord.objects.filter(date=attendance_date, student__in=students).values('student_id', 'status', 'remarks')
+        for record in existing:
+            attendance_data[str(record['student_id'])] = {'status': record['status'], 'remarks': record['remarks']}
+        
+        return render(request, 'students/mark_attendance_bulk.html', {
+            'students': students,
+            'attendance_date': attendance_date,
+            'attendance_data': attendance_data,
+            'status_choices': AttendanceRecord.STATUS_CHOICES,
+            'institution': institution,
+            'mark_type': 'STUDENT',
+        })
+    
+    elif mark_type == 'EMPLOYEE':
+        employees = Employee.objects.filter(status='ACTIVE')
+        if institution:
+            employees = employees.filter(institution=institution)
+        employees = employees.order_by('name')
+        
+        if request.method == 'POST':
+            records_created = 0
+            for employee in employees:
+                status_key = f'status_{employee.id}'
+                if status_key in request.POST:
+                    status = request.POST.get(status_key)
+                    remarks = request.POST.get(f'remarks_{employee.id}', '')
+                    try:
+                        AttendanceRecord.objects.update_or_create(
+                            institution=institution or employee.institution,
+                            employee=employee,
+                            date=attendance_date,
+                            defaults={'status': status, 'remarks': remarks, 'created_by': request.user}
+                        )
+                        records_created += 1
+                    except Exception as e:
+                        messages.warning(request, f'Error marking {employee.name}: {str(e)}')
+            
+            if records_created > 0:
+                messages.success(request, f'Marked attendance for {records_created} employee(s).')
+                record_audit(request.user, 'attendance_marked', Employee, details={'count': records_created, 'date': str(attendance_date)})
+            return redirect('attendance_report')
+        
+        # Build form data with existing records
+        attendance_data = {}
+        existing = AttendanceRecord.objects.filter(date=attendance_date, employee__in=employees).values('employee_id', 'status', 'remarks')
+        for record in existing:
+            attendance_data[str(record['employee_id'])] = {'status': record['status'], 'remarks': record['remarks']}
+        
+        return render(request, 'students/mark_attendance_bulk.html', {
+            'employees': employees,
+            'attendance_date': attendance_date,
+            'attendance_data': attendance_data,
+            'status_choices': AttendanceRecord.STATUS_CHOICES,
+            'institution': institution,
+            'mark_type': 'EMPLOYEE',
+        })
+    
+    messages.error(request, 'Invalid attendance mark type.')
+    return redirect('mark_attendance')
+
+
+@login_required
+@_require_department(('Office', 'Exam'))
+def attendance_summary(request):
+    """Attendance summary and analytics dashboard."""
+    institution = _selected_institution_for_request(request)
+    
+    # Date range filters
+    from datetime import datetime, timedelta
+    today = date.today()
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    
+    if start_date:
+        try:
+            start_date = datetime.fromisoformat(start_date).date()
+        except (ValueError, TypeError):
+            start_date = None
+    if end_date:
+        try:
+            end_date = datetime.fromisoformat(end_date).date()
+        except (ValueError, TypeError):
+            end_date = None
+    
+    if not start_date:
+        start_date = today - timedelta(days=30)
+    if not end_date:
+        end_date = today
+    
+    records = AttendanceRecord.objects.filter(date__range=[start_date, end_date])
+    if institution:
+        records = records.filter(institution=institution)
+    
+    # Student attendance summary
+    student_summary = {}
+    for record in records.filter(student__isnull=False):
+        student_id = record.student_id
+        if student_id not in student_summary:
+            student_summary[student_id] = {
+                'student': record.student,
+                'present': 0, 'absent': 0, 'late': 0, 'holiday': 0, 'total': 0
+            }
+        if record.status == 'P':
+            student_summary[student_id]['present'] += 1
+        elif record.status == 'A':
+            student_summary[student_id]['absent'] += 1
+        elif record.status == 'L':
+            student_summary[student_id]['late'] += 1
+        elif record.status == 'H':
+            student_summary[student_id]['holiday'] += 1
+        student_summary[student_id]['total'] += 1
+    
+    # Employee attendance summary
+    employee_summary = {}
+    for record in records.filter(employee__isnull=False):
+        emp_id = record.employee_id
+        if emp_id not in employee_summary:
+            employee_summary[emp_id] = {
+                'employee': record.employee,
+                'present': 0, 'absent': 0, 'late': 0, 'holiday': 0, 'total': 0
+            }
+        if record.status == 'P':
+            employee_summary[emp_id]['present'] += 1
+        elif record.status == 'A':
+            employee_summary[emp_id]['absent'] += 1
+        elif record.status == 'L':
+            employee_summary[emp_id]['late'] += 1
+        elif record.status == 'H':
+            employee_summary[emp_id]['holiday'] += 1
+        employee_summary[emp_id]['total'] += 1
+    
+    # Calculate attendance rates
+    for summary in student_summary.values():
+        if summary['total'] > 0:
+            summary['attendance_rate'] = round((summary['present'] / summary['total'] * 100), 1)
+    
+    for summary in employee_summary.values():
+        if summary['total'] > 0:
+            summary['attendance_rate'] = round((summary['present'] / summary['total'] * 100), 1)
+    
+    return render(request, 'students/attendance_summary.html', {
+        'start_date': start_date,
+        'end_date': end_date,
+        'student_summary': sorted(student_summary.values(), key=lambda x: x['student'].name),
+        'employee_summary': sorted(employee_summary.values(), key=lambda x: x['employee'].name),
+        'institution': institution,
+        'total_records': records.count(),
+    })
+
+
 @login_required
 def employee_list(request):
     institutions = Institution.objects.all().order_by('name')
@@ -815,11 +1051,47 @@ def bulk_update_select(request):
 @login_required
 def student_detail(request, pk):
     student = get_object_or_404(Student, pk=pk)
+    
+    # Get subjects
+    subjects = student.subjects.select_related('subject')
+    
+    # Get transfer certificate
+    transfer_certificate = getattr(student, 'transfer_certificate', None)
+    
+    # Get SSC registration
+    last_registration = student.last_registration()
+    
+    # Get attendance records (last 30 records)
+    from datetime import timedelta, date
+    thirty_days_ago = date.today() - timedelta(days=30)
+    attendance_records = AttendanceRecord.objects.filter(
+        student=student, 
+        date__gte=thirty_days_ago
+    ).order_by('-date')
+    
+    # Calculate attendance rate
+    attendance_rate = 0
+    if attendance_records.exists():
+        present_count = attendance_records.filter(status='P').count()
+        total_count = attendance_records.count()
+        attendance_rate = round((present_count / total_count * 100), 1) if total_count > 0 else 0
+    
+    # Get exam results (last 10 results)
+    exam_results = ExamMark.objects.filter(student=student).select_related(
+        'exam', 'subject'
+    ).order_by('-exam__exam_date')[:10]
+    
+    # Slice attendance records for display
+    attendance_records_display = attendance_records[:30]
+    
     return render(request, 'students/student_detail.html', {
         'student': student,
-        'subjects': student.subjects.select_related('subject'),
-        'transfer_certificate': getattr(student, 'transfer_certificate', None),
-        'last_registration': student.last_registration(),
+        'subjects': subjects,
+        'transfer_certificate': transfer_certificate,
+        'last_registration': last_registration,
+        'attendance_records': attendance_records_display,
+        'attendance_rate': attendance_rate,
+        'exam_results': exam_results,
     })
 
 
