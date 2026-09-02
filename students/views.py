@@ -809,9 +809,10 @@ def student_list(request):
             qs = qs.filter(group=group)
         students = list(qs)
     else:
-        # No institution filter chosen yet — send the user to the
-        # dedicated filter page instead of showing an in-page popup.
-        return redirect('student_list_filter')
+        # No institution selected yet: keep the user on the main student list page
+        # and let the inline filters drive the view instead of redirecting to an
+        # obsolete dedicated landing page.
+        students = list(qs)
 
     # ---- Duplicate detection ----
     exact_key_count = defaultdict(int)
@@ -916,27 +917,6 @@ def download_student_list(request):
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response
-
-
-@login_required
-def student_list_filter(request):
-    """Dedicated, popup-free page for choosing Institution/Class/Section/Group
-    filters before viewing the student list."""
-    institutions = Institution.objects.all().order_by('name')
-    institutions_data = {
-        str(inst.id): [c.strip() for c in inst.classes.split(',') if c.strip()]
-        for inst in institutions
-    }
-    return render(request, 'students/student_list_filter.html', {
-        'institutions': institutions,
-        'institutions_data': institutions_data,
-        'selected_institution_id': request.GET.get('institution', ''),
-        'selected_class': request.GET.get('admission_class', ''),
-        'selected_section': request.GET.get('section', ''),
-        'selected_group': request.GET.get('group', ''),
-        'department_choices': InstitutionAccess.DEPARTMENT_CHOICES,
-        'selected_department': request.GET.get('department') or request.session.get('selected_department') or 'Office',
-    })
 
 
 @login_required
