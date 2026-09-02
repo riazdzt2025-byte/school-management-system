@@ -11,6 +11,10 @@ class StudentForm(forms.ModelForm):
     class Meta:
         model = Student
         exclude = ['form_no', 'student_id']
+        labels = {
+            'admission_class': 'Class',
+            'section': 'Section',
+        }
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -29,6 +33,8 @@ class StudentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['admission_class'].label = 'Class'
+        self.fields['section'].label = 'Section'
         admission_class = ''
         if self.instance and self.instance.pk:
             admission_class = str(self.instance.admission_class)
@@ -272,6 +278,10 @@ class ExamForm(forms.ModelForm):
     class Meta:
         model = Exam
         fields = ['exam_type', 'institution', 'admission_class', 'section', 'session', 'exam_date']
+        labels = {
+            'admission_class': 'Class',
+            'section': 'Section',
+        }
         widgets = {
             'exam_type': forms.Select(attrs={'class': 'form-select'}),
             'institution': forms.Select(attrs={'class': 'form-select'}),
@@ -283,6 +293,8 @@ class ExamForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['admission_class'].label = 'Class'
+        self.fields['section'].label = 'Section'
         self.fields['section'].choices = [('', 'All sections')] + list(EXAM_SECTION_CHOICES)
         self.fields['section'].required = False
 
