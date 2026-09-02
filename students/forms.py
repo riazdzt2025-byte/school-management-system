@@ -347,8 +347,8 @@ class ExamForm(forms.ModelForm):
 
         if institution and admission_class and session:
             type_label = dict(self.fields['exam_type'].choices).get(exam_type, 'Exam')
-            section_label = section or 'All'
-            cleaned_data['name'] = f"{type_label} - Class {admission_class} - Section {section_label} - {session}"
+            section_label = f" - Section {section}" if section else ''
+            cleaned_data['name'] = f"{type_label} Exam {session}{section_label} - Class {admission_class}"
 
         return cleaned_data
 
@@ -356,9 +356,9 @@ class ExamForm(forms.ModelForm):
         instance = super().save(commit=False)
         if not instance.name:
             exam_type = dict(self.fields['exam_type'].choices).get(instance.exam_type, 'Exam')
-            section = instance.section or 'All'
+            section = f" - Section {instance.section}" if instance.section else ''
             session = instance.session or ''
-            instance.name = f"{exam_type} - Class {instance.admission_class} - Section {section} - {session}"
+            instance.name = f"{exam_type} Exam {session}{section} - Class {instance.admission_class}"
         if commit:
             instance.save()
         return instance
