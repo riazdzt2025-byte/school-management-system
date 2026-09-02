@@ -121,9 +121,9 @@ class Student(models.Model):
         return f"{self.name} ({self.student_id})"
 
     def last_registration(self):
-        """সবচেয়ে সাম্প্রতিক (রোলব্যাক হয়নি এমন) প্রমোশন থেকে এই ছাত্রের
-        আগের রেজিস্ট্রেশন তথ্য — Year (batch.session), Class, Section, Roll।
-        কোনো প্রমোশন হিস্ট্রি না থাকলে None।"""
+        """Returns the student's most recent registration info from the latest
+        promotion history that has not been rolled back — Year (batch.session),
+        Class, Section, Roll. Returns None if no promotion history exists."""
         history = (
             self.promotion_history
             .filter(rolled_back_at__isnull=True)
@@ -142,9 +142,9 @@ class Student(models.Model):
 
 
 class SectionCapacity(models.Model):
-    """সিট লিমিট: একটা Institution + Class + Section-এ সর্বোচ্চ কতজন
-    ACTIVE ছাত্র ভর্তি করা যাবে তা নির্ধারণ করে। কোনো রো না থাকলে
-    সেই Class/Section-এ কোনো সীমা প্রযোজ্য নয়।"""
+    """Seat limit: determines the maximum number of ACTIVE students that can be
+    admitted to a given Institution + Class + Section. If no row exists, there
+    is no limit for that Class/Section."""
     institution = models.ForeignKey(
         Institution, on_delete=models.CASCADE, related_name='section_capacities'
     )
@@ -187,8 +187,8 @@ class SectionCapacity(models.Model):
 
     @classmethod
     def has_room(cls, institution, admission_class, section, exclude_student_id=None):
-        """কনফিগার করা লিমিট থাকলে সিট খালি আছে কিনা যাচাই করে।
-        কোনো লিমিট কনফিগার না থাকলে সবসময় True (unrestricted)।"""
+        """Checks whether there is room within the configured limit.
+        If no limit is configured, returns True (unrestricted)."""
         limit = cls.get_limit(institution, admission_class, section)
         if limit is None:
             return True

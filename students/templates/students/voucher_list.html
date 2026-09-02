@@ -19,7 +19,7 @@
             {% for v in vouchers %}
             <tr>
                 <td>{{ v.purpose }}</td>
-                <td>৳ {{ v.amount }}</td>
+                <td>BDT {{ v.amount }}</td>
                 <td>{{ v.date }}</td>
                 <td>{{ v.get_status_display }}</td>
                 <td>{{ v.created_by.username|default:'-' }}</td>

@@ -10,11 +10,39 @@
 </div>
 
 <div class="table-card p-4">
+    <div class="alert alert-info small mb-4">
+        Exam results are permanent. Use the approved exam names and select class/section from the dropdowns.
+    </div>
+
     <form method="post">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button class="btn btn-navy">Save</button>
-        <a class="btn btn-outline-navy" href="{% url 'exam_list' %}">Cancel</a>
+        <div class="row g-3">
+            {% for field in form %}
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}
+                    <div class="form-text">{{ field.help_text }}</div>
+                    {% endif %}
+                    {% for error in field.errors %}
+                    <div class="text-danger small mt-1">{{ error }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <datalist id="exam-name-options">
+            {% for exam_name in exam_name_suggestions %}
+                <option value="{{ exam_name }}">
+            {% endfor %}
+        </datalist>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-navy">Save</button>
+            <a class="btn btn-outline-navy" href="{% url 'exam_list' %}">Cancel</a>
+        </div>
     </form>
 </div>
 {% endblock %}

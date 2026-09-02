@@ -8,7 +8,7 @@
 </div>
 
 <div class="table-card p-4">
-    <p>{{ salary.employee.name }} - {{ salary.month }} - ৳{{ salary.amount }}</p>
+    <p>{{ salary.employee.name }} - {{ salary.month }} - BDT {{ salary.amount }}</p>
     <form method="post">
         {% csrf_token %}
         <button class="btn btn-danger">Yes, Delete</button>

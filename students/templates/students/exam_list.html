@@ -65,7 +65,7 @@
                             </form>
                             {% endif %}
                             {% if perms.students.delete_exam %}
-                            <a href="{% url 'delete_exam' exam.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                            <span class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true">Result Locked</span>
                             {% endif %}
                         </td>
                     </tr>

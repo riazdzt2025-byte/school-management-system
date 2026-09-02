@@ -20,14 +20,14 @@
     <div class="col-md-3">
         <div class="stat">
             <small>{{ label }}</small>
-            <div class="value">৳ {{ value }}</div>
+            <div class="value">BDT {{ value }}</div>
         </div>
     </div>
     {% endfor %}
     <div class="col-md-3">
         <div class="stat">
             <small>Net Balance</small>
-            <div class="value">৳ {{ net_balance }}</div>
+            <div class="value">BDT {{ net_balance }}</div>
         </div>
     </div>
 </div>
@@ -45,7 +45,7 @@
         <div class="table-card p-3">
             <h5>Recent Receipts</h5>
             {% for r in recent_receipts %}
-                <p>{{ r.receipt_no }} - {{ r.student.name }} - ৳{{ r.amount }}</p>
+                <p>{{ r.receipt_no }} - {{ r.student.name }} - BDT {{ r.amount }}</p>
             {% empty %}
                 <p>No receipts yet.</p>
             {% endfor %}
@@ -55,7 +55,7 @@
         <div class="table-card p-3">
             <h5>Recent Vouchers</h5>
             {% for v in recent_vouchers %}
-                <p>{{ v.purpose }} - ৳{{ v.amount }} ({{ v.get_status_display }})</p>
+                <p>{{ v.purpose }} - BDT {{ v.amount }} ({{ v.get_status_display }})</p>
             {% empty %}
                 <p>No vouchers yet.</p>
             {% endfor %}

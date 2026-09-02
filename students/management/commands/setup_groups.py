@@ -1,8 +1,8 @@
 """
 python manage.py setup_groups
 
-Django Groups + Permissions তৈরি করে ডিপার্টমেন্ট-ওয়াইজ এক্সেসের জন্য।
-প্রতিটা group নিজের মডেলে add/change/delete পায়, বাকি সব মডেলে শুধু view পায়।
+Creates Django Groups + Permissions for department-wise access.
+Each group gets add/change/delete on its own model, and only view on the rest.
 """
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group, Permission
@@ -56,7 +56,7 @@ DEPARTMENT_PERMISSIONS = {
         (MoneyReceipt, ["add", "change", "delete"]),
         (Voucher, ["add", "change", "delete"]),
         (SalarySheet, ["add", "change", "delete"]),
-        (Exam, ["add", "change", "delete"]),
+        (Exam, ["add", "change"]),
         (ExamMark, ["add", "change", "delete"]),
     ],
     "Audit": [

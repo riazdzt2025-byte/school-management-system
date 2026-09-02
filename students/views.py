@@ -19,8 +19,8 @@ from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
     TransferCertificateForm,
     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
-    ExamForm, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm, EmployeeStatusChangeForm,
-    MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
+    ExamForm, EXAM_NAME_SUGGESTIONS, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm,
+    EmployeeStatusChangeForm, MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
     AdmissionApplicationForm, AdmissionPaymentForm, AttendanceMarkingForm, DailyAttendanceSelectionForm,
 )
 from django.contrib.auth.decorators import login_required, permission_required
@@ -1956,7 +1956,10 @@ def add_exam(request):
         form.save()
         messages.success(request, 'Exam created.')
         return redirect('exam_list')
-    return render(request, 'students/add_exam.html', {'form': form})
+    return render(request, 'students/add_exam.html', {
+        'form': form,
+        'exam_name_suggestions': EXAM_NAME_SUGGESTIONS,
+    })
 
 
 @login_required
@@ -1968,7 +1971,11 @@ def edit_exam(request, pk):
         form.save()
         messages.success(request, 'Exam updated.')
         return redirect('exam_list')
-    return render(request, 'students/add_exam.html', {'form': form, 'exam': exam})
+    return render(request, 'students/add_exam.html', {
+        'form': form,
+        'exam': exam,
+        'exam_name_suggestions': EXAM_NAME_SUGGESTIONS,
+    })
 
 
 @login_required
@@ -1976,8 +1983,7 @@ def edit_exam(request, pk):
 def delete_exam(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
     if request.method == 'POST':
-        exam.delete()
-        messages.success(request, 'Exam deleted.')
+        messages.info(request, 'Exam results are permanent and cannot be deleted.')
         return redirect('exam_list')
     return render(request, 'students/delete_exam.html', {'exam': exam})
 

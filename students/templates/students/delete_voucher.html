@@ -8,7 +8,7 @@
 </div>
 
 <div class="table-card p-4">
-    <p>{{ voucher.purpose }} - ৳{{ voucher.amount }}</p>
+    <p>{{ voucher.purpose }} - BDT {{ voucher.amount }}</p>
     <form method="post">
         {% csrf_token %}
         <button class="btn btn-danger">Yes, Delete</button>

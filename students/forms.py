@@ -1,7 +1,7 @@
 from django import forms
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
-    SSCRegistration, BoardResult,
+    Institution, SSCRegistration, BoardResult,
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
     AdmissionApplication, SectionCapacity,
@@ -257,19 +257,75 @@ class SSCExcelImportForm(forms.Form):
     )
 
 
+EXAM_NAME_SUGGESTIONS = [
+    'First Term', 'Second Term', 'Third Term',
+    'Pre Test Exam', 'Test Exam',
+    'Model Test-1', 'Model Test-2', 'Model Test-3',
+    'Final Term',
+    'Mid Term-1', 'Mid Term-2', 'Mid Term-3',
+]
+EXAM_SECTION_CHOICES = [(letter, letter) for letter in 'ABCDEFGHIJ']
+
+
 class ExamForm(forms.ModelForm):
     class Meta:
         model = Exam
         fields = ['name', 'exam_type', 'institution', 'admission_class', 'section', 'session', 'exam_date']
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. First Mid Term'}),
+            'name': forms.TextInput(attrs={
+                'class': 'form-control',
+                'list': 'exam-name-options',
+                'placeholder': 'Choose from the list or enter a new exam name',
+                'autocomplete': 'off',
+            }),
             'exam_type': forms.Select(attrs={'class': 'form-select'}),
             'institution': forms.Select(attrs={'class': 'form-select'}),
-            'admission_class': forms.TextInput(attrs={'class': 'form-control'}),
-            'section': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Leave blank for all sections'}),
+            'admission_class': forms.Select(attrs={'class': 'form-select'}),
+            'section': forms.Select(attrs={'class': 'form-select'}),
             'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2025-2026'}),
             'exam_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['section'].choices = [('', 'All sections')] + list(EXAM_SECTION_CHOICES)
+        self.fields['section'].required = False
+
+        available_classes = []
+        institution = None
+        if self.instance and getattr(self.instance, 'institution_id', None):
+            institution = self.instance.institution
+        elif self.data.get('institution'):
+            institution = Institution.objects.filter(pk=self.data.get('institution')).first()
+        elif self.initial.get('institution'):
+            institution = self.initial.get('institution')
+
+        if institution is not None:
+            available_classes = [
+                (cls_value, cls_value)
+                for cls_value in institution.get_class_list()
+                if cls_value.strip()
+            ]
+        else:
+            available_classes = [
+                (cls_value, cls_value)
+                for institution_obj in Institution.objects.all()
+                for cls_value in institution_obj.get_class_list()
+                if cls_value.strip()
+            ]
+
+        unique_classes = []
+        seen = set()
+        for class_name, label in available_classes:
+            if class_name not in seen:
+                unique_classes.append((class_name, label))
+                seen.add(class_name)
+
+        if not unique_classes:
+            unique_classes = [('', '-- Select institution --')]
+
+        self.fields['admission_class'].choices = [('', '-- Select class --')] + unique_classes
+        self.fields['admission_class'].required = True
 
 
 class ExamExcelImportForm(forms.Form):

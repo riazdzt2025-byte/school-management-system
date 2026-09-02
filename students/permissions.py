@@ -60,7 +60,7 @@ def _group_permission_map():
             (MoneyReceipt, ['add', 'change', 'delete']),
             (Voucher, ['add', 'change', 'delete']),
             (SalarySheet, ['add', 'change', 'delete']),
-            (Exam, ['add', 'change', 'delete']),
+            (Exam, ['add', 'change']),
             (ExamMark, ['add', 'change', 'delete']),
         ],
         'Audit': [

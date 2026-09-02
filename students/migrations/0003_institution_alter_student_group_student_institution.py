@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('name', models.CharField(max_length=200, unique=True)),
-                ('classes', models.CharField(help_text='কমা দিয়ে আলাদা করে ক্লাস/সেমিস্টার লিখুন, যেমন: শিশু,1,2,3,4,5', max_length=300)),
+                ('classes', models.CharField(help_text='Enter classes/semesters separated by commas, for example: Shishu,1,2,3,4,5', max_length=300)),
             ],
         ),
         migrations.AlterField(

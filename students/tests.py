@@ -18,6 +18,7 @@ from .models import (
 	AdmissionApplication, AuditLog, AttendanceRecord, Employee, EmployeeStatusLog, Exam, ExamMark, Institution, InstitutionAccess,
 	MoneyReceipt, PromotionBatch, Student, Subject,
 )
+from .forms import ExamForm, EXAM_NAME_SUGGESTIONS
 from .permissions import ensure_default_groups
 
 
@@ -91,10 +92,15 @@ class ExamWorkflowTests(TestCase):
 		user = get_user_model().objects.create_user(username='exam-user', password='password')
 		exammark_content_type = ContentType.objects.get_for_model(ExamMark)
 		exam_content_type = ContentType.objects.get_for_model(Exam)
-		user.user_permissions.add(
-			Permission.objects.get(content_type=exammark_content_type, codename='add_exammark'),
-			Permission.objects.get(content_type=exam_content_type, codename='change_exam'),
+		add_exammark, _ = Permission.objects.get_or_create(
+			content_type=exammark_content_type,
+			codename='add_exammark',
 		)
+		change_exam, _ = Permission.objects.get_or_create(
+			content_type=exam_content_type,
+			codename='change_exam',
+		)
+		user.user_permissions.add(add_exammark, change_exam)
 		self.client.force_login(user)
 
 	def workbook_upload(self, rows):
@@ -134,6 +140,32 @@ class ExamWorkflowTests(TestCase):
 		self.assertRedirects(response, reverse('exam_list'))
 		self.exam.refresh_from_db()
 		self.assertTrue(self.exam.is_published)
+
+	def test_exam_name_field_uses_datalist_suggestions(self):
+		form = ExamForm()
+		self.assertEqual(form.fields['name'].widget.attrs.get('list'), 'exam-name-options')
+		self.assertIn('First Term', EXAM_NAME_SUGGESTIONS)
+
+		response = self.client.get(reverse('add_exam'))
+		self.assertEqual(response.status_code, 200)
+		self.assertIn('exam_name_suggestions', response.context)
+		self.assertIn('First Term', response.context['exam_name_suggestions'])
+
+	def test_exam_form_uses_dropdowns_for_class_and_section(self):
+		form = ExamForm()
+		self.assertEqual(form.fields['admission_class'].widget.__class__.__name__, 'Select')
+		self.assertEqual(form.fields['section'].widget.__class__.__name__, 'Select')
+		self.assertIn(('A', 'A'), form.fields['section'].choices)
+		self.assertIn(('J', 'J'), form.fields['section'].choices)
+		self.assertNotIn(('N/A', 'N/A'), form.fields['section'].choices)
+
+	def test_delete_exam_route_is_disabled_for_permanent_results(self):
+		permission = Permission.objects.get_or_create(codename='delete_exam', content_type=ContentType.objects.get_for_model(Exam))[0]
+		self.client.force_login(self.user)
+		self.user.user_permissions.add(permission)
+		response = self.client.post(reverse('delete_exam', args=[self.exam.pk]))
+		self.assertRedirects(response, reverse('exam_list'))
+		self.assertTrue(Exam.objects.filter(pk=self.exam.pk).exists())
 
 	@skipUnless(Workbook, 'openpyxl is required for Excel import tests')
 	def test_import_exam_marks_success(self):

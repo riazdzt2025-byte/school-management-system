@@ -14,7 +14,7 @@ from .models import (
 
 class StudentSubjectInline(admin.TabularInline):
     model = StudentSubject
-    extra = 3  # ডিফল্টে ৩টা খালি সাবজেক্ট স্লট দেখাবে
+    extra = 3  # Shows 3 empty subject slots by default
 
 
 class StudentAdmin(admin.ModelAdmin):
