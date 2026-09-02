@@ -6,127 +6,179 @@
 
 {% block extra_style %}
     .hero {
-        background: linear-gradient(120deg, var(--navy) 0%, var(--navy-light) 100%);
-        border-radius: 16px;
-        padding: 40px;
+        background: linear-gradient(135deg, #0d3255 0%, #1c4d7d 28%, #103150 100%);
+        border-radius: 18px;
+        padding: 32px 28px;
         color: #fff;
         position: relative;
         overflow: hidden;
+        box-shadow: 0 14px 28px rgba(10, 31, 56, 0.18);
     }
-    .hero::after {
+    .hero::before {
         content: "";
         position: absolute;
-        right: -60px; top: -60px;
-        width: 220px; height: 220px;
-        border-radius: 50%;
-        background: rgba(201,162,39,0.15);
+        inset: 0;
+        background: radial-gradient(circle at top right, rgba(255, 205, 86, 0.20), transparent 28%);
     }
-    .hero h1 { font-size: 1.9rem; margin-bottom: 6px; }
-    .hero p { opacity: 0.85; margin-bottom: 0; }
-
-    .filter-bar {
-        background: #fff;
-        border-radius: 12px;
-        padding: 16px 20px;
-        margin-top: -24px;
-        margin-inline: 24px;
-        box-shadow: 0 6px 20px rgba(15,45,82,0.08);
-        display: flex;
-        gap: 12px;
+    .hero-content {
         position: relative;
-        z-index: 2;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 20px;
     }
-    .filter-bar select { border-radius: 8px; }
-
+    .hero-copy {
+        flex: 1;
+        min-width: 0;
+    }
+    .hero h1 {
+        font-size: clamp(2rem, 3vw, 2.8rem);
+        margin: 0 0 12px;
+        line-height: 1.2;
+        font-weight: 700;
+    }
+    .hero .subtitle {
+        font-size: 1rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.75);
+        margin-bottom: 18px;
+    }
+    .hero .lead {
+        font-size: 1.05rem;
+        line-height: 1.7;
+        max-width: 640px;
+        color: rgba(255,255,255,0.9);
+        margin: 0;
+    }
+    .portrait-frame {
+        width: min(330px, 32vw);
+        min-width: 180px;
+        aspect-ratio: 4 / 3;
+        border-radius: 22px;
+        overflow: hidden;
+        border: 4px solid rgba(255, 210, 92, 0.9);
+        background: #e7e1d2;
+        box-shadow: 0 18px 32px rgba(2, 17, 31, 0.25);
+        position: relative;
+        flex-shrink: 0;
+    }
+    .portrait-frame::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720 540'%3E%3Cg fill='none'%3E%3Crect width='720' height='540' fill='%230e2d52'/%3E%3Cpath d='M0 495C128 442 204 414 312 418c143 6 249 58 408 52v70H0v-45Z' fill='%235a7f44'/%3E%3Cpath d='M190 170c6-60 48-103 117-103 86 0 132 59 132 126 0 63-27 101-75 119l40 96H220l34-100c-48-20-68-53-68-142Z' fill='%23d7b28b'/%3E%3Cpath d='M174 176c18-73 62-122 135-128 84-9 162 49 180 128-25-29-56-43-95-43-48 0-93 21-134 43-28 16-56 31-86 0Z' fill='%235d422c'/%3E%3Ccircle cx='266' cy='226' r='11' fill='%23262424'/%3E%3Ccircle cx='402' cy='226' r='11' fill='%23262424'/%3E%3Cpath d='M298 282c27 20 63 22 92 0' stroke='%23262424' stroke-width='10' stroke-linecap='round'/%3E%3Cpath d='M255 160c33-22 73-32 114-30 46 2 93 25 125 63l-22 22c-26-32-67-48-112-48-42 0-80 13-117 42l12-49Z' fill='%235d422c'/%3E%3Cpath d='M260 314h160l20 36c-57 26-137 26-196 0l16-36Z' fill='%239c6b45'/%3E%3Cpath d='M280 314c-26 49-36 76-39 117h36c10-43 20-68 29-95l-26-22Z' fill='%23d7b28b'/%3E%3Cpath d='M388 314c26 49 36 76 39 117h-36c-10-43-20-68-29-95l26-22Z' fill='%23d7b28b'/%3E%3Cpath d='M239 217h-32l-18-15c6-34 25-53 57-62 22-6 44-4 66 8l-12 25c-17-8-30-10-41-8-15 4-24 12-32 23l12 29Z' fill='%235d422c'/%3E%3Cpath d='M430 217h32l18-15c-6-34-25-53-57-62-22-6-44-4-66 8l12 25c17-8 30-10 41-8 15 4 24 12 32 23l-12 29Z' fill='%235d422c'/%3E%3Crect x='214' y='154' width='254' height='42' rx='20' fill='%23252226'/%3E%3Crect x='236' y='164' width='210' height='20' rx='10' fill='%23212121'/%3E%3Cpath d='M308 180h71l-34 56-34-56Z' fill='%23232121'/%3E%3Cpath d='M130 210l58 41-50 18-8-59Z' fill='%23262121'/%3E%3Cpath d='M590 210l-58 41 50 18 8-59Z' fill='%23262121'/%3E%3C/svg%3E");
+        background-size: cover;
+        background-position: center;
+        opacity: 0.95;
+    }
     .stat-card {
         border: none;
-        border-radius: 14px;
-        background: #fff;
-        padding: 24px;
-        box-shadow: 0 4px 14px rgba(15,45,82,0.06);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.9);
+        padding: 28px 24px;
+        box-shadow: 0 8px 22px rgba(10, 31, 56, 0.08);
+        height: 100%;
     }
     .stat-icon {
-        width: 46px; height: 46px;
-        border-radius: 10px;
+        width: 52px; height: 52px;
+        border-radius: 12px;
         background: rgba(201,162,39,0.12);
-        color: var(--gold);
+        color: #b88c1a;
         display: flex; align-items: center; justify-content: center;
-        font-size: 1.3rem;
-        margin-bottom: 12px;
+        font-size: 1.6rem;
+        margin-bottom: 16px;
     }
-    .stat-card h2 { font-family: 'Fraunces', serif; margin-bottom: 2px; }
-
+    .stat-card h2 {
+        margin: 0 0 8px;
+        font-size: clamp(2.2rem, 3vw, 3rem);
+        font-weight: 700;
+        color: #0a1f34;
+    }
+    .stat-card p {
+        margin: 0;
+        font-size: 1rem;
+        color: #4a596d;
+    }
     .feature-card {
         border: none;
-        border-radius: 14px;
-        background: #fff;
-        padding: 24px;
-        box-shadow: 0 4px 14px rgba(15,45,82,0.06);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.92);
+        padding: 28px 24px;
+        box-shadow: 0 8px 22px rgba(10, 31, 56, 0.08);
+        height: 100%;
     }
-    .feature-icon { font-size: 1.6rem; color: var(--navy); margin-bottom: 10px; display: block; }
-
+    .feature-icon {
+        width: 52px; height: 52px;
+        border-radius: 12px;
+        background: rgba(17,62,105,0.08);
+        color: var(--navy);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.6rem;
+        margin-bottom: 14px;
+    }
+    .feature-card h6 {
+        margin-bottom: 8px;
+        font-size: 1.15rem;
+        color: #0b1e32;
+    }
+    .feature-card p {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #5a6475;
+        line-height: 1.6;
+    }
     @media (max-width: 768px) {
-        .hero { padding: 28px 20px; }
-        .hero h1 { font-size: 1.3rem; }
-        .hero p { font-size: 0.9rem; }
-        .filter-bar { flex-direction: column; margin-inline: 0; margin-top: 16px; }
-        .stat-card, .feature-card { padding: 18px; }
+        .hero-content { flex-direction: column; }
+        .portrait-frame { width: 100%; max-width: 400px; }
+        .hero { padding: 24px 20px; }
+        .hero h1 { font-size: 2rem; }
     }
 {% endblock %}
 
 {% block content %}
     <div class="hero">
-        <h1>Principal Kazi Faruky School And College</h1>
-        <p>Empowering Education Through Technology</p>
+        <div class="hero-content">
+            <div class="hero-copy">
+                <div class="subtitle">School Management Overview</div>
+                <h1>Principal Kazi Faruky School And College</h1>
+                <p class="lead">A simple, organized, and student-focused academic dashboard designed to manage records, subjects, marks, and student progress with clarity.</p>
+            </div>
+            <div class="portrait-frame" aria-label="School portrait illustration"></div>
+        </div>
     </div>
 
-    <div class="filter-bar">
-        <select class="form-select form-select-sm">
-            <option>All Classes</option>
-            <option>Class 6</option>
-            <option>Class 7</option>
-            <option>Class 8</option>
-            <option>Class 9</option>
-            <option>Class 10</option>
-        </select>
-        <select class="form-select form-select-sm">
-            <option>All Sections</option>
-            <option>Section A</option>
-            <option>Section B</option>
-        </select>
-    </div>
-
-    <div class="row mt-4">
-        <div class="col-md-4 mb-4">
+    <div class="row mt-4 g-4">
+        <div class="col-md-4">
             <div class="stat-card">
                 <div class="stat-icon"><i class="bi bi-mortarboard"></i></div>
                 <h2>{{ total_students }}</h2>
-                <p class="text-muted mb-0">Total Students</p>
+                <p>Total Students</p>
             </div>
         </div>
-        <div class="col-md-4 mb-4">
+        <div class="col-md-4">
             <div class="stat-card">
                 <div class="stat-icon"><i class="bi bi-book"></i></div>
                 <h2>{{ total_subjects }}</h2>
-                <p class="text-muted mb-0">Total Subjects</p>
+                <p>Total Subjects</p>
             </div>
         </div>
     </div>
 
-    <h5 class="mt-4 mb-3">What You Can Do</h5>
-    <div class="row">
-        <div class="col-md-4 mb-4">
+    <h5 class="mt-5 mb-3" style="font-size: 2rem; font-weight: 700; color: #0b1e32;">What You Can Do</h5>
+    <div class="row g-4">
+        <div class="col-md-4">
             <div class="feature-card">
-                <i class="bi bi-person-plus feature-icon"></i>
+                <div class="feature-icon"><i class="bi bi-people"></i></div>
                 <h6>Manage Students</h6>
-                <p class="text-muted small mb-0">Add, edit, and organize student records with ease.</p>
+                <p>Add, edit, and organize student records with ease.</p>
             </div>
         </div>
-        <div class="col-md-4 mb-4">
+        <div class="col-md-4">
             <div class="feature-card">
-                <i class="bi bi-journal-bookmark feature-icon"></i>
+                <div class="feature-icon"><i class="bi bi-journal-bookmark"></i></div>
                 <h6>Track Subjects & Marks</h6>
-                <p class="text-muted small mb-0">Record subjects and marks for every student.</p>
+                <p>Record subjects and marks for every student in one place.</p>
             </div>
         </div>
     </div>
