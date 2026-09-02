@@ -1,0 +1,154 @@
+diff --git a/students/templates/students/admission_application_list.html b/students/templates/students/admission_application_list.html
+index fdc02e4..075b82f 100644
+--- a/students/templates/students/admission_application_list.html
++++ b/students/templates/students/admission_application_list.html
+@@ -28,6 +28,8 @@
+             </select>
+         </form>
+         <a href="{% url 'admission' %}" class="btn btn-navy">+ New Application</a>
++        <a href="{% url 'download_admission_sheet' %}?status={{ status|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
++        <button type="button" id="share-application-link-btn" class="btn btn-outline-navy">📲 Share Application Link</button>
+         <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-navy">📚 Subject Assignments</a>
+     </div>
+ </div>
+@@ -65,4 +67,38 @@
+         </table>
+     </div>
+ </div>
++{% endblock %}
++
++{% block extra_script %}
++<script>
++    // "Share Application Link" — prompts for a WhatsApp number and opens
++    // WhatsApp (web or app) with the public Admission Application form
++    // link pre-filled as a message, ready to send.
++    document.getElementById('share-application-link-btn').addEventListener('click', function() {
++        const rawNumber = prompt('WhatsApp নাম্বার লিখুন (যেমন: 01xxxxxxxxx বা +8801xxxxxxxxx):');
++        if (!rawNumber) { return; }
++
++        // Normalize to WhatsApp's required international format (digits only,
++        // no leading + or 0). Accepts local (01...), +880..., 880..., or 0088...
++        let digits = rawNumber.replace(/[^0-9]/g, '');
++        if (digits.startsWith('00')) {
++            digits = digits.slice(2);
++        }
++        if (digits.startsWith('0')) {
++            digits = '880' + digits.slice(1);
++        } else if (!digits.startsWith('880')) {
++            digits = '880' + digits;
++        }
++
++        if (digits.length < 12 || digits.length > 13) {
++            alert('নাম্বারটা সঠিক মনে হচ্ছে না। আবার চেষ্টা করুন (যেমন: 01712345678)।');
++            return;
++        }
++
++        const formLink = window.location.origin + "{% url 'public_admission_apply' %}";
++        const message = 'Admission Application form: ' + formLink;
++        const waUrl = 'https://wa.me/' + digits + '?text=' + encodeURIComponent(message);
++        window.open(waUrl, '_blank');
++    });
++</script>
+ {% endblock %}
+\ No newline at end of file
+diff --git a/students/urls.py b/students/urls.py
+index a668343..7f7fd9e 100644
+--- a/students/urls.py
++++ b/students/urls.py
+@@ -4,6 +4,7 @@ from . import views
+ urlpatterns = [
+     path('', views.dashboard, name='dashboard'),
+     path('admission/', views.admission_application_list, name='admission_application_list'),
++    path('admission/download-sheet/', views.download_admission_sheet, name='download_admission_sheet'),
+     path('admission/new/', views.create_admission_application, name='admission'),
+     path('admission/apply/', views.public_admission_apply, name='public_admission_apply'),
+     path('admission/dropdown-options/', views.admission_dropdown_options, name='admission_dropdown_options'),
+diff --git a/students/views.py b/students/views.py
+index fbe4521..6481c7c 100644
+--- a/students/views.py
++++ b/students/views.py
+@@ -175,6 +175,84 @@ def admission_application_list(request):
+     })
+ 
+ 
++@login_required
++@permission_required('students.view_admissionapplication', raise_exception=True)
++@_require_department(('Office', 'Accounts'))
++def download_admission_sheet(request):
++    """Export the Admission Applications list as an Excel workbook — one
++    sheet per Institution, so 'all institutions' downloads a single file
++    a user can flip between. Honours the same Institution/status filters
++    as the Admission Applications list page."""
++    if openpyxl is None:
++        messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
++        return redirect('admission_application_list')
++
++    applications = AdmissionApplication.objects.select_related(
++        'institution', 'enrolled_student'
++    ).order_by('institution__name', 'requested_class', 'applicant_name')
++    applications = _filter_by_selected_institution(request, applications)
++    status = request.GET.get('status')
++    if status:
++        applications = applications.filter(status=status)
++
++    by_institution = defaultdict(list)
++    for application in applications:
++        by_institution[application.institution.name].append(application)
++
++    headers = [
++        "Application No.", "Applicant Name", "Date of Birth", "Gender", "Religion",
++        "Contact No", "Address", "Guardian Name", "Relation", "Guardian Contact No",
++        "Guardian Address", "Class", "Group", "Section", "Session", "Status",
++        "Payment Amount", "Payment Date", "Enrolled Student ID", "Submitted At",
++    ]
++
++    wb = openpyxl.Workbook()
++    wb.remove(wb.active)
++
++    def sheet_name_for(name):
++        # Excel sheet names: 31 chars max, no : \ / ? * [ ]
++        safe = "".join(c for c in name if c not in ':\\/?*[]').strip()
++        return (safe or "Institution")[:31]
++
++    institution_names = sorted(by_institution.keys()) or ["No Applications"]
++    for institution_name in institution_names:
++        sheet = wb.create_sheet(title=sheet_name_for(institution_name))
++        sheet.append(headers)
++        for application in by_institution.get(institution_name, []):
++            sheet.append([
++                application.application_number,
++                application.applicant_name,
++                application.date_of_birth.isoformat() if application.date_of_birth else "",
++                application.get_gender_display() if application.gender else "",
++                application.religion,
++                application.applicant_contact_no,
++                application.applicant_address,
++                application.guardian_name,
++                application.guardian_relation,
++                application.guardian_contact_no,
++                application.guardian_address,
++                application.requested_class,
++                application.get_requested_group_display() if application.requested_group else "",
++                application.requested_section,
++                application.session,
++                application.get_status_display(),
++                float(application.payment_amount),
++                application.payment_date.isoformat() if application.payment_date else "",
++                application.enrolled_student.student_id if application.enrolled_student else "",
++                timezone.localtime(application.submitted_at).strftime("%Y-%m-%d %H:%M"),
++            ])
++        for col in sheet.columns:
++            max_length = max((len(str(cell.value)) for cell in col if cell.value), default=8)
++            sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
++
++    response = HttpResponse(
++        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
++    )
++    response["Content-Disposition"] = 'attachment; filename="admission_sheet.xlsx"'
++    wb.save(response)
++    return response
++
++
+ @login_required
+ @permission_required('students.add_admissionapplication', raise_exception=True)
+ @_require_department('Office')

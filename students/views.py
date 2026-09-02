@@ -141,7 +141,7 @@ def dashboard(request):
     selected_department = request.session.get('selected_department')
     institution = _selected_institution_for_request(request)
 
-    students_qs = Student.objects.filter(status='ACTIVE')
+    students_qs = Student.objects.filter(status='ACTIVE', is_archived=False)
     if institution is not None:
         students_qs = students_qs.filter(institution=institution)
 
@@ -788,7 +788,7 @@ def student_list(request):
     institution_id = request.GET.get('institution')
     department = request.GET.get('department') or request.session.get('selected_department') or 'Office'
 
-    qs = Student.objects.all()
+    qs = Student.objects.filter(is_archived=False)
     if institution is not None:
         qs = qs.filter(institution=institution)
     elif institution_id:
@@ -924,8 +924,21 @@ def download_student_list(request):
 def bulk_delete_students(request):
     if request.method == 'POST':
         student_ids = request.POST.getlist('student_ids')
-        deleted_count = Student.objects.filter(pk__in=student_ids).delete()[0]
-        messages.success(request, f"{deleted_count} student(s) deleted.")
+        if not student_ids:
+            messages.error(request, "No students were selected.")
+            return redirect('student_list')
+
+        students = list(Student.objects.filter(pk__in=student_ids, is_archived=False))
+        archived_count = 0
+        for student in students:
+            student.is_archived = True
+            student.status = 'DISCONTINUED'
+            student.archived_at = timezone.now()
+            student.archived_by = request.user
+            student.save(update_fields=['is_archived', 'status', 'archived_at', 'archived_by'])
+            archived_count += 1
+
+        messages.success(request, f"{archived_count} student(s) archived and removed from active lists.")
 
         url = reverse('student_list')
         params = []
@@ -946,11 +959,12 @@ def bulk_update_students(request):
         student_ids = request.POST.getlist('student_ids')
         new_class = request.POST.get('new_class', '').strip()
         new_section = request.POST.get('new_section', '').strip()
+        new_group = request.POST.get('new_group', '').strip()
 
         if not student_ids:
             messages.error(request, "No students were selected.")
-        elif not new_class and not new_section:
-            messages.error(request, "Please provide a new Class or Section to update.")
+        elif not new_class and not new_section and not new_group:
+            messages.error(request, "Please provide a new Class, Section, or Group to update.")
         else:
             qs = Student.objects.filter(pk__in=student_ids)
             update_fields = {}
@@ -958,6 +972,8 @@ def bulk_update_students(request):
                 update_fields['admission_class'] = new_class
             if new_section:
                 update_fields['section'] = new_section
+            if new_group:
+                update_fields['group'] = new_group
             updated_count = qs.update(**update_fields)
             messages.success(request, f"{updated_count} student(s) updated successfully.")
 
@@ -1054,6 +1070,7 @@ def bulk_update_select(request):
         'admission_class': admission_class,
         'section': section,
         'classes': classes,
+        'group_choices': Student.GROUP_CHOICES,
     })
 
 
@@ -1187,7 +1204,7 @@ def certificate_list(request, pk):
 @permission_required('students.add_student', raise_exception=True)
 def add_student(request):
     if request.method == 'POST':
-        form = StudentForm(request.POST)
+        form = StudentForm(request.POST, request.FILES)
         if form.is_valid():
             try:
                 student = form.save(commit=False)
@@ -1221,7 +1238,7 @@ def add_student(request):
 def edit_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
     if request.method == 'POST':
-        form = StudentForm(request.POST, instance=student)
+        form = StudentForm(request.POST, request.FILES, instance=student)
         if form.is_valid():
             form.save()
             save_student_subject_choices(student, request.POST.getlist('requirement_ids'))
@@ -1247,8 +1264,12 @@ def edit_student(request, pk):
 def delete_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
     if request.method == 'POST':
-        student.delete()
-        messages.success(request, "Student deleted.")
+        student.is_archived = True
+        student.status = 'DISCONTINUED'
+        student.archived_at = timezone.now()
+        student.archived_by = request.user
+        student.save(update_fields=['is_archived', 'status', 'archived_at', 'archived_by'])
+        messages.success(request, "Student archived and removed from active lists.")
         return redirect('student_list')
     return render(request, 'students/delete_student.html', {'student': student})
 

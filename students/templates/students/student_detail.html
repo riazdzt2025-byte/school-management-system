@@ -15,7 +15,16 @@
             </div>
         </div>
         <div class="card-body">
-            <div class="row">
+            <div class="row align-items-center">
+                <div class="col-md-3 text-center">
+                    {% if student.photo %}
+                        <img src="{{ student.photo.url }}" alt="{{ student.name }}" class="img-fluid rounded border" style="max-height: 180px; object-fit: cover;">
+                    {% else %}
+                        <div class="rounded border d-flex align-items-center justify-content-center bg-light text-muted" style="height: 180px; width: 100%;">
+                            No Photo
+                        </div>
+                    {% endif %}
+                </div>
                 <div class="col-md-3">
                     <p><strong>Class:</strong> {{ student.admission_class }}</p>
                     <p><strong>Section:</strong> {{ student.section }}</p>

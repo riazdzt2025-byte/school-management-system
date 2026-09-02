@@ -22,16 +22,30 @@
 
         <div class="mb-3">
             <label class="form-label">New Class</label>
-            <select name="new_class" class="form-select">
+            <select name="new_class" id="new_class" class="form-select">
                 <option value="">-- Keep Current Class --</option>
                 {% for cls in classes %}
                 <option value="{{ cls }}">{{ cls }}</option>
                 {% endfor %}
             </select>
         </div>
+        <div class="mb-3" id="new-group-wrapper" style="display: none;">
+            <label class="form-label">New Group</label>
+            <select name="new_group" class="form-select">
+                <option value="">-- Keep Current Group --</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
         <div class="mb-3">
             <label class="form-label">New Section</label>
-            <input type="text" name="new_section" class="form-control" placeholder="e.g. A (leave blank to keep current)">
+            <select name="new_section" class="form-select">
+                <option value="">-- Keep Current Section --</option>
+                {% for letter in 'ABCDEFGHIJ' %}
+                <option value="{{ letter }}">{{ letter }}</option>
+                {% endfor %}
+            </select>
         </div>
 
         <button type="submit" class="btn btn-navy" onclick="return confirm('Update all selected students?');">Update Students</button>
@@ -64,4 +78,25 @@
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+    const newClassSelect = document.getElementById('new_class');
+    const newGroupWrapper = document.getElementById('new-group-wrapper');
+
+    function toggleGroupField() {
+        const value = newClassSelect ? newClassSelect.value : '';
+        if (value && ['9', '10', '11', '12'].includes(String(value))) {
+            newGroupWrapper.style.display = 'block';
+        } else {
+            newGroupWrapper.style.display = 'none';
+        }
+    }
+
+    if (newClassSelect) {
+        newClassSelect.addEventListener('change', toggleGroupField);
+        toggleGroupField();
+    }
+</script>
 {% endblock %}

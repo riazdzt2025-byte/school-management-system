@@ -1,0 +1,24 @@
+From 2d08aa5cd0a095ca9ef9fd459b702924a59986e0 Mon Sep 17 00:00:00 2001
+From: unknown <riaz.com2025@gmail.com>
+Date: Mon, 31 Aug 2026 08:38:46 +0000
+Subject: [PATCH 5/7] Add SSC Result Summary link under Office menu
+
+---
+ students/templates/students/base.html | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/students/templates/students/base.html b/students/templates/students/base.html
+index 1df1f00..ab14eb2 100644
+--- a/students/templates/students/base.html
++++ b/students/templates/students/base.html
+@@ -193,6 +193,7 @@
+             <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
+             <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+             <a href="{% url 'ssc_registration_list' %}"><i class="bi bi-file-earmark-text-fill"></i> SSC Registration</a>
++            <a href="{% url 'result_summary' %}"><i class="bi bi-clipboard-data-fill"></i> SSC Result Summary</a>
+             <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> Certificates</a>
+         </div>
+     </div>
+-- 
+2.43.0
+

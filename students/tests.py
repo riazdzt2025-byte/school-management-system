@@ -18,7 +18,7 @@ from .models import (
 	AdmissionApplication, AuditLog, AttendanceRecord, Employee, EmployeeStatusLog, Exam, ExamMark, Institution, InstitutionAccess,
 	MoneyReceipt, PromotionBatch, Student, Subject,
 )
-from .forms import ExamForm, EXAM_NAME_SUGGESTIONS
+from .forms import ExamForm, EXAM_NAME_SUGGESTIONS, StudentForm
 from .permissions import ensure_default_groups
 
 
@@ -29,6 +29,35 @@ class PermissionSetupTests(TestCase):
 		self.assertTrue(hasattr(AdmissionApplication, 'objects'))
 		self.assertEqual(AdmissionApplication._meta.model_name, 'admissionapplication')
 		self.assertTrue(hasattr(ensure_default_groups, '__call__'))
+
+
+class StudentArchiveSafetyTests(TestCase):
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Archive School', classes='6,7,8')
+		self.user = get_user_model().objects.create_superuser(username='archive-admin', password='password')
+		self.client.force_login(self.user)
+		self.student = Student.objects.create(
+			institution=self.institution,
+			student_id='A001',
+			name='Archived Student',
+			admission_class='6',
+			section='A',
+			admission_year=2026,
+		)
+
+	def test_bulk_delete_soft_deletes_student_and_keeps_record(self):
+		response = self.client.post(reverse('bulk_delete_students'), {
+			'student_ids': [self.student.pk],
+			'institution': self.institution.pk,
+		})
+		self.assertEqual(response.url, reverse('student_list') + f'?institution={self.institution.pk}')
+		self.student.refresh_from_db()
+		self.assertTrue(self.student.is_archived)
+		self.assertEqual(self.student.status, 'DISCONTINUED')
+		self.assertTrue(Student.objects.filter(pk=self.student.pk).exists())
+
+		list_response = self.client.get(reverse('student_list'), {'institution': self.institution.pk})
+		self.assertNotContains(list_response, 'Archived Student')
 
 
 class PromotionAndAuditTests(TestCase):
@@ -190,6 +219,37 @@ class ExamWorkflowTests(TestCase):
 		self.assertContains(response, 'not a member of this exam class/section')
 		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 0)
 
+
+
+class StudentProfileAndBulkUpdateTests(TestCase):
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Profile Campus', classes='6,7,8,9,10')
+		self.user = get_user_model().objects.create_superuser(username='profile-admin', password='password')
+		self.client.force_login(self.user)
+		self.student = Student.objects.create(
+			institution=self.institution,
+			student_id='P101',
+			name='Profile Student',
+			admission_class='9',
+			section='A',
+			group='SCI',
+			admission_year=2026,
+		)
+
+	def test_student_form_includes_photo_field(self):
+		self.assertIn('photo', StudentForm().fields)
+
+	def test_bulk_update_select_has_class_and_group_controls(self):
+		response = self.client.post(reverse('bulk_update_select'), {
+			'student_ids': [self.student.pk],
+			'institution': self.institution.pk,
+			'admission_class': '9',
+			'section': 'A',
+		})
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'name="new_group"')
+		self.assertContains(response, 'name="new_class"')
+		self.assertContains(response, 'name="new_section"')
 
 
 class AttendanceTests(TestCase):

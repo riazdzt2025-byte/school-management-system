@@ -1,0 +1,59 @@
+From f2b36be650ccc58f93bb7626c09228cec3c7b24a Mon Sep 17 00:00:00 2001
+From: unknown <riaz.com2025@gmail.com>
+Date: Mon, 31 Aug 2026 08:38:36 +0000
+Subject: [PATCH 4/7] Add Group filter to SSC Registrations list
+
+---
+ students/templates/students/ssc_registration_list.html | 8 +++++++-
+ students/views.py                                      | 5 +++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/students/templates/students/ssc_registration_list.html b/students/templates/students/ssc_registration_list.html
+index ca04fce..cd45dd4 100644
+--- a/students/templates/students/ssc_registration_list.html
++++ b/students/templates/students/ssc_registration_list.html
+@@ -8,13 +8,19 @@
+     <a class="btn btn-outline-navy" href="{% url 'import_ssc_registrations' %}">Import Excel</a>
+ </div>
+ 
+-<form method="get" class="mb-3">
++<form method="get" class="mb-3 d-flex gap-2">
+     <select name="session" class="form-select" style="max-width:240px" onchange="this.form.submit()">
+         <option value="">All Sessions</option>
+         {% for item in sessions %}
+             <option value="{{ item }}" {% if item == selected_session %}selected{% endif %}>{{ item }}</option>
+         {% endfor %}
+     </select>
++    <select name="group" class="form-select" style="max-width:240px" onchange="this.form.submit()">
++        <option value="">All Groups</option>
++        {% for code, label in group_choices %}
++            <option value="{{ code }}" {% if code == selected_group %}selected{% endif %}>{{ label }}</option>
++        {% endfor %}
++    </select>
+ </form>
+ 
+ <div class="table-card">
+diff --git a/students/views.py b/students/views.py
+index 6481c7c..000303f 100644
+--- a/students/views.py
++++ b/students/views.py
+@@ -1276,11 +1276,16 @@ def ssc_registration_list(request):
+     session = request.GET.get('session')
+     if session:
+         registrations = registrations.filter(session=session)
++    group = request.GET.get('group')
++    if group:
++        registrations = registrations.filter(group=group)
+     sessions = registrations.values_list('session', flat=True).distinct().order_by('session')
+     return render(request, 'students/ssc_registration_list.html', {
+         'registrations': registrations,
+         'sessions': sessions,
+         'selected_session': session,
++        'group_choices': SSCRegistration.GROUP_CHOICES,
++        'selected_group': group,
+     })
+ 
+ 
+-- 
+2.43.0
+

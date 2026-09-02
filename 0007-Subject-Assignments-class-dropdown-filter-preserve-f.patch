@@ -1,0 +1,313 @@
+From f227e2e32fae0e6ddc94361e7568d612d362a467 Mon Sep 17 00:00:00 2001
+From: unknown <riaz.com2025@gmail.com>
+Date: Mon, 31 Aug 2026 08:41:40 +0000
+Subject: [PATCH 7/7] Subject Assignments: class dropdown filter, preserve
+ filters after edit/delete, quick Mandatory/Optional/Conditional dropdown
+
+---
+ .../students/add_subject_requirement.html     |  3 +-
+ .../students/delete_subject_requirement.html  |  3 +-
+ .../students/subject_requirement_list.html    | 63 ++++++++++++++++---
+ students/urls.py                              |  1 +
+ students/views.py                             | 61 +++++++++++++++---
+ 5 files changed, 115 insertions(+), 16 deletions(-)
+
+diff --git a/students/templates/students/add_subject_requirement.html b/students/templates/students/add_subject_requirement.html
+index 6d59860..598745f 100644
+--- a/students/templates/students/add_subject_requirement.html
++++ b/students/templates/students/add_subject_requirement.html
+@@ -13,6 +13,7 @@
+ <div class="table-card p-4" style="max-width: 640px;">
+     <form method="POST" id="subject-requirement-form">
+         {% csrf_token %}
++        <input type="hidden" name="next" value="{{ next_qs }}">
+ 
+         {% if form.non_field_errors %}
+         <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+@@ -80,7 +81,7 @@
+         </div>
+         <div class="d-flex gap-2">
+             <button type="submit" class="btn btn-navy">Save</button>
+-            <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Cancel</a>
++            <a href="{% url 'subject_requirement_list' %}{% if next_qs %}?{{ next_qs }}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+         </div>
+     </form>
+ </div>
+diff --git a/students/templates/students/delete_subject_requirement.html b/students/templates/students/delete_subject_requirement.html
+index 3885a38..40cf849 100644
+--- a/students/templates/students/delete_subject_requirement.html
++++ b/students/templates/students/delete_subject_requirement.html
+@@ -15,9 +15,10 @@
+        subject will keep their historical marks, but it will no longer be offered going forward.</p>
+     <form method="POST">
+         {% csrf_token %}
++        <input type="hidden" name="next" value="{{ next_qs }}">
+         <div class="d-flex gap-2">
+             <button type="submit" class="btn btn-danger">Confirm Remove</button>
+-            <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-secondary">Cancel</a>
++            <a href="{% url 'subject_requirement_list' %}{% if next_qs %}?{{ next_qs }}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+         </div>
+     </form>
+ </div>
+diff --git a/students/templates/students/subject_requirement_list.html b/students/templates/students/subject_requirement_list.html
+index ce55567..382b4aa 100644
+--- a/students/templates/students/subject_requirement_list.html
++++ b/students/templates/students/subject_requirement_list.html
+@@ -10,7 +10,7 @@
+     </div>
+     <div class="page-actions">
+         {% if perms.students.add_subjectrequirement %}
+-        <a href="{% url 'add_subject_requirement' %}?institution={{ selected_institution_id }}&admission_class={{ selected_class }}&group={{ selected_group }}" class="btn btn-navy">+ Assign Subject</a>
++        <a href="{% url 'add_subject_requirement' %}?institution={{ selected_institution_id }}&admission_class={{ selected_class }}&group={{ selected_group }}&next={{ current_querystring|urlencode }}" class="btn btn-navy">+ Assign Subject</a>
+         {% endif %}
+     </div>
+ </div>
+@@ -20,9 +20,9 @@
+     <a href="{% url 'admission_application_list' %}" class="btn btn-sm btn-outline-secondary">← Admission</a>
+ </div>
+ 
+-<form method="GET" class="row g-2 mb-3">
++<form method="GET" class="row g-2 mb-3" id="subject-req-filter-form">
+     <div class="col-auto" style="min-width: 220px;">
+-        <select name="institution" class="form-select">
++        <select name="institution" id="sr-institution" class="form-select">
+             <option value="">-- All Institutions --</option>
+             {% for inst in institutions %}
+             <option value="{{ inst.id }}" {% if selected_institution_id == inst.id|stringformat:"s" %}selected{% endif %}>{{ inst.name }}</option>
+@@ -30,7 +30,10 @@
+         </select>
+     </div>
+     <div class="col-auto">
+-        <input type="text" name="admission_class" value="{{ selected_class }}" class="form-control" placeholder="Class e.g. 9">
++        <select name="admission_class" id="sr-class" class="form-select">
++            <option value="">-- All Classes --</option>
++            {% if selected_class %}<option value="{{ selected_class }}" selected>{{ selected_class }}</option>{% endif %}
++        </select>
+     </div>
+     <div class="col-auto">
+         <select name="group" class="form-select">
+@@ -49,6 +52,8 @@
+     </div>
+ </form>
+ 
++{{ institutions_data|json_script:"sr-institutions-data" }}
++
+ {% if selected_institution_id and selected_class and perms.students.add_subjectrequirement %}
+ <div class="table-card p-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+     <div>
+@@ -96,12 +101,21 @@
+                     <td>{{ req.get_group_display|default:"Any" }}</td>
+                     <td>{{ req.subject.code }} — {{ req.subject.name }}</td>
+                     <td>{{ req.optional_set_key|default:req.condition_religion|default:"-" }}</td>
+-                    <td>
++                    <td class="d-flex gap-1 align-items-center flex-wrap">
+                         {% if perms.students.change_subjectrequirement %}
+-                        <a href="{% url 'edit_subject_requirement' req.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
++                        <form method="POST" action="{% url 'quick_update_requirement_type' req.pk %}" class="d-inline">
++                            {% csrf_token %}
++                            <input type="hidden" name="next" value="{{ current_querystring }}">
++                            <select name="requirement_type" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
++                                {% for code, label in requirement_type_choices %}
++                                <option value="{{ code }}" {% if req.requirement_type == code %}selected{% endif %}>{{ label }}</option>
++                                {% endfor %}
++                            </select>
++                        </form>
++                        <a href="{% url 'edit_subject_requirement' req.pk %}?next={{ current_querystring|urlencode }}" class="btn btn-sm btn-outline-warning">Edit</a>
+                         {% endif %}
+                         {% if perms.students.delete_subjectrequirement %}
+-                        <a href="{% url 'delete_subject_requirement' req.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
++                        <a href="{% url 'delete_subject_requirement' req.pk %}?next={{ current_querystring|urlencode }}" class="btn btn-sm btn-outline-danger">Delete</a>
+                         {% endif %}
+                     </td>
+                 </tr>
+@@ -114,3 +128,38 @@
+ <div class="table-card p-4 text-center text-muted">No subject assignments found for this filter.</div>
+ {% endfor %}
+ {% endblock %}
++
++{% block extra_script %}
++<script>
++    (function () {
++        const dataEl = document.getElementById('sr-institutions-data');
++        if (!dataEl) return;
++        const institutionsData = JSON.parse(dataEl.textContent);
++        const institutionSelect = document.getElementById('sr-institution');
++        const classSelect = document.getElementById('sr-class');
++        const currentClassValue = "{{ selected_class|default:'' }}";
++
++        function populateClasses(selectedInstitutionId, preSelectValue) {
++            classSelect.innerHTML = '<option value="">-- All Classes --</option>';
++            const classes = institutionsData[selectedInstitutionId] || [];
++            classes.forEach(function (cls) {
++                const opt = document.createElement('option');
++                opt.value = cls;
++                opt.textContent = cls;
++                if (cls === preSelectValue) {
++                    opt.selected = true;
++                }
++                classSelect.appendChild(opt);
++            });
++        }
++
++        institutionSelect.addEventListener('change', function () {
++            populateClasses(this.value, '');
++        });
++
++        if (institutionSelect.value) {
++            populateClasses(institutionSelect.value, currentClassValue);
++        }
++    })();
++</script>
++{% endblock %}
+diff --git a/students/urls.py b/students/urls.py
+index 2854f07..8e3be5e 100644
+--- a/students/urls.py
++++ b/students/urls.py
+@@ -97,6 +97,7 @@ path('reports/class-section-summary/', views.class_section_summary, name='class_
+     path('subject-requirements/add/', views.add_subject_requirement, name='add_subject_requirement'),
+     path('subject-requirements/<int:pk>/edit/', views.edit_subject_requirement, name='edit_subject_requirement'),
+     path('subject-requirements/<int:pk>/delete/', views.delete_subject_requirement, name='delete_subject_requirement'),
++    path('subject-requirements/<int:pk>/quick-type/', views.quick_update_requirement_type, name='quick_update_requirement_type'),
+     # Employee URLs
+ path('employees/', views.employee_list, name='employee_list'),
+ path('employees/<int:pk>/', views.employee_detail, name='employee_detail'),
+diff --git a/students/views.py b/students/views.py
+index 82452b4..93d371c 100644
+--- a/students/views.py
++++ b/students/views.py
+@@ -1011,6 +1011,17 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
+     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
+ 
+ 
++def _subject_requirement_list_redirect(request):
++    """Redirect back to the Subject Assignments list, preserving whatever
++    institution/class/group/q filters the user was viewing (passed through
++    as a 'next' querystring) instead of always resetting to the unfiltered list."""
++    next_qs = request.POST.get('next') or request.GET.get('next') or ''
++    url = reverse('subject_requirement_list')
++    if next_qs:
++        url = f"{url}?{next_qs}"
++    return redirect(url)
++
++
+ @login_required
+ def subject_requirement_list(request):
+     """Popup-free page for assigning subjects (from the pre-loaded/custom
+@@ -1043,15 +1054,24 @@ def subject_requirement_list(request):
+         common_rows, _ = curriculum_for_class(admission_class)
+         can_auto_fill = common_rows is not None
+ 
++    institutions = Institution.objects.all().order_by('name')
++    institutions_data = {
++        str(inst.id): [c.strip() for c in inst.classes.split(',') if c.strip()]
++        for inst in institutions
++    }
++
+     return render(request, 'students/subject_requirement_list.html', {
+         'grouped_requirements': grouped,
+-        'institutions': Institution.objects.all().order_by('name'),
++        'institutions': institutions,
++        'institutions_data': institutions_data,
+         'group_choices': Student.GROUP_CHOICES,
++        'requirement_type_choices': SubjectRequirement.REQUIREMENT_TYPE_CHOICES,
+         'selected_institution_id': institution_id,
+         'selected_class': admission_class,
+         'selected_group': group,
+         'query': query,
+         'can_auto_fill': can_auto_fill,
++        'current_querystring': request.GET.urlencode(),
+     })
+ 
+ 
+@@ -1093,55 +1113,82 @@ def auto_populate_subject_requirements(request):
+ @login_required
+ @permission_required('students.add_subjectrequirement', raise_exception=True)
+ def add_subject_requirement(request):
++    next_qs = request.GET.get('next', '')
+     if request.method == 'POST':
+         form = SubjectRequirementForm(request.POST)
+         if form.is_valid():
+             try:
+                 form.save()
+                 messages.success(request, "Subject assigned successfully.")
+-                return redirect('subject_requirement_list')
++                return _subject_requirement_list_redirect(request)
+             except IntegrityError:
+                 messages.error(request, "This subject is already assigned to that Institution/Class/Group.")
+         else:
+             messages.error(request, "There are errors in the form — please check the fields below.")
++        next_qs = request.POST.get('next', next_qs)
+     else:
+         form = SubjectRequirementForm(initial={
+             'institution': request.GET.get('institution') or None,
+             'admission_class': request.GET.get('admission_class', ''),
+             'group': request.GET.get('group', ''),
+         })
+-    return render(request, 'students/add_subject_requirement.html', {'form': form})
++    return render(request, 'students/add_subject_requirement.html', {'form': form, 'next_qs': next_qs})
+ 
+ 
+ @login_required
+ @permission_required('students.change_subjectrequirement', raise_exception=True)
+ def edit_subject_requirement(request, pk):
+     requirement = get_object_or_404(SubjectRequirement, pk=pk)
++    next_qs = request.GET.get('next', '')
+     if request.method == 'POST':
+         form = SubjectRequirementForm(request.POST, instance=requirement)
+         if form.is_valid():
+             try:
+                 form.save()
+                 messages.success(request, "Subject assignment updated.")
+-                return redirect('subject_requirement_list')
++                return _subject_requirement_list_redirect(request)
+             except IntegrityError:
+                 messages.error(request, "This subject is already assigned to that Institution/Class/Group.")
+         else:
+             messages.error(request, "There are errors in the form — please check the fields below.")
++        next_qs = request.POST.get('next', next_qs)
+     else:
+         form = SubjectRequirementForm(instance=requirement)
+-    return render(request, 'students/add_subject_requirement.html', {'form': form, 'requirement': requirement})
++    return render(request, 'students/add_subject_requirement.html', {
++        'form': form, 'requirement': requirement, 'next_qs': next_qs,
++    })
+ 
+ 
+ @login_required
+ @permission_required('students.delete_subjectrequirement', raise_exception=True)
+ def delete_subject_requirement(request, pk):
+     requirement = get_object_or_404(SubjectRequirement, pk=pk)
++    next_qs = request.GET.get('next', request.POST.get('next', ''))
+     if request.method == 'POST':
+         requirement.delete()
+         messages.success(request, "Subject assignment removed.")
+-        return redirect('subject_requirement_list')
+-    return render(request, 'students/delete_subject_requirement.html', {'requirement': requirement})
++        return _subject_requirement_list_redirect(request)
++    return render(request, 'students/delete_subject_requirement.html', {
++        'requirement': requirement, 'next_qs': next_qs,
++    })
++
++
++@login_required
++@permission_required('students.change_subjectrequirement', raise_exception=True)
++@require_POST
++def quick_update_requirement_type(request, pk):
++    """Change just the Mandatory/Optional/Conditional dropdown from the list
++    page, without opening the full edit form."""
++    requirement = get_object_or_404(SubjectRequirement, pk=pk)
++    new_type = request.POST.get('requirement_type')
++    valid_types = dict(SubjectRequirement.REQUIREMENT_TYPE_CHOICES)
++    if new_type in valid_types:
++        requirement.requirement_type = new_type
++        requirement.save(update_fields=['requirement_type'])
++        messages.success(request, f"Marked as {valid_types[new_type]}.")
++    else:
++        messages.error(request, "Invalid requirement type.")
++    return _subject_requirement_list_redirect(request)
+ 
+ 
+ @login_required
+-- 
+2.43.0
+

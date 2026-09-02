@@ -1,19 +1,26 @@
 {% extends 'students/base.html' %}
 
-{% block title %}Select Filter - {{ block.super }}{% endblock %}
+{% block title %}Student Filter - {{ block.super }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-print-none">
     <div>
-        <h1>Select Filters to View Student List</h1>
-        <div class="subtitle">Choose an institution, class, and section to view students</div>
+        <h1>Student Filter</h1>
+        <div class="subtitle">Choose an institution, class, section, and optional group to view the student list.</div>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary">View All Students</a>
     </div>
 </div>
 
-<div class="table-card p-4" style="max-width: 560px;">
-    <form method="GET" action="{% url 'student_list' %}">
-        <div class="mb-3">
-            <label class="form-label">Institution</label>
+<div class="d-flex gap-2 mb-3 d-print-none">
+    <a href="{% url 'student_list' %}?all=1" class="btn btn-sm btn-outline-secondary">← Student List</a>
+</div>
+
+<div class="table-card p-4" style="max-width: 760px;">
+    <form method="GET" action="{% url 'student_list' %}" class="row g-3 align-items-end">
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Institution</label>
             <select name="institution" id="id_institution" class="form-select" required>
                 <option value="">-- Select Institution --</option>
                 {% for inst in institutions %}
@@ -21,23 +28,33 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="mb-3">
-            <label class="form-label">Class</label>
+
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Class</label>
             <select name="admission_class" id="id_class" class="form-select">
                 <option value="">-- All Classes --</option>
             </select>
         </div>
-        <div class="mb-3">
-            <label class="form-label">Section</label>
-            <input type="text" name="section" class="form-control" list="section-options" value="{{ selected_section }}" placeholder="e.g. A (leave blank for all sections)">
+
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Section</label>
+            <input type="text" name="section" class="form-control" list="section-options" value="{{ selected_section }}" placeholder="A, B, C...">
             <datalist id="section-options">
                 <option value="A">
                 <option value="B">
                 <option value="C">
+                <option value="D">
+                <option value="E">
+                <option value="F">
+                <option value="G">
+                <option value="H">
+                <option value="I">
+                <option value="J">
             </datalist>
         </div>
-        <div class="mb-3" id="group-filter-container" style="display: none;">
-            <label class="form-label">Group</label>
+
+        <div class="col-md-6" id="group-filter-container" style="display: none;">
+            <label class="form-label fw-semibold">Group</label>
             <select name="group" id="id_group" class="form-select">
                 <option value="">-- All Groups --</option>
                 <option value="SCI" {% if selected_group == 'SCI' %}selected{% endif %}>Science</option>
@@ -48,19 +65,19 @@
             </select>
         </div>
 
-        <div class="mb-3">
-            <label class="form-label">Department</label>
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Department</label>
             <select name="department" id="id_department" class="form-select">
                 {% for code, label in department_choices %}
                 <option value="{{ code }}" {% if selected_department == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
-            <div class="form-text">Controls which student actions (Test/Marksheet vs Discontinue/TC) are shown on the list.</div>
+            <div class="form-text">Controls which actions are shown for the students list.</div>
         </div>
 
-        <div class="d-flex gap-2 mt-4">
-            <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary">View All Students</a>
+        <div class="col-12 d-flex gap-2 mt-2">
             <button type="submit" class="btn btn-navy">View List</button>
+            <a href="{% url 'student_list' %}?all=1" class="btn btn-outline-secondary">Clear</a>
         </div>
     </form>
 </div>

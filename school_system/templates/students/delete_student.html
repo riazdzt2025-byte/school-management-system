@@ -5,16 +5,16 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>Delete Student</h1>
-        <div class="subtitle">This action cannot be undone</div>
+        <h1>Archive Student</h1>
+        <div class="subtitle">This removes the student from active lists while preserving the record.</div>
     </div>
 </div>
 
 <div class="table-card p-4" style="max-width: 500px;">
-    <p>Are you sure you want to delete <strong>{{ student.name }}</strong> ({{ student.student_id }})?</p>
+    <p>Are you sure you want to archive <strong>{{ student.name }}</strong> ({{ student.student_id }})?</p>
     <form method="POST">
         {% csrf_token %}
-        <button type="submit" class="btn btn-danger">Yes, Delete</button>
+        <button type="submit" class="btn btn-danger">Yes, Archive</button>
         <a href="{% url 'student_list' %}" class="btn btn-outline-secondary">No, Cancel</a>
     </form>
 </div>

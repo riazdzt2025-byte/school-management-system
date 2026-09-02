@@ -24,6 +24,7 @@ class StudentForm(forms.ModelForm):
             'contact_no': forms.TextInput(attrs={'class': 'form-control'}),
             'guardian_contact_no': forms.TextInput(attrs={'class': 'form-control'}),
             'group': forms.Select(attrs={'class': 'form-select'}),
+            'photo': forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
         }
 
     def __init__(self, *args, **kwargs):

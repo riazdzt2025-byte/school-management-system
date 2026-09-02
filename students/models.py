@@ -91,6 +91,13 @@ class Student(models.Model):
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='ACTIVE')
     discontinued_at = models.DateTimeField(null=True, blank=True)
     discontinued_reason = models.CharField(max_length=255, blank=True)
+    photo = models.ImageField(upload_to='student_photos/', blank=True, null=True)
+    is_archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archived_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='archived_students'
+    )
 
     def save(self, *args, **kwargs):
         if not self.admission_year:

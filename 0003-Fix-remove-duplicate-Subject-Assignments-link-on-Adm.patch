@@ -1,0 +1,25 @@
+From 7d81b816b39e6399e50681e9f8f52cb142cc5b2b Mon Sep 17 00:00:00 2001
+From: unknown <riaz.com2025@gmail.com>
+Date: Mon, 31 Aug 2026 08:38:16 +0000
+Subject: [PATCH 3/7] Fix: remove duplicate Subject Assignments link on
+ Admission page
+
+---
+ students/templates/students/admission_application_list.html | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/students/templates/students/admission_application_list.html b/students/templates/students/admission_application_list.html
+index 075b82f..3a2ac33 100644
+--- a/students/templates/students/admission_application_list.html
++++ b/students/templates/students/admission_application_list.html
+@@ -30,7 +30,6 @@
+         <a href="{% url 'admission' %}" class="btn btn-navy">+ New Application</a>
+         <a href="{% url 'download_admission_sheet' %}?status={{ status|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
+         <button type="button" id="share-application-link-btn" class="btn btn-outline-navy">📲 Share Application Link</button>
+-        <a href="{% url 'subject_requirement_list' %}" class="btn btn-outline-navy">📚 Subject Assignments</a>
+     </div>
+ </div>
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,121 @@
+From 7e75b0f0856b4ef92ec81a2b111da1584aacab07 Mon Sep 17 00:00:00 2001
+From: unknown <riaz.com2025@gmail.com>
+Date: Mon, 31 Aug 2026 08:39:14 +0000
+Subject: [PATCH 6/7] Add Download Excel button to Student List
+
+---
+ .../templates/students/student_list.html      |  1 +
+ students/urls.py                              |  1 +
+ students/views.py                             | 72 +++++++++++++++++++
+ 3 files changed, 74 insertions(+)
+
+diff --git a/school_system/templates/students/student_list.html b/school_system/templates/students/student_list.html
+index dd23d0f..140a0b8 100644
+--- a/school_system/templates/students/student_list.html
++++ b/school_system/templates/students/student_list.html
+@@ -62,6 +62,7 @@
+         <a href="{% url 'import_students' %}" class="btn btn-outline-navy">📥 Import from Excel</a>
+         {% endif %}
+         <a href="{% url 'subject_requirement_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📚 Subject Assignments</a>
++        <a href="{% url 'download_student_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&section={{ selected_section|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
+         <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+     </div>
+ </div>
+diff --git a/students/urls.py b/students/urls.py
+index 7f7fd9e..2854f07 100644
+--- a/students/urls.py
++++ b/students/urls.py
+@@ -17,6 +17,7 @@ urlpatterns = [
+ 
+     # Student URLs
+     path('students/', views.student_list, name='student_list'),
++    path('students/download/', views.download_student_list, name='download_student_list'),
+     path('students/filter/', views.student_list_filter, name='student_list_filter'),
+         path('students/bulk-delete/', views.bulk_delete_students, name='bulk_delete_students'),
+     path('students/bulk-update/', views.bulk_update_students, name='bulk_update_students'),
+diff --git a/students/views.py b/students/views.py
+index 000303f..82452b4 100644
+--- a/students/views.py
++++ b/students/views.py
+@@ -570,6 +570,78 @@ def student_list(request):
+     })
+ 
+ 
++@login_required
++def download_student_list(request):
++    """Export the currently filtered Student List as an Excel workbook.
++    Honours the same Institution/Class/Section/Group/all filters as the
++    Student List page."""
++    if openpyxl is None:
++        messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
++        return redirect('student_list')
++
++    institution = _selected_institution_for_request(request)
++    admission_class = request.GET.get('admission_class')
++    section = request.GET.get('section')
++    group = request.GET.get('group')
++    institution_id = request.GET.get('institution')
++
++    qs = Student.objects.select_related('institution').all()
++    if institution is not None:
++        qs = qs.filter(institution=institution)
++    elif institution_id:
++        institution = get_object_or_404(Institution, pk=institution_id)
++        qs = qs.filter(institution=institution)
++    if not _is_admin(request.user):
++        qs = qs.filter(created_by=request.user)
++
++    if request.GET.get('all') != '1':
++        if admission_class:
++            qs = qs.filter(admission_class=admission_class)
++        if section:
++            qs = qs.filter(section__iexact=section.strip())
++        if group:
++            qs = qs.filter(group=group)
++
++    qs = qs.order_by('admission_class', 'section', 'roll_no', 'name')
++
++    headers = [
++        "Student ID", "Name", "Class", "Section", "Roll No", "Gender", "Religion",
++        "Father's Name", "Contact No", "Guardian Contact No", "Group",
++        "Admission Year", "Status",
++    ]
++    wb = openpyxl.Workbook()
++    sheet = wb.active
++    sheet.title = "Students"
++    sheet.append(headers)
++    for student in qs:
++        sheet.append([
++            student.student_id,
++            student.name,
++            student.admission_class,
++            student.section,
++            student.roll_no,
++            student.get_gender_display() if student.gender else "",
++            student.religion,
++            student.father_name,
++            student.contact_no,
++            student.guardian_contact_no,
++            student.get_group_display() if student.group else "",
++            student.admission_year,
++            student.get_status_display(),
++        ])
++    for col in sheet.columns:
++        max_length = max((len(str(cell.value)) for cell in col if cell.value), default=8)
++        sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
++
++    filename = f"student_list_{institution.name.replace(' ', '_') if institution else 'all'}.xlsx"
++    response = HttpResponse(
++        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
++    )
++    response["Content-Disposition"] = f'attachment; filename="{filename}"'
++    wb.save(response)
++    return response
++
++
+ @login_required
+ def student_list_filter(request):
+     """Dedicated, popup-free page for choosing Institution/Class/Section/Group
+-- 
+2.43.0
+
