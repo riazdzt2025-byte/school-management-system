@@ -170,15 +170,15 @@ class ExamWorkflowTests(TestCase):
 		self.exam.refresh_from_db()
 		self.assertTrue(self.exam.is_published)
 
-	def test_exam_name_field_uses_datalist_suggestions(self):
+	def test_exam_type_uses_approved_dropdown_and_auto_names(self):
 		form = ExamForm()
-		self.assertEqual(form.fields['name'].widget.attrs.get('list'), 'exam-name-options')
-		self.assertIn('First Term', EXAM_NAME_SUGGESTIONS)
+		self.assertNotIn('name', form.fields)
+		self.assertIn(('FIRST_TERM', 'First Term'), form.fields['exam_type'].choices)
+		self.assertIn(('MID_TERM_3', 'Mid Term-3'), form.fields['exam_type'].choices)
 
 		response = self.client.get(reverse('add_exam'))
 		self.assertEqual(response.status_code, 200)
-		self.assertIn('exam_name_suggestions', response.context)
-		self.assertIn('First Term', response.context['exam_name_suggestions'])
+		self.assertNotIn('exam_name_suggestions', response.context)
 
 	def test_exam_form_uses_dropdowns_for_class_and_section(self):
 		form = ExamForm()

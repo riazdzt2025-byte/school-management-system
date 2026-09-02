@@ -520,9 +520,18 @@ class BoardResult(models.Model):
 
 class Exam(models.Model):
     EXAM_TYPE_CHOICES = [
-        ('MID_TERM', 'Mid Term'),
-        ('TERM_FINAL', 'Term Final'),
-        ('OTHER', 'Other'),
+        ('FIRST_TERM', 'First Term'),
+        ('SECOND_TERM', 'Second Term'),
+        ('THIRD_TERM', 'Third Term'),
+        ('PRE_TEST_EXAM', 'Pre Test Exam'),
+        ('TEST_EXAM', 'Test Exam'),
+        ('MODEL_TEST_1', 'Model Test-1'),
+        ('MODEL_TEST_2', 'Model Test-2'),
+        ('MODEL_TEST_3', 'Model Test-3'),
+        ('FINAL_TERM', 'Final Term'),
+        ('MID_TERM_1', 'Mid Term-1'),
+        ('MID_TERM_2', 'Mid Term-2'),
+        ('MID_TERM_3', 'Mid Term-3'),
     ]
 
     name = models.CharField(max_length=100)

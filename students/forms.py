@@ -271,14 +271,8 @@ EXAM_SECTION_CHOICES = [(letter, letter) for letter in 'ABCDEFGHIJ']
 class ExamForm(forms.ModelForm):
     class Meta:
         model = Exam
-        fields = ['name', 'exam_type', 'institution', 'admission_class', 'section', 'session', 'exam_date']
+        fields = ['exam_type', 'institution', 'admission_class', 'section', 'session', 'exam_date']
         widgets = {
-            'name': forms.TextInput(attrs={
-                'class': 'form-control',
-                'list': 'exam-name-options',
-                'placeholder': 'Choose from the list or enter a new exam name',
-                'autocomplete': 'off',
-            }),
             'exam_type': forms.Select(attrs={'class': 'form-select'}),
             'institution': forms.Select(attrs={'class': 'form-select'}),
             'admission_class': forms.Select(attrs={'class': 'form-select'}),
@@ -291,6 +285,21 @@ class ExamForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['section'].choices = [('', 'All sections')] + list(EXAM_SECTION_CHOICES)
         self.fields['section'].required = False
+
+        self.fields['exam_type'].choices = [
+            ('FIRST_TERM', 'First Term'),
+            ('SECOND_TERM', 'Second Term'),
+            ('THIRD_TERM', 'Third Term'),
+            ('PRE_TEST_EXAM', 'Pre Test Exam'),
+            ('TEST_EXAM', 'Test Exam'),
+            ('MODEL_TEST_1', 'Model Test-1'),
+            ('MODEL_TEST_2', 'Model Test-2'),
+            ('MODEL_TEST_3', 'Model Test-3'),
+            ('FINAL_TERM', 'Final Term'),
+            ('MID_TERM_1', 'Mid Term-1'),
+            ('MID_TERM_2', 'Mid Term-2'),
+            ('MID_TERM_3', 'Mid Term-3'),
+        ]
 
         available_classes = []
         institution = None
@@ -327,6 +336,32 @@ class ExamForm(forms.ModelForm):
 
         self.fields['admission_class'].choices = [('', '-- Select class --')] + unique_classes
         self.fields['admission_class'].required = True
+
+    def clean(self):
+        cleaned_data = super().clean()
+        exam_type = cleaned_data.get('exam_type')
+        institution = cleaned_data.get('institution')
+        admission_class = cleaned_data.get('admission_class')
+        section = cleaned_data.get('section')
+        session = cleaned_data.get('session', '').strip()
+
+        if institution and admission_class and session:
+            type_label = dict(self.fields['exam_type'].choices).get(exam_type, 'Exam')
+            section_label = section or 'All'
+            cleaned_data['name'] = f"{type_label} - Class {admission_class} - Section {section_label} - {session}"
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if not instance.name:
+            exam_type = dict(self.fields['exam_type'].choices).get(instance.exam_type, 'Exam')
+            section = instance.section or 'All'
+            session = instance.session or ''
+            instance.name = f"{exam_type} - Class {instance.admission_class} - Section {section} - {session}"
+        if commit:
+            instance.save()
+        return instance
 
 
 class ExamExcelImportForm(forms.Form):

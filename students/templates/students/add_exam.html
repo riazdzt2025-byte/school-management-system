@@ -33,12 +33,6 @@
             {% endfor %}
         </div>
 
-        <datalist id="exam-name-options">
-            {% for exam_name in exam_name_suggestions %}
-                <option value="{{ exam_name }}">
-            {% endfor %}
-        </datalist>
-
         <div class="d-flex gap-2 mt-3">
             <button class="btn btn-navy">Save</button>
             <a class="btn btn-outline-navy" href="{% url 'exam_list' %}">Cancel</a>
