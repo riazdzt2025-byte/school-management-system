@@ -98,6 +98,12 @@ class Student(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='archived_students'
     )
+    pre_archive_status = models.CharField(max_length=15, blank=True)
+    restored_at = models.DateTimeField(null=True, blank=True)
+    restored_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='restored_students'
+    )
 
     def save(self, *args, **kwargs):
         if not self.admission_year:

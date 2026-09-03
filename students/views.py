@@ -931,11 +931,17 @@ def bulk_delete_students(request):
         students = list(Student.objects.filter(pk__in=student_ids, is_archived=False))
         archived_count = 0
         for student in students:
+            student.pre_archive_status = student.status
             student.is_archived = True
             student.status = 'DISCONTINUED'
             student.archived_at = timezone.now()
             student.archived_by = request.user
-            student.save(update_fields=['is_archived', 'status', 'archived_at', 'archived_by'])
+            student.save(update_fields=[
+                'is_archived', 'status', 'archived_at', 'archived_by', 'pre_archive_status',
+            ])
+            record_audit(request.user, 'student_archived', student,
+                         snapshot={'pre_archive_status': student.pre_archive_status},
+                         details={'source': 'bulk_delete_students'})
             archived_count += 1
 
         messages.success(request, f"{archived_count} student(s) archived and removed from active lists.")
@@ -1264,14 +1270,101 @@ def edit_student(request, pk):
 def delete_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
     if request.method == 'POST':
+        student.pre_archive_status = student.status
         student.is_archived = True
         student.status = 'DISCONTINUED'
         student.archived_at = timezone.now()
         student.archived_by = request.user
-        student.save(update_fields=['is_archived', 'status', 'archived_at', 'archived_by'])
+        student.save(update_fields=[
+            'is_archived', 'status', 'archived_at', 'archived_by', 'pre_archive_status',
+        ])
+        record_audit(request.user, 'student_archived', student,
+                     snapshot={'pre_archive_status': student.pre_archive_status},
+                     details={'source': 'delete_student'})
         messages.success(request, "Student archived and removed from active lists.")
         return redirect('student_list')
     return render(request, 'students/delete_student.html', {'student': student})
+
+
+@login_required
+@permission_required('students.view_student', raise_exception=True)
+def archived_students(request):
+    """List archived (soft-deleted) students with an option to restore them."""
+    institutions = Institution.objects.all().order_by('name')
+    institution = _selected_institution_for_request(request)
+    institution_id = request.GET.get('institution')
+
+    qs = Student.objects.filter(is_archived=True).select_related('institution', 'archived_by')
+    if institution is not None:
+        qs = qs.filter(institution=institution)
+    elif institution_id:
+        institution = get_object_or_404(Institution, pk=institution_id)
+        qs = qs.filter(institution=institution)
+    if not _is_admin(request.user):
+        qs = qs.filter(created_by=request.user)
+
+    students = list(qs.order_by('-archived_at'))
+
+    return render(request, 'students/archived_students.html', {
+        'students': students,
+        'institution': institution,
+        'institutions': institutions,
+    })
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+@require_POST
+def restore_student(request, pk):
+    """Bring a single archived student back into the active lists."""
+    student = get_object_or_404(Student, pk=pk, is_archived=True)
+    student.is_archived = False
+    student.status = student.pre_archive_status or 'ACTIVE'
+    student.pre_archive_status = ''
+    student.restored_at = timezone.now()
+    student.restored_by = request.user
+    student.save(update_fields=[
+        'is_archived', 'status', 'pre_archive_status', 'restored_at', 'restored_by',
+    ])
+    record_audit(request.user, 'student_restored', student,
+                 details={'source': 'restore_student'})
+    messages.success(request, f"{student.name} has been restored and is back in the active list.")
+    url = reverse('archived_students')
+    if student.institution_id:
+        url += f"?institution={student.institution_id}"
+    return redirect(url)
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+@require_POST
+def bulk_restore_students(request):
+    """Restore multiple archived students at once."""
+    student_ids = request.POST.getlist('student_ids')
+    if not student_ids:
+        messages.error(request, "No students were selected.")
+        return redirect('archived_students')
+
+    students = list(Student.objects.filter(pk__in=student_ids, is_archived=True))
+    restored_count = 0
+    for student in students:
+        student.is_archived = False
+        student.status = student.pre_archive_status or 'ACTIVE'
+        student.pre_archive_status = ''
+        student.restored_at = timezone.now()
+        student.restored_by = request.user
+        student.save(update_fields=[
+            'is_archived', 'status', 'pre_archive_status', 'restored_at', 'restored_by',
+        ])
+        record_audit(request.user, 'student_restored', student,
+                     details={'source': 'bulk_restore_students'})
+        restored_count += 1
+
+    messages.success(request, f"{restored_count} student(s) restored and back in the active list.")
+    url = reverse('archived_students')
+    if request.POST.get('institution'):
+        url += f"?institution={request.POST.get('institution')}"
+    return redirect(url)
 
 
 @login_required

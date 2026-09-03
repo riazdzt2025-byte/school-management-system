@@ -1,0 +1,141 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Archived Students - {{ block.super }}{% endblock %}
+
+{% block print_subtitle %}Archived Students{% endblock %}
+
+{% block extra_style %}
+    .students-table-wrapper {
+        background: #fff; border-radius: 14px; padding: 8px;
+        box-shadow: 0 4px 14px rgba(15,45,82,0.06);
+        overflow-x: auto;
+    }
+    .students-table { width: 100%; border-collapse: collapse; }
+    .students-table th {
+        text-align: left; font-size: 0.8rem; color: #6c757d; text-transform: uppercase;
+        letter-spacing: 0.02em; padding: 10px 12px; border-bottom: 2px solid #eef0f3; white-space: nowrap;
+    }
+    .students-table td {
+        padding: 10px 12px; border-bottom: 1px solid #eef0f3; vertical-align: middle; font-size: 0.9rem;
+    }
+    .students-table tbody tr:hover { background: #f8f9fb; }
+    .students-table .name-cell { font-weight: 600; color: var(--navy); }
+    .students-table .id-cell { font-family: monospace; font-size: 0.82rem; color: #6c757d; white-space: nowrap; }
+    .students-table-empty { text-align: center; color: #6c757d; padding: 48px 16px; }
+    .inline-filter-bar {
+        background: #fff; border-radius: 14px; padding: 14px 16px;
+        box-shadow: 0 4px 14px rgba(15,45,82,0.06);
+        margin-bottom: 20px;
+        display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+    }
+    .inline-filter-bar .field { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+    .inline-filter-bar label { font-size: 0.78rem; color: #6c757d; font-weight: 600; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div>
+        <h1>Archived Students</h1>
+        <div class="subtitle">
+            Soft-deleted students — hidden from active lists but kept for record safety
+        </div>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'student_list' %}{% if institution %}?institution={{ institution.id }}{% endif %}" class="btn btn-outline-navy">&larr; Back to Students</a>
+    </div>
+</div>
+
+<form method="GET" action="{% url 'archived_students' %}" class="inline-filter-bar d-print-none">
+    <div class="field">
+        <label for="af-institution">Institution</label>
+        <select name="institution" id="af-institution" class="form-select form-select-sm">
+            <option value="">-- All institutions --</option>
+            {% for inst in institutions %}
+            <option value="{{ inst.id }}" {% if institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <button type="submit" class="btn btn-sm btn-navy">Apply</button>
+    </div>
+</form>
+
+<form method="POST" action="{% url 'bulk_restore_students' %}" id="bulk-form">
+    {% csrf_token %}
+    <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
+        <div class="form-check">
+            <input type="checkbox" class="form-check-input" id="select-all">
+            <label class="form-check-label" for="select-all">Select All</label>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" id="bulk-restore-btn" class="btn btn-sm btn-outline-success" disabled
+                    onclick="return confirm('Restore all selected students back into the active list?');">
+                ♻️ Restore Selected
+            </button>
+        </div>
+    </div>
+
+    <div class="students-table-wrapper d-print-none">
+        <table class="students-table">
+            <thead>
+                <tr>
+                    <th style="width:36px;"></th>
+                    <th>Student ID</th>
+                    <th>Name</th>
+                    <th>Class</th>
+                    <th>Institution</th>
+                    <th>Archived At</th>
+                    <th>Archived By</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                <tr>
+                    <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
+                    <td class="id-cell">{{ student.student_id }}</td>
+                    <td class="name-cell">{{ student.name }}</td>
+                    <td>{{ student.admission_class }}{% if student.section %} - {{ student.section }}{% endif %}</td>
+                    <td>{{ student.institution.name|default:"—" }}</td>
+                    <td>{{ student.archived_at|date:"d M Y, H:i"|default:"—" }}</td>
+                    <td>{{ student.archived_by.get_full_name|default:student.archived_by.username|default:"—" }}</td>
+                    <td>
+                        <form method="POST" action="{% url 'restore_student' student.pk %}" class="d-inline"
+                              onsubmit="return confirm('Restore {{ student.name|escapejs }} back into the active list?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-success">♻️ Restore</button>
+                        </form>
+                        <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-secondary">Details</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="students-table-empty">No archived students found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+    const selectAll = document.getElementById('select-all');
+    const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+    const bulkRestoreBtn = document.getElementById('bulk-restore-btn');
+
+    function updateBulkButtons() {
+        const anyChecked = Array.from(rowCheckboxes).some(cb => cb.checked);
+        bulkRestoreBtn.disabled = !anyChecked;
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            rowCheckboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateBulkButtons();
+        });
+    }
+    rowCheckboxes.forEach(cb => cb.addEventListener('change', updateBulkButtons));
+</script>
+{% endblock %}

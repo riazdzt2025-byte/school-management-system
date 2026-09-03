@@ -59,6 +59,57 @@ class StudentArchiveSafetyTests(TestCase):
 		list_response = self.client.get(reverse('student_list'), {'institution': self.institution.pk})
 		self.assertNotContains(list_response, 'Archived Student')
 
+	def test_restore_student_returns_it_to_active_list(self):
+		self.student.status = 'TRANSFERRED'
+		self.student.save(update_fields=['status'])
+		self.client.post(reverse('delete_student', args=[self.student.pk]))
+		self.student.refresh_from_db()
+		self.assertTrue(self.student.is_archived)
+		self.assertEqual(self.student.pre_archive_status, 'TRANSFERRED')
+
+		response = self.client.post(reverse('restore_student', args=[self.student.pk]))
+		self.assertEqual(response.status_code, 302)
+		self.student.refresh_from_db()
+		self.assertFalse(self.student.is_archived)
+		# The student's status from before it was archived is restored, not a hardcoded default.
+		self.assertEqual(self.student.status, 'TRANSFERRED')
+		self.assertEqual(self.student.pre_archive_status, '')
+		self.assertIsNotNone(self.student.restored_at)
+		self.assertEqual(self.student.restored_by, self.user)
+
+		list_response = self.client.get(reverse('student_list'), {'institution': self.institution.pk})
+		self.assertContains(list_response, 'Archived Student')
+
+	def test_archived_students_page_lists_archived_only(self):
+		active_student = Student.objects.create(
+			institution=self.institution, student_id='A002', name='Still Active',
+			admission_class='6', section='A', admission_year=2026,
+		)
+		self.client.post(reverse('delete_student', args=[self.student.pk]))
+
+		response = self.client.get(reverse('archived_students'), {'institution': self.institution.pk})
+		self.assertContains(response, 'Archived Student')
+		self.assertNotContains(response, 'Still Active')
+
+	def test_bulk_restore_students(self):
+		other = Student.objects.create(
+			institution=self.institution, student_id='A003', name='Second Archived',
+			admission_class='6', section='A', admission_year=2026,
+		)
+		self.client.post(reverse('bulk_delete_students'), {
+			'student_ids': [self.student.pk, other.pk],
+			'institution': self.institution.pk,
+		})
+		response = self.client.post(reverse('bulk_restore_students'), {
+			'student_ids': [self.student.pk, other.pk],
+			'institution': self.institution.pk,
+		})
+		self.assertEqual(response.status_code, 302)
+		self.student.refresh_from_db()
+		other.refresh_from_db()
+		self.assertFalse(self.student.is_archived)
+		self.assertFalse(other.is_archived)
+
 
 class PromotionAndAuditTests(TestCase):
 	def setUp(self):

@@ -63,6 +63,9 @@
         {% endif %}
         <a href="{% url 'subject_requirement_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📚 Subject Assignments</a>
         <a href="{% url 'download_student_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&section={{ selected_section|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
+        {% if perms.students.view_student %}
+        <a href="{% url 'archived_students' %}{% if institution %}?institution={{ institution.id }}{% endif %}" class="btn btn-outline-navy">🗄️ View Archive</a>
+        {% endif %}
         <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
     </div>
 </div>
