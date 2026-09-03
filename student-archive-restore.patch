@@ -1,0 +1,449 @@
+From 015d71db0a5b090c5dd81a645c884277f61f9f15 Mon Sep 17 00:00:00 2001
+From: Claude <a@a.com>
+Date: Thu, 3 Sep 2026 18:10:54 +0000
+Subject: [PATCH] Add student archive restore feature
+
+- Add pre_archive_status, restored_at, restored_by fields to Student model
+- Track pre-archive status so restore returns the student to their real
+  previous status (ACTIVE/TRANSFERRED) instead of hardcoding ACTIVE
+- Add archived_students view: lists soft-deleted students, filterable by institution
+- Add restore_student view: restores a single archived student
+- Add bulk_restore_students view: restores multiple archived students at once
+- Log student_archived / student_restored events via record_audit()
+- Add archived_students.html template with per-row and bulk restore actions
+- Add 'View Archive' link to the student list page header
+- Add tests covering restore, bulk restore, and the archived list view
+---
+ .../templates/students/archived_students.html | 141 ++++++++++++++++++
+ .../templates/students/student_list.html      |   3 +
+ ...ive_status_student_restored_at_and_more.py |  31 ++++
+ students/models.py                            |   6 +
+ students/tests.py                             |  51 +++++++
+ students/urls.py                              |   3 +
+ students/views.py                             |  97 +++++++++++-
+ 7 files changed, 330 insertions(+), 2 deletions(-)
+ create mode 100644 school_system/templates/students/archived_students.html
+ create mode 100644 students/migrations/0025_student_pre_archive_status_student_restored_at_and_more.py
+
+diff --git a/school_system/templates/students/archived_students.html b/school_system/templates/students/archived_students.html
+new file mode 100644
+index 0000000..e04e27c
+--- /dev/null
++++ b/school_system/templates/students/archived_students.html
+@@ -0,0 +1,141 @@
++{% extends 'students/base.html' %}
++
++{% block title %}Archived Students - {{ block.super }}{% endblock %}
++
++{% block print_subtitle %}Archived Students{% endblock %}
++
++{% block extra_style %}
++    .students-table-wrapper {
++        background: #fff; border-radius: 14px; padding: 8px;
++        box-shadow: 0 4px 14px rgba(15,45,82,0.06);
++        overflow-x: auto;
++    }
++    .students-table { width: 100%; border-collapse: collapse; }
++    .students-table th {
++        text-align: left; font-size: 0.8rem; color: #6c757d; text-transform: uppercase;
++        letter-spacing: 0.02em; padding: 10px 12px; border-bottom: 2px solid #eef0f3; white-space: nowrap;
++    }
++    .students-table td {
++        padding: 10px 12px; border-bottom: 1px solid #eef0f3; vertical-align: middle; font-size: 0.9rem;
++    }
++    .students-table tbody tr:hover { background: #f8f9fb; }
++    .students-table .name-cell { font-weight: 600; color: var(--navy); }
++    .students-table .id-cell { font-family: monospace; font-size: 0.82rem; color: #6c757d; white-space: nowrap; }
++    .students-table-empty { text-align: center; color: #6c757d; padding: 48px 16px; }
++    .inline-filter-bar {
++        background: #fff; border-radius: 14px; padding: 14px 16px;
++        box-shadow: 0 4px 14px rgba(15,45,82,0.06);
++        margin-bottom: 20px;
++        display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
++    }
++    .inline-filter-bar .field { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
++    .inline-filter-bar label { font-size: 0.78rem; color: #6c757d; font-weight: 600; }
++{% endblock %}
++
++{% block content %}
++<div class="page-header d-print-none">
++    <div>
++        <h1>Archived Students</h1>
++        <div class="subtitle">
++            Soft-deleted students — hidden from active lists but kept for record safety
++        </div>
++    </div>
++    <div class="page-actions">
++        <a href="{% url 'student_list' %}{% if institution %}?institution={{ institution.id }}{% endif %}" class="btn btn-outline-navy">&larr; Back to Students</a>
++    </div>
++</div>
++
++<form method="GET" action="{% url 'archived_students' %}" class="inline-filter-bar d-print-none">
++    <div class="field">
++        <label for="af-institution">Institution</label>
++        <select name="institution" id="af-institution" class="form-select form-select-sm">
++            <option value="">-- All institutions --</option>
++            {% for inst in institutions %}
++            <option value="{{ inst.id }}" {% if institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
++            {% endfor %}
++        </select>
++    </div>
++    <div class="field">
++        <button type="submit" class="btn btn-sm btn-navy">Apply</button>
++    </div>
++</form>
++
++<form method="POST" action="{% url 'bulk_restore_students' %}" id="bulk-form">
++    {% csrf_token %}
++    <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
++
++    <div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
++        <div class="form-check">
++            <input type="checkbox" class="form-check-input" id="select-all">
++            <label class="form-check-label" for="select-all">Select All</label>
++        </div>
++        <div class="d-flex gap-2">
++            <button type="submit" id="bulk-restore-btn" class="btn btn-sm btn-outline-success" disabled
++                    onclick="return confirm('Restore all selected students back into the active list?');">
++                ♻️ Restore Selected
++            </button>
++        </div>
++    </div>
++
++    <div class="students-table-wrapper d-print-none">
++        <table class="students-table">
++            <thead>
++                <tr>
++                    <th style="width:36px;"></th>
++                    <th>Student ID</th>
++                    <th>Name</th>
++                    <th>Class</th>
++                    <th>Institution</th>
++                    <th>Archived At</th>
++                    <th>Archived By</th>
++                    <th>Actions</th>
++                </tr>
++            </thead>
++            <tbody>
++                {% for student in students %}
++                <tr>
++                    <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
++                    <td class="id-cell">{{ student.student_id }}</td>
++                    <td class="name-cell">{{ student.name }}</td>
++                    <td>{{ student.admission_class }}{% if student.section %} - {{ student.section }}{% endif %}</td>
++                    <td>{{ student.institution.name|default:"—" }}</td>
++                    <td>{{ student.archived_at|date:"d M Y, H:i"|default:"—" }}</td>
++                    <td>{{ student.archived_by.get_full_name|default:student.archived_by.username|default:"—" }}</td>
++                    <td>
++                        <form method="POST" action="{% url 'restore_student' student.pk %}" class="d-inline"
++                              onsubmit="return confirm('Restore {{ student.name|escapejs }} back into the active list?');">
++                            {% csrf_token %}
++                            <button type="submit" class="btn btn-sm btn-outline-success">♻️ Restore</button>
++                        </form>
++                        <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-secondary">Details</a>
++                    </td>
++                </tr>
++                {% empty %}
++                <tr><td colspan="8" class="students-table-empty">No archived students found.</td></tr>
++                {% endfor %}
++            </tbody>
++        </table>
++    </div>
++</form>
++{% endblock %}
++
++{% block extra_script %}
++<script>
++    const selectAll = document.getElementById('select-all');
++    const rowCheckboxes = document.querySelectorAll('.row-checkbox');
++    const bulkRestoreBtn = document.getElementById('bulk-restore-btn');
++
++    function updateBulkButtons() {
++        const anyChecked = Array.from(rowCheckboxes).some(cb => cb.checked);
++        bulkRestoreBtn.disabled = !anyChecked;
++    }
++
++    if (selectAll) {
++        selectAll.addEventListener('change', function () {
++            rowCheckboxes.forEach(cb => cb.checked = selectAll.checked);
++            updateBulkButtons();
++        });
++    }
++    rowCheckboxes.forEach(cb => cb.addEventListener('change', updateBulkButtons));
++</script>
++{% endblock %}
+diff --git a/school_system/templates/students/student_list.html b/school_system/templates/students/student_list.html
+index fa6ab48..7e6a042 100644
+--- a/school_system/templates/students/student_list.html
++++ b/school_system/templates/students/student_list.html
+@@ -63,6 +63,9 @@
+         {% endif %}
+         <a href="{% url 'subject_requirement_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📚 Subject Assignments</a>
+         <a href="{% url 'download_student_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&section={{ selected_section|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
++        {% if perms.students.view_student %}
++        <a href="{% url 'archived_students' %}{% if institution %}?institution={{ institution.id }}{% endif %}" class="btn btn-outline-navy">🗄️ View Archive</a>
++        {% endif %}
+         <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+     </div>
+ </div>
+diff --git a/students/migrations/0025_student_pre_archive_status_student_restored_at_and_more.py b/students/migrations/0025_student_pre_archive_status_student_restored_at_and_more.py
+new file mode 100644
+index 0000000..43a396f
+--- /dev/null
++++ b/students/migrations/0025_student_pre_archive_status_student_restored_at_and_more.py
+@@ -0,0 +1,31 @@
++# Generated by Django 6.1
++
++import django.db.models.deletion
++from django.conf import settings
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('students', '0024_student_photo'),
++        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
++    ]
++
++    operations = [
++        migrations.AddField(
++            model_name='student',
++            name='pre_archive_status',
++            field=models.CharField(blank=True, max_length=15),
++        ),
++        migrations.AddField(
++            model_name='student',
++            name='restored_at',
++            field=models.DateTimeField(blank=True, null=True),
++        ),
++        migrations.AddField(
++            model_name='student',
++            name='restored_by',
++            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='restored_students', to=settings.AUTH_USER_MODEL),
++        ),
++    ]
+diff --git a/students/models.py b/students/models.py
+index b9043d9..907527f 100644
+--- a/students/models.py
++++ b/students/models.py
+@@ -98,6 +98,12 @@ class Student(models.Model):
+         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+         null=True, blank=True, related_name='archived_students'
+     )
++    pre_archive_status = models.CharField(max_length=15, blank=True)
++    restored_at = models.DateTimeField(null=True, blank=True)
++    restored_by = models.ForeignKey(
++        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
++        null=True, blank=True, related_name='restored_students'
++    )
+ 
+     def save(self, *args, **kwargs):
+         if not self.admission_year:
+diff --git a/students/tests.py b/students/tests.py
+index afb18ca..c9b57d3 100644
+--- a/students/tests.py
++++ b/students/tests.py
+@@ -59,6 +59,57 @@ class StudentArchiveSafetyTests(TestCase):
+ 		list_response = self.client.get(reverse('student_list'), {'institution': self.institution.pk})
+ 		self.assertNotContains(list_response, 'Archived Student')
+ 
++	def test_restore_student_returns_it_to_active_list(self):
++		self.student.status = 'TRANSFERRED'
++		self.student.save(update_fields=['status'])
++		self.client.post(reverse('delete_student', args=[self.student.pk]))
++		self.student.refresh_from_db()
++		self.assertTrue(self.student.is_archived)
++		self.assertEqual(self.student.pre_archive_status, 'TRANSFERRED')
++
++		response = self.client.post(reverse('restore_student', args=[self.student.pk]))
++		self.assertEqual(response.status_code, 302)
++		self.student.refresh_from_db()
++		self.assertFalse(self.student.is_archived)
++		# The student's status from before it was archived is restored, not a hardcoded default.
++		self.assertEqual(self.student.status, 'TRANSFERRED')
++		self.assertEqual(self.student.pre_archive_status, '')
++		self.assertIsNotNone(self.student.restored_at)
++		self.assertEqual(self.student.restored_by, self.user)
++
++		list_response = self.client.get(reverse('student_list'), {'institution': self.institution.pk})
++		self.assertContains(list_response, 'Archived Student')
++
++	def test_archived_students_page_lists_archived_only(self):
++		active_student = Student.objects.create(
++			institution=self.institution, student_id='A002', name='Still Active',
++			admission_class='6', section='A', admission_year=2026,
++		)
++		self.client.post(reverse('delete_student', args=[self.student.pk]))
++
++		response = self.client.get(reverse('archived_students'), {'institution': self.institution.pk})
++		self.assertContains(response, 'Archived Student')
++		self.assertNotContains(response, 'Still Active')
++
++	def test_bulk_restore_students(self):
++		other = Student.objects.create(
++			institution=self.institution, student_id='A003', name='Second Archived',
++			admission_class='6', section='A', admission_year=2026,
++		)
++		self.client.post(reverse('bulk_delete_students'), {
++			'student_ids': [self.student.pk, other.pk],
++			'institution': self.institution.pk,
++		})
++		response = self.client.post(reverse('bulk_restore_students'), {
++			'student_ids': [self.student.pk, other.pk],
++			'institution': self.institution.pk,
++		})
++		self.assertEqual(response.status_code, 302)
++		self.student.refresh_from_db()
++		other.refresh_from_db()
++		self.assertFalse(self.student.is_archived)
++		self.assertFalse(other.is_archived)
++
+ 
+ class PromotionAndAuditTests(TestCase):
+ 	def setUp(self):
+diff --git a/students/urls.py b/students/urls.py
+index f9cf7c4..7eb4ffa 100644
+--- a/students/urls.py
++++ b/students/urls.py
+@@ -28,6 +28,9 @@ urlpatterns = [
+     path('ssc-registrations/import/template/', views.download_ssc_import_template, name='download_ssc_import_template'),
+     path('edit/<int:pk>/', views.edit_student, name='edit_student'),
+     path('delete/<int:pk>/', views.delete_student, name='delete_student'),
++    path('students/archived/', views.archived_students, name='archived_students'),
++    path('students/<int:pk>/restore/', views.restore_student, name='restore_student'),
++    path('students/bulk-restore/', views.bulk_restore_students, name='bulk_restore_students'),
+     path('students/<int:pk>/discontinue/', views.discontinue_student, name='discontinue_student'),
+     path('students/<int:pk>/id-card/', views.student_id_card, name='student_id_card'),
+     path('students/<int:pk>/exams/', views.student_exams, name='student_exams'),
+diff --git a/students/views.py b/students/views.py
+index 349e2fe..d647a23 100644
+--- a/students/views.py
++++ b/students/views.py
+@@ -931,11 +931,17 @@ def bulk_delete_students(request):
+         students = list(Student.objects.filter(pk__in=student_ids, is_archived=False))
+         archived_count = 0
+         for student in students:
++            student.pre_archive_status = student.status
+             student.is_archived = True
+             student.status = 'DISCONTINUED'
+             student.archived_at = timezone.now()
+             student.archived_by = request.user
+-            student.save(update_fields=['is_archived', 'status', 'archived_at', 'archived_by'])
++            student.save(update_fields=[
++                'is_archived', 'status', 'archived_at', 'archived_by', 'pre_archive_status',
++            ])
++            record_audit(request.user, 'student_archived', student,
++                         snapshot={'pre_archive_status': student.pre_archive_status},
++                         details={'source': 'bulk_delete_students'})
+             archived_count += 1
+ 
+         messages.success(request, f"{archived_count} student(s) archived and removed from active lists.")
+@@ -1264,16 +1270,103 @@ def edit_student(request, pk):
+ def delete_student(request, pk):
+     student = get_object_or_404(Student, pk=pk)
+     if request.method == 'POST':
++        student.pre_archive_status = student.status
+         student.is_archived = True
+         student.status = 'DISCONTINUED'
+         student.archived_at = timezone.now()
+         student.archived_by = request.user
+-        student.save(update_fields=['is_archived', 'status', 'archived_at', 'archived_by'])
++        student.save(update_fields=[
++            'is_archived', 'status', 'archived_at', 'archived_by', 'pre_archive_status',
++        ])
++        record_audit(request.user, 'student_archived', student,
++                     snapshot={'pre_archive_status': student.pre_archive_status},
++                     details={'source': 'delete_student'})
+         messages.success(request, "Student archived and removed from active lists.")
+         return redirect('student_list')
+     return render(request, 'students/delete_student.html', {'student': student})
+ 
+ 
++@login_required
++@permission_required('students.view_student', raise_exception=True)
++def archived_students(request):
++    """List archived (soft-deleted) students with an option to restore them."""
++    institutions = Institution.objects.all().order_by('name')
++    institution = _selected_institution_for_request(request)
++    institution_id = request.GET.get('institution')
++
++    qs = Student.objects.filter(is_archived=True).select_related('institution', 'archived_by')
++    if institution is not None:
++        qs = qs.filter(institution=institution)
++    elif institution_id:
++        institution = get_object_or_404(Institution, pk=institution_id)
++        qs = qs.filter(institution=institution)
++    if not _is_admin(request.user):
++        qs = qs.filter(created_by=request.user)
++
++    students = list(qs.order_by('-archived_at'))
++
++    return render(request, 'students/archived_students.html', {
++        'students': students,
++        'institution': institution,
++        'institutions': institutions,
++    })
++
++
++@login_required
++@permission_required('students.change_student', raise_exception=True)
++@require_POST
++def restore_student(request, pk):
++    """Bring a single archived student back into the active lists."""
++    student = get_object_or_404(Student, pk=pk, is_archived=True)
++    student.is_archived = False
++    student.status = student.pre_archive_status or 'ACTIVE'
++    student.pre_archive_status = ''
++    student.restored_at = timezone.now()
++    student.restored_by = request.user
++    student.save(update_fields=[
++        'is_archived', 'status', 'pre_archive_status', 'restored_at', 'restored_by',
++    ])
++    record_audit(request.user, 'student_restored', student,
++                 details={'source': 'restore_student'})
++    messages.success(request, f"{student.name} has been restored and is back in the active list.")
++    url = reverse('archived_students')
++    if student.institution_id:
++        url += f"?institution={student.institution_id}"
++    return redirect(url)
++
++
++@login_required
++@permission_required('students.change_student', raise_exception=True)
++@require_POST
++def bulk_restore_students(request):
++    """Restore multiple archived students at once."""
++    student_ids = request.POST.getlist('student_ids')
++    if not student_ids:
++        messages.error(request, "No students were selected.")
++        return redirect('archived_students')
++
++    students = list(Student.objects.filter(pk__in=student_ids, is_archived=True))
++    restored_count = 0
++    for student in students:
++        student.is_archived = False
++        student.status = student.pre_archive_status or 'ACTIVE'
++        student.pre_archive_status = ''
++        student.restored_at = timezone.now()
++        student.restored_by = request.user
++        student.save(update_fields=[
++            'is_archived', 'status', 'pre_archive_status', 'restored_at', 'restored_by',
++        ])
++        record_audit(request.user, 'student_restored', student,
++                     details={'source': 'bulk_restore_students'})
++        restored_count += 1
++
++    messages.success(request, f"{restored_count} student(s) restored and back in the active list.")
++    url = reverse('archived_students')
++    if request.POST.get('institution'):
++        url += f"?institution={request.POST.get('institution')}"
++    return redirect(url)
++
++
+ @login_required
+ @permission_required('students.change_student', raise_exception=True)
+ def discontinue_student(request, pk):
+-- 
+2.43.0
+
