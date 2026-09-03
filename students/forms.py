@@ -275,106 +275,28 @@ EXAM_SECTION_CHOICES = [(letter, letter) for letter in 'ABCDEFGHIJ']
 
 
 class ExamForm(forms.ModelForm):
+    admission_class = forms.ChoiceField(
+        choices=[
+            ('1', 'Class 1'),
+            ('2', 'Class 2'),
+            ('3', 'Class 3'),
+            ('4', 'Class 4'),
+            ('5', 'Class 5'),
+        ]
+    )
+
+    section = forms.ChoiceField(
+        choices=[
+            ('A', 'A'),
+            ('B', 'B'),
+            ('C', 'C'),
+        ],
+        required=False
+    )
+
     class Meta:
         model = Exam
-        fields = ['exam_type', 'institution', 'admission_class', 'section', 'session', 'exam_date']
-        labels = {
-            'admission_class': 'Class',
-            'section': 'Section',
-        }
-        widgets = {
-            'exam_type': forms.Select(attrs={'class': 'form-select'}),
-            'institution': forms.Select(attrs={'class': 'form-select'}),
-            'admission_class': forms.Select(attrs={'class': 'form-select'}),
-            'section': forms.Select(attrs={'class': 'form-select'}),
-            'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2025-2026'}),
-            'exam_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['admission_class'].label = 'Class'
-        self.fields['section'].label = 'Section'
-        self.fields['section'].choices = [('', 'All sections')] + list(EXAM_SECTION_CHOICES)
-        self.fields['section'].required = False
-
-        self.fields['exam_type'].choices = [
-            ('FIRST_TERM', 'First Term'),
-            ('SECOND_TERM', 'Second Term'),
-            ('THIRD_TERM', 'Third Term'),
-            ('PRE_TEST_EXAM', 'Pre Test Exam'),
-            ('TEST_EXAM', 'Test Exam'),
-            ('MODEL_TEST_1', 'Model Test-1'),
-            ('MODEL_TEST_2', 'Model Test-2'),
-            ('MODEL_TEST_3', 'Model Test-3'),
-            ('FINAL_TERM', 'Final Term'),
-            ('MID_TERM_1', 'Mid Term-1'),
-            ('MID_TERM_2', 'Mid Term-2'),
-            ('MID_TERM_3', 'Mid Term-3'),
-        ]
-
-        available_classes = []
-        institution = None
-        if self.instance and getattr(self.instance, 'institution_id', None):
-            institution = self.instance.institution
-        elif self.data.get('institution'):
-            institution = Institution.objects.filter(pk=self.data.get('institution')).first()
-        elif self.initial.get('institution'):
-            institution = self.initial.get('institution')
-
-        if institution is not None:
-            available_classes = [
-                (cls_value, cls_value)
-                for cls_value in institution.get_class_list()
-                if cls_value.strip()
-            ]
-        else:
-            available_classes = [
-                (cls_value, cls_value)
-                for institution_obj in Institution.objects.all()
-                for cls_value in institution_obj.get_class_list()
-                if cls_value.strip()
-            ]
-
-        unique_classes = []
-        seen = set()
-        for class_name, label in available_classes:
-            if class_name not in seen:
-                unique_classes.append((class_name, label))
-                seen.add(class_name)
-
-        if not unique_classes:
-            unique_classes = [('', '-- Select institution --')]
-
-        self.fields['admission_class'].choices = [('', '-- Select class --')] + unique_classes
-        self.fields['admission_class'].required = True
-
-    def clean(self):
-        cleaned_data = super().clean()
-        exam_type = cleaned_data.get('exam_type')
-        institution = cleaned_data.get('institution')
-        admission_class = cleaned_data.get('admission_class')
-        section = cleaned_data.get('section')
-        session = cleaned_data.get('session', '').strip()
-
-        if institution and admission_class and session:
-            type_label = dict(self.fields['exam_type'].choices).get(exam_type, 'Exam')
-            section_label = f" - Section {section}" if section else ''
-            cleaned_data['name'] = f"{type_label} Exam {session}{section_label} - Class {admission_class}"
-
-        return cleaned_data
-
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        if not instance.name:
-            exam_type = dict(self.fields['exam_type'].choices).get(instance.exam_type, 'Exam')
-            section = f" - Section {instance.section}" if instance.section else ''
-            session = instance.session or ''
-            instance.name = f"{exam_type} Exam {session}{section} - Class {instance.admission_class}"
-        if commit:
-            instance.save()
-        return instance
-
+        fields = '__all__'
 
 class ExamExcelImportForm(forms.Form):
     excel_file = forms.FileField(

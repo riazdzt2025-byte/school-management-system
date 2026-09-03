@@ -39,4 +39,36 @@
         </div>
     </form>
 </div>
+<script>
+(function() {
+    var institutionsData = JSON.parse('{{ institutions_data_json|default:"{}"|escapejs }}');
+    var institutionSelect = document.getElementById('id_institution');
+    var classSelect = document.getElementById('id_admission_class');
+    if (!institutionSelect || !classSelect) return;
+
+    function populateClasses() {
+        var instId = institutionSelect.value;
+        var classes = institutionsData[instId] || [];
+        var currentValue = classSelect.value;
+        classSelect.innerHTML = '';
+
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = classes.length ? '-- Select class --' : '-- Select institution first --';
+        classSelect.appendChild(placeholder);
+
+        classes.forEach(function(cls) {
+            var opt = document.createElement('option');
+            opt.value = cls;
+            opt.textContent = cls;
+            if (cls === currentValue) {
+                opt.selected = true;
+            }
+            classSelect.appendChild(opt);
+        });
+    }
+
+    institutionSelect.addEventListener('change', populateClasses);
+})();
+</script>
 {% endblock %}
