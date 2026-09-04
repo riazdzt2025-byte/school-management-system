@@ -276,27 +276,26 @@ EXAM_SECTION_CHOICES = [(letter, letter) for letter in 'ABCDEFGHIJ']
 
 class ExamForm(forms.ModelForm):
     admission_class = forms.ChoiceField(
-        choices=[
-            ('1', 'Class 1'),
-            ('2', 'Class 2'),
-            ('3', 'Class 3'),
-            ('4', 'Class 4'),
-            ('5', 'Class 5'),
-        ]
+        choices=[(str(i), f'Class {i}') for i in range(1, 13)],
+        label='Class',
     )
 
-    section = forms.ChoiceField(
-        choices=[
-            ('A', 'A'),
-            ('B', 'B'),
-            ('C', 'C'),
-        ],
-        required=False
+    group = forms.ChoiceField(
+        choices=[('', '-- Select group --')] + list(Student.GROUP_CHOICES),
+        required=False,
+        help_text='Only required for Class 9-10 (SSC) and Class 11-12 (HSC)',
     )
+
+    exam_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+    )
+
+    field_order = ['institution', 'admission_class', 'group', 'name', 'exam_type', 'session', 'exam_date', 'is_published']
 
     class Meta:
         model = Exam
-        fields = '__all__'
+        fields = ['institution', 'admission_class', 'group', 'name', 'exam_type', 'session', 'exam_date', 'is_published']
 
 class ExamExcelImportForm(forms.Form):
     excel_file = forms.FileField(

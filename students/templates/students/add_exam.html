@@ -44,31 +44,62 @@
     var institutionsData = JSON.parse('{{ institutions_data_json|default:"{}"|escapejs }}');
     var institutionSelect = document.getElementById('id_institution');
     var classSelect = document.getElementById('id_admission_class');
-    if (!institutionSelect || !classSelect) return;
-
-    function populateClasses() {
-        var instId = institutionSelect.value;
-        var classes = institutionsData[instId] || [];
-        var currentValue = classSelect.value;
-        classSelect.innerHTML = '';
-
-        var placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = classes.length ? '-- Select class --' : '-- Select institution first --';
-        classSelect.appendChild(placeholder);
-
-        classes.forEach(function(cls) {
-            var opt = document.createElement('option');
-            opt.value = cls;
-            opt.textContent = cls;
-            if (cls === currentValue) {
-                opt.selected = true;
-            }
-            classSelect.appendChild(opt);
-        });
+    if (institutionSelect && classSelect) {
+        function populateClasses() {
+            var instId = institutionSelect.value;
+            var classes = institutionsData[instId] || [];
+            var currentValue = classSelect.value;
+            classSelect.innerHTML = '';
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = classes.length ? '-- Select class --' : '-- Select institution first --';
+            classSelect.appendChild(placeholder);
+            classes.forEach(function(cls) {
+                var opt = document.createElement('option');
+                opt.value = cls;
+                opt.textContent = cls;
+                if (cls === currentValue) {
+                    opt.selected = true;
+                }
+                classSelect.appendChild(opt);
+            });
+        }
+        institutionSelect.addEventListener('change', populateClasses);
     }
 
-    institutionSelect.addEventListener('change', populateClasses);
+    var examTypeSelect = document.getElementById('id_exam_type');
+    var sessionInput   = document.getElementById('id_session');
+    var nameInput      = document.getElementById('id_name');
+
+    if (examTypeSelect && sessionInput && nameInput) {
+        nameInput.setAttribute('readonly', 'readonly');
+        nameInput.classList.add('bg-light');
+
+        function extractYear(sessionValue) {
+            var matches = (sessionValue || '').match(/\d{4}/g);
+            if (!matches || !matches.length) return '';
+            return matches[matches.length - 1];
+        }
+
+        function generateExamName() {
+            var selectedOption = examTypeSelect.options[examTypeSelect.selectedIndex];
+            var examTypeText = selectedOption ? selectedOption.text.trim() : '';
+
+            if (!examTypeText || examTypeText.indexOf('Select') !== -1) {
+                nameInput.value = '';
+                return;
+            }
+
+            var year = extractYear(sessionInput.value);
+            nameInput.value = year
+                ? examTypeText + ' Examination-' + year
+                : examTypeText + ' Examination';
+        }
+
+        examTypeSelect.addEventListener('change', generateExamName);
+        sessionInput.addEventListener('input', generateExamName);
+        generateExamName();
+    }
 })();
 </script>
 {% endblock %}

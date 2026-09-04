@@ -2035,6 +2035,52 @@ def ssc_result_summary(request):
 
 # ---------------- Exam Views ----------------
 
+@login_required
+def exam_list(request):
+    exams = Exam.objects.all().order_by('-session', 'admission_class', 'name')
+    exams = _filter_by_selected_institution(request, exams)
+    return render(request, 'students/exam_list.html', {'exams': exams})
+
+
+def _institutions_data_json():
+    """Institution ID -> list of that Institution's classes (from Office >
+    Students' Institution.classes field — same source Student form uses),
+    as JSON for add_exam.html to repopulate the Class dropdown on change."""
+    return json.dumps({
+    str(inst.id): [c.strip() for c in inst.classes.split(',') if c.strip()]
+    for inst in Institution.objects.all()
+})
+
+@login_required
+@permission_required('students.add_exam', raise_exception=True)
+def add_exam(request):
+    form = ExamForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Exam created.')
+        return redirect('exam_list')
+    return render(request, 'students/add_exam.html', {
+        'form': form,
+        'exam_name_suggestions': EXAM_NAME_SUGGESTIONS,
+        'institutions_data_json': _institutions_data_json(),
+    })
+
+
+@login_required
+@permission_required('students.change_exam', raise_exception=True)
+def edit_exam(request, pk):
+    exam = get_object_or_404(Exam, pk=pk)
+    form = ExamForm(request.POST or None, instance=exam)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Exam updated.')
+        return redirect('exam_list')
+    return render(request, 'students/add_exam.html', {
+        'form': form,
+        'exam': exam,
+        'exam_name_suggestions': EXAM_NAME_SUGGESTIONS,
+        'institutions_data_json': _institutions_data_json(),
+    })
 # ---------------- Exam Views ----------------
 @login_required
 def exam_list(request):
