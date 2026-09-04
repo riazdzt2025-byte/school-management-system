@@ -1490,6 +1490,31 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
 
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
 
+@login_required
+@permission_required('students.change_subject', raise_exception=True)
+def mark_evaluation_settings(request):
+    subjects = Subject.objects.all().order_by('name')
+
+    if request.method == 'POST':
+        for subject in subjects:
+            full_marks = request.POST.get(f'full_marks_{subject.id}')
+            cq_marks = request.POST.get(f'cq_marks_{subject.id}', '').strip()
+            mcq_marks = request.POST.get(f'mcq_marks_{subject.id}', '').strip()
+
+            try:
+                if full_marks:
+                    subject.full_marks = int(full_marks)
+                subject.cq_marks = int(cq_marks) if cq_marks else None
+                subject.mcq_marks = int(mcq_marks) if mcq_marks else None
+                subject.save(update_fields=['full_marks', 'cq_marks', 'mcq_marks'])
+            except (TypeError, ValueError):
+                messages.error(request, f'Invalid marks entered for {subject.name}. Skipped.')
+                continue
+
+        messages.success(request, 'Mark evaluation settings updated successfully.')
+        return redirect('mark_evaluation_settings')
+
+    return render(request, 'students/mark_evaluation_settings.html', {'subjects': subjects})
 
 def _subject_requirement_list_redirect(request):
     """Redirect back to the Subject Assignments list, preserving whatever

@@ -18,7 +18,7 @@
         {% csrf_token %}
         <div class="row g-3">
             {% for field in form %}
-            <div class="col-md-6">
+            <div class="col-md-6" id="{% if field.name == 'group' %}group-field-wrapper{% endif %}">
                 <div class="mb-3">
                     <label for="{{ field.id_for_label }}" class="form-label fw-semibold">{{ field.label }}</label>
                     {{ field }}
@@ -44,6 +44,19 @@
     var institutionsData = JSON.parse('{{ institutions_data_json|default:"{}"|escapejs }}');
     var institutionSelect = document.getElementById('id_institution');
     var classSelect = document.getElementById('id_admission_class');
+    var groupWrapper = document.getElementById('group-field-wrapper');
+    var groupSelect = document.getElementById('id_group');
+    var groupClasses = ['9', '10', '11', '12'];
+
+    function toggleGroupField() {
+        if (!groupWrapper || !classSelect) return;
+        var show = groupClasses.indexOf(classSelect.value) !== -1;
+        groupWrapper.style.display = show ? '' : 'none';
+        if (!show && groupSelect) {
+            groupSelect.value = '';
+        }
+    }
+
     if (institutionSelect && classSelect) {
         function populateClasses() {
             var instId = institutionSelect.value;
@@ -57,14 +70,20 @@
             classes.forEach(function(cls) {
                 var opt = document.createElement('option');
                 opt.value = cls;
-                opt.textContent = cls;
+                opt.textContent = 'Class ' + cls;
                 if (cls === currentValue) {
                     opt.selected = true;
                 }
                 classSelect.appendChild(opt);
             });
+            toggleGroupField();
         }
         institutionSelect.addEventListener('change', populateClasses);
+    }
+
+    if (classSelect) {
+        classSelect.addEventListener('change', toggleGroupField);
+        toggleGroupField();
     }
 
     var examTypeSelect = document.getElementById('id_exam_type');

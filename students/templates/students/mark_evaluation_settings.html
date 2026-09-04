@@ -1,0 +1,58 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Mark Evaluation Settings - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Mark Evaluation Settings</h1>
+    </div>
+</div>
+
+<div class="table-card p-4">
+    <div class="alert alert-info small mb-4">
+        Set the Full Marks for each subject. If a subject has separate CQ and MCQ parts, fill both — Pass Marks (40%) will be calculated automatically. Leave CQ/MCQ blank if the subject has a single combined mark.
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Full Marks</th>
+                        <th>CQ</th>
+                        <th>MCQ</th>
+                        <th>Pass Marks (40%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for subject in subjects %}
+                    <tr>
+                        <td>{{ subject.name }} <span class="text-muted small">({{ subject.code }})</span></td>
+                        <td>
+                            <input type="number" min="1" class="form-control" style="width: 100px;"
+                                   name="full_marks_{{ subject.id }}" value="{{ subject.full_marks }}">
+                        </td>
+                        <td>
+                            <input type="number" min="0" class="form-control" style="width: 90px;"
+                                   name="cq_marks_{{ subject.id }}" value="{{ subject.cq_marks|default_if_none:'' }}">
+                        </td>
+                        <td>
+                            <input type="number" min="0" class="form-control" style="width: 90px;"
+                                   name="mcq_marks_{{ subject.id }}" value="{{ subject.mcq_marks|default_if_none:'' }}">
+                        </td>
+                        <td class="text-muted">{{ subject.pass_marks }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-navy">Save All</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -334,6 +334,16 @@ class Subject(models.Model):
     code = models.CharField(max_length=10, unique=True)
     name = models.CharField(max_length=100)
     full_marks = models.IntegerField(default=100)
+    cq_marks = models.PositiveIntegerField(null=True, blank=True, help_text='Leave blank if this subject has no CQ/MCQ split')
+    mcq_marks = models.PositiveIntegerField(null=True, blank=True, help_text='Leave blank if this subject has no CQ/MCQ split')
+
+    @property
+    def pass_marks(self):
+        return round(self.full_marks * 0.4, 1)
+
+    @property
+    def has_cq_mcq_split(self):
+        return self.cq_marks is not None and self.mcq_marks is not None
     category = models.CharField(max_length=12, choices=CATEGORY_CHOICES, default='OTHER')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

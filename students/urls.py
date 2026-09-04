@@ -99,6 +99,7 @@ path('reports/class-section-summary/', views.class_section_summary, name='class_
     # page was removed — new subjects are created inline from the Assign
     # Subject form, and default assignments come from the curriculum
     # auto-fill below)
+        path('mark-evaluation/', views.mark_evaluation_settings, name='mark_evaluation_settings'),
     path('subject-requirements/', views.subject_requirement_list, name='subject_requirement_list'),
     path('subject-requirements/auto-fill/', views.auto_populate_subject_requirements, name='auto_populate_subject_requirements'),
     path('subject-requirements/add/', views.add_subject_requirement, name='add_subject_requirement'),
