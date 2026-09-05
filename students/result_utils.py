@@ -16,7 +16,23 @@ def get_grade(percentage):
     if percentage >= 33:
         return 'D', Decimal('1.00')
     return 'F', Decimal('0.00')
+def get_subject_marks(exam, subject):
+    """
+    Returns an object with full_marks / cq_marks / mcq_marks / pass_marks /
+    has_cq_mcq_split for this exam+subject combination — using the specific
+    SubjectMarkSetting if one exists, otherwise falling back to the subject's
+    own global defaults.
+    """
+    from .models import SubjectMarkSetting
 
+    setting = SubjectMarkSetting.objects.filter(
+        institution=exam.institution,
+        admission_class=exam.admission_class,
+        subject=subject,
+        exam_type=exam.exam_type,
+    ).first()
+
+    return setting if setting else subject
 
 def build_exam_results(exam):
     from .models import ExamMark, Student, Subject
@@ -46,16 +62,20 @@ def build_exam_results(exam):
         for subject in subjects:
             mark = student_marks.get(subject.pk)
             obtained = mark.marks_obtained if mark else Decimal('0')
-            full = Decimal(str(subject.full_marks))
+            marks_config = get_subject_marks(exam, subject)
+            full = Decimal(str(marks_config.full_marks))
             percentage = (obtained / full * 100) if full else Decimal('0')
             grade, point = get_grade(float(percentage))
-            has_fail = has_fail or grade == 'F'
+            subject_pass_marks = Decimal(str(marks_config.pass_marks))
+            subject_passed = obtained >= subject_pass_marks
+            has_fail = has_fail or not subject_passed
             total_obtained += obtained
             total_full += full
             gpa_points.append(point)
             subject_results.append({
-                'subject': subject, 'obtained': obtained, 'full': subject.full_marks,
+                'subject': subject, 'obtained': obtained, 'full': marks_config.full_marks,
                 'percentage': round(float(percentage), 2), 'grade': grade, 'point': point,
+                'passed': subject_passed, 'pass_marks': marks_config.pass_marks,
             })
 
         overall_percentage = (total_obtained / total_full * 100) if total_full else Decimal('0')

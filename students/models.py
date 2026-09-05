@@ -562,13 +562,45 @@ class Exam(models.Model):
     def __str__(self):
         return f"{self.name} ({self.get_exam_type_display()}) - Class {self.admission_class}"
 
+class SubjectMarkSetting(models.Model):
+    """
+    Full Marks / CQ / MCQ for a specific Institution + Class + Subject + Exam Type.
+    If no row exists for a given exam, the system falls back to the Subject's own
+    global defaults (full_marks/cq_marks/mcq_marks).
+    """
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='mark_settings')
+    admission_class = models.CharField(max_length=10, help_text="e.g. 6, 9, 10")
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='mark_settings')
+    exam_type = models.CharField(max_length=15, choices=Exam.EXAM_TYPE_CHOICES)
+    full_marks = models.PositiveIntegerField(default=100)
+    cq_marks = models.PositiveIntegerField(null=True, blank=True)
+    mcq_marks = models.PositiveIntegerField(null=True, blank=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['institution', 'admission_class', 'subject', 'exam_type'],
+                name='unique_institution_class_subject_examtype',
+            ),
+        ]
+
+    @property
+    def pass_marks(self):
+        return round(self.full_marks * 0.4, 1)
+
+    @property
+    def has_cq_mcq_split(self):
+        return self.cq_marks is not None and self.mcq_marks is not None
+
+    def __str__(self):
+        return f"{self.institution} - Class {self.admission_class} - {self.subject.name} - {self.get_exam_type_display()}"
 class ExamMark(models.Model):
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='marks')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='exam_marks')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     marks_obtained = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-
+    cq_obtained = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    mcq_obtained = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     class Meta:
         constraints = [
             models.UniqueConstraint(

@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 from .curriculum_data import curriculum_for_class
 from .curriculum_apply import apply_curriculum
+from .models import SubjectMarkSetting
 from .models import (
     Student, Subject, Institution, InstitutionAccess, TransferCertificate, Certificate,
     SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
@@ -31,7 +32,7 @@ import json
 from collections import defaultdict
 from datetime import date
 from uuid import uuid4
-from .result_utils import build_exam_results
+from .result_utils import build_exam_results, get_subject_marks
 from .audit import record_audit
 from .permissions import sync_user_department_permissions
 from .models import Student, Subject, Institution, Employee
@@ -1493,28 +1494,73 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
 @login_required
 @permission_required('students.change_subject', raise_exception=True)
 def mark_evaluation_settings(request):
-    subjects = Subject.objects.all().order_by('name')
+    institutions = Institution.objects.all().order_by('name')
+    institution_id = request.GET.get('institution') or request.POST.get('institution') or ''
+    admission_class = request.GET.get('admission_class') or request.POST.get('admission_class') or ''
+    exam_type = request.GET.get('exam_type') or request.POST.get('exam_type') or ''
 
-    if request.method == 'POST':
+    subjects_with_settings = []
+    if institution_id and admission_class and exam_type:
+        subjects = Subject.objects.filter(
+            requirements__institution_id=institution_id,
+            requirements__admission_class=admission_class,
+        ).distinct().order_by('name')
+
+        existing = {
+            s.subject_id: s
+            for s in SubjectMarkSetting.objects.filter(
+                institution_id=institution_id,
+                admission_class=admission_class,
+                exam_type=exam_type,
+            )
+        }
+
+        if request.method == 'POST':
+            for subject in subjects:
+                full_marks = request.POST.get(f'full_marks_{subject.id}', '').strip()
+                cq_marks = request.POST.get(f'cq_marks_{subject.id}', '').strip()
+                mcq_marks = request.POST.get(f'mcq_marks_{subject.id}', '').strip()
+                if not full_marks:
+                    continue
+                try:
+                    SubjectMarkSetting.objects.update_or_create(
+                        institution_id=institution_id,
+                        admission_class=admission_class,
+                        subject=subject,
+                        exam_type=exam_type,
+                        defaults={
+                            'full_marks': int(full_marks),
+                            'cq_marks': int(cq_marks) if cq_marks else None,
+                            'mcq_marks': int(mcq_marks) if mcq_marks else None,
+                        },
+                    )
+                except (TypeError, ValueError):
+                    messages.error(request, f'Invalid marks entered for {subject.name}. Skipped.')
+                    continue
+            messages.success(request, 'Mark evaluation settings updated successfully.')
+            return redirect(
+                f"{reverse('mark_evaluation_settings')}?institution={institution_id}"
+                f"&admission_class={admission_class}&exam_type={exam_type}"
+            )
+
         for subject in subjects:
-            full_marks = request.POST.get(f'full_marks_{subject.id}')
-            cq_marks = request.POST.get(f'cq_marks_{subject.id}', '').strip()
-            mcq_marks = request.POST.get(f'mcq_marks_{subject.id}', '').strip()
+            setting = existing.get(subject.id)
+            subjects_with_settings.append({
+                'subject': subject,
+                'full_marks': setting.full_marks if setting else subject.full_marks,
+                'cq_marks': setting.cq_marks if setting else subject.cq_marks,
+                'mcq_marks': setting.mcq_marks if setting else subject.mcq_marks,
+            })
 
-            try:
-                if full_marks:
-                    subject.full_marks = int(full_marks)
-                subject.cq_marks = int(cq_marks) if cq_marks else None
-                subject.mcq_marks = int(mcq_marks) if mcq_marks else None
-                subject.save(update_fields=['full_marks', 'cq_marks', 'mcq_marks'])
-            except (TypeError, ValueError):
-                messages.error(request, f'Invalid marks entered for {subject.name}. Skipped.')
-                continue
-
-        messages.success(request, 'Mark evaluation settings updated successfully.')
-        return redirect('mark_evaluation_settings')
-
-    return render(request, 'students/mark_evaluation_settings.html', {'subjects': subjects})
+    return render(request, 'students/mark_evaluation_settings.html', {
+        'institutions': institutions,
+        'exam_type_choices': Exam.EXAM_TYPE_CHOICES,
+        'selected_institution': institution_id,
+        'selected_class': admission_class,
+        'selected_exam_type': exam_type,
+        'subjects_with_settings': subjects_with_settings,
+        'institutions_data_json': _institutions_data_json(),
+    })
 
 def _subject_requirement_list_redirect(request):
     """Redirect back to the Subject Assignments list, preserving whatever
@@ -2220,50 +2266,92 @@ def import_exam_marks(request, pk):
             messages.error(request, f'Could not import the file: {exc}')
     return render(request, 'students/import_exam_marks.html', {'exam': exam, 'form': form})
 
-
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
 def enter_marks(request, pk, subject_pk):
     exam = get_object_or_404(Exam, pk=pk)
     subject = get_object_or_404(Subject, pk=subject_pk)
+    marks_config = get_subject_marks(exam, subject)
     students_qs = Student.objects.filter(admission_class=exam.admission_class)
     if exam.section:
         students_qs = students_qs.filter(section__iexact=exam.section.strip())
     students = students_qs.order_by('roll_no', 'name')
-    existing_marks = dict(ExamMark.objects.filter(exam=exam, subject=subject).values_list('student_id', 'marks_obtained'))
+    existing_marks = {
+        m.student_id: m for m in ExamMark.objects.filter(exam=exam, subject=subject)
+    }
 
     if request.method == 'POST':
         saved_count = 0
         skipped_count = 0
         for student in students:
-            value = request.POST.get(f'marks_{student.pk}', '').strip()
-            if value == '':
-                continue
-            try:
-                marks_value = float(value)
-                if marks_value < 0 or marks_value > subject.full_marks:
+            if marks_config.has_cq_mcq_split:
+                cq_value = request.POST.get(f'cq_{student.pk}', '').strip()
+                mcq_value = request.POST.get(f'mcq_{student.pk}', '').strip()
+                if cq_value == '' and mcq_value == '':
+                    continue
+                try:
+                    cq_obtained = float(cq_value) if cq_value != '' else 0
+                    mcq_obtained = float(mcq_value) if mcq_value != '' else 0
+                    if cq_obtained < 0 or cq_obtained > marks_config.cq_marks:
+                        raise ValueError
+                    if mcq_obtained < 0 or mcq_obtained > marks_config.mcq_marks:
+                        raise ValueError
+                except (TypeError, ValueError):
                     skipped_count += 1
                     continue
-            except ValueError:
-                skipped_count += 1
-                continue
-            ExamMark.objects.update_or_create(
-                exam=exam, student=student, subject=subject,
-                defaults={'marks_obtained': marks_value},
-            )
-            saved_count += 1
+                marks_value = cq_obtained + mcq_obtained
+                ExamMark.objects.update_or_create(
+                    exam=exam, student=student, subject=subject,
+                    defaults={
+                        'marks_obtained': marks_value,
+                        'cq_obtained': cq_obtained,
+                        'mcq_obtained': mcq_obtained,
+                    },
+                )
+                saved_count += 1
+            else:
+                value = request.POST.get(f'marks_{student.pk}', '').strip()
+                if value == '':
+                    continue
+                try:
+                    marks_value = float(value)
+                    if marks_value < 0 or marks_value > marks_config.full_marks:
+                        skipped_count += 1
+                        continue
+                except ValueError:
+                    skipped_count += 1
+                    continue
+                ExamMark.objects.update_or_create(
+                    exam=exam, student=student, subject=subject,
+                    defaults={
+                        'marks_obtained': marks_value,
+                        'cq_obtained': None,
+                        'mcq_obtained': None,
+                    },
+                )
+                saved_count += 1
+
         messages.success(request, f'Marks saved for {saved_count} student(s).')
         if skipped_count:
             messages.warning(request, f'{skipped_count} invalid mark(s) were skipped.')
         return redirect('exam_list')
 
-    students_with_marks = [(student, existing_marks.get(student.pk, '')) for student in students]
+    students_with_marks = []
+    for student in students:
+        mark = existing_marks.get(student.pk)
+        students_with_marks.append({
+            'student': student,
+            'marks_obtained': mark.marks_obtained if mark else '',
+            'cq_obtained': mark.cq_obtained if mark and mark.cq_obtained is not None else '',
+            'mcq_obtained': mark.mcq_obtained if mark and mark.mcq_obtained is not None else '',
+        })
+
     return render(request, 'students/enter_marks.html', {
         'exam': exam,
         'subject': subject,
+        'marks_config': marks_config,
         'students_with_marks': students_with_marks,
     })
-
 
 # ---------------- Exam Result Views ----------------
 

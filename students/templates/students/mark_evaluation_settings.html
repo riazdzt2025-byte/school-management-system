@@ -11,11 +11,42 @@
 
 <div class="table-card p-4">
     <div class="alert alert-info small mb-4">
-        Set the Full Marks for each subject. If a subject has separate CQ and MCQ parts, fill both — Pass Marks (40%) will be calculated automatically. Leave CQ/MCQ blank if the subject has a single combined mark.
+        Select Institution, Class, and Exam Type to configure Full Marks / CQ / MCQ for each subject. Pass Marks (40%) is calculated automatically.
     </div>
 
+    <form method="get" class="row g-3 mb-4">
+        <div class="col-md-4">
+            <label class="form-label fw-semibold">Institution</label>
+            <select name="institution" id="id_institution" class="form-select" onchange="this.form.submit()">
+                <option value="">-- Select institution --</option>
+                {% for inst in institutions %}
+                <option value="{{ inst.id }}" {% if selected_institution == inst.id|stringformat:"s" %}selected{% endif %}>{{ inst.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label fw-semibold">Class</label>
+            <select name="admission_class" id="id_admission_class" class="form-select" onchange="this.form.submit()">
+                <option value="">-- Select class --</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label fw-semibold">Exam Type</label>
+            <select name="exam_type" class="form-select" onchange="this.form.submit()">
+                <option value="">-- Select exam type --</option>
+                {% for value, label in exam_type_choices %}
+                <option value="{{ value }}" {% if selected_exam_type == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+
+    {% if subjects_with_settings %}
     <form method="post">
         {% csrf_token %}
+        <input type="hidden" name="institution" value="{{ selected_institution }}">
+        <input type="hidden" name="admission_class" value="{{ selected_class }}">
+        <input type="hidden" name="exam_type" value="{{ selected_exam_type }}">
         <div class="table-responsive">
             <table class="table align-middle">
                 <thead>
@@ -24,35 +55,66 @@
                         <th>Full Marks</th>
                         <th>CQ</th>
                         <th>MCQ</th>
-                        <th>Pass Marks (40%)</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for subject in subjects %}
+                    {% for row in subjects_with_settings %}
                     <tr>
-                        <td>{{ subject.name }} <span class="text-muted small">({{ subject.code }})</span></td>
+                        <td>{{ row.subject.name }} <span class="text-muted small">({{ row.subject.code }})</span></td>
                         <td>
                             <input type="number" min="1" class="form-control" style="width: 100px;"
-                                   name="full_marks_{{ subject.id }}" value="{{ subject.full_marks }}">
+                                   name="full_marks_{{ row.subject.id }}" value="{{ row.full_marks }}">
                         </td>
                         <td>
                             <input type="number" min="0" class="form-control" style="width: 90px;"
-                                   name="cq_marks_{{ subject.id }}" value="{{ subject.cq_marks|default_if_none:'' }}">
+                                   name="cq_marks_{{ row.subject.id }}" value="{{ row.cq_marks|default_if_none:'' }}">
                         </td>
                         <td>
                             <input type="number" min="0" class="form-control" style="width: 90px;"
-                                   name="mcq_marks_{{ subject.id }}" value="{{ subject.mcq_marks|default_if_none:'' }}">
+                                   name="mcq_marks_{{ row.subject.id }}" value="{{ row.mcq_marks|default_if_none:'' }}">
                         </td>
-                        <td class="text-muted">{{ subject.pass_marks }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-
-        <div class="d-flex gap-2 mt-3">
-            <button class="btn btn-navy">Save All</button>
-        </div>
+        <button class="btn btn-navy mt-3">Save All</button>
     </form>
+    {% elif selected_institution and selected_class and selected_exam_type %}
+    <div class="text-muted">No subjects are assigned to this Institution + Class yet. Add them from "Subject Requirements" first.</div>
+    {% endif %}
 </div>
+
+<script>
+(function() {
+    var institutionsData = JSON.parse('{{ institutions_data_json|default:"{}"|escapejs }}');
+    var institutionSelect = document.getElementById('id_institution');
+    var classSelect = document.getElementById('id_admission_class');
+    var selectedClass = '{{ selected_class }}';
+
+    function populateClasses() {
+        var instId = institutionSelect.value;
+        var classes = institutionsData[instId] || [];
+        classSelect.innerHTML = '';
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = classes.length ? '-- Select class --' : '-- Select institution first --';
+        classSelect.appendChild(placeholder);
+        classes.forEach(function(cls) {
+            var opt = document.createElement('option');
+            opt.value = cls;
+            opt.textContent = 'Class ' + cls;
+            if (cls === selectedClass) {
+                opt.selected = true;
+            }
+            classSelect.appendChild(opt);
+        });
+    }
+
+    if (institutionSelect && classSelect) {
+        populateClasses();
+        institutionSelect.addEventListener('change', populateClasses);
+    }
+})();
+</script>
 {% endblock %}
