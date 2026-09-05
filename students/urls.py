@@ -55,6 +55,7 @@ urlpatterns = [
     path('exams/<int:pk>/publish-toggle/', views.toggle_publish_exam, name='toggle_publish_exam'),
     path('exams/<int:pk>/select-subject/', views.select_marks_subject, name='select_marks_subject'),
     path('exams/<int:pk>/marks/<int:subject_pk>/', views.enter_marks, name='enter_marks'),
+    path('marks/start/', views.start_entering_marks, name='start_entering_marks'),
     path('exams/<int:pk>/marks/import/', views.import_exam_marks, name='import_exam_marks'),
     path('exams/<int:pk>/seat-plan/', views.seat_plan_list, name='seat_plan_list'),
     path('exams/<int:pk>/seat-plan/generate/', views.generate_seat_plan, name='generate_seat_plan'),

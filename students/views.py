@@ -29,6 +29,7 @@ from django.urls import reverse
 from django.utils import timezone
 import importlib
 import json
+import re
 from collections import defaultdict
 from datetime import date
 from uuid import uuid4
@@ -1490,7 +1491,49 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
             optional_groups.setdefault(req.optional_set_key or 'default', []).append(subject_data)
 
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
+@login_required
+@permission_required('students.add_exammark', raise_exception=True)
+def start_entering_marks(request):
+    institutions = Institution.objects.all().order_by('name')
 
+    if request.method == 'POST':
+        institution_id = request.POST.get('institution')
+        admission_class = request.POST.get('admission_class', '').strip()
+        group = request.POST.get('group', '').strip()
+        exam_type = request.POST.get('exam_type', '').strip()
+        session = request.POST.get('session', '').strip()
+        subject_id = request.POST.get('subject')
+
+        if not all([institution_id, admission_class, exam_type, session, subject_id]):
+            messages.error(request, 'Please fill in all fields before starting.')
+            return redirect('start_entering_marks')
+
+        institution = get_object_or_404(Institution, pk=institution_id)
+        subject = get_object_or_404(Subject, pk=subject_id)
+
+        year_match = re.findall(r'\d{4}', session)
+        year = year_match[-1] if year_match else ''
+        exam_type_display = dict(Exam.EXAM_TYPE_CHOICES).get(exam_type, exam_type)
+        exam_name = f"{exam_type_display} Examination-{year}" if year else f"{exam_type_display} Examination"
+
+        exam, _created = Exam.objects.get_or_create(
+            institution=institution,
+            admission_class=admission_class,
+            group=group,
+            exam_type=exam_type,
+            session=session,
+            defaults={'name': exam_name},
+        )
+
+        return redirect('enter_marks', pk=exam.pk, subject_pk=subject.pk)
+
+    return render(request, 'students/start_entering_marks.html', {
+        'institutions': institutions,
+        'exam_type_choices': Exam.EXAM_TYPE_CHOICES,
+        'group_choices': Student.GROUP_CHOICES,
+        'institutions_data_json': _institutions_data_json(),
+    })
+    
 @login_required
 @permission_required('students.change_subject', raise_exception=True)
 def mark_evaluation_settings(request):

@@ -1,0 +1,147 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Enter Marks - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Enter Marks</h1>
+    </div>
+</div>
+
+<div class="table-card p-4">
+    <div class="alert alert-info small mb-4">
+        Select Institution, Class, Exam Type, and Session, then pick the Subject you want to enter marks for. If this exam hasn't been created yet, it will be created automatically.
+    </div>
+
+    <form method="post" class="row g-3">
+        {% csrf_token %}
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Institution</label>
+            <select name="institution" id="id_institution" class="form-select" required>
+                <option value="">-- Select institution --</option>
+                {% for inst in institutions %}
+                <option value="{{ inst.id }}">{{ inst.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Class</label>
+            <select name="admission_class" id="id_admission_class" class="form-select" required>
+                <option value="">-- Select institution first --</option>
+            </select>
+        </div>
+
+        <div class="col-md-6" id="group-field-wrapper" style="display:none;">
+            <label class="form-label fw-semibold">Group</label>
+            <select name="group" id="id_group" class="form-select">
+                <option value="">-- Select group --</option>
+                {% for value, label in group_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Exam Type</label>
+            <select name="exam_type" id="id_exam_type" class="form-select" required>
+                <option value="">-- Select exam type --</option>
+                {% for value, label in exam_type_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Session</label>
+            <input type="text" name="session" id="id_session" class="form-control" placeholder="e.g. 2026" required>
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label fw-semibold">Subject</label>
+            <select name="subject" id="id_subject" class="form-select" required>
+                <option value="">-- Select class first --</option>
+            </select>
+        </div>
+
+        <div class="col-12">
+            <button class="btn btn-navy">Start Entering Marks</button>
+        </div>
+    </form>
+</div>
+
+<script>
+(function() {
+    var institutionsData = JSON.parse('{{ institutions_data_json|default:"{}"|escapejs }}');
+    var institutionSelect = document.getElementById('id_institution');
+    var classSelect = document.getElementById('id_admission_class');
+    var groupWrapper = document.getElementById('group-field-wrapper');
+    var groupSelect = document.getElementById('id_group');
+    var subjectSelect = document.getElementById('id_subject');
+    var groupClasses = ['9', '10', '11', '12'];
+
+    function toggleGroupField() {
+        var show = groupClasses.indexOf(classSelect.value) !== -1;
+        groupWrapper.style.display = show ? '' : 'none';
+        if (!show) groupSelect.value = '';
+        loadSubjects();
+    }
+
+    function populateClasses() {
+        var instId = institutionSelect.value;
+        var classes = institutionsData[instId] || [];
+        classSelect.innerHTML = '';
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = classes.length ? '-- Select class --' : '-- Select institution first --';
+        classSelect.appendChild(placeholder);
+        classes.forEach(function(cls) {
+            var opt = document.createElement('option');
+            opt.value = cls;
+            opt.textContent = 'Class ' + cls;
+            classSelect.appendChild(opt);
+        });
+        toggleGroupField();
+    }
+
+    function loadSubjects() {
+        var instId = institutionSelect.value;
+        var cls = classSelect.value;
+        if (!instId || !cls) {
+            subjectSelect.innerHTML = '<option value="">-- Select class first --</option>';
+            return;
+        }
+        subjectSelect.innerHTML = '<option value="">-- Loading... --</option>';
+        var url = '{% url "subject_requirements_json" %}?institution=' + encodeURIComponent(instId) +
+                  '&admission_class=' + encodeURIComponent(cls) +
+                  '&group=' + encodeURIComponent(groupSelect.value || '');
+        fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+            var all = (data.mandatory || []).concat(data.conditional || []);
+            Object.keys(data.optional_groups || {}).forEach(function(key) {
+                all = all.concat(data.optional_groups[key]);
+            });
+            subjectSelect.innerHTML = '';
+            if (!all.length) {
+                subjectSelect.innerHTML = '<option value="">-- No subjects assigned to this class --</option>';
+                return;
+            }
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '-- Select subject --';
+            subjectSelect.appendChild(placeholder);
+            all.forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name + ' (' + s.code + ')';
+                subjectSelect.appendChild(opt);
+            });
+        });
+    }
+
+    institutionSelect.addEventListener('change', populateClasses);
+    classSelect.addEventListener('change', toggleGroupField);
+    groupSelect.addEventListener('change', loadSubjects);
+})();
+</script>
+{% endblock %}

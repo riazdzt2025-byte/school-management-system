@@ -3,14 +3,18 @@
 {% block title %}Enter Marks - {{ block.super }}{% endblock %}
 
 {% block extra_style %}
-    .marks-input { width: 110px; }
+    .marks-input { width: 100px; }
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
         <h1>Enter Marks</h1>
-        <div class="subtitle">{{ exam.name }} - {{ subject.name }} (Full Marks: {{ subject.full_marks }}) - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</div>
+        <div class="subtitle">
+            {{ exam.name }} - {{ subject.name }} (Full Marks: {{ marks_config.full_marks }})
+            - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
+            - Pass Marks: {{ marks_config.pass_marks }}
+        </div>
     </div>
 </div>
 
@@ -20,18 +24,33 @@
         <div class="table-responsive">
             <table class="table table-striped mb-0">
                 <thead>
-                    <tr><th>Roll</th><th>Student ID</th><th>Name</th><th>Marks Obtained</th></tr>
+                    <tr>
+                        <th>Roll</th>
+                        <th>Student ID</th>
+                        <th>Name</th>
+                        {% if marks_config.has_cq_mcq_split %}
+                        <th>CQ ({{ marks_config.cq_marks }})</th>
+                        <th>MCQ ({{ marks_config.mcq_marks }})</th>
+                        {% else %}
+                        <th>Marks Obtained</th>
+                        {% endif %}
+                    </tr>
                 </thead>
                 <tbody>
-                    {% for student, mark in students_with_marks %}
+                    {% for row in students_with_marks %}
                     <tr>
-                        <td>{{ student.roll_no }}</td>
-                        <td>{{ student.student_id }}</td>
-                        <td>{{ student.name }}</td>
-                        <td><input type="number" name="marks_{{ student.pk }}" value="{{ mark }}" step="0.01" min="0" max="{{ subject.full_marks }}" class="form-control marks-input"></td>
+                        <td>{{ row.student.roll_no }}</td>
+                        <td>{{ row.student.student_id }}</td>
+                        <td>{{ row.student.name }}</td>
+                        {% if marks_config.has_cq_mcq_split %}
+                        <td><input type="number" name="cq_{{ row.student.pk }}" value="{{ row.cq_obtained }}" step="0.01" min="0" max="{{ marks_config.cq_marks }}" class="form-control marks-input"></td>
+                        <td><input type="number" name="mcq_{{ row.student.pk }}" value="{{ row.mcq_obtained }}" step="0.01" min="0" max="{{ marks_config.mcq_marks }}" class="form-control marks-input"></td>
+                        {% else %}
+                        <td><input type="number" name="marks_{{ row.student.pk }}" value="{{ row.marks_obtained }}" step="0.01" min="0" max="{{ marks_config.full_marks }}" class="form-control marks-input"></td>
+                        {% endif %}
                     </tr>
                     {% empty %}
-                    <tr><td colspan="4" class="text-center py-4">No students found in this class/section.</td></tr>
+                    <tr><td colspan="5" class="text-center py-4">No students found in this class/section.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
