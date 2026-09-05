@@ -251,9 +251,9 @@
                             <th>Name</th>
                             <th>Class</th>
                             <th>Section</th>
+                            <th>Group</th>
                             <th>Roll</th>
                             <th>Gender</th>
-                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -263,9 +263,9 @@
                             <td>{{ student.name }}</td>
                             <td>{{ student.admission_class }}</td>
                             <td>{{ student.section }}</td>
+                            <td>{{ student.get_group_display|default:'-' }}</td>
                             <td>{{ student.roll_no }}</td>
                             <td>{{ student.get_gender_display }}</td>
-                            <td>{{ student.get_status_display }}</td>
                         </tr>
                         {% empty %}
                         <tr><td colspan="7" class="text-center text-muted py-4">No students to show.</td></tr>

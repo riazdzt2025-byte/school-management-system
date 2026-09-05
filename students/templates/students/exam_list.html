@@ -26,7 +26,7 @@
                     <tr>
                         <th>Name</th>
                         <th>Type</th>
-                        <th>Class</th>
+                        <th>Group</th>
                         <th>Session</th>
                         <th>Date</th>
                         <th>Status</th>
@@ -39,6 +39,7 @@
                         <td>{{ exam.name }}</td>
                         <td>{{ exam.get_exam_type_display }}</td>
                         <td>{{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</td>
+                        <td>{{ exam.get_group_display|default:'-' }}</td>
                         <td>{{ exam.session }}</td>
                         <td>{{ exam.exam_date|default:'-' }}</td>
                         <td>

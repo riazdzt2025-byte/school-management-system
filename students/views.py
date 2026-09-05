@@ -1522,6 +1522,7 @@ def start_entering_marks(request):
             group=group,
             exam_type=exam_type,
             session=session,
+            section='',
             defaults={'name': exam_name},
         )
 
@@ -2318,6 +2319,8 @@ def enter_marks(request, pk, subject_pk):
     students_qs = Student.objects.filter(admission_class=exam.admission_class)
     if exam.section:
         students_qs = students_qs.filter(section__iexact=exam.section.strip())
+    if exam.group:
+        students_qs = students_qs.filter(group=exam.group)
     students = students_qs.order_by('roll_no', 'name')
     existing_marks = {
         m.student_id: m for m in ExamMark.objects.filter(exam=exam, subject=subject)

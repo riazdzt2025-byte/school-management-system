@@ -40,6 +40,8 @@ def build_exam_results(exam):
     students = Student.objects.filter(admission_class=exam.admission_class)
     if exam.section:
         students = students.filter(section__iexact=exam.section.strip())
+    if exam.group:
+        students = students.filter(group=exam.group)
     students = students.order_by('roll_no', 'name')
 
     marks = ExamMark.objects.filter(exam=exam).select_related('student', 'subject')
