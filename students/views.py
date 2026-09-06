@@ -20,7 +20,7 @@ from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
     TransferCertificateForm,
     CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
-    ExamForm, EXAM_NAME_SUGGESTIONS, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm,
+    ExamForm, auto_exam_name, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm,
     EmployeeStatusChangeForm, MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
     AdmissionApplicationForm, AdmissionPaymentForm, AttendanceMarkingForm, DailyAttendanceSelectionForm,
 )
@@ -79,20 +79,21 @@ def _class_filter_variants(value):
         variants.add(str(int(value)))
     return list(variants)
 
-def _class_filter_variants(value):
-    """Given a class value like '9' or '09', return all string forms that
-    should be treated as the same class, so filtering works regardless of
-    whether it was stored zero-padded or not."""
-    variants = {value}
-    if value.isdigit():
-        variants.add(value.zfill(2))
-        variants.add(str(int(value)))
-    return list(variants)
+def _scope_students_to_user(request, qs):
+    """Limit a Student queryset to what the current user is allowed to see.
 
-def _filter_qs_for_user(qs, user):
-    if _is_admin(user):
+    Admins/staff see everything. Any user holding an active InstitutionAccess
+    row is scoped by institution instead — that filter is applied by the
+    caller — because Office/Exam/Accounts clerks manage the whole roll,
+    including students admitted by a predecessor or created by a seeder.
+    Only users with no institutional access at all fall back to the historic
+    "students I created" behaviour.
+    """
+    if _is_admin(request.user):
         return qs
-    return qs.none()
+    if InstitutionAccess.objects.filter(user=request.user, is_active=True).exists():
+        return qs
+    return qs.filter(created_by=request.user)
 
 
 def _filter_by_selected_institution(request, qs, field_name='institution'):
@@ -817,8 +818,7 @@ def student_list(request):
     qs = Student.objects.filter(is_archived=False)
     if institution is not None:
         qs = qs.filter(institution=institution)
-    if not _is_admin(request.user):
-        qs = qs.filter(created_by=request.user)
+    qs = _scope_students_to_user(request, qs)
 
     if request.GET.get('all') == '1':
         students = list(qs)
@@ -891,8 +891,7 @@ def download_student_list(request):
     elif institution_id:
         institution = get_object_or_404(Institution, pk=institution_id)
         qs = qs.filter(institution=institution)
-    if not _is_admin(request.user):
-        qs = qs.filter(created_by=request.user)
+    qs = _scope_students_to_user(request, qs)
 
     if request.GET.get('all') != '1':
         if admission_class:
@@ -1323,8 +1322,7 @@ def archived_students(request):
     elif institution_id:
         institution = get_object_or_404(Institution, pk=institution_id)
         qs = qs.filter(institution=institution)
-    if not _is_admin(request.user):
-        qs = qs.filter(created_by=request.user)
+    qs = _scope_students_to_user(request, qs)
 
     students = list(qs.order_by('-archived_at'))
 
@@ -1578,10 +1576,7 @@ def start_entering_marks(request):
         institution = get_object_or_404(Institution, pk=institution_id)
         subject = get_object_or_404(Subject, pk=subject_id)
 
-        year_match = re.findall(r'\d{4}', session)
-        year = year_match[-1] if year_match else ''
-        exam_type_display = dict(Exam.EXAM_TYPE_CHOICES).get(exam_type, exam_type)
-        exam_name = f"{exam_type_display} Examination-{year}" if year else f"{exam_type_display} Examination"
+        exam_name = auto_exam_name(exam_type, session)
 
         exam, _created = Exam.objects.get_or_create(
             institution=institution,
@@ -2245,7 +2240,6 @@ def add_exam(request):
         return redirect('exam_list')
     return render(request, 'students/add_exam.html', {
         'form': form,
-        'exam_name_suggestions': EXAM_NAME_SUGGESTIONS,
         'institutions_data_json': _institutions_data_json(),
     })
 
@@ -2262,7 +2256,6 @@ def edit_exam(request, pk):
     return render(request, 'students/add_exam.html', {
         'form': form,
         'exam': exam,
-        'exam_name_suggestions': EXAM_NAME_SUGGESTIONS,
         'institutions_data_json': _institutions_data_json(),
     })
 

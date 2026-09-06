@@ -18,7 +18,7 @@ from .models import (
 	AdmissionApplication, AuditLog, AttendanceRecord, Employee, EmployeeStatusLog, Exam, ExamMark, Institution, InstitutionAccess,
 	MoneyReceipt, PromotionBatch, Student, Subject,
 )
-from .forms import ExamForm, EXAM_NAME_SUGGESTIONS, StudentForm
+from .forms import ExamForm, StudentForm, auto_exam_name
 from .permissions import ensure_default_groups
 
 
@@ -166,10 +166,10 @@ class ExamWorkflowTests(TestCase):
 		)
 		self.subject = Subject.objects.create(code='ENG', name='English', full_marks=100)
 		self.exam = Exam.objects.create(
-			name='Mid Term', exam_type='MID_TERM', institution=self.institution,
+			name='Mid Term', exam_type='MID_TERM_1', institution=self.institution,
 			admission_class='6', section='A', session='2026',
 		)
-		user = get_user_model().objects.create_user(username='exam-user', password='password')
+		self.user = get_user_model().objects.create_user(username='exam-user', password='password')
 		exammark_content_type = ContentType.objects.get_for_model(ExamMark)
 		exam_content_type = ContentType.objects.get_for_model(Exam)
 		add_exammark, _ = Permission.objects.get_or_create(
@@ -180,8 +180,12 @@ class ExamWorkflowTests(TestCase):
 			content_type=exam_content_type,
 			codename='change_exam',
 		)
-		user.user_permissions.add(add_exammark, change_exam)
-		self.client.force_login(user)
+		add_exam_perm, _ = Permission.objects.get_or_create(
+			content_type=exam_content_type,
+			codename='add_exam',
+		)
+		self.user.user_permissions.add(add_exammark, change_exam, add_exam_perm)
+		self.client.force_login(self.user)
 
 	def workbook_upload(self, rows):
 		workbook = Workbook()
