@@ -2298,10 +2298,18 @@ def select_marks_subject(request, pk):
 def import_exam_marks(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
     form = ExamExcelImportForm(request.POST or None, request.FILES or None)
+    allowed_subjects, subjects_filtered = get_exam_subjects(exam)
+    allowed_subject_ids = {s.pk for s in allowed_subjects}
+    context = {
+        'exam': exam,
+        'form': form,
+        'allowed_subjects': allowed_subjects,
+        'subjects_filtered': subjects_filtered,
+    }
     if request.method == 'POST' and form.is_valid():
         if openpyxl is None:
             messages.error(request, 'Excel import is unavailable because openpyxl is not installed.')
-            return render(request, 'students/import_exam_marks.html', {'exam': exam, 'form': form})
+            return render(request, 'students/import_exam_marks.html', context)
         try:
             sheet = openpyxl.load_workbook(request.FILES['excel_file'], data_only=True).active
             headers = [str(value).strip().lower() if value is not None else '' for value in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), ())]
@@ -2334,11 +2342,17 @@ def import_exam_marks(request, pk):
                             exam.section
                             and student.section.strip().lower() != exam.section.strip().lower()
                         )
+                        or (exam.group and student.group != exam.group)
                     ):
-                        raise ValueError('student is not a member of this exam class/section')
+                        raise ValueError('student is not a member of this exam class/section/group')
                     subject = Subject.objects.filter(code__iexact=subject_code).first()
                     if not subject:
                         raise ValueError('subject code was not found')
+                    if subjects_filtered and subject.pk not in allowed_subject_ids:
+                        raise ValueError(
+                            f'"{subject.name}" is not assigned to Class {exam.admission_class}'
+                            + (f' ({exam.get_group_display()})' if exam.group else '')
+                        )
                     marks_value = float(marks)
                     if marks_value != marks_value or marks_value in (float('inf'), float('-inf')):
                         raise ValueError('marks must be numeric')
@@ -2350,7 +2364,7 @@ def import_exam_marks(request, pk):
 
             if errors:
                 messages.error(request, 'Import rejected: ' + ' | '.join(errors[:10]))
-                return render(request, 'students/import_exam_marks.html', {'exam': exam, 'form': form})
+                return render(request, 'students/import_exam_marks.html', context)
 
             with transaction.atomic():
                 for student, subject, marks_value in validated_rows:
@@ -2362,7 +2376,7 @@ def import_exam_marks(request, pk):
             return redirect('exam_list')
         except Exception as exc:
             messages.error(request, f'Could not import the file: {exc}')
-    return render(request, 'students/import_exam_marks.html', {'exam': exam, 'form': form})
+    return render(request, 'students/import_exam_marks.html', context)
 
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
