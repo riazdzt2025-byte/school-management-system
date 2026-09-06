@@ -5,3 +5,7 @@ db.sqlite3
 staticfiles/
 *.log
 .DS_Store
+
+db.sqlite3.backup
+production_full_dump.json
+production_students_dump.json
