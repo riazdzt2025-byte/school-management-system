@@ -4,12 +4,27 @@
 
 {% block content %}
 <div class="page-header">
-    <div><h1>Import Exam Marks</h1></div>
+    <div>
+        <h1>Import Exam Marks</h1>
+        <div class="subtitle">
+            {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if exam.group %} &middot; {{ exam.get_group_display }} group{% endif %}
+        </div>
+    </div>
 </div>
 
 <div class="table-card p-4">
     <p class="text-muted">Columns: Student ID, Subject Code, Marks</p>
     <p class="text-muted">Marks must be between 0 and the subject full marks. The complete upload is rejected if any row is invalid.</p>
+
+    {% if subjects_filtered %}
+    <div class="alert alert-light border small">
+        <strong>Accepted subject codes</strong> for Class {{ exam.admission_class }}{% if exam.group %} &ndash; {{ exam.get_group_display }} group{% endif %}:
+        {% for subject in allowed_subjects %}<span class="badge bg-secondary">{{ subject.code }}</span> {{ subject.name }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+        <div class="mt-1 text-muted">Rows using any other subject code will be rejected.</div>
+    </div>
+    {% else %}
+    <p class="text-muted small">No subject assignments are configured for this class yet, so any valid subject code is accepted.</p>
+    {% endif %}
     {% if messages %}
         {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
     {% endif %}
