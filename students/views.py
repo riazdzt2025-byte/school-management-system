@@ -68,6 +68,7 @@ def _selected_institution_for_request(request):
         return None
     return institution
 
+
 def _class_filter_variants(value):
     """Given a class value like '9' or '09', return all string forms that
     should be treated as the same class, so filtering works regardless of
@@ -77,7 +78,7 @@ def _class_filter_variants(value):
         variants.add(value.zfill(2))
         variants.add(str(int(value)))
     return list(variants)
-
+    
 def _filter_qs_for_user(qs, user):
     if _is_admin(user):
         return qs
