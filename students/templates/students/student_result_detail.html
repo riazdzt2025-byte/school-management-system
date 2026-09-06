@@ -21,10 +21,10 @@
         </thead>
         <tbody>
             {% for sr in result.subject_results %}
-            <tr{% if not sr.passed and not sr.absent %} class="table-danger"{% endif %}>
+            <tr{% if not sr.passed %} class="table-danger"{% endif %}>
                 <td>{{ sr.subject.name }}</td>
                 <td>{{ sr.full }}</td>
-                <td>{% if sr.absent %}&mdash; <span class="text-muted small">(not entered)</span>{% else %}{{ sr.obtained }}{% endif %}</td>
+                <td>{% if sr.absent %}&mdash; <span class="text-muted small">(no mark entered)</span>{% else %}{{ sr.obtained }}{% endif %}</td>
                 <td class="small">
                     {% for part in sr.parts %}
                     <span class="{% if not part.passed %}text-danger fw-semibold{% endif %}">
@@ -55,8 +55,8 @@
         <strong>Position:</strong> {{ result.position|default:'-' }}
         {% if result.absent_subject_count %}&nbsp; <strong>Absent subjects:</strong> {{ result.absent_subject_count }}{% endif %}
     </p>
-    <p class="text-muted small">Only subjects with an entered mark count towards the total and the GPA; a subject left
-    blank is shown as &mdash; and is treated as absent, not as zero.</p>
+    <p class="text-muted small">A subject left blank shows as &mdash; rather than 0, but it is still graded F and
+    counted as 0 out of its Full Marks &mdash; a candidate who did not sit a subject has not passed it.</p>
     <a href="{% url 'result_card' exam.pk result.student.pk %}" class="btn btn-navy">Print Result Card</a>
     <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-outline-navy">Back</a>
 </div>

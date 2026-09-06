@@ -1057,3 +1057,78 @@ class SSCGroupAlignmentTests(TestCase):
 		registration.student = self.student
 		registration.save()
 		self.assertEqual(registration.get_group_display(), 'Science')
+
+
+class AbsentSubjectRulesTests(TestCase):
+	"""NCTB/SSC reading: not sitting an assigned subject is a fail, not a free pass."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Absent School', classes='9')
+		self.user = get_user_model().objects.create_superuser(username='absent-admin', password='password')
+		self.client.force_login(self.user)
+		self.physics = Subject.objects.create(code='PHYA', name='Physics', full_marks=100)
+		self.math = Subject.objects.create(code='MTXA', name='Higher Math', full_marks=100)
+		from .models import SubjectRequirement
+		for subject in (self.physics, self.math):
+			# Group-neutral assignments, so both subjects are columns even when a
+			# student has no mark in one of them.
+			SubjectRequirement.objects.create(
+				institution=self.institution, admission_class='9', group='',
+				subject=subject, requirement_type='MANDATORY',
+			)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='9', session='2026', is_published=True,
+		)
+		self.partial = Student.objects.create(
+			institution=self.institution, student_id='A001', name='Half Present',
+			admission_class='9', section='A', roll_no=1, admission_year=2026,
+		)
+		self.never = Student.objects.create(
+			institution=self.institution, student_id='A002', name='Totally Absent',
+			admission_class='9', section='A', roll_no=2, admission_year=2026,
+		)
+		ExamMark.objects.create(
+			exam=self.exam, student=self.partial, subject=self.physics, marks_obtained=95,
+		)
+
+	def test_unentered_subject_is_graded_f_and_makes_the_result_fail(self):
+		result = compute_first_result(self.exam)
+		self.assertEqual(result['student'], self.partial)
+		self.assertEqual(result['status'], 'Fail')
+		self.assertEqual(str(result['gpa']), '0.00')
+		absent_row = [row for row in result['subject_results'] if row['absent']][0]
+		self.assertEqual(absent_row['subject'], self.math)
+		self.assertEqual(absent_row['grade'], 'F')
+		self.assertEqual(absent_row['obtained'], 0)
+		# the missed subject is counted as 0 / 100, so the percentage tells the truth
+		self.assertEqual(result['total_obtained'], 95)
+		self.assertEqual(result['total_full'], 200)
+
+	def test_a_dash_is_printed_for_the_absent_subject_not_a_zero(self):
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		content = response.content.decode()
+		self.assertIn('absent-mark', content)
+		self.assertIn('no mark entered - counted as F', content)
+
+	def test_student_with_no_marks_anywhere_is_no_marks_not_fail(self):
+		"""Nobody sat this exam: an attendance problem, not a graded result."""
+		result = [r for r in self._results() if r['student'] == self.never][0]
+		self.assertEqual(result['status'], 'No Marks')
+		self.assertIsNone(result['gpa'])
+		self.assertIsNone(result['position'])
+
+	def test_absent_rule_can_be_switched_off(self):
+		from django.test import override_settings
+		with override_settings(EXAM_ABSENT_SUBJECT_FAILS=False):
+			result = compute_first_result(self.exam)
+		self.assertEqual(result['status'], 'Pass')
+		self.assertEqual(result['total_full'], 100)
+		absent_row = [row for row in result['subject_results'] if row['absent']][0]
+		self.assertEqual(absent_row['grade'], '-')
+		self.assertIsNone(absent_row['obtained'])
+
+	def _results(self):
+		from .result_utils import build_exam_results
+		_, results = build_exam_results(self.exam)
+		return results

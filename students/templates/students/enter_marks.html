@@ -56,8 +56,8 @@
         Only the subject total is checked against the pass mark. Tick <em>Each part must pass</em> in
         Mark Evaluation Settings to fail a subject on a single part.
         {% endif %}
-        <div class="text-muted mt-1">Leave a box empty when the student did not sit that paper &mdash; an empty box is
-        shown as a dash on the result, a 0 is a real mark of zero.</div>
+        <div class="text-muted mt-1">Leave a box empty when the student did not sit that paper: the result shows a dash
+        (never a 0), but a subject with no mark at all is graded F and makes the whole result Fail.</div>
     </div>
     {% endif %}
 
@@ -117,7 +117,8 @@
             </table>
         </div>
     </div>
-    <div class="text-muted small mt-2">{{ total_students }} student(s) listed &middot; blank boxes are left untouched.</div>
+    <div class="text-muted small mt-2">{{ total_students }} student(s) listed &middot; a blank box saves nothing, so an
+    entirely blank row leaves the student absent in this subject.</div>
     <button class="btn btn-navy mt-3">Save Marks</button>
     <a class="btn btn-outline-navy mt-3" href="{% url 'select_marks_subject' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}">Back to Subjects</a>
     <a class="btn btn-outline-navy mt-3" href="{% url 'exam_list' %}">Exam List</a>

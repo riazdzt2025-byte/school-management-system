@@ -52,8 +52,8 @@
                     <td>{{ r.student.name }}</td>
                     {% for sr in r.subject_results %}
                     <td class="{% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
-                        title="{% if sr.absent %}not entered{% else %}Pass mark {{ sr.pass_marks }}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
-                        {% if sr.absent %}&mdash;{% else %}{{ sr.obtained }}{% if not sr.passed %} *{% endif %}{% endif %}
+                        title="{% if sr.absent %}no mark entered - counted as F{% else %}Pass mark {{ sr.pass_marks }}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
+                        {% if sr.absent %}&mdash;{% else %}{{ sr.obtained }}{% endif %}{% if not sr.passed %} *{% endif %}
                     </td>
                     {% endfor %}
                     <td>{% if r.has_marks %}{{ r.total_obtained }}{% else %}-{% endif %}</td>
@@ -70,7 +70,10 @@
 </div>
 
 <p class="text-muted small mt-2 d-print-none">
-    &mdash; = the student was not marked for that subject (not the same as 0).
+    &mdash; = no mark entered for that subject. It is never shown as 0, but it is
+    graded <strong>F</strong> and counted as 0 out of its Full Marks, so the student's
+    result becomes Fail with GPA 0.00 (set <code>EXAM_ABSENT_SUBJECT_FAILS=False</code> to
+    leave such subjects out of the result instead).
     * = the subject did not pass (hover a cell for the part breakdown and the pass mark).
 </p>
 {% endblock %}

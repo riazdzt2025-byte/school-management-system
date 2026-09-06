@@ -136,6 +136,22 @@ def get_grade(percentage):
 ABSENT = '-'
 
 
+def absent_subject_fails_result():
+    """Should a subject with no mark at all fail the student?
+
+    This is the NCTB/SSC reading: a candidate who does not sit an assigned
+    subject has not passed it, so the subject is graded F and the result is
+    Fail — a blank box is not a free exemption. Set
+    ``EXAM_ABSENT_SUBJECT_FAILS=False`` (environment variable, see
+    ``.env.example``) to go back to ignoring un-entered subjects entirely:
+    then the dash stays a dash, the subject is left out of the total and the
+    student can still pass on the papers they sat.
+    """
+    from django.conf import settings
+
+    return getattr(settings, 'EXAM_ABSENT_SUBJECT_FAILS', True)
+
+
 def _part_breakdown(mark, marks_config):
     """Per-part detail for one student's mark.
 
@@ -171,6 +187,16 @@ def compute_subject_result(mark, marks_config):
     0 is counted and fails the subject.
     """
     if mark is None:
+        if absent_subject_fails_result():
+            # Not entered = the paper was not passed: graded F and counted as
+            # 0 out of Full Marks, so the total and the percentage tell the
+            # whole story. The cell still shows a dash, never a 0.
+            return {
+                'obtained': Decimal('0'), 'full': marks_config.full_marks,
+                'percentage': 0.0, 'grade': 'F', 'point': Decimal('0.00'),
+                'passed': False, 'absent': True, 'failed_parts': [],
+                'parts': [], 'pass_marks': marks_config.pass_marks,
+            }
         return {
             'obtained': None, 'full': marks_config.full_marks,
             'percentage': None, 'grade': ABSENT, 'point': None,
@@ -248,7 +274,10 @@ def build_exam_results(exam):
             marks_config = get_subject_marks(exam, subject)
             result = compute_subject_result(student_marks.get(subject.pk), marks_config)
             result['subject'] = subject
-            if not result['absent']:
+            counted = not result['absent'] or result['obtained'] is not None
+            if counted:
+                # An absent subject arrives here as 0 / Full Marks and fails,
+                # which is what drags the result down to F + GPA 0.00.
                 total_obtained += result['obtained']
                 total_full += Decimal(str(result['full']))
                 has_fail = has_fail or not result['passed']
@@ -258,8 +287,10 @@ def build_exam_results(exam):
         attempted = [row for row in subject_results if not row['absent']]
         overall_percentage = (total_obtained / total_full * 100) if total_full else Decimal('0')
         if not attempted:
-            # Nothing to print a mark for — either the student never entered the
-            # exam, or their only rows sit in subjects that are not part of it.
+            # No mark entered anywhere: the student did not sit this exam at
+            # all. That stays 'No Marks' rather than 'Fail' — a completely
+            # absent candidate is an attendance problem, not a graded result,
+            # and must not appear in the ranking with a fabricated 0.00 GPA.
             overall_gpa, overall_grade, status = None, ABSENT, 'No Marks'
         elif has_fail:
             overall_gpa, overall_grade, status = Decimal('0.00'), 'F', 'Fail'

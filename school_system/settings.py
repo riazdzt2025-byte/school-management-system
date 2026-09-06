@@ -142,6 +142,13 @@ MAILERS = {
     },
 }
 
+# NCTB/SSC reading of an un-entered subject: a candidate who did not sit an
+# assigned subject has not passed it, so that subject is graded F and the
+# result becomes Fail (GPA 0.00). Set EXAM_ABSENT_SUBJECT_FAILS=False to ignore
+# un-entered subjects instead — they then print a dash and stay out of the
+# total. See RESULT_PUBLISHING_GUIDE.md.
+EXAM_ABSENT_SUBJECT_FAILS = os.environ.get('EXAM_ABSENT_SUBJECT_FAILS', 'True') == 'True'
+
 SCHOOL_INFO = {
     'name': 'Principal Kazi Faruky School And College',
     'address': 'Rakhalia, Raipur, Lakshmipur',

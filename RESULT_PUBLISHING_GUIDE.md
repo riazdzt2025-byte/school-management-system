@@ -64,6 +64,18 @@ A part that is configured but left blank for a student **counts as a failed part
 That is the difference between "student did not sit the practical" and "we forgot to
 enter the practical": both are missing marks, and neither may be read as a pass.
 
+**A subject with no mark entered at all also fails** (the NCTB/SSC reading): the
+result sheet prints a dash for it, never a 0, but the subject is graded **F** and
+counted as 0 out of its Full Marks, so the student's result becomes **Fail with GPA
+0.00**. Not sitting a paper is not the same as scoring nothing on it — the dash keeps
+that visible on paper — but it is not an exemption either. To go back to leaving
+un-entered subjects out of the total entirely, set `EXAM_ABSENT_SUBJECT_FAILS=False`
+in the environment; nothing else about the dash/zero distinction changes.
+
+The one exception is a student with **no marks in any subject**: they are listed as
+`No Marks`, left unranked and not counted as Fail — nobody sat the exam, nobody
+should get a fabricated GPA 0.00 in the position list.
+
 ## 3. Create the exam
 
 `Exam → Add Exam`. Class, Section and Group are dropdowns; the exam **name is
@@ -87,8 +99,9 @@ Two routes, same screens:
 Rules that matter:
 
 - **Leave a box empty when the student did not sit that paper. Never type 0.**
-  A blank is stored as "nothing entered" and prints a dash (—) on the result;
-  a 0 is a real mark of zero, which fails the subject.
+  A blank is stored as "nothing entered" and prints a dash (—) on the result, while a
+  0 is a real mark of zero. Both fail the subject (see the pass rules), but only the
+  0 claims the student sat the paper and scored nothing — keep the record truthful.
 - Boxes are per configured part (CQ / MCQ / Practical / Weekly Test) and the
   total is added up for you. Re-saving a row overwrites it; nothing is appended.
 - Invalid entries are reported per student and skipped, the rest still saves.
@@ -100,7 +113,8 @@ one row per (student × subject assigned to this exam), plus *How to fill*,
 *Subjects* (this exam's Full Marks, parts and pass marks) and *Students* sheets.
 Fill the Marks column and upload it back:
 
-- a row with a blank Marks cell is skipped, not rejected;
+- a row with a blank Marks cell is skipped (the student stays absent in that subject,
+  which still fails the subject), not rejected;
 - an unknown student ID, a student outside the exam's class/section/group, an
   unknown or unassigned subject code, a duplicate row, or a mark above this exam's
   Full Marks **rejects the whole upload** — nothing is partially imported.
@@ -124,8 +138,10 @@ Read them in this order:
    marks sit only in unassigned subjects must not be ranked.
 4. **One result card** — print preview, because that is what parents see.
 
-A student with no entered marks at all shows `No Marks`, is left unranked, and does
-not drag anyone else's average down.
+A student with no entered marks at all shows `No Marks` and is left unranked. A
+student who sat some subjects but not others shows `Fail` with the missed subjects as
+dashes — read those dashes before publishing, because a box left empty by mistake costs
+a student their whole result.
 
 ## 6. Publish
 
