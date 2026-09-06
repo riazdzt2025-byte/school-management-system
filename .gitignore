@@ -15,3 +15,4 @@ production_students_dump.json
 temp*.json
 temp_*.txt
 test_*.txt
+.venv/

@@ -25,6 +25,11 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 # ALLOWED_HOSTS: comma-separated list via env var, e.g. "myapp.onrender.com,mydomain.com"
 _allowed_hosts = os.environ.get('ALLOWED_HOSTS', '')
 ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(',') if h.strip()] or ['*']
+# CSRF_TRUSTED_ORIGINS: comma-separated origins including scheme,
+# e.g. "https://myapp.onrender.com,https://*.e2b.app"
+_csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
+
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 INSTALLED_APPS = [
