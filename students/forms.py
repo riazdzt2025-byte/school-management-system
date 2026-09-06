@@ -233,7 +233,37 @@ class CertificateForm(forms.ModelForm):
         }
 
 
+def _ssc_group_label(code):
+    return dict(SSCRegistration.GROUP_CHOICES).get(code, code)
+
+
 class SSCRegistrationForm(forms.ModelForm):
+    """SSC board registration.
+
+    The group is checked against the student's own group: the two are stored on
+    different tables and used to be stored with different codes, which let a
+    Science student be registered under Business Studies without any warning.
+    """
+
+    def __init__(self, *args, student=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.forced_student = student
+        if not self.instance.pk and student and student.group:
+            self.fields['group'].initial = student.group
+
+    def clean(self):
+        cleaned = super().clean()
+        student = self.forced_student or getattr(self.instance, 'student', None)
+        group = cleaned.get('group')
+        if student and group and student.group and student.group != group:
+            self.add_error(
+                'group',
+                f'This student is {student.get_group_display()} in the school record, '
+                f'not {_ssc_group_label(group)}. '
+                'Fix the student group or register the matching board group.',
+            )
+        return cleaned
+
     class Meta:
         model = SSCRegistration
         fields = ['registration_number', 'roll_number', 'session', 'group', 'subjects', 'board', 'center']

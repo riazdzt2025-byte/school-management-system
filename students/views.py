@@ -2093,7 +2093,7 @@ def add_ssc_registration(request, pk):
     if hasattr(student, 'ssc_registration'):
         messages.info(request, "This student is already registered for SSC.")
         return redirect('ssc_registration_list')
-    form = SSCRegistrationForm(request.POST or None)
+    form = SSCRegistrationForm(request.POST or None, student=student)
     if request.method == 'POST' and form.is_valid():
         registration = form.save(commit=False)
         registration.student = student

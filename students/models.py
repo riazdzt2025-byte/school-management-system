@@ -5,6 +5,10 @@ from uuid import uuid4
 from django.core.serializers.json import DjangoJSONEncoder
 
 
+# Board groups offered at SSC level, in Student.GROUP_CHOICES codes.
+SSC_GROUP_CODES = ('SCI', 'BUS', 'HUM')
+
+
 class Institution(models.Model):
     name = models.CharField(max_length=200, unique=True)
     classes = models.CharField(
@@ -559,11 +563,20 @@ class Certificate(models.Model):
 
 
 class SSCRegistration(models.Model):
+    # Same codes as Student.GROUP_CHOICES on purpose: the SSC board entry and
+    # the school record have to be comparable, and with a private set of codes
+    # ('SCIENCE' vs 'SCI') every join on group silently matched nothing.
     GROUP_CHOICES = [
-        ('SCIENCE', 'Science'),
-        ('COMMERCE', 'Business Studies'),
-        ('ARTS', 'Humanities'),
+        (code, label) for code, label in Student.GROUP_CHOICES
+        if code in SSC_GROUP_CODES
     ]
+    # Legacy board codes that predate the shared list, kept so old rows can
+    # still be read and mapped by the 0032 data migration.
+    LEGACY_GROUP_CODE_MAP = {
+        'SCIENCE': 'SCI',
+        'COMMERCE': 'BUS',
+        'ARTS': 'HUM',
+    }
     BOARD_CHOICES = [
         ('DHAKA', 'Dhaka Board'),
         ('CHATTOGRAM', 'Chattogram Board'),
