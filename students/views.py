@@ -68,6 +68,15 @@ def _selected_institution_for_request(request):
         return None
     return institution
 
+def _class_filter_variants(value):
+    """Given a class value like '9' or '09', return all string forms that
+    should be treated as the same class, so filtering works regardless of
+    whether it was stored zero-padded or not."""
+    variants = {value}
+    if value.isdigit():
+        variants.add(value.zfill(2))
+        variants.add(str(int(value)))
+    return list(variants)
 
 def _filter_qs_for_user(qs, user):
     if _is_admin(user):
@@ -805,7 +814,7 @@ def student_list(request):
     elif institution_id or institution is not None:
         qs = qs.filter(institution=institution) if institution is not None else qs
         if admission_class:
-            qs = qs.filter(admission_class=admission_class)
+            qs = qs.filter(admission_class__in=_class_filter_variants(admission_class))
         if section:
             qs = qs.filter(section__iexact=section.strip())
         if group:
@@ -876,7 +885,7 @@ def download_student_list(request):
 
     if request.GET.get('all') != '1':
         if admission_class:
-            qs = qs.filter(admission_class=admission_class)
+            qs = qs.filter(admission_class__in=_class_filter_variants(admission_class))
         if section:
             qs = qs.filter(section__iexact=section.strip())
         if group:
