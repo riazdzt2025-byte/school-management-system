@@ -1514,25 +1514,48 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
 
 
-def get_exam_subjects(exam):
+def get_exam_subjects(exam, group=None):
     """Subjects that actually apply to this exam's institution + class + group.
 
     Marks entry must be group-aware: a Science exam should not offer Business
     Studies. Falls back to every subject when no SubjectRequirement rows are
     configured yet, so marks entry never gets blocked on an unconfigured class.
 
-    Returns (subjects_queryset_or_list, is_filtered).
+    ``group`` overrides the exam's own group, for exams that were created
+    without one (the marks pages then let the user pick a group). When neither
+    the exam nor the caller specifies a group, every group's subjects for that
+    class are returned.
+
+    Returns (subjects_queryset, is_filtered).
     """
+    effective_group = (group if group is not None else exam.group) or ''
+
     if exam.institution_id:
         reqs = SubjectRequirement.objects.filter(
             institution_id=exam.institution_id,
             admission_class=str(exam.admission_class),
-        ).filter(Q(group='') | Q(group=exam.group or ''))
+        )
+        if effective_group:
+            # Group-neutral subjects (Bangla, English...) apply to every group.
+            reqs = reqs.filter(Q(group='') | Q(group=effective_group))
         subject_ids = list(reqs.values_list('subject_id', flat=True).distinct())
         if subject_ids:
             return Subject.objects.filter(pk__in=subject_ids).order_by('name'), True
 
     return Subject.objects.all().order_by('name'), False
+
+
+def get_exam_group_choices(exam):
+    """Groups configured for this exam's institution + class, for the picker."""
+    if not exam.institution_id:
+        return []
+    codes = set(
+        SubjectRequirement.objects.filter(
+            institution_id=exam.institution_id,
+            admission_class=str(exam.admission_class),
+        ).exclude(group='').values_list('group', flat=True).distinct()
+    )
+    return [(code, label) for code, label in Student.GROUP_CHOICES if code in codes]
 
 
 @login_required
@@ -2274,7 +2297,17 @@ def toggle_publish_exam(request, pk):
 @permission_required('students.add_exammark', raise_exception=True)
 def select_marks_subject(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
-    subjects, is_filtered = get_exam_subjects(exam)
+
+    # Exams created without a group can be narrowed down here instead.
+    group_choices = get_exam_group_choices(exam)
+    valid_group_codes = {code for code, _ in group_choices}
+    selected_group = ''
+    if not exam.group:
+        requested = (request.POST.get('group') or request.GET.get('group') or '').strip()
+        if requested in valid_group_codes:
+            selected_group = requested
+
+    subjects, is_filtered = get_exam_subjects(exam, group=selected_group or None)
     allowed_ids = {s.pk for s in subjects}
 
     if request.method == 'POST':
@@ -2290,6 +2323,10 @@ def select_marks_subject(request, pk):
         'exam': exam,
         'subjects': subjects,
         'is_filtered': is_filtered,
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': dict(group_choices).get(selected_group, ''),
+        'show_group_picker': not exam.group and bool(group_choices),
     })
 
 
