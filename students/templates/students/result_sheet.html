@@ -1,10 +1,6 @@
 {% extends 'students/base.html' %}
 
-{% block title %}Result Sheet - {{ block.super }}<p class="text-muted small mt-2 d-print-none">
-    &mdash; = the student was not marked for that subject (not the same as 0).
-    * = the subject did not pass (hover a cell for the part breakdown and the pass mark).
-</p>
-{% endblock %}
+{% block title %}Result Sheet - {{ block.super }}{% endblock %}
 
 {% block print_subtitle %}Result Sheet - {{ exam.name }}{% endblock %}
 
@@ -72,4 +68,9 @@
         </table>
     </div>
 </div>
+
+<p class="text-muted small mt-2 d-print-none">
+    &mdash; = the student was not marked for that subject (not the same as 0).
+    * = the subject did not pass (hover a cell for the part breakdown and the pass mark).
+</p>
 {% endblock %}

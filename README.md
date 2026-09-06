@@ -69,7 +69,19 @@ A web-based Student Management System built with Python and Django, inspired by 
 ## Project Structure
 <img width="466" height="276" alt="image" src="https://github.com/user-attachments/assets/c0c7d0f9-d3b7-4762-b92b-50d41ef1a631" />
 
+## Documentation
+
+- [`RESULT_PUBLISHING_GUIDE.md`](RESULT_PUBLISHING_GUIDE.md) — marks, CQ/MCQ/Practical/Weekly Test split,
+  pass rules, publishing results, and the Excel import template.
+- [`DEPLOY_NOTES.md`](DEPLOY_NOTES.md) — what to check after a deploy to Render, including the
+  duplicate-subject cleanup.
+
 ## How to Run Locally
+
+`requirements.txt` pins Django 6.1, which needs **Python 3.12+**. On Python 3.11
+install Django 5.2 instead (`pip install "Django>=5.2,<6"`) — this project uses no
+6.x-only API, and the test suite passes on both.
+
 1. Clone the repository
    ```
    git clone https://github.com/riazdzt2025-byte/school-management-system.git
@@ -95,9 +107,17 @@ A web-based Student Management System built with Python and Django, inspired by 
    ```
    python manage.py runserver
    ```
-7. Open in browser
+7. Run the test suite
+   ```
+   python manage.py test students
+   ```
+8. Open in browser
    - Main site: http://127.0.0.1:8000/
    - Admin panel: http://127.0.0.1:8000/admin/
+
+Behind an HTTPS reverse proxy (Render, Nginx) set `TRUST_FORWARDED_PROTO=True`
+and `CSRF_TRUSTED_ORIGINS=https://your-host` — without them, login POSTs fail with
+a CSRF 403. See [`.env.example`](.env.example).
 
 ## Roadmap
 - [ ] Enforce the exam publish flag on every result view and result-card endpoint
