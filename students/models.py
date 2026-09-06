@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from uuid import uuid4
 from django.core.serializers.json import DjangoJSONEncoder
@@ -321,7 +322,88 @@ class AdmissionApplication(models.Model):
         return f"{self.application_number} - {self.applicant_name}"
 
 
-class Subject(models.Model):
+# The parts a subject's total can be split into. ``max_field`` lives on the
+# marks configuration (Subject / SubjectMarkSetting), ``obtained_field`` on the
+# stored ExamMark row. A model that has no column for a part simply never
+# offers it — e.g. Weekly Test only makes sense per exam type, so it exists on
+# SubjectMarkSetting but not on the global Subject defaults.
+MARK_PARTS = [
+    {'key': 'cq', 'label': 'CQ', 'max_field': 'cq_marks', 'obtained_field': 'cq_obtained'},
+    {'key': 'mcq', 'label': 'MCQ', 'max_field': 'mcq_marks', 'obtained_field': 'mcq_obtained'},
+    {'key': 'practical', 'label': 'Practical', 'max_field': 'practical_marks', 'obtained_field': 'practical_obtained'},
+    {'key': 'weekly_test', 'label': 'Weekly Test', 'max_field': 'weekly_test_marks', 'obtained_field': 'weekly_test_obtained'},
+]
+
+
+class MarksConfigMixin(models.Model):
+    """Shared shape of "how is this subject marked" for one exam.
+
+    Implemented by :class:`Subject` (institution-wide defaults) and
+    :class:`SubjectMarkSetting` (per class + exam type override). ``result_utils``
+    and the marks views only talk to this interface, which is why a subject can
+    be marked with any combination of CQ / MCQ / Practical / Weekly Test without
+    the callers caring which model the numbers came from.
+    """
+    pass_percentage = models.PositiveIntegerField(
+        default=40,
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        help_text='Pass mark as a percentage of Full Marks. SSC rule is 40.',
+    )
+    require_all_parts_pass = models.BooleanField(
+        default=False,
+        help_text='Failing any single part (CQ, MCQ, Practical, Weekly Test) fails the whole subject.',
+    )
+
+    class Meta:
+        abstract = True
+
+    @property
+    def parts(self):
+        """Configured parts as [{'key','label','max_marks'}], in table order."""
+        configured = []
+        for part in MARK_PARTS:
+            max_marks = getattr(self, part['max_field'], None)
+            if max_marks:
+                configured.append({
+                    'key': part['key'],
+                    'label': part['label'],
+                    'max_marks': max_marks,
+                    'input_name': part['key'],
+                })
+        return configured
+
+    @property
+    def has_parts(self):
+        return bool(self.parts)
+
+    @property
+    def parts_total(self):
+        return sum(part['max_marks'] for part in self.parts)
+
+    @property
+    def parts_match_full_marks(self):
+        """False when the configured parts do not add up to Full Marks.
+
+        With no parts configured the whole total is entered as one number, so
+        there is nothing to add up and this is True.
+        """
+        return not self.has_parts or self.parts_total == self.full_marks
+
+    @property
+    def pass_marks(self):
+        return round(self.full_marks * self.pass_percentage / 100, 1)
+
+    def part_pass_marks(self, max_marks):
+        """Pass mark for one part, using the same percentage as the subject."""
+        return round(max_marks * self.pass_percentage / 100, 1)
+
+    @property
+    def has_cq_mcq_split(self):
+        """Kept for existing callers: True when CQ and MCQ are both configured."""
+        return self.cq_marks is not None and self.mcq_marks is not None
+
+
+class Subject(MarksConfigMixin):
     CATEGORY_CHOICES = [
         ('COMPULSORY', 'Compulsory Group'),
         ('OPTIONAL', 'Optional Group'),
@@ -336,14 +418,10 @@ class Subject(models.Model):
     full_marks = models.IntegerField(default=100)
     cq_marks = models.PositiveIntegerField(null=True, blank=True, help_text='Leave blank if this subject has no CQ/MCQ split')
     mcq_marks = models.PositiveIntegerField(null=True, blank=True, help_text='Leave blank if this subject has no CQ/MCQ split')
-
-    @property
-    def pass_marks(self):
-        return round(self.full_marks * 0.4, 1)
-
-    @property
-    def has_cq_mcq_split(self):
-        return self.cq_marks is not None and self.mcq_marks is not None
+    practical_marks = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Leave blank if this subject has no practical exam (e.g. Physics: 75 theory + 25 practical)',
+    )
     category = models.CharField(max_length=12, choices=CATEGORY_CHOICES, default='OTHER')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -563,11 +641,12 @@ class Exam(models.Model):
     def __str__(self):
         return f"{self.name} ({self.get_exam_type_display()}) - Class {self.admission_class}"
 
-class SubjectMarkSetting(models.Model):
+class SubjectMarkSetting(MarksConfigMixin):
     """
-    Full Marks / CQ / MCQ for a specific Institution + Class + Subject + Exam Type.
-    If no row exists for a given exam, the system falls back to the Subject's own
-    global defaults (full_marks/cq_marks/mcq_marks).
+    Full Marks / CQ / MCQ / Practical / Weekly Test for a specific
+    Institution + Class + Subject + Exam Type. If no row exists for a given
+    exam, the system falls back to the Subject's own global defaults
+    (full_marks/cq_marks/mcq_marks/practical_marks and their pass rules).
     """
     institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='mark_settings')
     admission_class = models.CharField(max_length=10, help_text="e.g. 6, 9, 10")
@@ -576,6 +655,11 @@ class SubjectMarkSetting(models.Model):
     full_marks = models.PositiveIntegerField(default=100)
     cq_marks = models.PositiveIntegerField(null=True, blank=True)
     mcq_marks = models.PositiveIntegerField(null=True, blank=True)
+    practical_marks = models.PositiveIntegerField(null=True, blank=True)
+    weekly_test_marks = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Only used for exam types that carry a weekly test (e.g. Mid Term).',
+    )
 
     class Meta:
         constraints = [
@@ -585,24 +669,33 @@ class SubjectMarkSetting(models.Model):
             ),
         ]
 
-    @property
-    def pass_marks(self):
-        return round(self.full_marks * 0.4, 1)
-
-    @property
-    def has_cq_mcq_split(self):
-        return self.cq_marks is not None and self.mcq_marks is not None
-
     def __str__(self):
         return f"{self.institution} - Class {self.admission_class} - {self.subject.name} - {self.get_exam_type_display()}"
 
 class ExamMark(models.Model):
+    """One student's mark in one subject of one exam.
+
+    ``marks_obtained`` is the total and is always kept in step with the part
+    columns. A part column stays ``None`` while nothing was entered for it,
+    which is deliberately different from ``0``: an empty box means the student
+    did not sit that paper, a 0 means they sat it and scored nothing.
+    """
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='marks')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='exam_marks')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     marks_obtained = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     cq_obtained = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     mcq_obtained = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    practical_obtained = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    weekly_test_obtained = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    @classmethod
+    def obtained_field(cls, part_key):
+        """ExamMark column holding the entered value for a marks part."""
+        return next(part['obtained_field'] for part in MARK_PARTS if part['key'] == part_key)
+
+    def part_obtained(self, part_key):
+        return getattr(self, self.obtained_field(part_key), None)
     class Meta:
         constraints = [
             models.UniqueConstraint(

@@ -15,6 +15,7 @@ from .models import (
     Employee, EmployeeStatusLog, AttendanceRecord, MoneyReceipt, Voucher, SalarySheet,
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
     StudentSubjectChoice, SectionCapacity,
+    MARK_PARTS,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -31,9 +32,18 @@ import importlib
 import json
 import re
 from collections import defaultdict
+from decimal import Decimal, InvalidOperation
 from datetime import date
 from uuid import uuid4
-from .result_utils import build_exam_results, get_subject_marks
+from .result_utils import (
+    build_exam_results,
+    class_filter_variants,
+    get_exam_group_choices,
+    get_exam_students,
+    get_exam_subjects,
+    get_subject_marks,
+    unassigned_mark_subjects,
+)
 from .audit import record_audit
 from .permissions import sync_user_department_permissions
 from .models import Student, Subject, Institution, Employee
@@ -69,15 +79,10 @@ def _selected_institution_for_request(request):
     return institution
 
 
-def _class_filter_variants(value):
-    """Given a class value like '9' or '09', return all string forms that
-    should be treated as the same class, so filtering works regardless of
-    whether it was stored zero-padded or not."""
-    variants = {value}
-    if value.isdigit():
-        variants.add(value.zfill(2))
-        variants.add(str(int(value)))
-    return list(variants)
+# Class-string normalisation lives in result_utils so the marks, seat plan and
+# result pages cannot drift apart; kept under the old name for the call sites
+# in this module.
+_class_filter_variants = class_filter_variants
 
 def _scope_students_to_user(request, qs):
     """Limit a Student queryset to what the current user is allowed to see.
@@ -1512,48 +1517,10 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
 
 
-def get_exam_subjects(exam, group=None):
-    """Subjects that actually apply to this exam's institution + class + group.
-
-    Marks entry must be group-aware: a Science exam should not offer Business
-    Studies. Falls back to every subject when no SubjectRequirement rows are
-    configured yet, so marks entry never gets blocked on an unconfigured class.
-
-    ``group`` overrides the exam's own group, for exams that were created
-    without one (the marks pages then let the user pick a group). When neither
-    the exam nor the caller specifies a group, every group's subjects for that
-    class are returned.
-
-    Returns (subjects_queryset, is_filtered).
-    """
-    effective_group = (group if group is not None else exam.group) or ''
-
-    if exam.institution_id:
-        reqs = SubjectRequirement.objects.filter(
-            institution_id=exam.institution_id,
-            admission_class=str(exam.admission_class),
-        )
-        if effective_group:
-            # Group-neutral subjects (Bangla, English...) apply to every group.
-            reqs = reqs.filter(Q(group='') | Q(group=effective_group))
-        subject_ids = list(reqs.values_list('subject_id', flat=True).distinct())
-        if subject_ids:
-            return Subject.objects.filter(pk__in=subject_ids).order_by('name'), True
-
-    return Subject.objects.all().order_by('name'), False
-
-
-def get_exam_group_choices(exam):
-    """Groups configured for this exam's institution + class, for the picker."""
-    if not exam.institution_id:
-        return []
-    codes = set(
-        SubjectRequirement.objects.filter(
-            institution_id=exam.institution_id,
-            admission_class=str(exam.admission_class),
-        ).exclude(group='').values_list('group', flat=True).distinct()
-    )
-    return [(code, label) for code, label in Student.GROUP_CHOICES if code in codes]
+# get_exam_subjects() / get_exam_group_choices() now live in result_utils, next
+# to get_exam_students(), because marks entry, Excel import, seat planning and
+# the result pages must scope students and subjects in exactly the same way.
+# They are re-exported above, so `views.get_exam_subjects` keeps working.
 
 
 @login_required
@@ -1622,28 +1589,74 @@ def mark_evaluation_settings(request):
         }
 
         if request.method == 'POST':
+            saved, mismatched = 0, []
+            part_fields = ('cq_marks', 'mcq_marks', 'practical_marks', 'weekly_test_marks')
+
+            def raw_value(field, subject_id):
+                return (request.POST.get(f'{field}_{subject_id}', '') or '').strip()
+
             for subject in subjects:
-                full_marks = request.POST.get(f'full_marks_{subject.id}', '').strip()
-                cq_marks = request.POST.get(f'cq_marks_{subject.id}', '').strip()
-                mcq_marks = request.POST.get(f'mcq_marks_{subject.id}', '').strip()
+                full_marks = raw_value('full_marks', subject.id)
                 if not full_marks:
                     continue
                 try:
-                    SubjectMarkSetting.objects.update_or_create(
-                        institution_id=institution_id,
-                        admission_class=admission_class,
-                        subject=subject,
-                        exam_type=exam_type,
-                        defaults={
-                            'full_marks': int(full_marks),
-                            'cq_marks': int(cq_marks) if cq_marks else None,
-                            'mcq_marks': int(mcq_marks) if mcq_marks else None,
-                        },
-                    )
-                except (TypeError, ValueError):
-                    messages.error(request, f'Invalid marks entered for {subject.name}. Skipped.')
+                    full_value = int(full_marks)
+                    pass_percentage = int(raw_value('pass_percentage', subject.id) or 40)
+                except ValueError:
+                    messages.error(request, f'{subject.name}: Full Marks and Pass % must be whole numbers. Skipped.')
                     continue
-            messages.success(request, 'Mark evaluation settings updated successfully.')
+
+                parts, invalid = {}, []
+                for field in part_fields:
+                    raw = raw_value(field, subject.id)
+                    if raw == '':
+                        parts[field] = None
+                        continue
+                    try:
+                        parts[field] = int(raw)
+                    except ValueError:
+                        invalid.append(field.replace('_marks', '').title())
+                if invalid:
+                    messages.error(
+                        request,
+                        f'{subject.name}: {" / ".join(invalid)} must be a whole number or left blank. Skipped.'
+                    )
+                    continue
+                over = [field for field, value in parts.items() if value is not None and value > full_value]
+                if over:
+                    messages.error(
+                        request,
+                        f'{subject.name}: ' + ', '.join(field.replace('_marks', '').title() for field in over)
+                        + f' cannot exceed Full Marks ({full_value}). Skipped.'
+                    )
+                    continue
+
+                configured = [value for value in parts.values() if value]
+                if configured and sum(configured) != full_value:
+                    mismatched.append(
+                        f'{subject.name}: parts add up to {sum(configured)}, Full Marks says {full_value}'
+                    )
+                SubjectMarkSetting.objects.update_or_create(
+                    institution_id=institution_id,
+                    admission_class=admission_class,
+                    subject=subject,
+                    exam_type=exam_type,
+                    defaults={
+                        'full_marks': full_value,
+                        'pass_percentage': pass_percentage,
+                        'require_all_parts_pass': f'require_all_parts_pass_{subject.id}' in request.POST,
+                        **parts,
+                    },
+                )
+                saved += 1
+
+            messages.success(request, f'Mark evaluation settings updated ({saved} subject(s)).')
+            if mismatched:
+                messages.warning(
+                    request,
+                    'Parts do not match Full Marks for: ' + '; '.join(mismatched[:5])
+                    + '. Marks above a part total are rejected on entry.'
+                )
             return redirect(
                 f"{reverse('mark_evaluation_settings')}?institution={institution_id}"
                 f"&admission_class={admission_class}&exam_type={exam_type}"
@@ -1651,11 +1664,19 @@ def mark_evaluation_settings(request):
 
         for subject in subjects:
             setting = existing.get(subject.id)
+            config = setting if setting else subject
             subjects_with_settings.append({
                 'subject': subject,
-                'full_marks': setting.full_marks if setting else subject.full_marks,
-                'cq_marks': setting.cq_marks if setting else subject.cq_marks,
-                'mcq_marks': setting.mcq_marks if setting else subject.mcq_marks,
+                'full_marks': config.full_marks,
+                'cq_marks': config.cq_marks,
+                'mcq_marks': config.mcq_marks,
+                'practical_marks': config.practical_marks,
+                'weekly_test_marks': getattr(config, 'weekly_test_marks', None),
+                'pass_percentage': config.pass_percentage,
+                'pass_marks': config.pass_marks,
+                'require_all_parts_pass': config.require_all_parts_pass,
+                'parts_total': config.parts_total,
+                'parts_match': config.parts_match_full_marks,
             })
 
     return render(request, 'students/mark_evaluation_settings.html', {
@@ -2310,7 +2331,12 @@ def select_marks_subject(request, pk):
         elif is_filtered and int(subject_id) not in allowed_ids:
             messages.error(request, 'That subject is not assigned to this class/group.')
         else:
-            return redirect('enter_marks', pk=exam.pk, subject_pk=subject_id)
+            url = reverse('enter_marks', kwargs={'pk': exam.pk, 'subject_pk': subject_id})
+            # Carry the picked group over so the marks page lists the same
+            # students this subject list was filtered to.
+            if selected_group:
+                url += f'?group={selected_group}'
+            return redirect(url)
 
     return render(request, 'students/select_marks_subject.html', {
         'exam': exam,
@@ -2330,11 +2356,17 @@ def import_exam_marks(request, pk):
     form = ExamExcelImportForm(request.POST or None, request.FILES or None)
     allowed_subjects, subjects_filtered = get_exam_subjects(exam)
     allowed_subject_ids = {s.pk for s in allowed_subjects}
+    # One student list for the whole exam module, so an imported row can never
+    # land on a student that marks entry would not have offered.
+    exam_students = {student.student_id.lower(): student
+                     for student in get_exam_students(exam) if student.student_id}
     context = {
         'exam': exam,
         'form': form,
         'allowed_subjects': allowed_subjects,
         'subjects_filtered': subjects_filtered,
+        'total_students': len(exam_students),
+        'template_url': reverse('download_marks_import_template', kwargs={'pk': exam.pk}),
     }
     if request.method == 'POST' and form.is_valid():
         if openpyxl is None:
@@ -2349,6 +2381,7 @@ def import_exam_marks(request, pk):
             validated_rows = []
             seen = set()
             errors = []
+            skipped_rows = []
             for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
                 if not row or all(cell in (None, '') for cell in row):
                     continue
@@ -2357,24 +2390,21 @@ def import_exam_marks(request, pk):
                 subject_code = str(subject_code).strip() if subject_code is not None else ''
                 key = (student_id.lower(), subject_code.lower())
                 try:
-                    if not student_id or not subject_code or marks in (None, ''):
-                        raise ValueError('student ID, subject code, and marks are required')
+                    if marks in (None, ''):
+                        # Blank on purpose (or still unfilled in a prefilled
+                        # template): skip instead of failing the whole upload.
+                        skipped_rows.append(f'row {row_num} (no mark entered)')
+                        continue
+                    if not student_id or not subject_code:
+                        raise ValueError('student ID and subject code are required')
                     if key in seen:
                         raise ValueError('duplicate student and subject row')
                     seen.add(key)
-                    student = Student.objects.filter(student_id=student_id).first()
+                    student = exam_students.get(student_id.lower())
                     if not student:
-                        raise ValueError('student was not found')
-                    if (
-                        (exam.institution_id and student.institution_id != exam.institution_id)
-                        or student.admission_class != exam.admission_class
-                        or (
-                            exam.section
-                            and student.section.strip().lower() != exam.section.strip().lower()
-                        )
-                        or (exam.group and student.group != exam.group)
-                    ):
-                        raise ValueError('student is not a member of this exam class/section/group')
+                        if Student.objects.filter(student_id__iexact=student_id).exists():
+                            raise ValueError('student is not a member of this exam class/section/group')
+                        raise ValueError('student ID was not found')
                     subject = Subject.objects.filter(code__iexact=subject_code).first()
                     if not subject:
                         raise ValueError('subject code was not found')
@@ -2383,11 +2413,14 @@ def import_exam_marks(request, pk):
                             f'"{subject.name}" is not assigned to Class {exam.admission_class}'
                             + (f' ({exam.get_group_display()})' if exam.group else '')
                         )
+                    # Full marks come from the exam's own configuration, not the
+                    # subject default: a Mid Term marked out of 50 must not reject 75.
+                    marks_limit = get_subject_marks(exam, subject).full_marks
                     marks_value = float(marks)
                     if marks_value != marks_value or marks_value in (float('inf'), float('-inf')):
                         raise ValueError('marks must be numeric')
-                    if marks_value < 0 or marks_value > subject.full_marks:
-                        raise ValueError(f'marks must be between 0 and {subject.full_marks}')
+                    if marks_value < 0 or marks_value > marks_limit:
+                        raise ValueError(f'marks must be between 0 and {marks_limit}')
                     validated_rows.append((student, subject, marks_value))
                 except (TypeError, ValueError) as exc:
                     errors.append(f'Row {row_num}: {exc}')
@@ -2402,7 +2435,10 @@ def import_exam_marks(request, pk):
                         exam=exam, student=student, subject=subject,
                         defaults={'marks_obtained': marks_value},
                     )
-            messages.success(request, f'{len(validated_rows)} mark(s) imported successfully.')
+            success_message = f'{len(validated_rows)} mark(s) imported successfully.'
+            if skipped_rows:
+                success_message += f' {len(skipped_rows)} row(s) with no mark entered were skipped.'
+            messages.success(request, success_message)
             return redirect('exam_list')
         except Exception as exc:
             messages.error(request, f'Could not import the file: {exc}')
@@ -2410,13 +2446,120 @@ def import_exam_marks(request, pk):
 
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
+def download_marks_import_template(request, pk):
+    """Excel workbook that Import Marks accepts as-is.
+
+    Every student of the exam is paired with every subject assigned to the
+    exam's class/group, so the clerk only has to type numbers down the Marks
+    column. Rows left blank are skipped on import (a blank means "not entered",
+    never zero), so deleting rows is optional.
+    """
+    exam = get_object_or_404(Exam, pk=pk)
+    if openpyxl is None:
+        messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
+        return redirect('import_exam_marks', pk=exam.pk)
+
+    from openpyxl.styles import Alignment, Font
+
+    students = list(get_exam_students(exam))
+    subjects, is_filtered = get_exam_subjects(exam)
+    subjects = list(subjects)
+
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = 'Marks'
+    sheet.append(['Student ID', 'Subject Code', 'Marks'])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+    for student in students:
+        for subject in subjects:
+            sheet.append([student.student_id, subject.code, None])
+    for column, width in (('A', 16), ('B', 16), ('C', 10)):
+        sheet.column_dimensions[column].width = width
+    sheet.freeze_panes = 'A2'
+
+    guide = workbook.create_sheet('How to fill')
+    guide.column_dimensions['A'].width = 100
+    for line in [
+        f'{exam.name} - Class {exam.admission_class}'
+        + (f' ({exam.section})' if exam.section else '')
+        + (f' ({exam.get_group_display()} group)' if exam.group else ''),
+        '',
+        '1. Fill the Marks column on the Marks sheet. Do not touch the first row.',
+        '2. Leave a mark blank when the student did not sit that paper - a blank row is',
+        '   skipped on import, while 0 is imported as a real mark of zero.',
+        f'3. Marks above Full Marks for this exam type are rejected (see the Subjects sheet).',
+        '4. One row per student per subject. Duplicate rows are rejected.',
+        '',
+        f'{len(students)} student(s) x {len(subjects)} subject(s) = {len(students) * len(subjects)} row(s).',
+    ] + (['', 'No subject assignments are configured for this class yet, so every subject in the',
+          'database appears here. Configure them under Subject Assignments to get a shorter list.']
+         if not is_filtered else []):
+        cell = guide.cell(row=guide.max_row + 1 if guide.max_row > 1 else 1, column=1, value=line)
+        cell.alignment = Alignment(wrap_text=True)
+
+    subjects_sheet = workbook.create_sheet('Subjects')
+    subjects_sheet.append(['Subject Code', 'Subject', 'Full Marks', 'Parts', 'Pass Marks'])
+    for cell in subjects_sheet[1]:
+        cell.font = Font(bold=True)
+    for subject in subjects:
+        marks_config = get_subject_marks(exam, subject)
+        parts = ' + '.join(f"{part['label']} {part['max_marks']}" for part in marks_config.parts)
+        subjects_sheet.append([
+            subject.code, subject.name, marks_config.full_marks,
+            parts or 'single total', marks_config.pass_marks,
+        ])
+    for column, width in (('A', 14), ('B', 30), ('C', 12), ('D', 26), ('E', 12)):
+        subjects_sheet.column_dimensions[column].width = width
+
+    students_sheet = workbook.create_sheet('Students')
+    students_sheet.append(['Roll', 'Student ID', 'Name', 'Section', 'Group'])
+    for cell in students_sheet[1]:
+        cell.font = Font(bold=True)
+    for student in students:
+        students_sheet.append([
+            student.roll_no, student.student_id, student.name,
+            student.section, student.get_group_display() if student.group else '',
+        ])
+    for column, width in (('A', 8), ('B', 16), ('C', 30), ('D', 10), ('E', 20)):
+        students_sheet.column_dimensions[column].width = width
+
+    workbook.active = 0
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="marks_import_exam_{exam.pk}.xlsx"'
+    workbook.save(response)
+    return response
+
+
+@login_required
+@permission_required('students.add_exammark', raise_exception=True)
 def enter_marks(request, pk, subject_pk):
+    """Enter one subject's marks for one exam, part by part.
+
+    The page shows whatever the marks configuration asks for: a single total
+    when nothing is split, otherwise one column per configured part (CQ, MCQ,
+    Practical, Weekly Test). Blank cells are stored as "nothing entered", not
+    as 0, which is what makes an absent subject show up as a dash on the result
+    sheet instead of a fail.
+    """
     exam = get_object_or_404(Exam, pk=pk)
     subject = get_object_or_404(Subject, pk=subject_pk)
 
+    # Exams created without a group can be narrowed down here too, so the
+    # subject list and the student list are always filtered by the same group.
+    group_choices = get_exam_group_choices(exam)
+    valid_group_codes = {code for code, _label in group_choices}
+    selected_group = ''
+    if not exam.group:
+        requested = (request.POST.get('group') or request.GET.get('group') or '').strip()
+        if requested in valid_group_codes:
+            selected_group = requested
+
     # Guard against entering marks for a subject that is not assigned to this
     # exam's class/group (e.g. by editing the URL directly).
-    allowed_subjects, is_filtered = get_exam_subjects(exam)
+    allowed_subjects, is_filtered = get_exam_subjects(exam, group=selected_group or None)
     if is_filtered and not allowed_subjects.filter(pk=subject.pk).exists():
         messages.error(
             request,
@@ -2426,88 +2569,119 @@ def enter_marks(request, pk, subject_pk):
         return redirect('select_marks_subject', pk=exam.pk)
 
     marks_config = get_subject_marks(exam, subject)
-    students_qs = Student.objects.filter(admission_class__in=_class_filter_variants(exam.admission_class))
-    if exam.section:
-        students_qs = students_qs.filter(section__iexact=exam.section.strip())
-    if exam.group:
-        students_qs = students_qs.filter(group=exam.group)
-    students = students_qs.order_by('roll_no', 'name')
+    parts = marks_config.parts
+    students = get_exam_students(exam, group=selected_group or None)
     existing_marks = {
-        m.student_id: m for m in ExamMark.objects.filter(exam=exam, subject=subject)
+        mark.student_id: mark for mark in ExamMark.objects.filter(exam=exam, subject=subject)
     }
 
     if request.method == 'POST':
         saved_count = 0
-        skipped_count = 0
+        skipped = []
         for student in students:
-            if marks_config.has_cq_mcq_split:
-                cq_value = request.POST.get(f'cq_{student.pk}', '').strip()
-                mcq_value = request.POST.get(f'mcq_{student.pk}', '').strip()
-                if cq_value == '' and mcq_value == '':
-                    continue
-                try:
-                    cq_obtained = float(cq_value) if cq_value != '' else 0
-                    mcq_obtained = float(mcq_value) if mcq_value != '' else 0
-                    if cq_obtained < 0 or cq_obtained > marks_config.cq_marks:
-                        raise ValueError
-                    if mcq_obtained < 0 or mcq_obtained > marks_config.mcq_marks:
-                        raise ValueError
-                except (TypeError, ValueError):
-                    skipped_count += 1
-                    continue
-                marks_value = cq_obtained + mcq_obtained
-                ExamMark.objects.update_or_create(
-                    exam=exam, student=student, subject=subject,
-                    defaults={
-                        'marks_obtained': marks_value,
-                        'cq_obtained': cq_obtained,
-                        'mcq_obtained': mcq_obtained,
-                    },
-                )
-                saved_count += 1
-            else:
-                value = request.POST.get(f'marks_{student.pk}', '').strip()
-                if value == '':
-                    continue
-                try:
-                    marks_value = float(value)
-                    if marks_value < 0 or marks_value > marks_config.full_marks:
-                        skipped_count += 1
+            if parts:
+                values, problem = {}, None
+                for part in parts:
+                    raw = (request.POST.get(f'{part["input_name"]}_{student.pk}') or '').strip()
+                    if raw == '':
+                        values[part['key']] = None
                         continue
-                except ValueError:
-                    skipped_count += 1
+                    try:
+                        number = Decimal(raw)
+                    except InvalidOperation:
+                        problem = f'{part["label"]} mark for {student.name} is not a number'
+                        break
+                    if number < 0 or number > part['max_marks']:
+                        problem = (
+                            f'{part["label"]} mark for {student.name} must be between '
+                            f'0 and {part["max_marks"]}'
+                        )
+                        break
+                    values[part['key']] = number
+                if problem:
+                    skipped.append(problem)
                     continue
+                if all(value is None for value in values.values()):
+                    # Nothing entered at all: the student was absent, so leave
+                    # no row behind rather than a row full of zeros.
+                    continue
+                defaults = {'marks_obtained': sum((v for v in values.values() if v is not None), Decimal('0'))}
+                for part in parts:
+                    defaults[ExamMark.obtained_field(part['key'])] = values[part['key']]
                 ExamMark.objects.update_or_create(
-                    exam=exam, student=student, subject=subject,
-                    defaults={
-                        'marks_obtained': marks_value,
-                        'cq_obtained': None,
-                        'mcq_obtained': None,
-                    },
+                    exam=exam, student=student, subject=subject, defaults=defaults,
                 )
                 saved_count += 1
+                continue
 
-        messages.success(request, f'Marks saved for {saved_count} student(s).')
-        if skipped_count:
-            messages.warning(request, f'{skipped_count} invalid mark(s) were skipped.')
+            raw = (request.POST.get(f'marks_{student.pk}') or '').strip()
+            if raw == '':
+                continue
+            try:
+                marks_value = Decimal(raw)
+            except InvalidOperation:
+                skipped.append(f'Mark for {student.name} is not a number')
+                continue
+            if marks_value < 0 or marks_value > marks_config.full_marks:
+                skipped.append(
+                    f'Mark for {student.name} must be between 0 and {marks_config.full_marks}'
+                )
+                continue
+            ExamMark.objects.update_or_create(
+                exam=exam, student=student, subject=subject,
+                defaults={
+                    'marks_obtained': marks_value,
+                    **{ExamMark.obtained_field(part['key']): None for part in MARK_PARTS},
+                },
+            )
+            saved_count += 1
+
+        if skipped:
+            for message_text in skipped[:5]:
+                messages.error(request, f'Not saved: {message_text}.')
+            if len(skipped) > 5:
+                messages.error(request, f'{len(skipped) - 5} further invalid mark(s) were skipped.')
+        if saved_count:
+            messages.success(request, f'Marks saved for {saved_count} student(s).')
+        elif not skipped:
+            messages.info(request, 'No marks entered.')
         return redirect('exam_list')
 
-    students_with_marks = []
+    rows = []
     for student in students:
         mark = existing_marks.get(student.pk)
-        students_with_marks.append({
+        part_values = []
+        for part in parts:
+            value = getattr(mark, ExamMark.obtained_field(part['key'])) if mark else None
+            part_values.append({
+                'key': part['input_name'],
+                'label': part['label'],
+                'max_marks': part['max_marks'],
+                'pass_marks': marks_config.part_pass_marks(part['max_marks']),
+                'value': '' if value is None else value,
+                'missing': mark is not None and value is None,
+            })
+        rows.append({
             'student': student,
             'marks_obtained': mark.marks_obtained if mark else '',
-            'cq_obtained': mark.cq_obtained if mark and mark.cq_obtained is not None else '',
-            'mcq_obtained': mark.mcq_obtained if mark and mark.mcq_obtained is not None else '',
+            'part_values': part_values,
         })
 
     return render(request, 'students/enter_marks.html', {
         'exam': exam,
         'subject': subject,
         'marks_config': marks_config,
-        'students_with_marks': students_with_marks,
+        'parts': parts,
+        'students_with_marks': rows,
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': dict(group_choices).get(selected_group, ''),
+        'show_group_picker': not exam.group and bool(group_choices),
+        'parts_mismatch': not marks_config.parts_match_full_marks,
+        'require_all_parts_pass': marks_config.require_all_parts_pass,
+        'total_students': len(rows),
     })
+
 
 # ---------------- Exam Result Views ----------------
 
@@ -2518,7 +2692,23 @@ def result_sheet(request, pk):
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
     subjects, results = build_exam_results(exam)
-    return render(request, 'students/result_sheet.html', {'exam': exam, 'subjects': subjects, 'results': results})
+    # Column headers must show the exam's own Full Marks, not the subject's
+    # global default (a Mid Term can be marked out of 50).
+    columns = []
+    for subject in subjects:
+        marks_config = get_subject_marks(exam, subject)
+        columns.append({
+            'subject': subject,
+            'full_marks': marks_config.full_marks,
+            'parts_summary': ' + '.join(
+                f"{part['label']} {part['max_marks']}" for part in marks_config.parts
+            ),
+        })
+    ignored = unassigned_mark_subjects(exam, subjects)
+    return render(request, 'students/result_sheet.html', {
+        'exam': exam, 'subjects': subjects, 'columns': columns, 'results': results,
+        'ignored_subjects': ignored,
+    })
 
 
 @login_required
@@ -2582,9 +2772,9 @@ def seat_plan_list(request, pk):
     rooms = {}
     for seat in seats:
         rooms.setdefault(seat.room_name, {'type': seat.room_type, 'count': 0})['count'] += 1
-    students = Student.objects.filter(admission_class=exam.admission_class)
-    if exam.section:
-        students = students.filter(section__iexact=exam.section.strip())
+    # Group-aware, like every other exam route: a Science seat plan must not
+    # count Business students as "unseated".
+    students = get_exam_students(exam)
     return render(request, 'students/seat_plan_list.html', {
         'exam': exam, 'rooms': rooms,
         'total_students': students.count(), 'seated_count': seats.count(),
@@ -2595,10 +2785,7 @@ def seat_plan_list(request, pk):
 @permission_required('students.add_seatplan', raise_exception=True)
 def generate_seat_plan(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
-    students = Student.objects.filter(admission_class=exam.admission_class)
-    if exam.section:
-        students = students.filter(section__iexact=exam.section.strip())
-    students = list(students.order_by('roll_no', 'name'))
+    students = list(get_exam_students(exam))
     form = GenerateSeatPlanForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         rooms, errors, room_names = [], [], set()

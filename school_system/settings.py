@@ -30,6 +30,28 @@ ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(',') if h.strip()] or [
 _csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
 
+# HTTPS behind a reverse proxy (Render, Nginx, Caddy).
+#
+# The proxy terminates TLS and forwards the request to Django over plain http.
+# Django then sees an http origin for a POST that came from an https page, and
+# the CSRF check fails with "Origin checking failed" (a 403 on login) while
+# redirects are built with the wrong scheme. Opting in with
+# TRUST_FORWARDED_PROTO=True makes Django read the proxy's
+# X-Forwarded-Proto header instead of the connection.
+#
+# Both flags stay off by default: trusting these headers on a directly exposed
+# port would let a client spoof the scheme/host. On Render set
+# TRUST_FORWARDED_PROTO=True (and USE_X_FORWARDED_HOST=True so absolute URLs
+# use the public hostname).
+_TRUST_FORWARDED_PROTO = os.environ.get('TRUST_FORWARDED_PROTO', 'False') == 'True'
+USE_X_FORWARDED_HOST = os.environ.get('USE_X_FORWARDED_HOST', 'False') == 'True'
+if _TRUST_FORWARDED_PROTO:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Safe only because the scheme is now known to be https at the proxy.
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 INSTALLED_APPS = [

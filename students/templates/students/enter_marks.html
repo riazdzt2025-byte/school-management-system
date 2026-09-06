@@ -4,6 +4,7 @@
 
 {% block extra_style %}
     .marks-input { width: 100px; }
+    .part-missing { background: #fff3cd; }
 {% endblock %}
 
 {% block content %}
@@ -13,13 +14,61 @@
         <div class="subtitle">
             {{ exam.name }} - {{ subject.name }} (Full Marks: {{ marks_config.full_marks }})
             - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
+            {% if selected_group_label or exam.group %} &middot; {{ selected_group_label|default:exam.get_group_display }} group{% endif %}
             - Pass Marks: {{ marks_config.pass_marks }}
         </div>
     </div>
 </div>
 
+{% if show_group_picker %}
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label fw-semibold mb-1" for="group-picker">Group</label>
+        <select name="group" id="group-picker" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">-- All groups --</option>
+            {% for code, label in group_choices %}
+            <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col">
+        <span class="text-muted small">This exam has no group set, so pick one to filter both the subjects and the students.</span>
+    </div>
+</form>
+{% endif %}
+
 <form method="post">
     {% csrf_token %}
+    <input type="hidden" name="group" value="{{ selected_group }}">
+
+{% if messages %}
+        {% for message in messages %}<div class="alert alert-{{ message.tags }} py-2">{{ message }}</div>{% endfor %}
+    {% endif %}
+
+    {% if parts %}
+    <div class="alert alert-light border small">
+        Parts are marked separately and added up automatically
+        ({{ subject.name }}: {% for part in parts %}{{ part.label }} {{ part.max_marks }}{% if not forloop.last %} + {% endif %}{% endfor %}
+        = {{ marks_config.parts_total }} of {{ marks_config.full_marks }}).
+        {% if require_all_parts_pass %}
+        <strong>Each part must pass:</strong> failing CQ, MCQ or Practical fails the whole subject.
+        {% else %}
+        Only the subject total is checked against the pass mark. Tick <em>Each part must pass</em> in
+        Mark Evaluation Settings to fail a subject on a single part.
+        {% endif %}
+        <div class="text-muted mt-1">Leave a box empty when the student did not sit that paper &mdash; an empty box is
+        shown as a dash on the result, a 0 is a real mark of zero.</div>
+    </div>
+    {% endif %}
+
+    {% if parts_mismatch %}
+    <div class="alert alert-warning small py-2">
+        The configured parts add up to {{ marks_config.parts_total }}, not {{ marks_config.full_marks }}.
+        Marks above the part totals are rejected &mdash; fix it in
+        <a href="{% url 'mark_evaluation_settings' %}?institution={{ exam.institution_id }}&amp;admission_class={{ exam.admission_class }}&amp;exam_type={{ exam.exam_type }}">Mark Evaluation Settings</a>.
+    </div>
+    {% endif %}
+
     <div class="table-card">
         <div class="table-responsive">
             <table class="table table-striped mb-0">
@@ -28,11 +77,13 @@
                         <th>Roll</th>
                         <th>Student ID</th>
                         <th>Name</th>
-                        {% if marks_config.has_cq_mcq_split %}
-                        <th>CQ ({{ marks_config.cq_marks }})</th>
-                        <th>MCQ ({{ marks_config.mcq_marks }})</th>
+                        {% if parts %}
+                            {% for part in parts %}
+                            <th>{{ part.label }} ({{ part.max_marks }})</th>
+                            {% endfor %}
+                            <th>Total</th>
                         {% else %}
-                        <th>Marks Obtained</th>
+                            <th>Marks Obtained</th>
                         {% endif %}
                     </tr>
                 </thead>
@@ -42,21 +93,33 @@
                         <td>{{ row.student.roll_no }}</td>
                         <td>{{ row.student.student_id }}</td>
                         <td>{{ row.student.name }}</td>
-                        {% if marks_config.has_cq_mcq_split %}
-                        <td><input type="number" name="cq_{{ row.student.pk }}" value="{{ row.cq_obtained }}" step="0.01" min="0" max="{{ marks_config.cq_marks }}" class="form-control marks-input"></td>
-                        <td><input type="number" name="mcq_{{ row.student.pk }}" value="{{ row.mcq_obtained }}" step="0.01" min="0" max="{{ marks_config.mcq_marks }}" class="form-control marks-input"></td>
+                        {% if parts %}
+                            {% for value in row.part_values %}
+                            <td class="{% if value.missing %}part-missing{% endif %}">
+                                <input type="number" name="{{ value.key }}_{{ row.student.pk }}"
+                                       value="{{ value.value }}" step="0.01" min="0" max="{{ value.max_marks }}"
+                                       class="form-control marks-input"
+                                       placeholder="{{ value.pass_marks }} to pass">
+                                {% if value.missing %}
+                                <div class="text-danger" style="font-size:.72rem;">not entered</div>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                            <td>{{ row.marks_obtained|default_if_none:"&mdash;" }}</td>
                         {% else %}
                         <td><input type="number" name="marks_{{ row.student.pk }}" value="{{ row.marks_obtained }}" step="0.01" min="0" max="{{ marks_config.full_marks }}" class="form-control marks-input"></td>
                         {% endif %}
                     </tr>
                     {% empty %}
-                    <tr><td colspan="5" class="text-center py-4">No students found in this class/section.</td></tr>
+                    <tr><td colspan="5" class="text-center py-4">No students found in this class/section/group.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
+    <div class="text-muted small mt-2">{{ total_students }} student(s) listed &middot; blank boxes are left untouched.</div>
     <button class="btn btn-navy mt-3">Save Marks</button>
-    <a class="btn btn-outline-navy mt-3" href="{% url 'exam_list' %}">Cancel</a>
+    <a class="btn btn-outline-navy mt-3" href="{% url 'select_marks_subject' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}">Back to Subjects</a>
+    <a class="btn btn-outline-navy mt-3" href="{% url 'exam_list' %}">Exam List</a>
 </form>
 {% endblock %}
