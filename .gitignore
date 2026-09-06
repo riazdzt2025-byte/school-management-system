@@ -9,3 +9,9 @@ staticfiles/
 db.sqlite3.backup
 production_full_dump.json
 production_students_dump.json
+
+# Local scratch / generated artifacts
+*.patch
+temp*.json
+temp_*.txt
+test_*.txt
