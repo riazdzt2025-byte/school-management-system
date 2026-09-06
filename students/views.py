@@ -783,18 +783,19 @@ def student_list(request):
         for inst in institutions
     }
 
-    institution = _selected_institution_for_request(request)
     admission_class = request.GET.get('admission_class')
     section = request.GET.get('section')
     group = request.GET.get('group')
     institution_id = request.GET.get('institution')
     department = request.GET.get('department') or request.session.get('selected_department') or 'Office'
 
+    if institution_id:
+        institution = get_object_or_404(Institution, pk=institution_id)
+    else:
+        institution = _selected_institution_for_request(request)
+
     qs = Student.objects.filter(is_archived=False)
     if institution is not None:
-        qs = qs.filter(institution=institution)
-    elif institution_id:
-        institution = get_object_or_404(Institution, pk=institution_id)
         qs = qs.filter(institution=institution)
     if not _is_admin(request.user):
         qs = qs.filter(created_by=request.user)
