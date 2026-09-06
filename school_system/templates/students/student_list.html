@@ -259,12 +259,12 @@
                     <tbody>
                         {% for student in students %}
                         <tr>
+                            <td>{{ student.roll_no }}</td>
                             <td>{{ student.student_id }}</td>
                             <td>{{ student.name }}</td>
                             <td>{{ student.admission_class }}</td>
                             <td>{{ student.section }}</td>
                             <td>{{ student.get_group_display|default:'-' }}</td>
-                            <td>{{ student.roll_no }}</td>
                             <td>{{ student.get_gender_display }}</td>
                         </tr>
                         {% empty %}
