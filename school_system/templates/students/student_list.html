@@ -159,25 +159,29 @@
         <table class="students-table">
             <thead>
                 <tr>
-                    <th style="width:36px;"></th>
-                    <th>Student ID</th>
-                    <th>Name</th>
-                    <th>Class</th>
-                    <th>Roll</th>
-                    <th>Gender</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                <th style="width:36px;"></th>
+                <th>Roll</th>
+                <th>Student ID</th>
+                <th>Name</th>
+                <th>Class</th>
+                <th>Section</th>
+                <th>Group</th>
+                <th>Gender</th>
+                <th>Status</th>
+                <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for student in students %}
                 <tr class="{% if student.id in exact_duplicate_ids %}dup-exact{% elif student.id in possible_duplicate_ids %}dup-possible{% endif %}">
-                    <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
-                    <td class="id-cell">{{ student.student_id }}</td>
-                    <td class="name-cell">{{ student.name }}</td>
-                    <td>{{ student.admission_class }}{% if student.section %} - {{ student.section }}{% endif %}</td>
-                    <td>{{ student.roll_no|default:"—" }}</td>
-                    <td>{{ student.get_gender_display|default:"—" }}</td>
+                                   <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
+                <td>{{ student.roll_no|default:"—" }}</td>
+                <td class="id-cell">{{ student.student_id }}</td>
+                <td class="name-cell">{{ student.name }}</td>
+                <td>{{ student.admission_class }}</td>
+                <td>{{ student.section|default:"—" }}</td>
+                <td>{{ student.get_group_display|default:"—" }}</td>
+                <td>{{ student.get_gender_display|default:"—" }}</td>
                     <td>
                         {% if student.status == 'TRANSFERRED' %}
                         <span class="badge bg-secondary">Transferred</span>
@@ -235,7 +239,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="8" class="students-table-empty">No students to show yet — pick a filter to get started.</td></tr>
+                <tr><td colspan="10" class="students-table-empty">No students to show yet — pick a filter to get started.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
