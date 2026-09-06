@@ -1512,6 +1512,29 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
             optional_groups.setdefault(req.optional_set_key or 'default', []).append(subject_data)
 
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
+
+
+def get_exam_subjects(exam):
+    """Subjects that actually apply to this exam's institution + class + group.
+
+    Marks entry must be group-aware: a Science exam should not offer Business
+    Studies. Falls back to every subject when no SubjectRequirement rows are
+    configured yet, so marks entry never gets blocked on an unconfigured class.
+
+    Returns (subjects_queryset_or_list, is_filtered).
+    """
+    if exam.institution_id:
+        reqs = SubjectRequirement.objects.filter(
+            institution_id=exam.institution_id,
+            admission_class=str(exam.admission_class),
+        ).filter(Q(group='') | Q(group=exam.group or ''))
+        subject_ids = list(reqs.values_list('subject_id', flat=True).distinct())
+        if subject_ids:
+            return Subject.objects.filter(pk__in=subject_ids).order_by('name'), True
+
+    return Subject.objects.all().order_by('name'), False
+
+
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
 def start_entering_marks(request):
@@ -2251,13 +2274,23 @@ def toggle_publish_exam(request, pk):
 @permission_required('students.add_exammark', raise_exception=True)
 def select_marks_subject(request, pk):
     exam = get_object_or_404(Exam, pk=pk)
-    subjects = Subject.objects.all().order_by('name')
+    subjects, is_filtered = get_exam_subjects(exam)
+    allowed_ids = {s.pk for s in subjects}
+
     if request.method == 'POST':
         subject_id = request.POST.get('subject')
-        if subject_id:
+        if not subject_id:
+            messages.error(request, 'Please select a subject.')
+        elif is_filtered and int(subject_id) not in allowed_ids:
+            messages.error(request, 'That subject is not assigned to this class/group.')
+        else:
             return redirect('enter_marks', pk=exam.pk, subject_pk=subject_id)
-        messages.error(request, 'Please select a subject.')
-    return render(request, 'students/select_marks_subject.html', {'exam': exam, 'subjects': subjects})
+
+    return render(request, 'students/select_marks_subject.html', {
+        'exam': exam,
+        'subjects': subjects,
+        'is_filtered': is_filtered,
+    })
 
 
 @login_required
@@ -2336,6 +2369,18 @@ def import_exam_marks(request, pk):
 def enter_marks(request, pk, subject_pk):
     exam = get_object_or_404(Exam, pk=pk)
     subject = get_object_or_404(Subject, pk=subject_pk)
+
+    # Guard against entering marks for a subject that is not assigned to this
+    # exam's class/group (e.g. by editing the URL directly).
+    allowed_subjects, is_filtered = get_exam_subjects(exam)
+    if is_filtered and not allowed_subjects.filter(pk=subject.pk).exists():
+        messages.error(
+            request,
+            f'"{subject.name}" is not assigned to Class {exam.admission_class}'
+            f'{" (" + exam.get_group_display() + ")" if exam.group else ""}.'
+        )
+        return redirect('select_marks_subject', pk=exam.pk)
+
     marks_config = get_subject_marks(exam, subject)
     students_qs = Student.objects.filter(admission_class__in=_class_filter_variants(exam.admission_class))
     if exam.section:
