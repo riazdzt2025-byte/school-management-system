@@ -78,7 +78,17 @@ def _class_filter_variants(value):
         variants.add(value.zfill(2))
         variants.add(str(int(value)))
     return list(variants)
-    
+
+def _class_filter_variants(value):
+    """Given a class value like '9' or '09', return all string forms that
+    should be treated as the same class, so filtering works regardless of
+    whether it was stored zero-padded or not."""
+    variants = {value}
+    if value.isdigit():
+        variants.add(value.zfill(2))
+        variants.add(str(int(value)))
+    return list(variants)
+
 def _filter_qs_for_user(qs, user):
     if _is_admin(user):
         return qs
@@ -2327,7 +2337,7 @@ def enter_marks(request, pk, subject_pk):
     exam = get_object_or_404(Exam, pk=pk)
     subject = get_object_or_404(Subject, pk=subject_pk)
     marks_config = get_subject_marks(exam, subject)
-    students_qs = Student.objects.filter(admission_class=exam.admission_class)
+    students_qs = Student.objects.filter(admission_class__in=_class_filter_variants(exam.admission_class))
     if exam.section:
         students_qs = students_qs.filter(section__iexact=exam.section.strip())
     if exam.group:
