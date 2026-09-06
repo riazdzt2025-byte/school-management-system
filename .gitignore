@@ -16,3 +16,6 @@ temp*.json
 temp_*.txt
 test_*.txt
 .venv/
+
+# Stale editor/backup copies
+*.bak

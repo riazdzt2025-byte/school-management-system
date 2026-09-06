@@ -17,17 +17,27 @@
 <div class="table-card p-3">
     <table class="table table-striped">
         <thead>
-            <tr><th>Subject</th><th>Full</th><th>Obtained</th><th>%</th><th>Grade</th><th>Point</th></tr>
+            <tr><th>Subject</th><th>Full</th><th>Obtained</th><th>Parts</th><th>%</th><th>Grade</th><th>Point</th></tr>
         </thead>
         <tbody>
             {% for sr in result.subject_results %}
-            <tr>
+            <tr{% if not sr.passed %} class="table-danger"{% endif %}>
                 <td>{{ sr.subject.name }}</td>
                 <td>{{ sr.full }}</td>
-                <td>{{ sr.obtained }}</td>
-                <td>{{ sr.percentage }}%</td>
+                <td>{% if sr.absent %}&mdash; <span class="text-muted small">(no mark entered)</span>{% else %}{{ sr.obtained }}{% endif %}</td>
+                <td class="small">
+                    {% for part in sr.parts %}
+                    <span class="{% if not part.passed %}text-danger fw-semibold{% endif %}">
+                        {{ part.label }}: {{ part.obtained|default:'&mdash;' }} / {{ part.max_marks }}{% if not forloop.last %}, {% endif %}
+                    </span>
+                    {% empty %}
+                    <span class="text-muted">single total</span>
+                    {% endfor %}
+                    {% if sr.failed_parts %}<div class="text-danger">failed part: {{ sr.failed_parts|join:', ' }}</div>{% endif %}
+                </td>
+                <td>{% if sr.absent %}&mdash;{% else %}{{ sr.percentage }}%{% endif %}</td>
                 <td>{{ sr.grade }}</td>
-                <td>{{ sr.point }}</td>
+                <td>{{ sr.point|default:'&mdash;' }}</td>
             </tr>
             {% endfor %}
             <tr class="summary">
@@ -40,7 +50,13 @@
             </tr>
         </tbody>
     </table>
-    <p><strong>Status:</strong> {{ result.status }} &nbsp; <strong>Position:</strong> {{ result.position|default:'-' }}</p>
+    <p>
+        <strong>Status:</strong> {{ result.status }} &nbsp;
+        <strong>Position:</strong> {{ result.position|default:'-' }}
+        {% if result.absent_subject_count %}&nbsp; <strong>Absent subjects:</strong> {{ result.absent_subject_count }}{% endif %}
+    </p>
+    <p class="text-muted small">A subject left blank shows as &mdash; rather than 0, but it is still graded F and
+    counted as 0 out of its Full Marks &mdash; a candidate who did not sit a subject has not passed it.</p>
     <a href="{% url 'result_card' exam.pk result.student.pk %}" class="btn btn-navy">Print Result Card</a>
     <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-outline-navy">Back</a>
 </div>

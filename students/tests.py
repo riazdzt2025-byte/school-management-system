@@ -18,7 +18,7 @@ from .models import (
 	AdmissionApplication, AuditLog, AttendanceRecord, Employee, EmployeeStatusLog, Exam, ExamMark, Institution, InstitutionAccess,
 	MoneyReceipt, PromotionBatch, Student, Subject,
 )
-from .forms import ExamForm, EXAM_NAME_SUGGESTIONS, StudentForm
+from .forms import ExamForm, StudentForm, auto_exam_name
 from .permissions import ensure_default_groups
 
 
@@ -166,10 +166,10 @@ class ExamWorkflowTests(TestCase):
 		)
 		self.subject = Subject.objects.create(code='ENG', name='English', full_marks=100)
 		self.exam = Exam.objects.create(
-			name='Mid Term', exam_type='MID_TERM', institution=self.institution,
+			name='Mid Term', exam_type='MID_TERM_1', institution=self.institution,
 			admission_class='6', section='A', session='2026',
 		)
-		user = get_user_model().objects.create_user(username='exam-user', password='password')
+		self.user = get_user_model().objects.create_user(username='exam-user', password='password')
 		exammark_content_type = ContentType.objects.get_for_model(ExamMark)
 		exam_content_type = ContentType.objects.get_for_model(Exam)
 		add_exammark, _ = Permission.objects.get_or_create(
@@ -180,8 +180,12 @@ class ExamWorkflowTests(TestCase):
 			content_type=exam_content_type,
 			codename='change_exam',
 		)
-		user.user_permissions.add(add_exammark, change_exam)
-		self.client.force_login(user)
+		add_exam_perm, _ = Permission.objects.get_or_create(
+			content_type=exam_content_type,
+			codename='add_exam',
+		)
+		self.user.user_permissions.add(add_exammark, change_exam, add_exam_perm)
+		self.client.force_login(self.user)
 
 	def workbook_upload(self, rows):
 		workbook = Workbook()
@@ -669,3 +673,462 @@ class DepartmentAccessControlTests(TestCase):
 
 # Create your tests here.
 
+
+
+class MarksPartsAndPassRulesTests(TestCase):
+	"""Practical / Weekly Test entry, the part pass rule, and blank-is-absent."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Marks School', classes='9')
+		self.user = get_user_model().objects.create_superuser(username='marks-admin', password='password')
+		self.client.force_login(self.user)
+		self.physics = Subject.objects.create(code='PHY', name='Physics', full_marks=100)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='9', section='', group='SCI',
+			session='2026',
+		)
+		self.student = Student.objects.create(
+			institution=self.institution, student_id='M001', name='Marked Student',
+			admission_class='9', section='A', group='SCI', roll_no=1, admission_year=2026,
+		)
+		self.absent_student = Student.objects.create(
+			institution=self.institution, student_id='M002', name='Absent Student',
+			admission_class='9', section='A', group='SCI', roll_no=2, admission_year=2026,
+		)
+
+	def configure(self, **overrides):
+		fields = {
+			'institution': self.institution, 'admission_class': '9',
+			'subject': self.physics, 'exam_type': 'SECOND_TERM',
+			'full_marks': 100, 'cq_marks': 75, 'mcq_marks': 0, 'practical_marks': 25,
+		}
+		fields.update(overrides)
+		from .models import SubjectMarkSetting
+		return SubjectMarkSetting.objects.create(**fields)
+
+	def post_marks(self, payload):
+		return self.client.post(
+			reverse('enter_marks', args=[self.exam.pk, self.physics.pk]), payload
+		)
+
+	def test_parts_are_added_into_the_total(self):
+		self.configure()
+		self.post_marks({
+			f'cq_{self.student.pk}': '60',
+			f'mcq_{self.student.pk}': '',
+			f'practical_{self.student.pk}': '20',
+		})
+		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.physics)
+		self.assertEqual(str(mark.marks_obtained), '80.00')
+		self.assertEqual(str(mark.cq_obtained), '60.00')
+		self.assertEqual(str(mark.practical_obtained), '20.00')
+		self.assertIsNone(mark.weekly_test_obtained)
+
+	def test_a_student_entered_nowhere_has_no_row(self):
+		"""Blank everywhere means absent: no row, so the result shows a dash."""
+		self.configure()
+		self.post_marks({
+			f'cq_{self.student.pk}': '60', f'practical_{self.student.pk}': '20',
+			f'cq_{self.absent_student.pk}': '', f'practical_{self.absent_student.pk}': '',
+		})
+		self.assertFalse(ExamMark.objects.filter(student=self.absent_student).exists())
+
+	def test_mark_above_a_part_max_is_not_saved(self):
+		self.configure()
+		response = self.post_marks({
+			f'cq_{self.student.pk}': '90', f'practical_{self.student.pk}': '20',
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertFalse(ExamMark.objects.filter(student=self.student).exists())
+		followed = self.client.get(reverse('exam_list'))
+		self.assertContains(followed, 'must be between 0 and 75')
+
+	def test_each_part_must_pass_fails_the_subject_on_one_part(self):
+		setting = self.configure(require_all_parts_pass=True, pass_percentage=40)
+		# 80/100 overall passes the subject total, but 5/25 fails the practical
+		# (pass mark for that part is 10).
+		ExamMark.objects.create(
+			exam=self.exam, student=self.student, subject=self.physics,
+			marks_obtained=80, cq_obtained=75, practical_obtained=5,
+		)
+		from .result_utils import build_exam_results, get_subject_marks
+		result = compute_first_result(self.exam)
+		self.assertEqual(result['status'], 'Fail')
+		self.assertEqual(str(result['gpa']), '0.00')
+		subject_result = result['subject_results'][0]
+		self.assertEqual(subject_result['grade'], 'F')
+		self.assertEqual(subject_result['failed_parts'], ['Practical'])
+		self.assertEqual(setting.pass_marks, 40.0)
+		self.assertEqual(get_subject_marks(self.exam, self.physics).part_pass_marks(25), 10.0)
+
+	def test_without_the_tick_only_the_total_matters(self):
+		self.configure(require_all_parts_pass=False)
+		ExamMark.objects.create(
+			exam=self.exam, student=self.student, subject=self.physics,
+			marks_obtained=80, cq_obtained=75, practical_obtained=5,
+		)
+		result = compute_first_result(self.exam)
+		self.assertEqual(result['status'], 'Pass')
+
+	def test_configured_but_blank_part_is_a_failed_part(self):
+		self.configure(require_all_parts_pass=True)
+		ExamMark.objects.create(
+			exam=self.exam, student=self.student, subject=self.physics,
+			marks_obtained=99, cq_obtained=74, mcq_obtained=25, practical_obtained=None,
+		)
+		result = compute_first_result(self.exam)
+		self.assertEqual(result['status'], 'Fail')
+		self.assertEqual(result['subject_results'][0]['failed_parts'], ['Practical'])
+
+	def test_parts_total_mismatch_is_reported_on_the_entry_page(self):
+		self.configure(practical_marks=None, cq_marks=70, mcq_marks=20)
+		response = self.client.get(reverse('enter_marks', args=[self.exam.pk, self.physics.pk]))
+		self.assertContains(response, 'add up to 90')
+
+	def test_weekly_test_is_an_enterable_part(self):
+		self.configure(cq_marks=60, mcq_marks=20, weekly_test_marks=20)
+		self.post_marks({
+			f'cq_{self.student.pk}': '50', f'mcq_{self.student.pk}': '15',
+			f'weekly_test_{self.student.pk}': '18',
+		})
+		mark = ExamMark.objects.get(exam=self.exam, student=self.student)
+		self.assertEqual(str(mark.marks_obtained), '83.00')
+		self.assertEqual(str(mark.weekly_test_obtained), '18.00')
+
+
+def compute_first_result(exam):
+	"""Result row for the first student, shared by the tests above."""
+	from .result_utils import build_exam_results
+	_, results = build_exam_results(exam)
+	return results[0]
+
+
+class ExamScopeConsistencyTests(TestCase):
+	"""Marks entry, import, seat plan and results must list the same students."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Scope School', classes='9')
+		self.user = get_user_model().objects.create_superuser(username='scope-admin', password='password')
+		self.client.force_login(self.user)
+		self.physics = Subject.objects.create(code='PHY2', name='Physics', full_marks=100)
+		self.accounting = Subject.objects.create(code='ACC2', name='Accounting', full_marks=100)
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='SCI',
+			subject=self.physics, requirement_type='MANDATORY',
+		)
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='BUS',
+			subject=self.accounting, requirement_type='MANDATORY',
+		)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='9', group='SCI', session='2026',
+		)
+		# Zero-padded class: the exam module must still match these students.
+		self.science_student = Student.objects.create(
+			institution=self.institution, student_id='S010', name='Science Kid',
+			admission_class='09', section='A', group='SCI', roll_no=1, admission_year=2026,
+		)
+		self.business_student = Student.objects.create(
+			institution=self.institution, student_id='B010', name='Business Kid',
+			admission_class='9', section='A', group='BUS', roll_no=1, admission_year=2026,
+		)
+		self.archived_student = Student.objects.create(
+			institution=self.institution, student_id='S011', name='Gone Student',
+			admission_class='9', section='A', group='SCI', roll_no=2,
+			admission_year=2026, is_archived=True,
+		)
+
+	def test_get_exam_students_scopes_by_class_group_and_archive(self):
+		from .result_utils import get_exam_students
+		self.assertEqual(list(get_exam_students(self.exam)), [self.science_student])
+
+	def test_enter_marks_and_seat_plan_agree(self):
+		marks_page = self.client.get(reverse('enter_marks', args=[self.exam.pk, self.physics.pk]))
+		self.assertContains(marks_page, 'Science Kid')
+		self.assertNotContains(marks_page, 'Business Kid')
+		self.assertNotContains(marks_page, 'Gone Student')
+
+		seat_page = self.client.get(reverse('seat_plan_list', args=[self.exam.pk]))
+		self.assertContains(seat_page, '1')
+		self.assertEqual(seat_page.context['total_students'], 1)
+
+	def test_import_rejects_other_group_student_and_unassigned_subject(self):
+		try:
+			from openpyxl import Workbook
+		except ModuleNotFoundError:
+			self.skipTest('openpyxl is required for Excel import tests')
+		from io import BytesIO
+		from django.core.files.uploadedfile import SimpleUploadedFile
+
+		workbook = Workbook()
+		sheet = workbook.active
+		sheet.append(['Student ID', 'Subject Code', 'Marks'])
+		sheet.append(['B010', 'PHY2', 55])   # Business student in a Science exam
+		output = BytesIO()
+		workbook.save(output)
+		response = self.client.post(
+			reverse('import_exam_marks', args=[self.exam.pk]),
+			{'excel_file': SimpleUploadedFile(
+				'marks.xlsx', output.getvalue(),
+				content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'not a member of this exam class/section/group')
+		self.assertEqual(ExamMark.objects.count(), 0)
+
+	def test_import_skips_rows_without_a_mark(self):
+		try:
+			from openpyxl import Workbook
+		except ModuleNotFoundError:
+			self.skipTest('openpyxl is required for Excel import tests')
+		from io import BytesIO
+		from django.core.files.uploadedfile import SimpleUploadedFile
+
+		workbook = Workbook()
+		sheet = workbook.active
+		sheet.append(['Student ID', 'Subject Code', 'Marks'])
+		sheet.append(['S010', 'PHY2', 71])
+		sheet.append(['S010', 'ACC2', None])   # blank = not entered, not an error
+		output = BytesIO()
+		workbook.save(output)
+		self.client.post(
+			reverse('import_exam_marks', args=[self.exam.pk]),
+			{'excel_file': SimpleUploadedFile(
+				'marks.xlsx', output.getvalue(),
+				content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+		)
+		self.assertEqual(ExamMark.objects.count(), 1)
+		self.assertEqual(str(ExamMark.objects.get().marks_obtained), '71.00')
+
+	def test_import_uses_the_exam_full_marks_not_the_subject_default(self):
+		from .models import SubjectMarkSetting
+		SubjectMarkSetting.objects.create(
+			institution=self.institution, admission_class='9', subject=self.physics,
+			exam_type='SECOND_TERM', full_marks=50,
+		)
+		self.assertTrue(self.physics.full_marks > 50)
+		# (guard: the 71 mark used above would be rejected against a 50-mark exam)
+		from .result_utils import get_subject_marks
+		self.assertEqual(get_subject_marks(self.exam, self.physics).full_marks, 50)
+
+	def test_result_sheet_excludes_other_group_subjects_and_warns(self):
+		ExamMark.objects.create(
+			exam=self.exam, student=self.science_student, subject=self.accounting,
+			marks_obtained=80,
+		)
+		self.exam.is_published = True
+		self.exam.save()
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		self.assertContains(response, 'Physics')
+		content = response.content.decode()
+		self.assertNotIn('<th>Accounting', content)
+		self.assertContains(response, 'not assigned to its class/group')
+
+	def test_zero_gpa_students_are_not_ranked_and_do_not_crash_top_10(self):
+		self.exam.is_published = True
+		self.exam.save()
+		ExamMark.objects.create(
+			exam=self.exam, student=self.science_student, subject=self.physics, marks_obtained=80,
+		)
+		response = self.client.get(reverse('top_10', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Science Kid')
+
+
+class MarksImportTemplateDownloadTests(TestCase):
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Template School', classes='9')
+		self.user = get_user_model().objects.create_superuser(username='template-admin', password='password')
+		self.client.force_login(self.user)
+		self.subject = Subject.objects.create(code='BNG', name='Bangla', full_marks=100)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='9', group='SCI', session='2026',
+		)
+		Student.objects.create(
+			institution=self.institution, student_id='T001', name='Template Kid',
+			admission_class='9', section='A', group='SCI', roll_no=1, admission_year=2026,
+		)
+
+	def test_workbook_matches_what_the_importer_accepts(self):
+		try:
+			from openpyxl import load_workbook
+		except ModuleNotFoundError:
+			self.skipTest('openpyxl is required for Excel export tests')
+		response = self.client.get(reverse('download_marks_import_template', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertIn('spreadsheetml.sheet', response['Content-Type'])
+		import io
+		workbook = load_workbook(io.BytesIO(response.content), read_only=True)
+		sheet = workbook['Marks']
+		rows = list(sheet.iter_rows(values_only=True))
+		self.assertEqual(rows[0], ('Student ID', 'Subject Code', 'Marks'))
+		self.assertEqual(rows[1], ('T001', 'BNG', None))
+		self.assertIn('Subjects', workbook.sheetnames)
+
+
+class ExamNamingAndLayoutTests(TestCase):
+	def setUp(self):
+		self.user = get_user_model().objects.create_superuser(username='layout-admin', password='password')
+		self.client.force_login(self.user)
+		self.institution = Institution.objects.create(name='Layout School', classes='9')
+		self.exam = Exam.objects.create(
+			name='Placeholder', exam_type='SECOND_TERM', institution=self.institution,
+			admission_class='9', session='2026-2027',
+		)
+
+	def test_auto_exam_name_uses_the_last_year_in_the_session(self):
+		self.assertEqual(auto_exam_name('SECOND_TERM', '2026-2027'), 'Second Term Examination-2027')
+		self.assertEqual(auto_exam_name('MID_TERM_1', '2026'), 'Mid Term-1 Examination-2026')
+		self.assertEqual(auto_exam_name('MODEL_TEST_3', ''), 'Model Test-3 Examination')
+
+	def test_saving_the_exam_form_regenerates_the_name(self):
+		from .forms import ExamForm
+		form = ExamForm(instance=self.exam, data={
+			'institution': self.institution.pk, 'admission_class': '9', 'section': '',
+			'group': '', 'exam_type': 'FINAL_TERM', 'session': '2026-2027',
+		})
+		self.assertTrue(form.is_valid(), form.errors)
+		form.save()
+		self.exam.refresh_from_db()
+		self.assertEqual(self.exam.name, 'Final Term Examination-2027')
+
+	def test_exam_form_offers_section_as_a_dropdown(self):
+		from .forms import ExamForm
+		form = ExamForm()
+		self.assertEqual(form.fields['section'].widget.__class__.__name__, 'Select')
+		self.assertNotIn('name', form.fields)
+
+	def test_audit_log_and_import_students_render_in_the_app_layout(self):
+		for name, url_name in (('Audit Log', 'audit_log_list'), ('Import Students', 'import_students')):
+			with self.subTest(page=name):
+				response = self.client.get(reverse(url_name))
+				self.assertEqual(response.status_code, 200)
+				self.assertContains(response, 'Principal Kazi Faruky School And College')
+				self.assertContains(response, 'sidebar')
+
+	def test_no_auto_field_warnings_remain(self):
+		from django.core.checks import run_checks
+		warnings = [issue for issue in run_checks() if issue.id.startswith('models.W042')]
+		self.assertEqual(warnings, [])
+
+
+class SSCGroupAlignmentTests(TestCase):
+	def setUp(self):
+		self.institution = Institution.objects.create(name='SSC School', classes='9,10')
+		self.user = get_user_model().objects.create_superuser(username='ssc-admin', password='password')
+		self.client.force_login(self.user)
+		self.student = Student.objects.create(
+			institution=self.institution, student_id='SSC01', name='SSC Kid',
+			admission_class='10', section='A', group='SCI', roll_no=1, admission_year=2026,
+		)
+
+	def test_ssc_group_codes_are_the_student_group_codes(self):
+		from .models import SSCRegistration
+		student_codes = {code for code, _label in Student.GROUP_CHOICES}
+		self.assertTrue(SSCRegistration.GROUP_CHOICES)
+		for code, _label in SSCRegistration.GROUP_CHOICES:
+			self.assertIn(code, student_codes)
+
+	def test_form_refuses_a_group_that_disagrees_with_the_student(self):
+		from .forms import SSCRegistrationForm
+		from .models import SSCRegistration
+		form = SSCRegistrationForm(student=self.student, data={
+			'registration_number': 'R-1', 'session': '2025-2026', 'group': 'BUS',
+			'board': 'DHAKA', 'subjects': '', 'roll_number': '', 'center': '',
+		})
+		self.assertFalse(form.is_valid())
+		self.assertIn('group', form.errors)
+		self.assertIn('Science', form.errors['group'][0])
+
+	def test_form_accepts_a_matching_group_and_prefills_it(self):
+		from .forms import SSCRegistrationForm
+		form = SSCRegistrationForm(student=self.student)
+		self.assertEqual(form.fields['group'].initial, 'SCI')
+		form = SSCRegistrationForm(student=self.student, data={
+			'registration_number': 'R-2', 'session': '2025-2026', 'group': 'SCI',
+			'board': 'DHAKA', 'subjects': 'Bangla', 'roll_number': '', 'center': '',
+		})
+		self.assertTrue(form.is_valid(), form.errors)
+		registration = form.save(commit=False)
+		registration.student = self.student
+		registration.save()
+		self.assertEqual(registration.get_group_display(), 'Science')
+
+
+class AbsentSubjectRulesTests(TestCase):
+	"""NCTB/SSC reading: not sitting an assigned subject is a fail, not a free pass."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Absent School', classes='9')
+		self.user = get_user_model().objects.create_superuser(username='absent-admin', password='password')
+		self.client.force_login(self.user)
+		self.physics = Subject.objects.create(code='PHYA', name='Physics', full_marks=100)
+		self.math = Subject.objects.create(code='MTXA', name='Higher Math', full_marks=100)
+		from .models import SubjectRequirement
+		for subject in (self.physics, self.math):
+			# Group-neutral assignments, so both subjects are columns even when a
+			# student has no mark in one of them.
+			SubjectRequirement.objects.create(
+				institution=self.institution, admission_class='9', group='',
+				subject=subject, requirement_type='MANDATORY',
+			)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='9', session='2026', is_published=True,
+		)
+		self.partial = Student.objects.create(
+			institution=self.institution, student_id='A001', name='Half Present',
+			admission_class='9', section='A', roll_no=1, admission_year=2026,
+		)
+		self.never = Student.objects.create(
+			institution=self.institution, student_id='A002', name='Totally Absent',
+			admission_class='9', section='A', roll_no=2, admission_year=2026,
+		)
+		ExamMark.objects.create(
+			exam=self.exam, student=self.partial, subject=self.physics, marks_obtained=95,
+		)
+
+	def test_unentered_subject_is_graded_f_and_makes_the_result_fail(self):
+		result = compute_first_result(self.exam)
+		self.assertEqual(result['student'], self.partial)
+		self.assertEqual(result['status'], 'Fail')
+		self.assertEqual(str(result['gpa']), '0.00')
+		absent_row = [row for row in result['subject_results'] if row['absent']][0]
+		self.assertEqual(absent_row['subject'], self.math)
+		self.assertEqual(absent_row['grade'], 'F')
+		self.assertEqual(absent_row['obtained'], 0)
+		# the missed subject is counted as 0 / 100, so the percentage tells the truth
+		self.assertEqual(result['total_obtained'], 95)
+		self.assertEqual(result['total_full'], 200)
+
+	def test_a_dash_is_printed_for_the_absent_subject_not_a_zero(self):
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		content = response.content.decode()
+		self.assertIn('absent-mark', content)
+		self.assertIn('no mark entered - counted as F', content)
+
+	def test_student_with_no_marks_anywhere_is_no_marks_not_fail(self):
+		"""Nobody sat this exam: an attendance problem, not a graded result."""
+		result = [r for r in self._results() if r['student'] == self.never][0]
+		self.assertEqual(result['status'], 'No Marks')
+		self.assertIsNone(result['gpa'])
+		self.assertIsNone(result['position'])
+
+	def test_absent_rule_can_be_switched_off(self):
+		from django.test import override_settings
+		with override_settings(EXAM_ABSENT_SUBJECT_FAILS=False):
+			result = compute_first_result(self.exam)
+		self.assertEqual(result['status'], 'Pass')
+		self.assertEqual(result['total_full'], 100)
+		absent_row = [row for row in result['subject_results'] if row['absent']][0]
+		self.assertEqual(absent_row['grade'], '-')
+		self.assertIsNone(absent_row['obtained'])
+
+	def _results(self):
+		from .result_utils import build_exam_results
+		_, results = build_exam_results(self.exam)
+		return results

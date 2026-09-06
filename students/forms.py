@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
@@ -231,7 +233,37 @@ class CertificateForm(forms.ModelForm):
         }
 
 
+def _ssc_group_label(code):
+    return dict(SSCRegistration.GROUP_CHOICES).get(code, code)
+
+
 class SSCRegistrationForm(forms.ModelForm):
+    """SSC board registration.
+
+    The group is checked against the student's own group: the two are stored on
+    different tables and used to be stored with different codes, which let a
+    Science student be registered under Business Studies without any warning.
+    """
+
+    def __init__(self, *args, student=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.forced_student = student
+        if not self.instance.pk and student and student.group:
+            self.fields['group'].initial = student.group
+
+    def clean(self):
+        cleaned = super().clean()
+        student = self.forced_student or getattr(self.instance, 'student', None)
+        group = cleaned.get('group')
+        if student and group and student.group and student.group != group:
+            self.add_error(
+                'group',
+                f'This student is {student.get_group_display()} in the school record, '
+                f'not {_ssc_group_label(group)}. '
+                'Fix the student group or register the matching board group.',
+            )
+        return cleaned
+
     class Meta:
         model = SSCRegistration
         fields = ['registration_number', 'roll_number', 'session', 'group', 'subjects', 'board', 'center']
@@ -264,26 +296,47 @@ class SSCExcelImportForm(forms.Form):
     )
 
 
-EXAM_NAME_SUGGESTIONS = [
-    'First Term', 'Second Term', 'Third Term',
-    'Pre Test Exam', 'Test Exam',
-    'Model Test-1', 'Model Test-2', 'Model Test-3',
-    'Final Term',
-    'Mid Term-1', 'Mid Term-2', 'Mid Term-3',
-]
 EXAM_SECTION_CHOICES = [(letter, letter) for letter in 'ABCDEFGHIJ']
 
 
+def auto_exam_name(exam_type, session):
+    """Exam titles are derived, never typed: "Second Term Examination-2026".
+
+    The last four-digit group in the session is used as the year, so both
+    "2026" and "2026-2027" produce "-2026".
+    """
+    year_matches = re.findall(r'\d{4}', session or '')
+    year = year_matches[-1] if year_matches else ''
+    display = dict(Exam.EXAM_TYPE_CHOICES).get(exam_type, exam_type or '')
+    return f'{display} Examination-{year}' if year else f'{display} Examination'
+
+
 class ExamForm(forms.ModelForm):
+    """Add/Edit exam form.
+
+    ``name`` is deliberately not a field — it is generated from the exam type
+    and session by :func:`auto_exam_name` so every exam is titled consistently
+    (and so the marks workflow, which looks exams up by type+session+group,
+    never creates a near-duplicate under a hand-typed name).
+    """
     admission_class = forms.ChoiceField(
         choices=[(str(i), f'Class {i}') for i in range(1, 13)],
         label='Class',
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+
+    section = forms.ChoiceField(
+        choices=[('', 'All sections')] + EXAM_SECTION_CHOICES,
+        required=False,
+        help_text='Leave on "All sections" to include every section of the class.',
+        widget=forms.Select(attrs={'class': 'form-select'}),
     )
 
     group = forms.ChoiceField(
         choices=[('', '-- Select group --')] + list(Student.GROUP_CHOICES),
         required=False,
         help_text='Only required for Class 9-10 (SSC) and Class 11-12 (HSC)',
+        widget=forms.Select(attrs={'class': 'form-select'}),
     )
 
     exam_date = forms.DateField(
@@ -291,11 +344,23 @@ class ExamForm(forms.ModelForm):
         widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
     )
 
-    field_order = ['institution', 'admission_class', 'group', 'name', 'exam_type', 'session', 'exam_date', 'is_published']
+    field_order = ['institution', 'admission_class', 'section', 'group', 'exam_type', 'session', 'exam_date', 'is_published']
 
     class Meta:
         model = Exam
-        fields = ['institution', 'admission_class', 'group', 'name', 'exam_type', 'session', 'exam_date', 'is_published']
+        fields = ['institution', 'admission_class', 'section', 'group', 'exam_type', 'session', 'exam_date', 'is_published']
+        widgets = {
+            'institution': forms.Select(attrs={'class': 'form-select'}),
+            'exam_type': forms.Select(attrs={'class': 'form-select'}),
+            'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2026-2027'}),
+        }
+
+    def save(self, commit=True):
+        exam = super().save(commit=False)
+        exam.name = auto_exam_name(exam.exam_type, exam.session)
+        if commit:
+            exam.save()
+        return exam
 
 class ExamExcelImportForm(forms.Form):
     excel_file = forms.FileField(

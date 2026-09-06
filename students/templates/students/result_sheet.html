@@ -6,6 +6,8 @@
 
 {% block extra_style %}
     .table-card table { min-width: 900px; }
+    td.absent-mark { color: #6c757d; background: #f1f3f7; }
+    td.failed-mark { color: #b02a37; font-weight: 600; }
 {% endblock %}
 
 {% block content %}
@@ -22,13 +24,24 @@
     <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>
 </div>
 
+{% if ignored_subjects %}
+<div class="alert alert-warning small">
+    Marks exist in this exam for subject(s) that are not assigned to its class/group, so they are
+    <strong>not counted here</strong>:
+    {% for subject in ignored_subjects %}<span class="badge bg-secondary">{{ subject.name }}</span>{% endfor %}
+    &mdash; fix the subject assignments, or correct the marks under Enter Marks.
+</div>
+{% endif %}
+
 <div class="table-card">
     <div class="table-responsive">
         <table class="table table-striped table-bordered mb-0">
             <thead>
                 <tr>
                     <th>Roll</th><th>Name</th>
-                    {% for subject in subjects %}<th>{{ subject.name }}<br><small>({{ subject.full_marks }})</small></th>{% endfor %}
+                    {% for column in columns %}
+                    <th>{{ column.subject.name }}<br><small>({{ column.full_marks }}{% if column.parts_summary %} &middot; {{ column.parts_summary }}{% endif %})</small></th>
+                    {% endfor %}
                     <th>Total</th><th>GPA</th><th>Grade</th><th>Position</th>
                 </tr>
             </thead>
@@ -37,7 +50,12 @@
                 <tr>
                     <td>{{ r.student.roll_no }}</td>
                     <td>{{ r.student.name }}</td>
-                    {% for sr in r.subject_results %}<td>{{ sr.obtained }}</td>{% endfor %}
+                    {% for sr in r.subject_results %}
+                    <td class="{% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
+                        title="{% if sr.absent %}no mark entered - counted as F{% else %}Pass mark {{ sr.pass_marks }}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
+                        {% if sr.absent %}&mdash;{% else %}{{ sr.obtained }}{% endif %}{% if not sr.passed %} *{% endif %}
+                    </td>
+                    {% endfor %}
                     <td>{% if r.has_marks %}{{ r.total_obtained }}{% else %}-{% endif %}</td>
                     <td>{{ r.gpa|default:'-' }}</td>
                     <td>{{ r.grade }}</td>
@@ -50,4 +68,12 @@
         </table>
     </div>
 </div>
+
+<p class="text-muted small mt-2 d-print-none">
+    &mdash; = no mark entered for that subject. It is never shown as 0, but it is
+    graded <strong>F</strong> and counted as 0 out of its Full Marks, so the student's
+    result becomes Fail with GPA 0.00 (set <code>EXAM_ABSENT_SUBJECT_FAILS=False</code> to
+    leave such subjects out of the result instead).
+    * = the subject did not pass (hover a cell for the part breakdown and the pass mark).
+</p>
 {% endblock %}

@@ -30,6 +30,28 @@ ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(',') if h.strip()] or [
 _csrf_origins = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins.split(',') if o.strip()]
 
+# HTTPS behind a reverse proxy (Render, Nginx, Caddy).
+#
+# The proxy terminates TLS and forwards the request to Django over plain http.
+# Django then sees an http origin for a POST that came from an https page, and
+# the CSRF check fails with "Origin checking failed" (a 403 on login) while
+# redirects are built with the wrong scheme. Opting in with
+# TRUST_FORWARDED_PROTO=True makes Django read the proxy's
+# X-Forwarded-Proto header instead of the connection.
+#
+# Both flags stay off by default: trusting these headers on a directly exposed
+# port would let a client spoof the scheme/host. On Render set
+# TRUST_FORWARDED_PROTO=True (and USE_X_FORWARDED_HOST=True so absolute URLs
+# use the public hostname).
+_TRUST_FORWARDED_PROTO = os.environ.get('TRUST_FORWARDED_PROTO', 'False') == 'True'
+USE_X_FORWARDED_HOST = os.environ.get('USE_X_FORWARDED_HOST', 'False') == 'True'
+if _TRUST_FORWARDED_PROTO:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Safe only because the scheme is now known to be https at the proxy.
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 INSTALLED_APPS = [
@@ -97,9 +119,20 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+# Manifest static storage hashes and verifies asset URLs — it needs
+# `collectstatic` to have run, so it is only enabled when DEBUG is off.
+# With it on in development (or under the test runner) every {% static %} tag
+# raises "Missing staticfiles manifest entry" because no manifest exists yet.
 STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if DEBUG
+            else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        ),
     },
 }
 
@@ -108,6 +141,13 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+# NCTB/SSC reading of an un-entered subject: a candidate who did not sit an
+# assigned subject has not passed it, so that subject is graded F and the
+# result becomes Fail (GPA 0.00). Set EXAM_ABSENT_SUBJECT_FAILS=False to ignore
+# un-entered subjects instead — they then print a dash and stay out of the
+# total. See RESULT_PUBLISHING_GUIDE.md.
+EXAM_ABSENT_SUBJECT_FAILS = os.environ.get('EXAM_ABSENT_SUBJECT_FAILS', 'True') == 'True'
 
 SCHOOL_INFO = {
     'name': 'Principal Kazi Faruky School And College',

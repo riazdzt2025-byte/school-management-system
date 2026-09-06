@@ -11,7 +11,11 @@
 
 <div class="table-card p-4">
     <div class="alert alert-info small mb-4">
-        Select Institution, Class, and Exam Type to configure Full Marks / CQ / MCQ for each subject. Pass Marks (40%) is calculated automatically.
+        Select Institution, Class and Exam Type to configure Full Marks and the parts of each subject:
+        CQ, MCQ, Practical and Weekly Test. The pass mark is calculated from Pass % (40% by default),
+        and <strong>Each part must pass</strong> makes a single failed part fail the whole subject.
+        A blank part box means "this subject has no such part"; leave the whole row blank to fall back
+        to the subject's own defaults.
     </div>
 
     <form method="get" class="row g-3 mb-4">
@@ -43,6 +47,7 @@
 
     {% if subjects_with_settings %}
     <form method="post">
+        <input type="hidden" name="institution" value="{{ selected_institution }}">
         {% csrf_token %}
         <input type="hidden" name="institution" value="{{ selected_institution }}">
         <input type="hidden" name="admission_class" value="{{ selected_class }}">
@@ -55,6 +60,12 @@
                         <th>Full Marks</th>
                         <th>CQ</th>
                         <th>MCQ</th>
+                        <th>Practical</th>
+                        <th>Weekly Test</th>
+                        <th>Pass %</th>
+                        <th>Pass Marks</th>
+                        <th>Parts total</th>
+                        <th>Each part<br>must pass</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -72,6 +83,31 @@
                         <td>
                             <input type="number" min="0" class="form-control" style="width: 90px;"
                                    name="mcq_marks_{{ row.subject.id }}" value="{{ row.mcq_marks|default_if_none:'' }}">
+                        </td>
+                        <td>
+                            <input type="number" min="0" class="form-control" style="width: 90px;"
+                                   name="practical_marks_{{ row.subject.id }}" value="{{ row.practical_marks|default_if_none:'' }}">
+                        </td>
+                        <td>
+                            <input type="number" min="0" class="form-control" style="width: 90px;"
+                                   name="weekly_test_marks_{{ row.subject.id }}" value="{{ row.weekly_test_marks|default_if_none:'' }}">
+                        </td>
+                        <td>
+                            <input type="number" min="1" max="100" class="form-control" style="width: 80px;"
+                                   name="pass_percentage_{{ row.subject.id }}" value="{{ row.pass_percentage }}">
+                        </td>
+                        <td class="text-muted small">{{ row.pass_marks }}</td>
+                        <td>
+                            {% if row.parts_match %}
+                            <span class="text-success small">{{ row.parts_total|default_if_none:"&mdash;" }}</span>
+                            {% else %}
+                            <span class="text-danger small fw-semibold">{{ row.parts_total }} &ne; {{ row.full_marks }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input"
+                                   name="require_all_parts_pass_{{ row.subject.id }}" value="1"
+                                   {% if row.require_all_parts_pass %}checked{% endif %}>
                         </td>
                     </tr>
                     {% endfor %}

@@ -9,6 +9,11 @@ def _sync_default_groups(sender, **kwargs):
 
 class StudentsConfig(AppConfig):
     name = 'students'
+    # The migrations already create BigAutoField primary keys (they were generated
+    # with this default), but the project settings never declared one, so every
+    # model in this app raised models.W042. Declaring it keeps the models and the
+    # schema in sync — no new migration and no table rebuild.
+    default_auto_field = 'django.db.models.BigAutoField'
 
     def ready(self):
         # Run after migrations instead of at import time: querying the database

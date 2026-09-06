@@ -31,6 +31,12 @@
                 </div>
             </div>
             {% endfor %}
+            <div class="col-md-12">
+                <div class="alert alert-secondary small mb-0">
+                    The exam name is generated automatically from the exam type and session:
+                    <strong id="exam-name-preview">&mdash;</strong>
+                </div>
+            </div>
         </div>
 
         <div class="d-flex gap-2 mt-3">
@@ -88,29 +94,19 @@
 
     var examTypeSelect = document.getElementById('id_exam_type');
     var sessionInput   = document.getElementById('id_session');
-    var nameInput      = document.getElementById('id_name');
+    var preview        = document.getElementById('exam-name-preview');
 
-    if (examTypeSelect && sessionInput && nameInput) {
-        nameInput.setAttribute('readonly', 'readonly');
-        nameInput.classList.add('bg-light');
-
-        function extractYear(sessionValue) {
-            var matches = (sessionValue || '').match(/\d{4}/g);
-            if (!matches || !matches.length) return '';
-            return matches[matches.length - 1];
-        }
-
+    if (examTypeSelect && sessionInput && preview) {
         function generateExamName() {
             var selectedOption = examTypeSelect.options[examTypeSelect.selectedIndex];
             var examTypeText = selectedOption ? selectedOption.text.trim() : '';
-
             if (!examTypeText || examTypeText.indexOf('Select') !== -1) {
-                nameInput.value = '';
+                preview.textContent = '\u2014';
                 return;
             }
-
-            var year = extractYear(sessionInput.value);
-            nameInput.value = year
+            var matches = (sessionInput.value || '').match(/\d{4}/g) || [];
+            var year = matches.length ? matches[matches.length - 1] : '';
+            preview.textContent = year
                 ? examTypeText + ' Examination-' + year
                 : examTypeText + ' Examination';
         }
