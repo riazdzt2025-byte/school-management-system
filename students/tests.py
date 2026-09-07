@@ -1381,3 +1381,99 @@ class GroupRuleTemplateSmokeTests(TestCase):
         response = self.client.get(reverse('public_admission_apply'))
         self.assertContains(response, 'id="group-field-wrapper"')
         self.assertContains(response, 'id="group-field-note"')
+
+
+class InstitutionAccessSetupTests(TestCase):
+	"""The login screen must work on a fresh install where nobody has been
+	granted an InstitutionAccess row yet."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Kallan Trust Campus', classes='6,7,8,9')
+		self.other = Institution.objects.create(name='Second Campus', classes='6,7')
+
+	def test_login_page_lists_institutions_and_departments_without_any_access_rows(self):
+		self.assertEqual(InstitutionAccess.objects.count(), 0)
+		response = self.client.get(reverse('login'))
+		self.assertEqual(response.status_code, 200)
+		content = response.content.decode()
+		self.assertContains(response, 'Kallan Trust Campus')
+		self.assertContains(response, 'Second Campus')
+		for department in ('Office', 'Exam', 'Accounts'):
+			self.assertContains(response, f'data-department="{department}"')
+		self.assertNotContains(response, 'No institution access has been assigned')
+		# the form must post a real institution, not an empty one
+		self.assertIn(f'name="institution_id" id="institution_id" value="{self.institution.pk}"', content)
+
+	def test_admin_can_log_in_with_a_fresh_install(self):
+		get_user_model().objects.create_superuser(username='boss', password='secret123')
+		response = self.client.post(reverse('login'), {
+			'username': 'boss', 'password': 'secret123',
+			'institution_id': str(self.institution.pk), 'department': 'Office',
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertEqual(self.client.session['selected_institution_id'], str(self.institution.pk))
+		self.assertEqual(self.client.session['selected_department'], 'Office')
+
+	def test_plain_user_without_access_is_still_refused(self):
+		get_user_model().objects.create_user(username='stranger', password='secret123')
+		response = self.client.post(reverse('login'), {
+			'username': 'stranger', 'password': 'secret123',
+			'institution_id': str(self.institution.pk), 'department': 'Office',
+		})
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Invalid username, password, or institution access.')
+
+	def test_grant_command_lets_a_plain_user_in(self):
+		from io import StringIO
+		from django.core.management import call_command
+
+		get_user_model().objects.create_user(username='clerk', password='secret123')
+
+		# before the grant
+		response = self.client.post(reverse('login'), {
+			'username': 'clerk', 'password': 'secret123',
+			'institution_id': str(self.institution.pk), 'department': 'Office',
+		})
+		self.assertContains(response, 'Invalid username, password, or institution access.')
+
+		out = StringIO()
+		call_command('grant_institution_access', 'clerk',
+		             '--institution', str(self.institution.pk), '--department', 'Office',
+		             stdout=out)
+		self.assertIn('can now log in', out.getvalue())
+		self.assertTrue(InstitutionAccess.objects.filter(
+			user__username='clerk', institution=self.institution, department='Office', is_active=True,
+		).exists())
+
+		response = self.client.post(reverse('login'), {
+			'username': 'clerk', 'password': 'secret123',
+			'institution_id': str(self.institution.pk), 'department': 'Office',
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertEqual(self.client.session['selected_institution_id'], str(self.institution.pk))
+		# the department group came with the grant, so the pages are not 403
+		user = get_user_model().objects.get(username='clerk')
+		self.assertIn('Office', [g.name for g in user.groups.all()])
+
+	def test_grant_command_accepts_an_institution_name_and_is_idempotent(self):
+		from io import StringIO
+		from django.core.management import call_command
+
+		user = get_user_model().objects.create_user(username='clerk2', password='secret123')
+		for _ in range(2):
+			call_command('grant_institution_access', 'clerk2',
+			             '--institution', 'Kallan Trust Campus', stdout=StringIO())
+		self.assertEqual(InstitutionAccess.objects.filter(user=user, institution=self.institution).count(), 3)
+
+	def test_revoke_command_takes_the_access_away(self):
+		from io import StringIO
+		from django.core.management import call_command
+
+		user = get_user_model().objects.create_user(username='clerk3', password='secret123')
+		call_command('grant_institution_access', 'clerk3', '--institution', str(self.institution.pk),
+		             '--department', 'Exam', stdout=StringIO())
+		out = StringIO()
+		call_command('grant_institution_access', 'clerk3', '--institution', str(self.institution.pk),
+		             '--department', 'Exam', '--revoke', stdout=out)
+		self.assertIn('Revoked 1 access row(s)', out.getvalue())
+		self.assertFalse(InstitutionAccess.objects.filter(user=user).exists())

@@ -141,7 +141,13 @@ def institution_login(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
 
-    cards = InstitutionAccess.objects.select_related('institution', 'user').order_by('institution__name', 'department')
+    # One card per institution, listing every department. The cards used to
+    # come from InstitutionAccess, so an installation where nobody had been
+    # granted a row yet rendered an empty grid, posted an empty
+    # institution_id, and the "choose your institution" step meant nothing —
+    # even for the admin, who is allowed in with any institution.
+    institutions = list(Institution.objects.order_by('name'))
+    departments = [label for label, _ in InstitutionAccess.DEPARTMENT_CHOICES]
     if request.method == 'POST':
         username = (request.POST.get('username') or '').strip()
         password = request.POST.get('password') or ''
@@ -169,7 +175,11 @@ def institution_login(request):
 
         messages.error(request, 'Invalid username, password, or institution access.')
 
-    return render(request, 'students/login.html', {'cards': cards})
+    return render(request, 'students/login.html', {
+        'institutions': institutions,
+        'departments': departments,
+        'default_institution_id': institutions[0].id if institutions else '',
+    })
 
 
 @login_required

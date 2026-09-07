@@ -82,3 +82,61 @@ Checked against a running server as well:
 2. Open **Students** and filter by class 6: the Group filter stays hidden; by
    class 9 it appears.
 3. Spot-check a class 6 student's profile — the Group column should be empty.
+
+---
+
+# Login screen: institution + department cards (second fix)
+
+## The problem
+
+`institution_login` built its cards from `InstitutionAccess`:
+
+```python
+cards = InstitutionAccess.objects.select_related('institution', 'user')...
+```
+
+With no `InstitutionAccess` rows — the state of a fresh install — the login
+page rendered "No institution access has been assigned for this account yet",
+the hidden `institution_id` field was empty, and the "choose your institution"
+step meant nothing. Admins could still authenticate (the view accepts any
+institution for superuser/staff) but with an empty institution in the session.
+
+## What changed
+
+- **Login page** now renders one card per `Institution`, each with Office /
+  Exam / Accounts pills. The card picks the institution, the pill picks the
+  department, and the hidden field is pre-filled with the first institution so
+  it is never empty. The "no access assigned" warning is gone; it only shows a
+  message now when no institution exists at all.
+- **`grant_institution_access` command** — the piece a non-admin needs, since
+  without an `InstitutionAccess` row their login is refused with a message that
+  reads like a wrong password:
+
+      python manage.py grant_institution_access                              # who can log in
+      python manage.py grant_institution_access --list-users
+      python manage.py grant_institution_access clerk --institution 1
+      python manage.py grant_institution_access clerk --institution "Professor Kazi Faruky Kallan Trust" --department Office
+      python manage.py grant_institution_access clerk --institution 1 --department Office --revoke
+
+  It also runs `ensure_default_groups()` so the department's permissions exist
+  and the user does not hit 403 after logging in. Idempotent; reviving an
+  inactive row re-activates it.
+- **Django admin**: `InstitutionAccess` got a proper `ModelAdmin`
+  (list display, filters, search) so access can be managed from the browser
+  after logging in as admin.
+
+Login rules themselves are unchanged: superuser/staff may pick any
+institution + department; everyone else needs an active `InstitutionAccess`
+row for exactly what they picked.
+
+## Verified
+
+    python manage.py test students     # 91 tests, OK (6 new)
+
+Against a running server on a database with **zero** `InstitutionAccess` rows:
+
+- login page shows the institution with Office/Exam/Accounts pills and posts `institution_id=1`
+- admin login → 302, `/students/` 200, `/admin/` 200
+- plain user `clerk` → "Invalid username, password, or institution access."
+- after `grant_institution_access clerk --institution 1 --department Office` → 302, `/students/` 200, `/admin/` 302 (correctly refused)
+- after `--revoke` → refused again

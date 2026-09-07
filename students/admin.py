@@ -24,7 +24,15 @@ class StudentAdmin(admin.ModelAdmin):
 admin.site.register(Student, StudentAdmin)
 admin.site.register(Subject)
 admin.site.register(Institution)
-admin.site.register(InstitutionAccess)
+@admin.register(InstitutionAccess)
+class InstitutionAccessAdmin(admin.ModelAdmin):
+    """Who may log in against which institution + department. Without a row a
+    non-admin user is refused at the login screen, so this list is the first
+    place to look when someone cannot get in."""
+    list_display = ('user', 'institution', 'department', 'is_active')
+    list_filter = ('institution', 'department', 'is_active')
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'institution__name')
+    list_select_related = ('user', 'institution')
 admin.site.register(TransferCertificate)
 admin.site.register(Certificate)
 admin.site.register(SSCRegistration)

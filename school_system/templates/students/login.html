@@ -124,24 +124,28 @@
         {% endif %}
 
         <div class="institution-grid">
-            {% for access in cards %}
-                <div class="institution-card{% if forloop.first %} active{% endif %}" data-institution-id="{{ access.institution.id }}" data-department="{{ access.department }}">
-                    <h3>{{ access.institution.name }}</h3>
-                    <small>Institution access</small>
+            {% for institution in institutions %}
+                <div class="institution-card{% if forloop.first %} active{% endif %}"
+                     data-institution-id="{{ institution.id }}"
+                     data-department="{{ departments.0|default:'Office' }}">
+                    <h3>{{ institution.name }}</h3>
+                    <small>Pick your department, then log in</small>
                     <div class="department-pills">
-                        <span class="department-pill active">{{ access.department }}</span>
+                        {% for department in departments %}
+                            <span class="department-pill{% if forloop.first %} active{% endif %}" data-department="{{ department }}">{{ department }}</span>
+                        {% endfor %}
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary w-100 select-institution">Open Access</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100 select-institution">Select</button>
                 </div>
             {% empty %}
-                <div class="alert alert-warning w-100 mb-0">No institution access has been assigned for this account yet.</div>
+                <div class="alert alert-warning w-100 mb-0">No institution has been created yet. Add one from the Django admin, then log in.</div>
             {% endfor %}
         </div>
 
         <form method="POST" class="login-form active" id="loginForm">
             {% csrf_token %}
-            <input type="hidden" name="institution_id" id="institution_id" value="{{ cards.0.institution.id|default:'' }}">
-            <input type="hidden" name="department" id="department" value="{{ cards.0.department|default:'Office' }}">
+            <input type="hidden" name="institution_id" id="institution_id" value="{{ default_institution_id }}">
+            <input type="hidden" name="department" id="department" value="{{ departments.0|default:'Office' }}">
 
             <div class="row g-3 align-items-end">
                 <div class="col-md-4">
@@ -179,14 +183,27 @@
             saveBox.checked = true;
         }
 
+        function applySelection(card, department) {
+            cards.forEach((item) => item.classList.remove('active'));
+            card.classList.add('active');
+            card.querySelectorAll('.department-pill').forEach((pill) => {
+                pill.classList.toggle('active', pill.dataset.department === department);
+            });
+            card.dataset.department = department;
+            institutionIdField.value = card.dataset.institutionId;
+            departmentField.value = department;
+        }
+
         cards.forEach((card) => {
+            // The card picks the institution; the pills inside it pick the department.
             card.addEventListener('click', function () {
-                cards.forEach((item) => item.classList.remove('active'));
-                this.classList.add('active');
-                const institutionId = this.dataset.institutionId;
-                const department = this.dataset.department;
-                institutionIdField.value = institutionId;
-                departmentField.value = department;
+                applySelection(this, this.dataset.department || 'Office');
+            });
+            card.querySelectorAll('.department-pill').forEach((pill) => {
+                pill.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                    applySelection(card, this.dataset.department);
+                });
             });
         });
 
