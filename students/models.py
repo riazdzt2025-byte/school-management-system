@@ -171,6 +171,15 @@ class Student(models.Model):
                 admission_class=self.admission_class
             ).count() + 1
 
+            # A failed or partial import leaves holes in the numbering, and a
+            # count-based id can land on a suffix that is already taken, which
+            # turned into an IntegrityError that silently skipped import rows.
+            # Step over anything that is in use.
+            while Student.objects.filter(
+                student_id=f"{self.admission_year}{class_code}{count:03d}"
+            ).exists():
+                count += 1
+
             if count > 999:
                 raise ValueError(
                     f"More than 999 students have already been admitted to class ({self.admission_class}) for the year {self.admission_year}."

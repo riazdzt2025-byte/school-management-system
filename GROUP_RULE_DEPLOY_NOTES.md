@@ -221,3 +221,41 @@ Against a running server, logged in as an Office-department user:
 | `GET /edit/<archived>` | 302 → `/students/archived/` |
 | restore as Office user | 302, `is_archived=False`, `status=ACTIVE` |
 | restore without `delete_student` | 403 (unit test, no department group) |
+
+---
+
+# Import: 133 rows in the sheet, 56 students on the site
+
+## What was wrong
+
+1. **Group labels matched by exact equality only.** The filled template says
+   "Business"; the stored label is "Business Studies". Every Business row
+   imported with a blank group, which the list renders as "—".
+2. **`Student.save()` generated `student_id` as `count + 1`.** After a partial
+   import the numbering has holes, and the next count-based id can land on a
+   suffix that is already taken. The row then died with an IntegrityError and
+   was skipped — which is how a 133-row sheet produced a fraction of the
+   students.
+
+## What changed
+
+- `parse_group_label()` accepts codes (SCI/BUS/HUM), full labels and short
+  forms ("Business", "Science", "Humanities", "Commerce", "Arts"). Unknown or
+  blank still becomes ''.
+- `Student.save()` steps over taken id suffixes instead of raising.
+- The import is now **safe to re-run**: a row whose (institution, name, class,
+  section, roll, year) already exists is skipped instead of duplicated, and if
+  that existing student has a blank group while the sheet carries one, the
+  group is filled in. The banner reports
+  `N added, M already present (skipped), K existing student(s) got their group filled in.`
+- Row errors now print the exception type and up to 30 rows instead of 10.
+
+106 tests pass. Verified: a 133-row sheet mirroring the filled template
+imports 133/133 (127 HUM + 6 BUS), a second upload adds 0 and skips 133.
+
+## After the deploy
+
+Re-upload the **same** filled Excel once. It will create the missing rows,
+skip the ones already present, and backfill the Business group on the "—"
+students. If any rows still error, the banner now names the row and the
+reason — paste that text (or the file) and it can be fixed precisely.

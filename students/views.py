@@ -55,6 +55,33 @@ try:
 except ModuleNotFoundError:
     openpyxl = None
     
+def parse_group_label(raw):
+    """Map whatever a spreadsheet calls a group onto the stored code.
+
+    Excel sheets written by hand say 'Business' or 'Science' while the stored
+    labels are 'Business Studies' / 'Science', so exact matching silently
+    dropped the group. Accept the codes, the full labels and common short
+    forms; anything unrecognised becomes '' rather than an error, matching the
+    old behaviour for blank cells."""
+    if raw in (None, ''):
+        return ''
+    value = str(raw).strip().lower()
+    for code, label in Student.GROUP_CHOICES:
+        if value == code.lower() or value == label.lower():
+            return code
+    short_forms = {
+        'science': 'SCI', 'sci': 'SCI',
+        'business': 'BUS', 'business studies': 'BUS', 'bus': 'BUS', 'commerce': 'BUS',
+        'humanities': 'HUM', 'hum': 'HUM', 'arts': 'HUM', 'humanity': 'HUM',
+    }
+    if value in short_forms:
+        return short_forms[value]
+    for code, label in Student.GROUP_CHOICES:
+        if label.lower().startswith(value) or value.startswith(label.lower()):
+            return code
+    return ''
+
+
 def grouped_class_variants():
     """Every spelling of the class labels that have groups (9-12), matching
     how ``admission_class`` is actually stored ('9' and '09' both occur)."""
@@ -1998,12 +2025,13 @@ def import_students(request):
                 return render(request, 'students/import_students.html', {'form': form})
 
             success_count = 0
+            skipped_count = 0
+            group_filled_count = 0
             error_rows = []
 
             gender_map = {'male': 'M', 'm': 'M',
                         'female': 'F', 'f': 'F',
                         'other': 'O', 'o': 'O'}
-            group_map = {label.lower(): code for code, label in Student.GROUP_CHOICES}
 
             for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
                 if not row or all(cell in (None, '') for cell in row):
@@ -2030,17 +2058,38 @@ def import_students(request):
                             continue
 
                     gender_code = gender_map.get(str(gender_raw).strip().lower(), '') if gender_raw else ''
-                    group_code = group_map.get(str(group_raw).strip().lower(), '') if group_raw else ''
+                    group_code = parse_group_label(group_raw)
                     if not Student.class_supports_group(admission_class):
                         group_code = ''
+
+                    # Re-running an import must not create the same student
+                    # twice: match on the natural key the sheet describes.
+                    admission_year_int = int(admission_year) if admission_year else 0
+                    roll_no_int = int(roll_no) if roll_no else 0
+                    existing = Student.objects.filter(
+                        institution=institution,
+                        name__iexact=str(name).strip(),
+                        admission_class=str(admission_class).strip(),
+                        section=str(section).strip() if section else '',
+                        roll_no=roll_no_int,
+                        admission_year=admission_year_int,
+                    ).first()
+                    if existing:
+                        if group_code and not existing.group:
+                            existing.group = group_code
+                            existing.save(update_fields=['group'])
+                            group_filled_count += 1
+                        else:
+                            skipped_count += 1
+                        continue
 
                     Student.objects.create(
                         institution=institution,
                         name=str(name).strip(),
                         admission_class=str(admission_class).strip(),
                         section=str(section).strip() if section else '',
-                        admission_year=int(admission_year) if admission_year else 0,
-                        roll_no=int(roll_no) if roll_no else 0,
+                        admission_year=admission_year_int,
+                        roll_no=roll_no_int,
                         gender=gender_code,
                         religion=str(religion).strip() if religion else '',
                         father_name=str(father_name).strip() if father_name else '',
@@ -2051,14 +2100,18 @@ def import_students(request):
                     )
                     success_count += 1
                 except Exception as e:
-                    error_rows.append(f"Row {row_num}: error — {e}")
+                    error_rows.append(f"Row {row_num}: {type(e).__name__}: {e}")
 
-            if success_count:
-                messages.success(request, f"{success_count} student(s) added successfully.")
+            if success_count or skipped_count or group_filled_count:
+                messages.success(
+                    request,
+                    f"{success_count} student(s) added, {skipped_count} already present (skipped), "
+                    f"{group_filled_count} existing student(s) got their group filled in.",
+                )
             if error_rows:
                 messages.warning(
                     request,
-                    f"{len(error_rows)} row(s) had issues: " + " | ".join(error_rows[:10])
+                    f"{len(error_rows)} row(s) had issues: " + " | ".join(error_rows[:30])
                 )
             return redirect('student_list')
     else:

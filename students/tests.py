@@ -1618,3 +1618,96 @@ class ArchiveIntegrityTests(TestCase):
 			'excel_file': SimpleUploadedFile('regs.xlsx', buffer.getvalue()),
 		})
 		self.assertFalse(SSCRegistration.objects.filter(student=self.archived).exists())
+
+
+class StudentImportLabelTests(TestCase):
+	"""The filled import template is written by hand: 'Business' not
+	'Business Studies'. The import must survive that, and re-running the same
+	file must not duplicate anyone."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Import Campus', classes='6,9,10')
+		self.admin = get_user_model().objects.create_superuser(username='import-admin', password='pw')
+		self.client.force_login(self.admin)
+
+	def _upload(self, rows):
+		book = Workbook()
+		sheet = book.active
+		sheet.append([
+			'Institution', 'Name', 'Class', 'Section', 'Admission Year', 'Roll No',
+			'Gender', 'Religion', 'Father Name', 'Contact No', 'Guardian Contact No', 'Group',
+		])
+		for row in rows:
+			sheet.append(row)
+		buffer = BytesIO()
+		book.save(buffer)
+		buffer.seek(0)
+		return self.client.post(reverse('import_students'), {
+			'excel_file': SimpleUploadedFile('students.xlsx', buffer.getvalue()),
+		}, follow=True)
+
+	def _row(self, name, roll, group, year=2026, cls='9'):
+		return [self.institution.name, name, cls, 'A', year, roll,
+		        'Male', 'Islam', 'Father', '', '', group]
+
+	def test_hand_written_group_labels_are_mapped(self):
+		response = self._upload([
+			self._row('Science Kid', 1, 'Science'),
+			self._row('Business Kid', 2, 'Business'),
+			self._row('Humanities Kid', 3, 'Humanities'),
+			self._row('Code Kid', 4, 'BUS'),
+			self._row('No Group Kid', 5, ''),
+		])
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(Student.objects.get(name='Science Kid').group, 'SCI')
+		self.assertEqual(Student.objects.get(name='Business Kid').group, 'BUS')
+		self.assertEqual(Student.objects.get(name='Humanities Kid').group, 'HUM')
+		self.assertEqual(Student.objects.get(name='Code Kid').group, 'BUS')
+		self.assertEqual(Student.objects.get(name='No Group Kid').group, '')
+
+	def test_group_is_left_blank_below_class_9_even_when_the_sheet_says_science(self):
+		self._upload([self._row('Junior Kid', 1, 'Science', cls='6')])
+		self.assertEqual(Student.objects.get(name='Junior Kid').group, '')
+
+	def test_re_importing_the_same_file_does_not_duplicate(self):
+		rows = [self._row('Again Kid', 7, 'Business'), self._row('Again Two', 8, 'Humanities')]
+		self._upload(rows)
+		self._upload(rows)
+		self.assertEqual(Student.objects.filter(name='Again Kid').count(), 1)
+		self.assertEqual(Student.objects.filter(name='Again Two').count(), 1)
+		self.assertEqual(Student.objects.filter(institution=self.institution).count(), 2)
+
+	def test_re_import_fills_a_missing_group_on_the_existing_student(self):
+		# first file had no group column value; the student was created blank
+		self._upload([self._row('Blank Group Kid', 9, '')])
+		student = Student.objects.get(name='Blank Group Kid')
+		self.assertEqual(student.group, '')
+		# second file carries the group; the re-run must backfill it
+		response = self._upload([self._row('Blank Group Kid', 9, 'Business')])
+		messages = [str(m) for m in response.context['messages']]
+		student.refresh_from_db()
+		self.assertEqual(student.group, 'BUS')
+		self.assertTrue(any('1 existing student(s) got their group filled in' in m for m in messages))
+
+
+class StudentIdHoleTests(TestCase):
+	"""A partial import leaves holes; the next import must step over the taken
+	ids instead of dying on an IntegrityError."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Hole Campus', classes='9')
+
+	def test_new_student_skips_taken_suffixes(self):
+		# holes on purpose: suffixes 1 and 3 exist, 2 is free, then a gap
+		Student.objects.create(institution=self.institution, student_id='202509001',
+		                       name='One', admission_class='9', section='A', admission_year=2025)
+		Student.objects.create(institution=self.institution, student_id='202509003',
+		                       name='Three', admission_class='9', section='A', admission_year=2025)
+		new_one = Student.objects.create(institution=self.institution, name='New A',
+		                                 admission_class='9', section='A', admission_year=2025)
+		new_two = Student.objects.create(institution=self.institution, name='New B',
+		                                 admission_class='9', section='A', admission_year=2025)
+		ids = {new_one.student_id, new_two.student_id}
+		self.assertNotIn('202509001', ids)
+		self.assertNotIn('202509003', ids)
+		self.assertEqual(len(ids), 2)
