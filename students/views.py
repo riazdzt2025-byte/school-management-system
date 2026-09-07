@@ -43,10 +43,26 @@ from .result_utils import (
     get_exam_subjects,
     get_exam_subjects_for_students,
     get_subject_marks,
+    no_subjects_assigned_message,
     religion_paper_for,
     religion_subject_map,
     unassigned_mark_subjects,
 )
+
+
+def subject_assignments_url(exam, group=''):
+    """Subject Assignments page pre-filtered to this exam's institution/class.
+
+    Shown by the Enter Marks, Excel Import and Result Sheet pages when a class
+    has no subjects assigned yet, so the link always lands on the right class.
+    """
+    url = (
+        f"{reverse('subject_requirement_list')}?institution={exam.institution_id}"
+        f"&admission_class={exam.admission_class}"
+    )
+    if group:
+        url += f"&group={group}"
+    return url
 from .marks_import import (
     build_subject_marks_workbook,
     marks_import_sheet_title,
@@ -1726,9 +1742,12 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
 
     A religion paper follows the student's religion — Hindu students get Hindu
     Religion & Moral Education and every other student (including a blank
-    value) gets Islam & Moral Education. Papers for religions the school has
-    no students of (Christian / Buddhist) never match. This holds however the
-    paper was assigned (CONDITIONAL with a religion, or MANDATORY with the
+    value) gets Islam & Moral Education. When the student's own paper is not
+    assigned for the class, no religion paper is added at all (the result
+    sheet then shows a dash in the merged Religion column) — another
+    religion's paper is never substituted. Papers for religions the school
+    has no students of (Christian / Buddhist) never match. This holds however
+    the paper was assigned (CONDITIONAL with a religion, or MANDATORY with the
     Religion category); non-religion subjects are never treated as papers.
     """
     from .models import parse_religion_label, student_religion
@@ -1765,10 +1784,11 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
         elif req.requirement_type == 'OPTIONAL':
             optional_groups.setdefault(req.optional_set_key or 'default', []).append(subject_data)
 
-    # The student's own paper — falling back to Islam & Moral Education when
-    # their religion's paper is not assigned for the class.
-    for label in ([paper_religion] if paper_religion in religion_papers else ['Islam']):
-        conditional.extend(religion_papers.get(label, []))
+    # The student's own paper only. When their religion's paper is not
+    # assigned for the class, no religion paper is added — the result sheet
+    # prints a dash in the merged Religion column instead.
+    if paper_religion in religion_papers:
+        conditional.extend(religion_papers[paper_religion])
 
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
 
@@ -2636,12 +2656,13 @@ def select_marks_subject(request, pk):
         exam, students, group=selected_group or None,
     )
     allowed_ids = {s.pk for s in subjects}
+    no_subjects = not subjects
 
-    if request.method == 'POST':
+    if request.method == 'POST' and not no_subjects:
         subject_id = request.POST.get('subject')
         if not subject_id:
             messages.error(request, 'Please select a subject.')
-        elif is_filtered and int(subject_id) not in allowed_ids:
+        elif int(subject_id) not in allowed_ids:
             messages.error(request, 'That subject is not assigned to this class/group.')
         else:
             url = reverse('enter_marks', kwargs={'pk': exam.pk, 'subject_pk': subject_id})
@@ -2655,6 +2676,9 @@ def select_marks_subject(request, pk):
         'exam': exam,
         'subjects': subjects,
         'is_filtered': is_filtered,
+        'no_subjects': no_subjects,
+        'no_subjects_message': no_subjects_assigned_message(exam),
+        'subject_assignments_url': subject_assignments_url(exam, selected_group),
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': dict(group_choices).get(selected_group, ''),
@@ -2689,19 +2713,17 @@ def import_exam_marks(request, pk):
         exam, students, group=selected_group or None,
     )
     allowed_ids = {subject.pk for subject in subjects}
+    no_subjects = not subjects
 
     raw_subject = (request.POST.get('subject') or request.GET.get('subject') or '').strip()
     subject = None
-    if raw_subject.isdigit():
+    if not no_subjects and raw_subject.isdigit():
         subject = next((item for item in subjects if item.pk == int(raw_subject)), None)
-        if subject is None and is_filtered:
+        if subject is None:
+            # Nothing is "allowed beyond the assignment list": only subjects
+            # assigned to this class/group can be imported.
             messages.error(request, 'That subject is not assigned to this class/group.')
             subject = None
-        elif subject is None:
-            subject = Subject.objects.filter(pk=int(raw_subject)).first()
-            if subject and subject.pk not in allowed_ids and is_filtered:
-                messages.error(request, 'That subject is not assigned to this class/group.')
-                subject = None
 
     if request.method == 'POST' and not request.FILES.get('excel_file'):
         if not subject:
@@ -2729,6 +2751,9 @@ def import_exam_marks(request, pk):
         'is_filtered': is_filtered,
         'allowed_subjects': subjects,
         'subjects_filtered': is_filtered,
+        'no_subjects': no_subjects,
+        'no_subjects_message': no_subjects_assigned_message(exam),
+        'subject_assignments_url': subject_assignments_url(exam, selected_group),
         'marks_config': marks_config,
         'parts': marks_config.parts if marks_config else [],
         'students': students,
@@ -2795,8 +2820,12 @@ def download_marks_import_template(request, pk):
     subject = None
     if raw_subject.isdigit():
         subject = next((item for item in subjects if item.pk == int(raw_subject)), None)
-        if subject is None and not is_filtered:
-            subject = Subject.objects.filter(pk=int(raw_subject)).first()
+    if not subjects:
+        messages.error(request, no_subjects_assigned_message(exam))
+        url = reverse('import_exam_marks', kwargs={'pk': exam.pk})
+        if selected_group:
+            url += f'?group={selected_group}'
+        return redirect(url)
     if not subject:
         messages.error(request, 'Pick a subject first — each Excel file is for one subject only.')
         url = reverse('import_exam_marks', kwargs={'pk': exam.pk})
@@ -2852,13 +2881,17 @@ def enter_marks(request, pk, subject_pk):
     religion_by_pk = religion_subject_map(exam, all_subjects)
 
     # Guard against entering marks for a subject that is not assigned to this
-    # exam's class/group (e.g. by editing the URL directly). Religion papers
-    # nobody in this class sits are also refused — a Hindu student's paper is
-    # not this one.
-    allowed_subjects, is_filtered = get_exam_subjects_for_students(
+    # exam's class/group (e.g. by editing the URL directly). There is no
+    # fallback to the whole Subject list: a class with no subjects assigned is
+    # told to assign them first. Religion papers nobody in this class sits are
+    # also refused — a Hindu student's paper is not this one.
+    allowed_subjects, _is_filtered = get_exam_subjects_for_students(
         exam, students, group=selected_group or None,
     )
-    if is_filtered and not any(item.pk == subject.pk for item in allowed_subjects):
+    if not allowed_subjects:
+        messages.error(request, no_subjects_assigned_message(exam))
+        return redirect('select_marks_subject', pk=exam.pk)
+    if not any(item.pk == subject.pk for item in allowed_subjects):
         if subject.pk in religion_by_pk:
             messages.error(
                 request,
@@ -3008,23 +3041,32 @@ def result_sheet(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    subjects, results = build_exam_results(exam)
-    # Column headers must show the exam's own Full Marks, not the subject's
-    # global default (a Mid Term can be marked out of 50).
-    columns = []
-    for subject in subjects:
-        marks_config = get_subject_marks(exam, subject)
-        columns.append({
-            'subject': subject,
-            'full_marks': marks_config.full_marks,
+    columns, results = build_exam_results(exam)
+    # Column headers show the subject code (BAN1, ENG1, REL…); the full names
+    # sit in the 'Subject codes' legend under the table. Full Marks come from
+    # the exam's own setting, not the subject's global default (a Mid Term can
+    # be marked out of 50).
+    sheet_columns = []
+    for column in columns:
+        if getattr(column, 'is_religion_column', False):
+            marks_config = column.header_marks_config(exam)
+        else:
+            marks_config = get_subject_marks(exam, column)
+        sheet_columns.append({
+            'subject': column,
+            'full_marks': marks_config.full_marks if marks_config else None,
             'parts_summary': ' + '.join(
                 f"{part['label']} {part['max_marks']}" for part in marks_config.parts
-            ),
+            ) if marks_config else '',
         })
-    ignored = unassigned_mark_subjects(exam, subjects)
+    no_subjects = not columns
+    ignored = unassigned_mark_subjects(exam, columns)
     return render(request, 'students/result_sheet.html', {
-        'exam': exam, 'subjects': subjects, 'columns': columns, 'results': results,
+        'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
         'ignored_subjects': ignored,
+        'no_subjects': no_subjects,
+        'no_subjects_message': no_subjects_assigned_message(exam),
+        'subject_assignments_url': subject_assignments_url(exam),
     })
 
 

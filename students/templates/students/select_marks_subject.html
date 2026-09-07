@@ -12,6 +12,10 @@
     </div>
 </div>
 
+{% if messages %}
+    {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+{% endif %}
+
 <div class="table-card p-4">
     {% if show_group_picker %}
     <form method="get" class="mb-3" id="group-filter-form">
@@ -28,15 +32,15 @@
     </form>
     {% endif %}
 
-    {% if is_filtered %}
+    {% if no_subjects %}
+    <div class="alert alert-warning">
+        {{ no_subjects_message }}
+        <a href="{{ subject_assignments_url }}" class="alert-link">Go to Subject Assignments</a>.
+    </div>
+    {% else %}
     <p class="text-muted small mb-2">
         Showing subjects assigned to Class {{ exam.admission_class }}{% if exam.group %} &ndash; {{ exam.get_group_display }} group{% elif selected_group %} &ndash; {{ selected_group_label }} group{% else %} (all groups){% endif %}.
     </p>
-    {% else %}
-    <p class="text-muted small mb-2">
-        No subject assignments are configured for this class yet, so all subjects are listed.
-    </p>
-    {% endif %}
 
     <form method="post">
         {% csrf_token %}
@@ -52,5 +56,6 @@
         <button class="btn btn-navy mt-3">Continue</button>
         <a class="btn btn-outline-navy mt-3" href="{% url 'exam_list' %}">Cancel</a>
     </form>
+    {% endif %}
 </div>
 {% endblock %}

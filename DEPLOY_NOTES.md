@@ -63,7 +63,8 @@ and the student list are all constrained to that group automatically.
 | `select_marks_subject` | subject list filtered by class + group; group picker for exams with no group; POST validated |
 | `enter_marks` | rejects subjects not assigned to the exam's class/group, including hand-edited URLs |
 | `import_exam_marks` | rejects rows with an unassigned subject, and students whose group differs from the exam's; lists accepted subject codes on the page |
-| `get_exam_subjects()` | shared helper reading `SubjectRequirement`; falls back to all subjects when a class has no assignments configured |
+| `get_exam_subjects()` | shared helper reading `SubjectRequirement`; returns only the assigned subjects (no fallback — an unassigned class is empty, and the marks/result pages link to Subject Assignments) |
+| Result sheet | Islam & Hindu religion papers print as one merged **Religion (REL)** column; headers show subject codes (BAN1, ENG1, REL…) with a "Subject codes" legend below the table |
 | `students/apps.py` | default groups now sync on `post_migrate` instead of at import time, so a fresh database can migrate |
 | `settings.py` | `CSRF_TRUSTED_ORIGINS` is now configurable via env var |
 | `merge_duplicate_subjects` | new management command, dry run by default |

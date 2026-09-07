@@ -53,8 +53,12 @@ def get_exam_subjects(exam, group=None):
     """Subjects that actually apply to this exam's institution + class + group.
 
     Marks entry must be group-aware: a Science exam should not offer Business
-    Studies. Falls back to every subject when no SubjectRequirement rows are
-    configured yet, so marks entry never gets blocked on an unconfigured class.
+    Studies. Only the subjects assigned through Subject Assignment rows
+    (SubjectRequirement) are ever returned — there is deliberately **no**
+    fallback to the whole Subject master list. A class with no subjects
+    assigned gets an empty list, and the marks/result pages tell the user to
+    assign subjects first instead of silently offering every subject in the
+    system.
 
     ``group`` overrides the exam's own group, for exams that were created
     without one (the marks pages then let the user pick a group). When neither
@@ -65,25 +69,40 @@ def get_exam_subjects(exam, group=None):
     reason as :func:`get_exam_students` — requirements and exams were written
     by different screens over the years.
 
-    Returns (subjects_queryset, is_filtered).
+    Returns (subjects_list, is_filtered): ``is_filtered`` is True whenever the
+    class has at least one SubjectRequirement row (so the list is the assigned
+    one, even if group narrowing leaves it empty) and False when nothing at
+    all is assigned.
     """
     from .models import Subject, SubjectRequirement
 
     effective_group = (group if group is not None else exam.group) or ''
 
-    if exam.institution_id:
-        requirements = SubjectRequirement.objects.filter(
-            institution_id=exam.institution_id,
-            admission_class__in=class_filter_variants(exam.admission_class),
-        )
-        if effective_group:
-            # Group-neutral subjects (Bangla, English...) apply to every group.
-            requirements = requirements.filter(Q(group='') | Q(group=effective_group))
-        subject_ids = list(requirements.values_list('subject_id', flat=True).distinct())
-        if subject_ids:
-            return Subject.objects.filter(pk__in=subject_ids).order_by('name'), True
+    if not exam.institution_id:
+        return [], False
 
-    return Subject.objects.all().order_by('name'), False
+    requirements = SubjectRequirement.objects.filter(
+        institution_id=exam.institution_id,
+        admission_class__in=class_filter_variants(exam.admission_class),
+    )
+    if effective_group:
+        # Group-neutral subjects (Bangla, English...) apply to every group.
+        requirements = requirements.filter(Q(group='') | Q(group=effective_group))
+    subject_ids = list(requirements.values_list('subject_id', flat=True).distinct())
+    if not subject_ids:
+        return [], False
+    return list(Subject.objects.filter(pk__in=subject_ids).order_by('name')), True
+
+
+def no_subjects_assigned_message(exam):
+    """The message every marks/result page shows when a class has no subjects
+    assigned yet. The pages link to the Subject Assignments page filtered to
+    the exam's own institution + class.
+    """
+    return (
+        f"No subjects are assigned to Class {exam.admission_class} yet"
+        " — assign them from the Subject Assignments page first."
+    )
 
 
 def religion_subject_map(exam, subjects):
@@ -121,23 +140,26 @@ def religion_subject_map(exam, subjects):
 
 
 def religion_paper_for(student, religion_by_pk):
-    """The one religion paper this student sits, or ``None`` when the class has
-    no religion paper assigned at all.
+    """The one religion paper this student sits, or ``None`` when the class
+    does not assign that student's own paper.
 
     Hindu students sit Hindu Religion & Moral Education; every other student
-    (Islam, blank or any legacy value) sits Islam & Moral Education — and when
-    the class does not have the student's own paper assigned, Islam is the
-    default paper. A paper is never forced on a student of another religion.
+    (Islam, blank or any legacy value) sits Islam & Moral Education. When the
+    class does not have the student's *own* paper assigned, the answer is
+    ``None`` — no other religion's paper is ever substituted: the result sheet
+    then prints a dash in the merged Religion column, and marks entry / Excel
+    import have no paper to offer that student. A paper is never forced on a
+    student of another religion.
     """
     from .models import student_religion
 
     if not religion_by_pk:
         return None
     wanted = student_religion(student.religion)
-    for pk, label in religion_by_pk.items():
-        if label == wanted:
-            return pk
-    return next((pk for pk, label in religion_by_pk.items() if label == 'Islam'), None)
+    return next(
+        (pk for pk, label in religion_by_pk.items() if label == wanted),
+        None,
+    )
 
 
 def applicable_religion_papers(exam, subjects, students):
@@ -337,26 +359,91 @@ def compute_subject_result(mark, marks_config):
     }
 
 
+RELIGION_COLUMN_CODE = 'REL'
+
+
+class ReligionColumn:
+    """The single 'Religion' (REL) result column.
+
+    Islam and Hindu Religion & Moral Education are two assigned subjects, but
+    the result sheet prints one Religion column: each student's cell shows the
+    result of *their own* religion paper (Hindu students sit the Hindu paper,
+    everyone else the Islam paper) — the two papers are never two columns.
+
+    A student whose own paper is not assigned to the class (``paper_for``
+    returns ``None``) gets a plain dash: never a fail, never counted towards
+    the total or the GPA, and never an "absent subject".
+    """
+
+    code = RELIGION_COLUMN_CODE
+    name = 'Religion & Moral Education'
+    is_religion_column = True
+
+    def __init__(self, papers_by_label, religion_by_pk):
+        # label ('Islam' / 'Hindu' / ...) -> the Subject assigned for it.
+        self.papers_by_label = dict(papers_by_label)
+        self.religion_by_pk = dict(religion_by_pk)
+        self.subjects = list(self.papers_by_label.values())
+        self.paper_by_pk = {paper.pk: paper for paper in self.subjects}
+
+    @property
+    def pk(self):
+        # The column has no row in the Subject table; use the REL code as a
+        # stable, non-numeric identifier wherever a subject-like key is handy.
+        return self.code
+
+    def paper_for(self, student):
+        """The Subject this student sits, or ``None`` when their own paper is
+        not assigned for the class (that student gets a never-counted dash)."""
+        pk = religion_paper_for(student, self.religion_by_pk)
+        return self.paper_by_pk.get(pk) if pk else None
+
+    def paper_for_label(self, label):
+        return self.papers_by_label.get(label)
+
+    def header_marks_config(self, exam):
+        """Full Marks for the column header: prefer the Islam paper's exam
+        setting, then any other assigned paper — the papers share the same
+        marks structure in every real curriculum."""
+        paper = (
+            self.paper_for_label('Islam')
+            or next(iter(self.papers_by_label.values()), None)
+        )
+        return get_subject_marks(exam, paper) if paper else None
+
+    def __str__(self):
+        return self.name
+
+
 def unassigned_mark_subjects(exam, subjects):
     """Subjects that hold marks for this exam but are not assigned to it.
 
     The result sheet only prints the exam's own subjects, so without this the
     stray marks would simply vanish. The page shows them as a notice instead.
+    ``subjects`` may include a :class:`ReligionColumn`, whose merged papers
+    count as assigned so marks in either religion paper never look stray.
     """
     from .models import ExamMark, Subject
+
+    assigned_ids = set()
+    for subject in subjects:
+        if isinstance(subject, ReligionColumn):
+            assigned_ids.update(paper.pk for paper in subject.subjects)
+        elif subject is not None:
+            assigned_ids.add(subject.pk)
 
     marks = ExamMark.objects.filter(exam=exam)
     if marks.exists():
         return Subject.objects.filter(
             id__in=marks.values_list('subject_id', flat=True).distinct(),
-        ).exclude(id__in=[subject.pk for subject in subjects]).order_by('name')
+        ).exclude(id__in=assigned_ids).order_by('name')
     return Subject.objects.none()
 
 
 def build_exam_results(exam):
     """Compute every student's result for one exam.
 
-    Returns (subjects, results). Only the subjects assigned to the exam's class
+    Returns (columns, results). Only the subjects assigned to the exam's class
     and group are printed, and only the subjects a student actually sat count
     towards their total and GPA.
 
@@ -365,18 +452,46 @@ def build_exam_results(exam):
     Fail with GPA 0.00, and the total-mark percentage and the class position
     are not counted for a failed result.
 
-    Religion papers are per student: a Hindu student sits Hindu Religion &
-    Moral Education while every other student sits Islam & Moral Education.
-    Each student is graded on their own paper; the other religion column shows
-    a dash and is never counted. Papers that nobody in the class sits are not
-    printed at all.
+    The Islam and Hindu Religion & Moral Education papers are printed as one
+    merged :class:`ReligionColumn` ('Religion', code REL): each student is
+    graded on their own paper (Hindu students on Hindu, everyone else on
+    Islam). A student whose own paper is not assigned gets a plain dash in that
+    column — never a fail, never counted, and never an "absent subject".
+    Papers that nobody in the class sits are not printed at all.
     """
     from .models import ExamMark
 
-    students = get_exam_students(exam)
-    subjects, is_filtered = get_exam_subjects(exam)
-    subjects = list(subjects) if is_filtered else _subjects_with_marks(exam)
-    subjects, religion_paper, religion_by_pk = applicable_religion_papers(exam, subjects, students)
+    students = list(get_exam_students(exam))
+    assigned, _is_filtered = get_exam_subjects(exam)
+
+    # Papers no student in this exam sits (e.g. a Christian paper in a school
+    # with no Christian students) drop out before the column is built.
+    kept_subjects, religion_paper, religion_by_pk = applicable_religion_papers(
+        exam, assigned, students,
+    )
+    used_paper_pks = {pk for pk in religion_paper.values() if pk is not None}
+    used_religion_by_pk = {
+        pk: label for pk, label in religion_by_pk.items() if pk in used_paper_pks
+    }
+    religion_column = None
+    if used_religion_by_pk:
+        papers_by_label = {
+            label: next(subject for subject in kept_subjects if subject.pk == pk)
+            for pk, label in used_religion_by_pk.items()
+        }
+        religion_column = ReligionColumn(papers_by_label, used_religion_by_pk)
+
+    # Columns in subject order, with the single Religion column standing in for
+    # the first of the merged papers.
+    columns = []
+    column_inserted = False
+    for subject in kept_subjects:
+        if subject.pk in used_religion_by_pk:
+            if not column_inserted:
+                columns.append(religion_column)
+                column_inserted = True
+            continue
+        columns.append(subject)
 
     marks = {}
     for mark in ExamMark.objects.filter(exam=exam).select_related('student', 'subject'):
@@ -390,23 +505,32 @@ def build_exam_results(exam):
         total_full = Decimal('0')
         gpa_points = []
         has_fail = False
-        my_paper = religion_paper.get(student.pk)
 
-        for subject in subjects:
-            if subject.pk in religion_by_pk and subject.pk != my_paper:
-                # Another student's religion paper: printed as a plain dash,
-                # never counted and never a fail for this student.
-                subject_results.append({
-                    'subject': subject, 'not_applicable': True, 'absent': True,
-                    'obtained': None, 'full': None, 'percentage': None,
-                    'grade': ABSENT, 'point': None, 'passed': False,
-                    'failed_parts': [], 'parts': [], 'pass_marks': None,
-                })
-                continue
+        for column in columns:
+            if isinstance(column, ReligionColumn):
+                paper = column.paper_for(student)
+                if paper is None:
+                    # This student's own religion paper is not assigned for
+                    # the class: a plain dash, never counted and never a fail.
+                    subject_results.append({
+                        'subject': column, 'religion_column': True,
+                        'not_applicable': True, 'absent': True,
+                        'religion_unassigned': True,
+                        'obtained': None, 'full': None, 'percentage': None,
+                        'grade': ABSENT, 'point': None, 'passed': False,
+                        'failed_parts': [], 'parts': [], 'pass_marks': None,
+                    })
+                    continue
+                marks_config = get_subject_marks(exam, paper)
+                result = compute_subject_result(student_marks.get(paper.pk), marks_config)
+                result['subject'] = column
+                result['religion_column'] = True
+                result['paper'] = paper
+            else:
+                marks_config = get_subject_marks(exam, column)
+                result = compute_subject_result(student_marks.get(column.pk), marks_config)
+                result['subject'] = column
 
-            marks_config = get_subject_marks(exam, subject)
-            result = compute_subject_result(student_marks.get(subject.pk), marks_config)
-            result['subject'] = subject
             counted = not result['absent'] or result['obtained'] is not None
             if counted:
                 # An absent subject arrives here as 0 / Full Marks and fails,
@@ -446,7 +570,9 @@ def build_exam_results(exam):
             # rows sit in subjects outside this exam still counts as No Marks.
             'has_marks': bool(attempted),
             'absent_subject_count': sum(
-                1 for r in subject_results if r['absent'] and not r.get('not_applicable')
+                1 for r in subject_results
+                if r['absent'] and not r.get('not_applicable')
+                and not r.get('religion_unassigned')
             ),
             'position': None,
         })
@@ -463,13 +589,4 @@ def build_exam_results(exam):
         key = (result['gpa'], result['total_obtained'])
         result['position'] = ranked[index - 1]['position'] if index and key == previous_key else index + 1
         previous_key = key
-    return subjects, ranked + [result for result in results if result['position'] is None]
-
-
-def _subjects_with_marks(exam):
-    """Fallback column list when no subject assignments are configured."""
-    from .models import ExamMark, Subject
-
-    return list(Subject.objects.filter(
-        id__in=ExamMark.objects.filter(exam=exam).values_list('subject_id', flat=True).distinct()
-    ).order_by('name'))
+    return columns, ranked + [result for result in results if result['position'] is None]
