@@ -54,11 +54,28 @@
         Columns: <strong>Roll, ID, Name</strong>{% if parts %}{% for part in parts %}, <strong>{% if part.key == 'practical' %}PT{% elif part.key == 'weekly_test' %}WT{% else %}{{ part.label }}{% endif %}</strong> (out of {{ part.max_marks }}){% endfor %}{% else %}, <strong>Marks</strong> (out of {{ marks_config.full_marks }}){% endif %}.
         Sheet name like <em>{{ sheet_title }}</em>.
     </p>
-    <p class="text-muted">Leave a cell blank when the student did not sit that paper — blank is skipped, 0 is a real mark of zero. A mark above that part’s maximum rejects the whole file.</p>
-    <p class="text-muted small">{{ total_students }} student(s) of this exam will be listed on the template. Identify students by the ID column (roll is a fallback).</p>
+    <p class="text-muted">The Excel file is built from the <strong>current</strong> Student List for this exam (class{% if exam.section %} / section {{ exam.section }}{% endif %}{% if exam.group or selected_group %} / group{% endif %}). When students join or leave, download a fresh file — do not reuse last term’s sheet.</p>
+    <p class="text-muted">Leave a cell blank when the student did not sit that paper — blank is skipped, 0 is a real mark of zero. A mark above that part’s maximum rejects the whole file. Rows for students who have left are skipped.</p>
+    <p class="fw-semibold mb-2">{{ total_students }} student(s) will be listed on the template right now:</p>
+    <div class="table-responsive mb-3" style="max-height: 220px; overflow-y: auto;">
+        <table class="table table-sm table-striped mb-0">
+            <thead><tr><th>Roll</th><th>ID</th><th>Name</th></tr></thead>
+            <tbody>
+                {% for student in students %}
+                <tr>
+                    <td>{{ student.roll_no }}</td>
+                    <td>{{ student.student_id }}</td>
+                    <td>{{ student.name }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" class="text-muted">No students in this class/section/group yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
     <a href="{{ template_url }}" class="btn btn-outline-navy btn-sm mb-3">
-        <i class="bi bi-download"></i> Download {{ subject.name }} template ({{ total_students }} student(s))
+        <i class="bi bi-download"></i> Download current {{ subject.name }} list ({{ total_students }} student(s))
     </a>
     <a class="btn btn-outline-navy btn-sm mb-3" href="{% url 'import_exam_marks' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}">Change subject</a>
 

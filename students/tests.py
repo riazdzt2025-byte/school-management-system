@@ -337,6 +337,22 @@ class ExamWorkflowTests(TestCase):
 		self.assertContains(response, 'name="subject"')
 		self.assertNotContains(response, 'Upload and Import')
 
+	@skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+	def test_import_skips_students_who_are_no_longer_on_the_roll(self):
+		response = self.client.post(
+			reverse('import_exam_marks', args=[self.exam.pk]),
+			{
+				'subject': str(self.subject.pk),
+				'excel_file': self.workbook_upload([
+					['S001', 'ENG', 70],
+					['GONE99', 'ENG', 80],
+				]),
+			},
+		)
+		self.assertRedirects(response, reverse('exam_list'))
+		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 1)
+		self.assertEqual(str(ExamMark.objects.get().marks_obtained), '70.00')
+
 
 
 class StudentProfileAndBulkUpdateTests(TestCase):
@@ -1070,6 +1086,44 @@ class MarksImportTemplateDownloadTests(TestCase):
 		self.assertEqual(rows[0], ('Roll', 'ID', 'Name', 'Marks'))
 		self.assertEqual(rows[1], (1, 'T001', 'Template Kid', None))
 		self.assertIn('How to fill', workbook.sheetnames)
+
+	def test_template_picks_up_students_who_join_or_leave(self):
+		try:
+			from openpyxl import load_workbook
+		except ModuleNotFoundError:
+			self.skipTest('openpyxl is required for Excel export tests')
+		import io
+		Student.objects.create(
+			institution=self.institution, student_id='T002', name='New Arrival',
+			admission_class='9', section='A', group='SCI', roll_no=2, admission_year=2026,
+		)
+		url = reverse('download_marks_import_template', args=[self.exam.pk])
+		first = load_workbook(io.BytesIO(
+			self.client.get(url, {'subject': self.subject.pk}).content
+		), read_only=True)
+		names = [row[2] for row in first[first.sheetnames[0]].iter_rows(min_row=2, values_only=True)]
+		self.assertIn('Template Kid', names)
+		self.assertIn('New Arrival', names)
+
+		Student.objects.filter(student_id='T001').update(is_archived=True)
+		second = load_workbook(io.BytesIO(
+			self.client.get(url, {'subject': self.subject.pk}).content
+		), read_only=True)
+		names = [row[2] for row in second[second.sheetnames[0]].iter_rows(min_row=2, values_only=True)]
+		self.assertEqual(names, ['New Arrival'])
+		self.assertEqual(
+			self.client.get(url, {'subject': self.subject.pk})['Cache-Control'],
+			'no-store, no-cache, must-revalidate, max-age=0',
+		)
+
+	def test_import_page_shows_the_live_class_roll(self):
+		response = self.client.get(
+			reverse('import_exam_marks', args=[self.exam.pk]),
+			{'subject': self.subject.pk},
+		)
+		self.assertContains(response, 'Template Kid')
+		self.assertContains(response, 'T001')
+		self.assertContains(response, 'current')
 
 
 class ExamNamingAndLayoutTests(TestCase):

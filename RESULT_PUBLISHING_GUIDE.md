@@ -108,9 +108,11 @@ Rules that matter:
 
 ### Import from Excel instead
 
-`Exam List → Import Marks` → pick **one subject** → **Download Excel template**.
-Each file is that subject only (sheet title like `9SC Physics`), with the students
-already listed. Columns match how teachers already fill marks:
+`Exam List → Import Marks` → pick **one subject** → **Download current list**.
+The file is built from the **live Student List** for that exam’s class/section/group
+(sheet title like `9SC Physics`). If students join or leave, download again — do
+not reuse last term’s sheet. Old IDs that are no longer on the roll are skipped
+on import. Columns match how teachers already fill marks:
 
 `Roll | ID | Name | CQ | MCQ | PT` (and `WT` when a weekly test is configured).
 A subject with no parts has a single `Marks` column instead.

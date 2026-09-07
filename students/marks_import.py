@@ -107,7 +107,9 @@ def build_subject_marks_workbook(exam, subject, group=None):
         '2. Leave a cell blank when the student did not sit that paper — blank is',
         '   skipped, while 0 is a real mark of zero.',
         '3. A mark above that part\'s maximum is rejected and the whole file is not imported.',
-        f'4. {len(students)} student(s) are listed. Extra rows are ignored.',
+        f'4. {len(students)} student(s) are listed from the CURRENT class roll at download time.',
+        '   If students join or leave, download this file again — do not reuse an old sheet.',
+        '   Extra rows for students who have left are skipped on import.',
     ]:
         guide.append([line])
 
@@ -139,6 +141,16 @@ def pick_marks_sheet(workbook):
 
 def parse_subject_marks_workbook(workbook, exam, subject, students):
     return parse_subject_marks_sheet(pick_marks_sheet(workbook), exam, subject, students)
+
+
+def _skip_unknown_or_reject(lookup):
+    """Rows for students who left are skipped; a living student in the wrong class is an error."""
+    if not lookup:
+        return True
+    existing = Student.objects.filter(student_id__iexact=lookup).first()
+    if existing is None or existing.is_archived:
+        return True
+    raise ValueError('student is not a member of this exam class/section/group')
 
 
 def _column_map(headers):
@@ -246,9 +258,9 @@ def parse_subject_marks_sheet(sheet, exam, subject, students):
                     )
                 student = students_by_id.get(student_id.lower()) if student_id else None
                 if not student:
-                    if student_id and Student.objects.filter(student_id__iexact=student_id).exists():
-                        raise ValueError('student is not a member of this exam class/section/group')
-                    raise ValueError('student ID was not found')
+                    _skip_unknown_or_reject(student_id)
+                    skipped += 1
+                    continue
                 if student.pk in seen:
                     raise ValueError('duplicate student row')
                 seen.add(student.pk)
@@ -262,9 +274,9 @@ def parse_subject_marks_sheet(sheet, exam, subject, students):
 
             student, lookup = _lookup_student(row, columns, students_by_id, students_by_roll)
             if not student:
-                if lookup and Student.objects.filter(student_id__iexact=lookup).exists():
-                    raise ValueError('student is not a member of this exam class/section/group')
-                raise ValueError('student ID was not found')
+                _skip_unknown_or_reject(lookup)
+                skipped += 1
+                continue
             if student.pk in seen:
                 raise ValueError('duplicate student row')
             seen.add(student.pk)

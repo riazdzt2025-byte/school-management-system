@@ -2682,6 +2682,7 @@ def import_exam_marks(request, pk):
         'subjects_filtered': is_filtered,
         'marks_config': marks_config,
         'parts': marks_config.parts if marks_config else [],
+        'students': students,
         'total_students': len(students),
         'template_url': template_url,
         'group_choices': group_choices,
@@ -2716,7 +2717,9 @@ def import_exam_marks(request, pk):
                     )
             success_message = f'{len(validated_rows)} {subject.name} mark(s) imported successfully.'
             if skipped_count:
-                success_message += f' {skipped_count} row(s) with no mark entered were skipped.'
+                success_message += (
+                    f' {skipped_count} row(s) skipped (blank mark, or a student who is no longer in this class).'
+                )
             messages.success(request, success_message)
             return redirect('exam_list')
         except Exception as exc:
@@ -2757,6 +2760,9 @@ def download_marks_import_template(request, pk):
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = '0'
     workbook.save(response)
     return response
 
