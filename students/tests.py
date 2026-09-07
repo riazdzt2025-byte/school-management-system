@@ -199,6 +199,11 @@ class ExamWorkflowTests(TestCase):
 			admission_class='7', section='A', admission_year=2026,
 		)
 		self.subject = Subject.objects.create(code='ENG', name='English', full_marks=100)
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='6', subject=self.subject,
+			requirement_type='MANDATORY',
+		)
 		self.exam = Exam.objects.create(
 			name='Mid Term', exam_type='MID_TERM_1', institution=self.institution,
 			admission_class='6', section='A', session='2026',
@@ -790,6 +795,11 @@ class MarksPartsAndPassRulesTests(TestCase):
 		self.user = get_user_model().objects.create_superuser(username='marks-admin', password='password')
 		self.client.force_login(self.user)
 		self.physics = Subject.objects.create(code='PHY', name='Physics', full_marks=100)
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='SCI',
+			subject=self.physics, requirement_type='MANDATORY',
+		)
 		self.exam = Exam.objects.create(
 			name='Second Term Examination-2026', exam_type='SECOND_TERM',
 			institution=self.institution, admission_class='9', section='', group='SCI',
@@ -1085,6 +1095,11 @@ class MarksImportTemplateDownloadTests(TestCase):
 		self.user = get_user_model().objects.create_superuser(username='template-admin', password='password')
 		self.client.force_login(self.user)
 		self.subject = Subject.objects.create(code='BNG', name='Bangla', full_marks=100)
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='SCI',
+			subject=self.subject, requirement_type='MANDATORY',
+		)
 		self.exam = Exam.objects.create(
 			name='Second Term Examination-2026', exam_type='SECOND_TERM',
 			institution=self.institution, admission_class='9', group='SCI', session='2026',
@@ -1963,10 +1978,12 @@ class StudentListCountAndLookupTests(TestCase):
 
 
 class ReligionPaperTests(TestCase):
-	"""Religion papers follow the student's religion: Hindu students sit Hindu
-	Religion & Moral Education, everyone else sits Islam & Moral Education.
-	Papers for religions the school has no students of never appear, and a
-	student is never failed for a religion paper that is not theirs."""
+	"""The two religion papers print as ONE merged Religion column (REL).
+	Each student is graded on their own paper (Hindu students sit Hindu
+	Religion & Moral Education, everyone else Islam & Moral Education); a
+	student whose own paper is not assigned gets a dash that is never failed
+	or counted. Papers for religions the school has no students of never
+	appear."""
 
 	def setUp(self):
 		self.institution = Institution.objects.create(name='Religion School', classes='6,9')
@@ -2009,10 +2026,36 @@ class ReligionPaperTests(TestCase):
 			exam=self.exam, student=student, subject=subject, marks_obtained=value,
 		)
 
-	def _result_for(self, student):
+	def _built(self):
 		from .result_utils import build_exam_results
-		_, results = build_exam_results(self.exam)
+		return build_exam_results(self.exam)
+
+	def _result_for(self, student):
+		_, results = self._built()
 		return next(r for r in results if r['student'].pk == student.pk)
+
+	def _religion_row(self, result):
+		return next(
+			row for row in result['subject_results'] if row.get('religion_column')
+		)
+
+	def test_the_two_papers_print_as_one_religion_column(self):
+		from .result_utils import ReligionColumn
+		columns, _results = self._built()
+		religion_columns = [column for column in columns if isinstance(column, ReligionColumn)]
+		self.assertEqual(len(religion_columns), 1)
+		religion_column = religion_columns[0]
+		self.assertEqual(religion_column.code, 'REL')
+		# Neither underlying paper is its own column any more.
+		self.assertNotIn(self.islam, columns)
+		self.assertNotIn(self.hindu, columns)
+		# A paper nobody sits (Christian) is not part of the merged column.
+		self.assertNotIn(self.christian, columns)
+		self.assertNotIn(self.christian, religion_column.subjects)
+		self.assertIn(self.islam, religion_column.subjects)
+		self.assertIn(self.hindu, religion_column.subjects)
+		# Bangla stays a normal column.
+		self.assertIn(self.bangla, columns)
 
 	def test_each_student_is_graded_on_their_own_religion_paper(self):
 		self._marks(self.muslim, self.bangla, 80)
@@ -2021,34 +2064,77 @@ class ReligionPaperTests(TestCase):
 		self._marks(self.hindu_kid, self.hindu, 71)
 
 		muslim_result = self._result_for(self.muslim)
+		muslim_rel = self._religion_row(muslim_result)
+		self.assertEqual(muslim_rel['paper'], self.islam)
+		self.assertEqual(muslim_rel['obtained'], 75)
 		self.assertEqual(muslim_result['status'], 'Pass')
 		self.assertEqual(muslim_result['total_full'], 200)  # Bangla + Islam only
 		self.assertEqual(muslim_result['position'], 1)
 
 		hindu_result = self._result_for(self.hindu_kid)
+		hindu_rel = self._religion_row(hindu_result)
+		self.assertEqual(hindu_rel['paper'], self.hindu)
+		self.assertEqual(hindu_rel['obtained'], 71)
 		self.assertEqual(hindu_result['status'], 'Pass')
 		self.assertEqual(hindu_result['total_full'], 200)  # Bangla + Hindu only
 		self.assertEqual(hindu_result['position'], 2)
 
-	def test_another_religions_paper_is_a_dash_that_never_fails(self):
+	def test_religion_column_is_one_row_in_detail_and_card(self):
 		self._marks(self.muslim, self.bangla, 80)
 		self._marks(self.muslim, self.islam, 75)
+		self._marks(self.hindu_kid, self.bangla, 82)
+		self._marks(self.hindu_kid, self.hindu, 71)
+		for url_name in ('student_result_detail', 'result_card'):
+			response = self.client.get(
+				reverse(url_name, args=[self.exam.pk, self.hindu_kid.pk])
+			)
+			self.assertEqual(response.status_code, 200, url_name)
+			content = response.content.decode()
+			# Exactly one Religion subject row (the merged column).
+			self.assertEqual(content.count('<td>Religion'), 1, url_name)
+			# The other religion paper's name never appears as a subject row.
+			self.assertNotIn('<td>Islam &amp; Moral Education</td>', content)
+			self.assertNotIn('<td>Hindu Religion &amp; Moral Education</td>', content)
+
+	def test_a_hindu_student_without_a_hindu_paper_gets_a_never_counted_dash(self):
+		# Only the Islam paper is assigned: the Hindu student has no own paper,
+		# so the Religion cell is a dash — never a fail, never counted, and the
+		# Islam paper is never forced on them.
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.filter(subject__in=[self.hindu, self.christian]).delete()
+		self._marks(self.muslim, self.bangla, 80)
+		self._marks(self.muslim, self.islam, 75)
+		self._marks(self.hindu_kid, self.bangla, 82)
+		# A stray Islam mark for the Hindu student must be ignored.
+		self._marks(self.hindu_kid, self.islam, 70)
+
+		hindu_result = self._result_for(self.hindu_kid)
+		rel_row = self._religion_row(hindu_result)
+		self.assertTrue(rel_row['religion_unassigned'])
+		self.assertTrue(rel_row['absent'])
+		self.assertIsNone(rel_row['obtained'])
+		self.assertIsNone(rel_row['point'])
+		# Only Bangla counts: the dash never fails or inflates the total.
+		self.assertEqual(hindu_result['total_full'], 100)
+		self.assertEqual(hindu_result['total_obtained'], 82)
+		self.assertEqual(hindu_result['status'], 'Pass')
+		self.assertEqual(hindu_result['absent_subject_count'], 0)
+
+		# The Muslim student still sits Islam through the merged column.
+		muslim_result = self._result_for(self.muslim)
+		muslim_rel = self._religion_row(muslim_result)
+		self.assertEqual(muslim_rel['paper'], self.islam)
+		self.assertEqual(muslim_result['status'], 'Pass')
+
+	def test_no_religion_papers_assigned_means_no_religion_column(self):
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.filter(subject__category='RELIGION').delete()
+		columns, results = self._built()
+		self.assertFalse(any(getattr(c, 'code', '') == 'REL' for c in columns))
 		result = self._result_for(self.muslim)
-		hindu_row = next(
-			row for row in result['subject_results'] if row['subject'].pk == self.hindu.pk
-		)
-		self.assertTrue(hindu_row['not_applicable'])
-		self.assertIsNone(hindu_row['obtained'])
-		self.assertEqual(result['status'], 'Pass')
+		self.assertFalse(any(r.get('religion_column') for r in result['subject_results']))
 
-	def test_papers_nobody_sits_are_not_printed_at_all(self):
-		from .result_utils import build_exam_results
-		subjects, _results = build_exam_results(self.exam)
-		self.assertIn(self.islam, subjects)
-		self.assertIn(self.hindu, subjects)
-		self.assertNotIn(self.christian, subjects)
-
-	def test_blank_religion_defaults_to_the_islam_paper(self):
+	def test_blank_religion_sits_the_islam_paper(self):
 		blank = Student.objects.create(
 			institution=self.institution, student_id='R003', name='No Religion Set',
 			admission_class='6', section='A', roll_no=3, admission_year=2026, religion='',
@@ -2056,8 +2142,21 @@ class ReligionPaperTests(TestCase):
 		self._marks(blank, self.bangla, 60)
 		self._marks(blank, self.islam, 55)
 		result = self._result_for(blank)
+		rel_row = self._religion_row(result)
+		self.assertEqual(rel_row['paper'], self.islam)
 		self.assertEqual(result['status'], 'Pass')
 		self.assertEqual(result['total_full'], 200)
+
+	def test_result_sheet_shows_rel_code_and_legend(self):
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		content = response.content.decode()
+		self.assertIn('Subject codes', content)
+		self.assertIn('<span class="code">REL</span> = Religion &amp; Moral Education', content)
+		self.assertIn('student-col', content)
+		# The header uses the code, not the long paper names.
+		self.assertNotIn('<th>Islam &amp; Moral Education', content)
+		self.assertNotIn('<th>Hindu Religion &amp; Moral Education', content)
 
 	def test_marks_entry_only_offers_papers_students_sit(self):
 		from .result_utils import get_exam_subjects_for_students, get_exam_students
@@ -2197,7 +2296,7 @@ class ReligionFormFieldTests(TestCase):
 		student = Student.objects.get(name='New Kid')
 		self.assertEqual(student.religion, 'Hindu')
 
-	def test_get_applicable_subjects_defaults_religion_paper_to_islam(self):
+	def test_get_applicable_subjects_uses_the_students_own_religion_paper_only(self):
 		from .views import get_applicable_subjects
 		from .models import SubjectRequirement
 		institution = Institution.objects.create(name='Applicable School', classes='6')
@@ -2215,7 +2314,197 @@ class ReligionFormFieldTests(TestCase):
 				requirement_type='CONDITIONAL', condition_religion=religion,
 			)
 
-		for religion, expected in (('Hindu', hindu), ('', islam), ('Muslim', islam), ('islam', islam)):
+		for religion, expected in (
+			('Hindu', hindu), ('', islam), ('Muslim', islam), ('islam', islam),
+		):
 			data = get_applicable_subjects(institution, '6', religion=religion)
 			names = [item['name'] for item in data['conditional']]
 			self.assertEqual(names, [expected.name], f"religion={religion!r}")
+
+	def test_get_applicable_subjects_adds_no_paper_when_the_own_one_is_missing(self):
+		from .views import get_applicable_subjects
+		from .models import SubjectRequirement
+		institution = Institution.objects.create(name='Applicable School 2', classes='6')
+		islam = Subject.objects.create(
+			code='APIS2', name='Islam & Moral Education', full_marks=100, category='RELIGION')
+		SubjectRequirement.objects.create(
+			institution=institution, admission_class='6', subject=islam,
+			requirement_type='CONDITIONAL', condition_religion='Islam',
+		)
+		# A Hindu student with no Hindu paper assigned gets NO religion paper —
+		# Islam is never substituted. The result sheet shows a REL dash.
+		data = get_applicable_subjects(institution, '6', religion='Hindu')
+		self.assertEqual(data['conditional'], [])
+		# Muslim students still get the Islam paper.
+		data = get_applicable_subjects(institution, '6', religion='Islam')
+		self.assertEqual([item['name'] for item in data['conditional']], [islam.name])
+
+
+class NoSubjectsAssignedTests(TestCase):
+	"""The old 'nothing assigned -> show every subject' fallback is gone.
+	get_exam_subjects returns an empty list for an unassigned class, and the
+	Enter Marks, Excel Import and Result Sheet pages show a clear message
+	pointing at the Subject Assignments page instead."""
+
+	NO_SUBJECTS_MSG = (
+		"No subjects are assigned to Class 6 yet — assign them from the "
+		"Subject Assignments page first."
+	)
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Empty School', classes='6')
+		self.user = get_user_model().objects.create_superuser(username='empty-admin', password='password')
+		self.client.force_login(self.user)
+		self.subject = Subject.objects.create(code='STR', name='Stray Subject', full_marks=100)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='6', session='2026', is_published=True,
+		)
+		self.student = Student.objects.create(
+			institution=self.institution, student_id='E001', name='Empty Class Kid',
+			admission_class='6', section='A', roll_no=1, admission_year=2026,
+		)
+
+	def test_get_exam_subjects_does_not_fall_back_to_every_subject(self):
+		from .result_utils import get_exam_subjects
+		# Even though the Subject master list holds a subject, an unassigned
+		# class gets an empty list, not every subject in the system.
+		self.assertGreater(Subject.objects.count(), 0)
+		subjects, is_filtered = get_exam_subjects(self.exam)
+		self.assertEqual(list(subjects), [])
+		self.assertFalse(is_filtered)
+
+	def test_get_exam_subjects_returns_assigned_subjects_once_configured(self):
+		from .result_utils import get_exam_subjects
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='6', subject=self.subject,
+			requirement_type='MANDATORY',
+		)
+		subjects, is_filtered = get_exam_subjects(self.exam)
+		self.assertEqual(list(subjects), [self.subject])
+		self.assertTrue(is_filtered)
+
+	def test_select_marks_subject_page_shows_the_message(self):
+		response = self.client.get(reverse('select_marks_subject', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'No subjects are assigned to Class 6')
+		self.assertContains(response, 'Subject Assignments')
+		# No subject picker is offered for an unassigned class.
+		self.assertNotContains(response, 'name="subject"')
+
+	def test_import_page_shows_the_message(self):
+		response = self.client.get(reverse('import_exam_marks', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'No subjects are assigned to Class 6')
+		self.assertContains(response, 'Subject Assignments')
+		self.assertNotContains(response, 'Upload and Import')
+
+	def test_result_sheet_shows_the_message(self):
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'No subjects are assigned to Class 6')
+		self.assertContains(response, 'Subject Assignments')
+
+	def test_enter_marks_for_unassigned_subject_bounces_with_the_message(self):
+		# Editing the URL straight to an unassigned subject does not work:
+		# the page redirects back with the no-subjects message (no fallback to
+		# unfiltered subject entry).
+		response = self.client.get(
+			reverse('enter_marks', args=[self.exam.pk, self.subject.pk]),
+		)
+		self.assertRedirects(response, reverse('select_marks_subject', args=[self.exam.pk]))
+		followed = self.client.get(reverse('select_marks_subject', args=[self.exam.pk]))
+		self.assertContains(followed, 'No subjects are assigned to Class 6')
+
+	def test_publishing_and_results_do_not_fabricate_subjects(self):
+		# Stray marks in an unassigned class cannot invent columns either.
+		ExamMark.objects.create(
+			exam=self.exam, student=self.student, subject=self.subject, marks_obtained=80,
+		)
+		from .result_utils import build_exam_results
+		columns, results = build_exam_results(self.exam)
+		self.assertEqual(list(columns), [])
+		# The stray mark is not printed as a column...
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		self.assertContains(response, 'No subjects are assigned to Class 6')
+		# ...and it does not grade the student a pass.
+		result = next(r for r in results if r['student'].pk == self.student.pk)
+		self.assertEqual(result['status'], 'No Marks')
+
+	def test_message_helper_text(self):
+		from .result_utils import no_subjects_assigned_message
+		self.assertEqual(no_subjects_assigned_message(self.exam), self.NO_SUBJECTS_MSG)
+
+
+class ResultSheetCodeHeaderTests(TestCase):
+	"""The result sheet header shows subject codes (BAN1, ENG1, REL…) and the
+	full names live in a 'Subject codes' legend under the table; the student
+	name column is widened."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Header School', classes='6')
+		self.user = get_user_model().objects.create_superuser(username='header-admin', password='password')
+		self.client.force_login(self.user)
+		from .models import SubjectRequirement
+		self.bangla = Subject.objects.create(code='BAN1', name='Bangla 1st Paper', full_marks=100)
+		self.english = Subject.objects.create(code='ENG1', name='English 1st Paper', full_marks=100)
+		for subject in (self.bangla, self.english):
+			SubjectRequirement.objects.create(
+				institution=self.institution, admission_class='6', subject=subject,
+				requirement_type='MANDATORY',
+			)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='6', session='2026', is_published=True,
+		)
+		self.student = Student.objects.create(
+			institution=self.institution, student_id='H001', name='Header Kid',
+			admission_class='6', section='A', roll_no=1, admission_year=2026,
+		)
+		ExamMark.objects.create(exam=self.exam, student=self.student, subject=self.bangla, marks_obtained=80)
+		ExamMark.objects.create(exam=self.exam, student=self.student, subject=self.english, marks_obtained=70)
+
+	def test_header_uses_codes_and_legend_maps_them_to_names(self):
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		content = response.content.decode()
+		# Codes in the header row.
+		self.assertIn('<th>BAN1<br>', content)
+		self.assertIn('<th>ENG1<br>', content)
+		# Full names do not appear as column headers.
+		self.assertNotIn('<th>Bangla 1st Paper', content)
+		# Legend under the table.
+		self.assertIn('Subject codes', content)
+		self.assertIn('<span class="code">BAN1</span> = Bangla 1st Paper', content)
+		self.assertIn('<span class="code">ENG1</span> = English 1st Paper', content)
+
+	def test_student_name_column_is_wide(self):
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		self.assertContains(response, 'student-col')
+		self.assertContains(response, 'min-width: 200px')
+
+
+class SubjectAssignmentsConditionalNoteTests(TestCase):
+	"""The Conditional section of Subject Assignments explains the two religion
+	rows and the single merged Religion column on the result sheet."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Conditional School', classes='6')
+		self.user = get_user_model().objects.create_superuser(username='cond-admin', password='password')
+		self.client.force_login(self.user)
+		from .models import SubjectRequirement
+		self.islam = Subject.objects.create(
+			code='CISL', name='Islam & Moral Education', full_marks=100, category='RELIGION')
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='6', subject=self.islam,
+			requirement_type='CONDITIONAL', condition_religion='Islam',
+		)
+
+	def test_conditional_section_explains_the_two_religion_rows(self):
+		response = self.client.get(
+			reverse('subject_requirement_list')
+			+ f'?institution={self.institution.pk}&admission_class=6',
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'two religion rows')
+		self.assertContains(response, 'one Religion column')

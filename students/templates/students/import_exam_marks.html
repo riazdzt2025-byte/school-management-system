@@ -13,7 +13,11 @@
 </div>
 
 <div class="table-card p-4">
-    {% if show_group_picker %}
+    {% if messages %}
+        {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+    {% endif %}
+
+    {% if show_group_picker and not no_subjects %}
     <form method="get" class="mb-3" id="group-filter-form">
         <label for="group-select" class="form-label fw-semibold">Group</label>
         <select name="group" id="group-select" class="form-select" onchange="document.getElementById('group-filter-form').submit();">
@@ -26,15 +30,16 @@
     </form>
     {% endif %}
 
-    {% if not subject %}
+    {% if no_subjects %}
+    <div class="alert alert-warning">
+        {{ no_subjects_message }}
+        <a href="{{ subject_assignments_url }}" class="alert-link">Go to Subject Assignments</a>.
+    </div>
+    {% elif not subject %}
     <p class="text-muted">Each file is <strong>one subject</strong>. The Physics teacher fills Physics; the Bangla teacher fills Bangla. Pick the subject first, download that sheet, then upload the filled file.</p>
-    {% if is_filtered %}
     <p class="text-muted small mb-2">
         Showing subjects assigned to Class {{ exam.admission_class }}{% if exam.group %} &ndash; {{ exam.get_group_display }} group{% elif selected_group %} &ndash; {{ selected_group_label }} group{% else %} (all groups){% endif %}.
     </p>
-    {% else %}
-    <p class="text-muted small mb-2">No subject assignments are configured for this class yet, so all subjects are listed.</p>
-    {% endif %}
     <form method="post">
         {% csrf_token %}
         <input type="hidden" name="group" value="{{ selected_group }}">
@@ -79,9 +84,6 @@
     </a>
     <a class="btn btn-outline-navy btn-sm mb-3" href="{% url 'import_exam_marks' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}">Change subject</a>
 
-    {% if messages %}
-        {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
-    {% endif %}
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <input type="hidden" name="subject" value="{{ subject.pk }}">

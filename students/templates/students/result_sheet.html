@@ -6,9 +6,12 @@
 
 {% block extra_style %}
     .table-card table { min-width: 900px; }
+    .student-col { min-width: 200px; }
     td.absent-mark { color: #6c757d; background: #f1f3f7; }
     td.failed-mark { color: #b02a37; font-weight: 600; }
     td.not-applicable-mark { color: #adb5bd; background: #f8f9fa; }
+    .subject-codes { font-size: 0.85rem; }
+    .subject-codes .code { font-weight: 700; font-family: monospace; }
 {% endblock %}
 
 {% block content %}
@@ -25,6 +28,13 @@
     <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>
 </div>
 
+{% if no_subjects %}
+<div class="alert alert-warning">
+    {{ no_subjects_message }}
+    <a href="{{ subject_assignments_url }}" class="alert-link">Go to Subject Assignments</a>.
+</div>
+{% else %}
+
 {% if ignored_subjects %}
 <div class="alert alert-warning small">
     Marks exist in this exam for subject(s) that are not assigned to its class/group, so they are
@@ -39,9 +49,9 @@
         <table class="table table-striped table-bordered mb-0">
             <thead>
                 <tr>
-                    <th>Roll</th><th>Name</th>
+                    <th>Roll</th><th class="student-col">Name</th>
                     {% for column in columns %}
-                    <th>{{ column.subject.name }}<br><small>({{ column.full_marks }}{% if column.parts_summary %} &middot; {{ column.parts_summary }}{% endif %})</small></th>
+                    <th>{{ column.subject.code }}<br><small>({{ column.full_marks }}{% if column.parts_summary %} &middot; {{ column.parts_summary }}{% endif %})</small></th>
                     {% endfor %}
                     <th>Total</th><th>GPA</th><th>Grade</th><th>Position</th>
                 </tr>
@@ -50,10 +60,15 @@
                 {% for r in results %}
                 <tr>
                     <td>{{ r.student.roll_no }}</td>
-                    <td>{{ r.student.name }}</td>
+                    <td class="student-col">{{ r.student.name }}</td>
                     {% for sr in r.subject_results %}
-                    {% if sr.not_applicable %}
-                    <td class="not-applicable-mark" title="Not {{ r.student.name }}'s religion paper — religion papers follow the student's religion, so this column is never counted for them">&ndash;</td>
+                    {% if sr.religion_unassigned %}
+                    <td class="not-applicable-mark" title="No {{ r.student.religion|default:'religion' }} religion paper is assigned to this class, so the Religion column is never counted for this student">&ndash;</td>
+                    {% elif sr.religion_column %}
+                    <td class="{% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
+                        title="{% if sr.absent %}no mark entered - counted as F{% else %}Pass mark {{ sr.pass_marks }}{% if sr.paper %} &middot; {{ sr.paper.name }}{% endif %}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
+                        {% if sr.absent %}&mdash;{% else %}{{ sr.obtained }}{% endif %}{% if not sr.passed %} *{% endif %}
+                    </td>
                     {% else %}
                     <td class="{% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
                         title="{% if sr.absent %}no mark entered - counted as F{% else %}Pass mark {{ sr.pass_marks }}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
@@ -74,16 +89,25 @@
     </div>
 </div>
 
+<div class="subject-codes text-muted mt-2">
+    <strong>Subject codes</strong> &middot;
+    {% for column in columns %}
+        {% if forloop.last %}and {% endif %}<span class="code">{{ column.subject.code }}</span> = {{ column.subject.name }}{% if not forloop.last %}, {% endif %}
+    {% endfor %}
+</div>
+
 <p class="text-muted small mt-2 d-print-none">
     &mdash; = no mark entered for that subject. It is never shown as 0, but it is
     graded <strong>F</strong> and counted as 0 out of its Full Marks, so the student's
     result becomes Fail with GPA 0.00 (set <code>EXAM_ABSENT_SUBJECT_FAILS=False</code> to
     leave such subjects out of the result instead).
     * = the subject did not pass (hover a cell for the part breakdown and the pass mark).
-    A lighter dash in a religion column = not that student's religion paper (Hindu students
-    sit Hindu Religion &amp; Moral Education, everyone else Islam &amp; Moral Education) —
-    it is never counted for them.
+    <strong>REL (Religion &amp; Moral Education)</strong> is one column for both religion
+    papers: each student is graded on their own paper (Hindu students sit the Hindu paper,
+    everyone else the Islam paper). A lighter dash in REL means this student's own religion
+    paper is not assigned to the class yet &mdash; it is never counted or failed for them.
     A result is <strong>Pass</strong> only when every subject is passed individually;
     otherwise the percentage and the position are not counted.
 </p>
+{% endif %}
 {% endblock %}

@@ -80,7 +80,21 @@
 
 {% for label, requirements in grouped_requirements.items %}
 <div class="table-card mb-3">
-    <div class="p-3 pb-0"><h5 class="mb-0">{{ label }}</h5></div>
+    <div class="p-3 pb-0">
+        <h5 class="mb-0">{{ label }}</h5>
+        {% if 'Conditional' in label %}
+        <div class="alert alert-light border small mt-2 mb-2">
+            <strong>Why are there two religion rows (Islam &amp; Moral Education and Hindu Religion &amp; Moral Education)?</strong><br>
+            Religion is a conditional subject: the system automatically picks the one paper that matches
+            <em>each student's own religion</em> — Hindu students sit Hindu Religion &amp; Moral Education,
+            every other student sits Islam &amp; Moral Education. Both rows must be assigned so every student
+            has a paper; marks entry and the Excel import offer each student only their own paper. On the
+            result sheet the two papers are <strong>one Religion column (REL)</strong>, not two — each student's
+            cell shows their own paper, and a student whose paper is not assigned gets a dash that is never
+            counted.
+        </div>
+        {% endif %}
+    </div>
     <div class="table-responsive">
         <table class="table table-striped mb-0">
             <thead>

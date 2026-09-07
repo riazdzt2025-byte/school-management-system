@@ -21,9 +21,19 @@
         </thead>
         <tbody>
             {% for sr in result.subject_results %}
-            {% if sr.not_applicable %}{% else %}
+            {% if sr.religion_unassigned %}
+            <tr>
+                <td>Religion</td>
+                <td>&mdash;</td>
+                <td>&mdash; <span class="text-muted small">{% if result.student.religion == 'Hindu' %}Hindu{% else %}Islam{% endif %} paper not assigned</span></td>
+                <td class="small text-muted">the student's own religion paper is not assigned to this class — never counted</td>
+                <td>&mdash;</td>
+                <td>&mdash;</td>
+                <td>&mdash;</td>
+            </tr>
+            {% elif sr.not_applicable %}{% else %}
             <tr{% if not sr.passed %} class="table-danger"{% endif %}>
-                <td>{{ sr.subject.name }}</td>
+                <td>{% if sr.religion_column %}Religion{% else %}{{ sr.subject.name }}{% endif %}{% if sr.religion_column and sr.paper %} <span class="text-muted small">({{ sr.paper.name }})</span>{% endif %}</td>
                 <td>{{ sr.full }}</td>
                 <td>{% if sr.absent %}&mdash; <span class="text-muted small">(no mark entered)</span>{% else %}{{ sr.obtained }}{% endif %}</td>
                 <td class="small">
@@ -60,8 +70,9 @@
     <p class="text-muted small">A subject left blank shows as &mdash; rather than 0, but it is still graded F and
     counted as 0 out of its Full Marks &mdash; a candidate who did not sit a subject has not passed it.
     A result is Pass only when every subject is passed individually; a failed result gets no percentage and no position.
-    Religion papers follow the student's religion (Hindu students sit Hindu Religion &amp; Moral Education,
-    everyone else Islam &amp; Moral Education), so the other religion subject is not shown or counted here.</p>
+    Religion is a single row: each student is graded on their own paper (Hindu students sit Hindu Religion
+    &amp; Moral Education, everyone else Islam &amp; Moral Education). When the student's own paper is not
+    assigned to the class, the row shows a dash and is never counted.</p>
     <a href="{% url 'result_card' exam.pk result.student.pk %}" class="btn btn-navy">Print Result Card</a>
     <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-outline-navy">Back</a>
 </div>
