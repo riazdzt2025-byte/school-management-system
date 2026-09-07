@@ -56,7 +56,10 @@ SUBJECTS = [
     ('SOCWORK', 'Social Work', 100, 'OPTIONAL'),
     ('ISLHIST', 'Islamic History & Culture', 100, 'OPTIONAL'),
 
-    # Religion (conditional — one auto-added per student's religion)
+    # Religion (conditional — one auto-added per student's religion: Hindu
+    # students get Hindu Religion & Moral Education, everyone else Islam).
+    # Christian/Buddhist stay in the master list only so rows created before
+    # this rule keep resolving; auto-populate no longer assigns them.
     ('ISLAM', 'Islam & Moral Education', 100, 'RELIGION'),
     ('HINDU', 'Hindu Religion & Moral Education', 100, 'RELIGION'),
     ('CHRIS', 'Christian Religion & Moral Education', 100, 'RELIGION'),
@@ -86,8 +89,6 @@ PRIMARY_COMMON = [
     ('HPE', 'MANDATORY', '', ''),
     ('ISLAM', 'CONDITIONAL', '', 'Islam'),
     ('HINDU', 'CONDITIONAL', '', 'Hindu'),
-    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
-    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
 ]
 
 # ---- Junior secondary (no groups) --------------------------------------
@@ -106,8 +107,6 @@ JUNIOR_COMMON = [
     ('ART', 'MANDATORY', '', ''),
     ('ISLAM', 'CONDITIONAL', '', 'Islam'),
     ('HINDU', 'CONDITIONAL', '', 'Hindu'),
-    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
-    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
 ]
 
 # ---- SSC (class 9-10), group-wise --------------------------------------
@@ -124,8 +123,6 @@ SSC_COMMON = [
     ('ART', 'MANDATORY', '', ''),
     ('ISLAM', 'CONDITIONAL', '', 'Islam'),
     ('HINDU', 'CONDITIONAL', '', 'Hindu'),
-    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
-    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
 ]
 SSC_GROUPS = {
     'SCI': [
@@ -171,8 +168,6 @@ HSC_COMMON = [
     ('ICT', 'MANDATORY', '', ''),
     ('ISLAM', 'CONDITIONAL', '', 'Islam'),
     ('HINDU', 'CONDITIONAL', '', 'Hindu'),
-    ('CHRIS', 'CONDITIONAL', '', 'Christian'),
-    ('BUDDHIST', 'CONDITIONAL', '', 'Buddhist'),
 ]
 HSC_GROUPS = {
     'SCI': [

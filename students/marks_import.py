@@ -9,7 +9,10 @@ from io import BytesIO
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .models import ExamMark, MARK_PARTS, Student, normalize_class_label
-from .result_utils import get_exam_students, get_subject_marks
+from .result_utils import (
+    get_exam_students, get_exam_subjects, get_subject_marks,
+    religion_paper_for, religion_subject_map,
+)
 
 
 EXCEL_PART_COLUMN = {
@@ -65,6 +68,18 @@ def build_subject_marks_workbook(exam, subject, group=None):
 
     marks_config = get_subject_marks(exam, subject)
     students = list(get_exam_students(exam, group=group))
+    # A religion paper is only sat by the students whose religion it is, so
+    # the template lists just those — no empty rows for anyone else. The map
+    # covers every assigned religion paper, so a Hindu student who has a Hindu
+    # paper does not appear on the Islam sheet.
+    all_subjects, _filtered = get_exam_subjects(exam, group=group)
+    religion_by_pk = religion_subject_map(exam, all_subjects)
+    is_religion_paper = bool(religion_by_pk)
+    if is_religion_paper:
+        students = [
+            student for student in students
+            if religion_paper_for(student, religion_by_pk) == subject.pk
+        ]
     headers = marks_import_headers(marks_config)
     parts = marks_config.parts
 
@@ -107,6 +122,12 @@ def build_subject_marks_workbook(exam, subject, group=None):
         '2. Leave a cell blank when the student did not sit that paper — blank is',
         '   skipped, while 0 is a real mark of zero.',
         '3. A mark above that part\'s maximum is rejected and the whole file is not imported.',
+        f'4. {len(students)} student(s) are listed from the CURRENT class roll at download time.',
+        '   If students join or leave, download this file again — do not reuse an old sheet.',
+        '   Extra rows for students who have left are skipped on import.',
+        '5. This is a religion paper, so only the students who sit it are listed — religion',
+        '   papers follow each student\'s religion. Marks for any other student are skipped.',
+    ] if is_religion_paper else [
         f'4. {len(students)} student(s) are listed from the CURRENT class roll at download time.',
         '   If students join or leave, download this file again — do not reuse an old sheet.',
         '   Extra rows for students who have left are skipped on import.',
@@ -226,6 +247,15 @@ def parse_subject_marks_sheet(sheet, exam, subject, students):
 
     marks_config = get_subject_marks(exam, subject)
     parts = marks_config.parts
+    # Marks for a student who does not sit this religion paper are skipped:
+    # the result never counts them anyway. The map covers every assigned
+    # religion paper so the student's own paper wins over the Islam fallback.
+    all_subjects, _filtered = get_exam_subjects(exam)
+    religion_by_pk = religion_subject_map(exam, all_subjects)
+    students = [
+        student for student in students
+        if not religion_by_pk or religion_paper_for(student, religion_by_pk) == subject.pk
+    ]
     students_by_id = {student.student_id.lower(): student for student in students if student.student_id}
     students_by_roll = defaultdict(list)
     students_by_roll_name = defaultdict(list)

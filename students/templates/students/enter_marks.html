@@ -5,6 +5,11 @@
 {% block extra_style %}
     .marks-input { width: 100px; }
     .part-missing { background: #fff3cd; }
+    tr.row-not-sitting td { color: #adb5bd; background: #f8f9fa; }
+    tr.row-not-sitting .badge-not-sitting {
+        background: #eef1f5; color: #6c757d; border-radius: 999px;
+        font-size: .72rem; padding: 2px 10px; white-space: nowrap;
+    }
 {% endblock %}
 
 {% block content %}
@@ -89,17 +94,25 @@
                 </thead>
                 <tbody>
                     {% for row in students_with_marks %}
-                    <tr>
+                    <tr class="{% if not row.sits_subject %}row-not-sitting{% endif %}">
                         <td>{{ row.student.roll_no }}</td>
                         <td>{{ row.student.student_id }}</td>
-                        <td>{{ row.student.name }}</td>
+                        <td>
+                            {{ row.student.name }}
+                            {% if not row.sits_subject %}
+                            <span class="badge-not-sitting" title="Religion papers follow the student's religion — this student sits their own religion subject, not this one.">
+                                sits {{ row.student.religion }} paper
+                            </span>
+                            {% endif %}
+                        </td>
                         {% if parts %}
                             {% for value in row.part_values %}
                             <td class="{% if value.missing %}part-missing{% endif %}">
                                 <input type="number" name="{{ value.key }}_{{ row.student.pk }}"
                                        value="{{ value.value }}" step="0.01" min="0" max="{{ value.max_marks }}"
                                        class="form-control marks-input"
-                                       placeholder="{{ value.pass_marks }} to pass">
+                                       placeholder="{{ value.pass_marks }} to pass"
+                                       {% if not row.sits_subject %}disabled{% endif %}>
                                 {% if value.missing %}
                                 <div class="text-danger" style="font-size:.72rem;">not entered</div>
                                 {% endif %}
@@ -107,7 +120,7 @@
                             {% endfor %}
                             <td>{{ row.marks_obtained|default_if_none:"&mdash;" }}</td>
                         {% else %}
-                        <td><input type="number" name="marks_{{ row.student.pk }}" value="{{ row.marks_obtained }}" step="0.01" min="0" max="{{ marks_config.full_marks }}" class="form-control marks-input"></td>
+                        <td><input type="number" name="marks_{{ row.student.pk }}" value="{{ row.marks_obtained }}" step="0.01" min="0" max="{{ marks_config.full_marks }}" class="form-control marks-input" {% if not row.sits_subject %}disabled{% endif %}></td>
                         {% endif %}
                     </tr>
                     {% empty %}

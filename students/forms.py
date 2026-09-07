@@ -7,7 +7,25 @@ from .models import (
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
     AdmissionApplication, SectionCapacity,
+    RELIGION_CHOICES, student_religion,
 )
+
+
+def _setup_religion_field(form, field):
+    """Turn a religion CharField into the Islam/Hindu dropdown.
+
+    The school has Muslim and Hindu students only, and the religion drives
+    which religion paper the student sits, so the value must be one of the two.
+    A legacy free-text value ('Muslim', 'হিন্দু'…) is normalised rather than
+    rejected, and anything unknown — including blank — defaults to Islam.
+
+    ``form.initial`` is normalised too: on an edit it holds the raw database
+    value, which would otherwise render no selection at all.
+    """
+    field.widget = forms.Select(attrs={'class': 'form-select'}, choices=list(RELIGION_CHOICES))
+    field.required = False
+    form.initial['religion'] = student_religion(form.initial.get('religion', ''))
+
 
 class StudentForm(forms.ModelForm):
     class Meta:
@@ -25,7 +43,7 @@ class StudentForm(forms.ModelForm):
             'admission_year': forms.NumberInput(attrs={'class': 'form-control'}),
             'roll_no': forms.NumberInput(attrs={'class': 'form-control'}),
             'gender': forms.Select(attrs={'class': 'form-select'}),
-            'religion': forms.TextInput(attrs={'class': 'form-control'}),
+            'religion': forms.Select(attrs={'class': 'form-select'}),
             'father_name': forms.TextInput(attrs={'class': 'form-control'}),
             'contact_no': forms.TextInput(attrs={'class': 'form-control'}),
             'guardian_contact_no': forms.TextInput(attrs={'class': 'form-control'}),
@@ -37,12 +55,18 @@ class StudentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['admission_class'].label = 'Class'
         self.fields['section'].label = 'Section'
+        _setup_religion_field(self, self.fields['religion'])
         admission_class = ''
         if self.instance and self.instance.pk:
             admission_class = str(self.instance.admission_class)
         elif self.data.get('admission_class'):
             admission_class = str(self.data.get('admission_class'))
         self.apply_group_rules(admission_class)
+
+    def clean_religion(self):
+        """Always store one of the two dropdown values, even when the POST was
+        hand-crafted with something else."""
+        return student_religion(self.cleaned_data.get('religion'))
 
     def apply_group_rules(self, admission_class):
         """Groups belong to class 9 and above only. Below that the field is
@@ -135,6 +159,11 @@ class AdmissionApplicationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.setdefault('class', 'form-control')
+        _setup_religion_field(self, self.fields['religion'])
+
+    def clean_religion(self):
+        """Always store one of the two dropdown values (Islam by default)."""
+        return student_religion(self.cleaned_data.get('religion'))
 
     def clean(self):
         cleaned_data = super().clean()

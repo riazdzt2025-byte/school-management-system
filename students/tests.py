@@ -1960,3 +1960,262 @@ class StudentListCountAndLookupTests(TestCase):
 		self.assertRedirects(response, reverse('student_detail', args=[self.six_a.pk]))
 		profile = self.client.get(reverse('student_detail', args=[self.six_a.pk]))
 		self.assertContains(profile, 'archived')
+
+
+class ReligionPaperTests(TestCase):
+	"""Religion papers follow the student's religion: Hindu students sit Hindu
+	Religion & Moral Education, everyone else sits Islam & Moral Education.
+	Papers for religions the school has no students of never appear, and a
+	student is never failed for a religion paper that is not theirs."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Religion School', classes='6,9')
+		self.user = get_user_model().objects.create_superuser(username='religion-admin', password='password')
+		self.client.force_login(self.user)
+		from .models import SubjectRequirement
+		self.bangla = Subject.objects.create(code='RBN', name='Bangla', full_marks=100)
+		self.islam = Subject.objects.create(
+			code='RISL', name='Islam & Moral Education', full_marks=100, category='RELIGION')
+		self.hindu = Subject.objects.create(
+			code='RHIN', name='Hindu Religion & Moral Education', full_marks=100, category='RELIGION')
+		self.christian = Subject.objects.create(
+			code='RCHR', name='Christian Religion & Moral Education', full_marks=100, category='RELIGION')
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='6', subject=self.bangla,
+			requirement_type='MANDATORY',
+		)
+		for subject, religion in (
+			(self.islam, 'Islam'), (self.hindu, 'Hindu'), (self.christian, 'Christian'),
+		):
+			SubjectRequirement.objects.create(
+				institution=self.institution, admission_class='6', subject=subject,
+				requirement_type='CONDITIONAL', condition_religion=religion,
+			)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='6', session='2026', is_published=True,
+		)
+		self.muslim = Student.objects.create(
+			institution=self.institution, student_id='R001', name='Muslim Kid',
+			admission_class='6', section='A', roll_no=1, admission_year=2026, religion='Islam',
+		)
+		self.hindu_kid = Student.objects.create(
+			institution=self.institution, student_id='R002', name='Hindu Kid',
+			admission_class='6', section='A', roll_no=2, admission_year=2026, religion='Hindu',
+		)
+
+	def _marks(self, student, subject, value):
+		ExamMark.objects.create(
+			exam=self.exam, student=student, subject=subject, marks_obtained=value,
+		)
+
+	def _result_for(self, student):
+		from .result_utils import build_exam_results
+		_, results = build_exam_results(self.exam)
+		return next(r for r in results if r['student'].pk == student.pk)
+
+	def test_each_student_is_graded_on_their_own_religion_paper(self):
+		self._marks(self.muslim, self.bangla, 80)
+		self._marks(self.muslim, self.islam, 75)
+		self._marks(self.hindu_kid, self.bangla, 82)
+		self._marks(self.hindu_kid, self.hindu, 71)
+
+		muslim_result = self._result_for(self.muslim)
+		self.assertEqual(muslim_result['status'], 'Pass')
+		self.assertEqual(muslim_result['total_full'], 200)  # Bangla + Islam only
+		self.assertEqual(muslim_result['position'], 1)
+
+		hindu_result = self._result_for(self.hindu_kid)
+		self.assertEqual(hindu_result['status'], 'Pass')
+		self.assertEqual(hindu_result['total_full'], 200)  # Bangla + Hindu only
+		self.assertEqual(hindu_result['position'], 2)
+
+	def test_another_religions_paper_is_a_dash_that_never_fails(self):
+		self._marks(self.muslim, self.bangla, 80)
+		self._marks(self.muslim, self.islam, 75)
+		result = self._result_for(self.muslim)
+		hindu_row = next(
+			row for row in result['subject_results'] if row['subject'].pk == self.hindu.pk
+		)
+		self.assertTrue(hindu_row['not_applicable'])
+		self.assertIsNone(hindu_row['obtained'])
+		self.assertEqual(result['status'], 'Pass')
+
+	def test_papers_nobody_sits_are_not_printed_at_all(self):
+		from .result_utils import build_exam_results
+		subjects, _results = build_exam_results(self.exam)
+		self.assertIn(self.islam, subjects)
+		self.assertIn(self.hindu, subjects)
+		self.assertNotIn(self.christian, subjects)
+
+	def test_blank_religion_defaults_to_the_islam_paper(self):
+		blank = Student.objects.create(
+			institution=self.institution, student_id='R003', name='No Religion Set',
+			admission_class='6', section='A', roll_no=3, admission_year=2026, religion='',
+		)
+		self._marks(blank, self.bangla, 60)
+		self._marks(blank, self.islam, 55)
+		result = self._result_for(blank)
+		self.assertEqual(result['status'], 'Pass')
+		self.assertEqual(result['total_full'], 200)
+
+	def test_marks_entry_only_offers_papers_students_sit(self):
+		from .result_utils import get_exam_subjects_for_students, get_exam_students
+		students = list(get_exam_students(self.exam))
+		subjects, is_filtered = get_exam_subjects_for_students(self.exam, students)
+		self.assertTrue(is_filtered)
+		self.assertIn(self.islam, subjects)
+		self.assertIn(self.hindu, subjects)
+		self.assertNotIn(self.christian, subjects)
+
+	def test_enter_marks_skips_students_who_do_not_sit_the_paper(self):
+		# Entering Islam marks: the Hindu student's (disabled) boxes post
+		# nothing and must never be saved, even when values sneak in.
+		self.client.post(
+			reverse('enter_marks', args=[self.exam.pk, self.islam.pk]),
+			{
+				f'marks_{self.muslim.pk}': '70',
+				f'marks_{self.hindu_kid.pk}': '88',
+			},
+		)
+		self.assertTrue(ExamMark.objects.filter(
+			exam=self.exam, student=self.muslim, subject=self.islam).exists())
+		self.assertFalse(ExamMark.objects.filter(
+			exam=self.exam, student=self.hindu_kid, subject=self.islam).exists())
+
+
+class ResultCountingRulesTests(TestCase):
+	"""A result is Pass only when every subject is passed individually. A
+	failed result gets no percentage and no position — they are not counted."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Counting School', classes='6')
+		self.user = get_user_model().objects.create_superuser(username='counting-admin', password='password')
+		self.client.force_login(self.user)
+		from .models import SubjectRequirement
+		self.bangla = Subject.objects.create(code='CBN', name='Bangla', full_marks=100)
+		self.math = Subject.objects.create(code='CMT', name='Math', full_marks=100)
+		for subject in (self.bangla, self.math):
+			SubjectRequirement.objects.create(
+				institution=self.institution, admission_class='6',
+				subject=subject, requirement_type='MANDATORY',
+			)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='6', session='2026', is_published=True,
+		)
+		self.passer = Student.objects.create(
+			institution=self.institution, student_id='C001', name='All Pass',
+			admission_class='6', section='A', roll_no=1, admission_year=2026,
+		)
+		self.failer = Student.objects.create(
+			institution=self.institution, student_id='C002', name='One Fail',
+			admission_class='6', section='A', roll_no=2, admission_year=2026,
+		)
+
+	def _result_for(self, student):
+		from .result_utils import build_exam_results
+		_, results = build_exam_results(self.exam)
+		return next(r for r in results if r['student'].pk == student.pk)
+
+	def test_pass_only_when_every_subject_is_passed_individually(self):
+		ExamMark.objects.create(exam=self.exam, student=self.passer, subject=self.bangla, marks_obtained=72)
+		ExamMark.objects.create(exam=self.exam, student=self.passer, subject=self.math, marks_obtained=65)
+		ExamMark.objects.create(exam=self.exam, student=self.failer, subject=self.bangla, marks_obtained=78)
+		ExamMark.objects.create(exam=self.exam, student=self.failer, subject=self.math, marks_obtained=30)
+
+		passed = self._result_for(self.passer)
+		self.assertEqual(passed['status'], 'Pass')
+		self.assertEqual(passed['percentage'], 68.5)
+		self.assertEqual(passed['position'], 1)
+
+		failed = self._result_for(self.failer)
+		self.assertEqual(failed['status'], 'Fail')
+		self.assertEqual(str(failed['gpa']), '0.00')
+		self.assertIsNone(failed['percentage'])
+		self.assertIsNone(failed['position'])
+
+	def test_summary_page_shows_a_dash_for_a_failed_percentage(self):
+		ExamMark.objects.create(exam=self.exam, student=self.failer, subject=self.bangla, marks_obtained=78)
+		ExamMark.objects.create(exam=self.exam, student=self.failer, subject=self.math, marks_obtained=30)
+		response = self.client.get(reverse('exam_result_summary', args=[self.exam.pk]))
+		self.assertContains(response, 'Fail')
+		self.assertContains(response, '&mdash;')
+
+	def test_class_zero_padding_still_finds_assigned_subjects(self):
+		from .result_utils import get_exam_subjects
+		# Requirements stored as '06' must match an exam stored as '6'.
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.all().delete()
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='06',
+			subject=self.bangla, requirement_type='MANDATORY',
+		)
+		subjects, is_filtered = get_exam_subjects(self.exam)
+		self.assertTrue(is_filtered)
+		self.assertIn(self.bangla, list(subjects))
+
+
+class ReligionFormFieldTests(TestCase):
+	"""The religion field is the Islam/Hindu dropdown, and legacy free-text
+	values are normalised rather than rejected."""
+
+	def test_religion_is_a_dropdown_with_the_two_papers(self):
+		form = StudentForm()
+		html = str(form['religion'])
+		self.assertIn('<option value="Islam"', html)
+		self.assertIn('<option value="Hindu"', html)
+		self.assertIn('selected', html)  # Islam selected by default
+
+	def test_legacy_value_is_normalised_to_the_nearest_paper(self):
+		institution = Institution.objects.create(name='Form School', classes='6')
+		student = Student.objects.create(
+			institution=institution, student_id='F001', name='Legacy Kid',
+			admission_class='6', admission_year=2026, religion='মুসলিম',
+		)
+		form = StudentForm(instance=student)
+		self.assertIn('<option value="Islam" selected', str(form['religion']))
+
+		student.religion = 'hinduism'
+		student.save(update_fields=['religion'])
+		form = StudentForm(instance=student)
+		self.assertIn('<option value="Hindu" selected', str(form['religion']))
+
+	def test_submitted_religion_is_saved_normalised(self):
+		institution = Institution.objects.create(name='Form School 2', classes='6')
+		user = get_user_model().objects.create_superuser(username='form-admin', password='password')
+		self.client.force_login(user)
+		self.client.post(reverse('add_student'), {
+			'institution': institution.pk,
+			'name': 'New Kid',
+			'admission_class': '6',
+			'section': 'A',
+			'admission_year': '2026',
+			'religion': 'Hindu',
+			'status': 'ACTIVE',
+		})
+		student = Student.objects.get(name='New Kid')
+		self.assertEqual(student.religion, 'Hindu')
+
+	def test_get_applicable_subjects_defaults_religion_paper_to_islam(self):
+		from .views import get_applicable_subjects
+		from .models import SubjectRequirement
+		institution = Institution.objects.create(name='Applicable School', classes='6')
+		islam = Subject.objects.create(
+			code='APISL', name='Islam & Moral Education', full_marks=100, category='RELIGION')
+		hindu = Subject.objects.create(
+			code='APHIN', name='Hindu Religion & Moral Education', full_marks=100, category='RELIGION')
+		christian = Subject.objects.create(
+			code='APCHR', name='Christian Religion & Moral Education', full_marks=100, category='RELIGION')
+		for subject, religion in (
+			(islam, 'Islam'), (hindu, 'Hindu'), (christian, 'Christian'),
+		):
+			SubjectRequirement.objects.create(
+				institution=institution, admission_class='6', subject=subject,
+				requirement_type='CONDITIONAL', condition_religion=religion,
+			)
+
+		for religion, expected in (('Hindu', hindu), ('', islam), ('Muslim', islam), ('islam', islam)):
+			data = get_applicable_subjects(institution, '6', religion=religion)
+			names = [item['name'] for item in data['conditional']]
+			self.assertEqual(names, [expected.name], f"religion={religion!r}")

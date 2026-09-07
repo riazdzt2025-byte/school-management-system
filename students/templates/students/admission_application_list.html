@@ -10,6 +10,38 @@
 .badge-account_pending { background: #fd7e14; }
 .badge-enrolled { background: #198754; }
 .badge-rejected { background: #dc3545; }
+
+/* ---- Share toast: copied confirmation ---- */
+.share-toast {
+    position: fixed; right: 24px; bottom: 24px; z-index: 3000;
+    max-width: 420px; width: calc(100% - 48px);
+    background: #fff; border-radius: 14px; border: 1px solid rgba(15,45,82,.08);
+    box-shadow: 0 14px 40px rgba(15,45,82,.25);
+    padding: 16px 18px; display: none; align-items: flex-start; gap: 12px;
+}
+.share-toast.show { display: flex; }
+.share-toast .toast-icon {
+    width: 40px; height: 40px; border-radius: 50%; background: rgba(25,135,84,.12);
+    color: #198754; display: flex; align-items: center; justify-content: center;
+    font-size: 1.15rem; flex-shrink: 0;
+}
+.share-toast .toast-title { font-weight: 700; color: var(--navy); font-size: .98rem; }
+.share-toast .toast-text { color: #5c6773; font-size: .86rem; margin: 2px 0 0; }
+.share-toast .toast-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.share-toast .btn-open-wa {
+    background: #25D366; color: #fff; border: none; border-radius: 8px;
+    padding: 6px 14px; font-size: .84rem; font-weight: 600; text-decoration: none;
+}
+.share-toast .btn-open-wa:hover { background: #1ebe5b; color: #fff; }
+.share-toast .toast-close {
+    background: none; border: none; color: #8b97a5; margin-left: auto; padding: 0;
+    line-height: 1; font-size: 1.1rem;
+}
+.share-msg-preview {
+    background: #f6f7fa; border: 1px solid #e7ebf0; border-radius: 10px;
+    padding: 10px 12px; font-size: .8rem; color: #5c6773; white-space: pre-wrap;
+    max-height: 110px; overflow: auto; margin-top: 10px;
+}
 {% endblock %}
 
 {% block content %}
@@ -29,8 +61,24 @@
         </form>
         <a href="{% url 'admission' %}" class="btn btn-navy">+ New Application</a>
         <a href="{% url 'download_admission_sheet' %}?status={{ status|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
-        <button type="button" id="share-application-link-btn" class="btn btn-outline-navy">📲 Share Application Link</button>
+        <button type="button" id="share-application-link-btn" class="btn btn-outline-navy" title="Copies a ready-to-paste WhatsApp message with the public application form link">📲 Share Application Link</button>
     </div>
+</div>
+
+<div class="share-toast" id="share-toast" role="status">
+    <div class="toast-icon"><i class="bi bi-check-lg"></i></div>
+    <div>
+        <div class="toast-title">Share message copied!</div>
+        <p class="toast-text">Open WhatsApp, choose a chat and <strong>paste</strong> the message (long-press &rarr; Paste).</p>
+        <div class="share-msg-preview" id="share-msg-preview"></div>
+        <div class="toast-actions">
+            <a class="btn-open-wa" id="share-open-whatsapp" href="#" target="_blank" rel="noopener">
+                <i class="bi bi-whatsapp me-1"></i>Open WhatsApp
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="share-copy-again">Copy again</button>
+        </div>
+    </div>
+    <button type="button" class="toast-close" id="share-toast-close" aria-label="Close">&times;</button>
 </div>
 
 <div class="d-flex gap-2 mb-3 d-print-none" role="tablist">
@@ -70,34 +118,105 @@
 
 {% block extra_script %}
 <script>
-    // "Share Application Link" — prompts for a WhatsApp number and opens
-    // WhatsApp (web or app) with the public Admission Application form
-    // link pre-filled as a message, ready to send.
-    document.getElementById('share-application-link-btn').addEventListener('click', function() {
-        const rawNumber = prompt('Enter WhatsApp number (e.g. 01xxxxxxxxx or +8801xxxxxxxxx):');
-        if (!rawNumber) { return; }
-
-        // Normalize to WhatsApp's required international format (digits only,
-        // no leading + or 0). Accepts local (01...), +880..., 880..., or 0088...
-        let digits = rawNumber.replace(/[^0-9]/g, '');
-        if (digits.startsWith('00')) {
-            digits = digits.slice(2);
-        }
-        if (digits.startsWith('0')) {
-            digits = '880' + digits.slice(1);
-        } else if (!digits.startsWith('880')) {
-            digits = '880' + digits;
-        }
-
-        if (digits.length < 12 || digits.length > 13) {
-            alert('The number does not look valid. Please try again (e.g. 01712345678).');
-            return;
-        }
+    // ---- "Share Application Link" ----
+    // One click copies a ready-to-paste WhatsApp message (school greeting +
+    // public application form link + contact). Paste it into any chat; the
+    // toast also offers to open WhatsApp directly with the message filled in.
+    (function () {
+        const shareBtn = document.getElementById('share-application-link-btn');
+        const toast = document.getElementById('share-toast');
+        if (!shareBtn || !toast) { return; }
 
         const formLink = window.location.origin + "{% url 'public_admission_apply' %}";
-        const message = 'Admission Application form: ' + formLink;
-        const waUrl = 'https://wa.me/' + digits + '?text=' + encodeURIComponent(message);
-        window.open(waUrl, '_blank');
-    });
+        const schoolName = "{{ SCHOOL_INFO.name|default:'Principal Kazi Faruky School And College'|escapejs }}";
+        const schoolAddress = "{{ SCHOOL_INFO.address|default:'Rakhalia, Raipur, Lakshmipur'|escapejs }}";
+        const schoolPhone = "{{ SCHOOL_INFO.phone|default:'+880 1234-567890'|escapejs }}";
+
+        const shareMessage = [
+            '🌟 ADMISSIONS OPEN 🌟',
+            schoolName,
+            '',
+            'Dear Guardians,',
+            '',
+            'Applications are invited for admission. Applying is easy — just fill in the online admission form at the link below:',
+            '',
+            '🔗 ' + formLink,
+            '',
+            'For admission information, contact us:',
+            '📞 ' + schoolPhone,
+            '',
+            '— ' + schoolName,
+            schoolAddress,
+        ].join('\n');
+
+        const previewBox = document.getElementById('share-msg-preview');
+        const openWhatsAppBtn = document.getElementById('share-open-whatsapp');
+        const copyAgainBtn = document.getElementById('share-copy-again');
+        const closeBtn = document.getElementById('share-toast-close');
+        let hideTimer = null;
+
+        function copyToClipboard(text, onDone, onFail) {
+            // Modern browsers (https pages): the async Clipboard API.
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(onDone).catch(function () {
+                    legacyCopy(text) ? onDone() : onFail();
+                });
+                return;
+            }
+            legacyCopy(text) ? onDone() : onFail();
+        }
+
+        function legacyCopy(text) {
+            // Fallback for older browsers / plain http: a hidden textarea.
+            const helper = document.createElement('textarea');
+            helper.value = text;
+            helper.setAttribute('readonly', '');
+            helper.style.position = 'fixed';
+            helper.style.left = '-9999px';
+            document.body.appendChild(helper);
+            helper.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            document.body.removeChild(helper);
+            return ok;
+        }
+
+        function showToast() {
+            previewBox.textContent = shareMessage;
+            openWhatsAppBtn.href = 'https://wa.me/?text=' + encodeURIComponent(shareMessage);
+            toast.classList.add('show');
+            if (hideTimer) { clearTimeout(hideTimer); }
+            hideTimer = setTimeout(hideToast, 15000);
+        }
+
+        function hideToast() {
+            toast.classList.remove('show');
+            if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        }
+
+        function copyFailed() {
+            previewBox.textContent = shareMessage;
+            toast.querySelector('.toast-title').textContent = 'Copy the message below';
+            toast.querySelector('.toast-text').innerHTML =
+                'Your browser did not allow automatic copying — select the text below and copy it manually.';
+            openWhatsAppBtn.href = 'https://wa.me/?text=' + encodeURIComponent(shareMessage);
+            toast.classList.add('show');
+            if (hideTimer) { clearTimeout(hideTimer); }
+        }
+
+        function doCopy() {
+            toast.querySelector('.toast-title').textContent = 'Share message copied!';
+            toast.querySelector('.toast-text').innerHTML =
+                'Open WhatsApp, choose a chat and <strong>paste</strong> the message (long-press &rarr; Paste).';
+            copyToClipboard(shareMessage, showToast, copyFailed);
+        }
+
+        shareBtn.addEventListener('click', doCopy);
+        if (copyAgainBtn) { copyAgainBtn.addEventListener('click', doCopy); }
+        if (closeBtn) { closeBtn.addEventListener('click', hideToast); }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { hideToast(); }
+        });
+    })();
 </script>
 {% endblock %}

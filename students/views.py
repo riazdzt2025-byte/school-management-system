@@ -41,7 +41,10 @@ from .result_utils import (
     get_exam_group_choices,
     get_exam_students,
     get_exam_subjects,
+    get_exam_subjects_for_students,
     get_subject_marks,
+    religion_paper_for,
+    religion_subject_map,
     unassigned_mark_subjects,
 )
 from .marks_import import (
@@ -51,7 +54,7 @@ from .marks_import import (
 )
 from .audit import record_audit
 from .permissions import sync_user_department_permissions
-from .models import Student, Subject, Institution, Employee
+from .models import Student, Subject, Institution, Employee, student_religion
 
 # Import the optional Excel dependency dynamically so this module remains
 # importable in environments where the package is not installed.
@@ -1717,24 +1720,55 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
     """
     Returns which subjects apply for a given institution + class + group
     (+ optional religion for conditional subjects).
+
+    The class filter is zero-padding tolerant ('9' matches '09'), matching
+    get_exam_students / get_exam_subjects.
+
+    A religion paper follows the student's religion — Hindu students get Hindu
+    Religion & Moral Education and every other student (including a blank
+    value) gets Islam & Moral Education. Papers for religions the school has
+    no students of (Christian / Buddhist) never match. This holds however the
+    paper was assigned (CONDITIONAL with a religion, or MANDATORY with the
+    Religion category); non-religion subjects are never treated as papers.
     """
+    from .models import parse_religion_label, student_religion
+    from .result_utils import class_filter_variants
+
     qs = SubjectRequirement.objects.filter(
-        institution=institution, admission_class=str(admission_class),
+        institution=institution,
+        admission_class__in=class_filter_variants(admission_class),
     ).filter(Q(group='') | Q(group=group)).select_related('subject')
+
+    paper_religion = student_religion(religion)
 
     mandatory = []
     conditional = []
     optional_groups = {}
+    religion_papers = {}  # 'Islam' / 'Hindu' / ... -> [subject_data, ...]
 
     for req in qs:
         subject_data = {'id': req.subject.pk, 'code': req.subject.code, 'name': req.subject.name, 'requirement_id': req.pk}
-        if req.requirement_type == 'MANDATORY':
+        if req.condition_religion and req.requirement_type == 'CONDITIONAL':
+            label = parse_religion_label(req.condition_religion)
+        elif req.subject.category == 'RELIGION':
+            label = parse_religion_label(req.subject.name)
+        else:
+            label = ''
+        if label:
+            religion_papers.setdefault(label, []).append(subject_data)
+        elif req.requirement_type == 'MANDATORY':
             mandatory.append(subject_data)
         elif req.requirement_type == 'CONDITIONAL':
-            if religion and req.condition_religion and religion.strip().lower() == req.condition_religion.strip().lower():
-                conditional.append(subject_data)
+            # A conditional row without a usable religion never matches
+            # anyone on its own.
+            pass
         elif req.requirement_type == 'OPTIONAL':
             optional_groups.setdefault(req.optional_set_key or 'default', []).append(subject_data)
+
+    # The student's own paper — falling back to Islam & Moral Education when
+    # their religion's paper is not assigned for the class.
+    for label in ([paper_religion] if paper_religion in religion_papers else ['Islam']):
+        conditional.extend(religion_papers.get(label, []))
 
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
 
@@ -1795,18 +1829,21 @@ def mark_evaluation_settings(request):
     admission_class = request.GET.get('admission_class') or request.POST.get('admission_class') or ''
     exam_type = request.GET.get('exam_type') or request.POST.get('exam_type') or ''
 
+    class_variants = class_filter_variants(admission_class)
     subjects_with_settings = []
     if institution_id and admission_class and exam_type:
+        # '9' and '09' are the same class — match either spelling of the
+        # requirements and the existing settings rows.
         subjects = Subject.objects.filter(
             requirements__institution_id=institution_id,
-            requirements__admission_class=admission_class,
+            requirements__admission_class__in=class_variants,
         ).distinct().order_by('name')
 
         existing = {
             s.subject_id: s
             for s in SubjectMarkSetting.objects.filter(
                 institution_id=institution_id,
-                admission_class=admission_class,
+                admission_class__in=class_variants,
                 exam_type=exam_type,
             )
         }
@@ -1938,7 +1975,11 @@ def subject_requirement_list(request):
     if institution_id:
         requirements = requirements.filter(institution_id=institution_id)
     if admission_class:
-        requirements = requirements.filter(admission_class=admission_class)
+        # '9' and '09' are the same class — filter on every spelling so the
+        # list never looks empty just because the rows were typed differently.
+        requirements = requirements.filter(
+            admission_class__in=class_filter_variants(admission_class)
+        )
     if group:
         requirements = requirements.filter(group=group)
     if query:
@@ -2222,7 +2263,10 @@ def import_students(request):
                         admission_year=admission_year_int,
                         roll_no=roll_no_int,
                         gender=gender_code,
-                        religion=str(religion).strip() if religion else '',
+                        # Free-text religions from the sheet ('Muslim', 'হিন্দু'…)
+                        # are normalised to the dropdown values, defaulting to
+                        # Islam like every other screen.
+                        religion=student_religion(religion),
                         father_name=str(father_name).strip() if father_name else '',
                         contact_no=str(contact_no).strip() if contact_no else '',
                         guardian_contact_no=str(guardian_contact_no).strip() if guardian_contact_no else '',
@@ -2587,7 +2631,10 @@ def select_marks_subject(request, pk):
         if requested in valid_group_codes:
             selected_group = requested
 
-    subjects, is_filtered = get_exam_subjects(exam, group=selected_group or None)
+    students = list(get_exam_students(exam, group=selected_group or None))
+    subjects, is_filtered = get_exam_subjects_for_students(
+        exam, students, group=selected_group or None,
+    )
     allowed_ids = {s.pk for s in subjects}
 
     if request.method == 'POST':
@@ -2637,7 +2684,10 @@ def import_exam_marks(request, pk):
     """
     exam = get_object_or_404(Exam, pk=pk)
     group_choices, selected_group = _exam_group_selection(request, exam)
-    subjects, is_filtered = get_exam_subjects(exam, group=selected_group or None)
+    students = list(get_exam_students(exam, group=selected_group or None))
+    subjects, is_filtered = get_exam_subjects_for_students(
+        exam, students, group=selected_group or None,
+    )
     allowed_ids = {subject.pk for subject in subjects}
 
     raw_subject = (request.POST.get('subject') or request.GET.get('subject') or '').strip()
@@ -2662,7 +2712,6 @@ def import_exam_marks(request, pk):
                 url += f'&group={selected_group}'
             return redirect(url)
 
-    students = list(get_exam_students(exam, group=selected_group or None))
     form = ExamExcelImportForm(request.POST or None, request.FILES or None)
     marks_config = get_subject_marks(exam, subject) if subject else None
     template_url = ''
@@ -2718,7 +2767,8 @@ def import_exam_marks(request, pk):
             success_message = f'{len(validated_rows)} {subject.name} mark(s) imported successfully.'
             if skipped_count:
                 success_message += (
-                    f' {skipped_count} row(s) skipped (blank mark, or a student who is no longer in this class).'
+                    f' {skipped_count} row(s) skipped (blank mark, a student who is no longer'
+                    ' in this class, or a student who does not sit this religion paper).'
                 )
             messages.success(request, success_message)
             return redirect('exam_list')
@@ -2737,7 +2787,10 @@ def download_marks_import_template(request, pk):
     """
     exam = get_object_or_404(Exam, pk=pk)
     group_choices, selected_group = _exam_group_selection(request, exam)
-    subjects, is_filtered = get_exam_subjects(exam, group=selected_group or None)
+    students = list(get_exam_students(exam, group=selected_group or None))
+    subjects, is_filtered = get_exam_subjects_for_students(
+        exam, students, group=selected_group or None,
+    )
     raw_subject = (request.GET.get('subject') or '').strip()
     subject = None
     if raw_subject.isdigit():
@@ -2791,20 +2844,44 @@ def enter_marks(request, pk, subject_pk):
         if requested in valid_group_codes:
             selected_group = requested
 
+    students = list(get_exam_students(exam, group=selected_group or None))
+    all_subjects, _all_filtered = get_exam_subjects(exam, group=selected_group or None)
+    # Every religion paper assigned to this class — needed to know which paper
+    # each student sits (a Hindu student with a Hindu paper does not sit the
+    # Islam paper, and vice versa).
+    religion_by_pk = religion_subject_map(exam, all_subjects)
+
     # Guard against entering marks for a subject that is not assigned to this
-    # exam's class/group (e.g. by editing the URL directly).
-    allowed_subjects, is_filtered = get_exam_subjects(exam, group=selected_group or None)
-    if is_filtered and not allowed_subjects.filter(pk=subject.pk).exists():
-        messages.error(
-            request,
-            f'"{subject.name}" is not assigned to Class {exam.admission_class}'
-            f'{" (" + exam.get_group_display() + ")" if exam.group else ""}.'
-        )
+    # exam's class/group (e.g. by editing the URL directly). Religion papers
+    # nobody in this class sits are also refused — a Hindu student's paper is
+    # not this one.
+    allowed_subjects, is_filtered = get_exam_subjects_for_students(
+        exam, students, group=selected_group or None,
+    )
+    if is_filtered and not any(item.pk == subject.pk for item in allowed_subjects):
+        if subject.pk in religion_by_pk:
+            messages.error(
+                request,
+                f'No student in Class {exam.admission_class} sits "{subject.name}" — '
+                'religion papers follow each student\'s religion (Hindu students sit '
+                'Hindu Religion & Moral Education, everyone else Islam & Moral Education).'
+            )
+        else:
+            messages.error(
+                request,
+                f'"{subject.name}" is not assigned to Class {exam.admission_class}'
+                f'{" (" + exam.get_group_display() + ")" if exam.group else ""}.'
+            )
         return redirect('select_marks_subject', pk=exam.pk)
 
     marks_config = get_subject_marks(exam, subject)
     parts = marks_config.parts
-    students = get_exam_students(exam, group=selected_group or None)
+    # When this subject is a religion paper, note which students do not sit it
+    # so the page can grey their rows out instead of offering empty boxes.
+    sits_subject = {
+        student.pk: (religion_paper_for(student, religion_by_pk) == subject.pk)
+        for student in students
+    } if religion_by_pk else {student.pk: True for student in students}
     existing_marks = {
         mark.student_id: mark for mark in ExamMark.objects.filter(exam=exam, subject=subject)
     }
@@ -2813,6 +2890,10 @@ def enter_marks(request, pk, subject_pk):
         saved_count = 0
         skipped = []
         for student in students:
+            if not sits_subject.get(student.pk):
+                # Not this student's religion paper: nothing to save, and any
+                # mark left over from before is ignored by the result anyway.
+                continue
             if parts:
                 values, problem = {}, None
                 for part in parts:
@@ -2899,6 +2980,7 @@ def enter_marks(request, pk, subject_pk):
             'student': student,
             'marks_obtained': mark.marks_obtained if mark else '',
             'part_values': part_values,
+            'sits_subject': sits_subject.get(student.pk, True),
         })
 
     return render(request, 'students/enter_marks.html', {
@@ -2914,6 +2996,7 @@ def enter_marks(request, pk, subject_pk):
         'parts_mismatch': not marks_config.parts_match_full_marks,
         'require_all_parts_pass': marks_config.require_all_parts_pass,
         'total_students': len(rows),
+        'religion_paper_subject': bool(religion_by_pk),
     })
 
 

@@ -2,6 +2,94 @@
 
 {% block title %}{% if student %}Edit Student{% else %}Add Student{% endif %} - Principal Kazi Faruky School And College{% endblock %}
 
+{% block extra_style %}
+    .admission-form-card {
+        background: #fff; border-radius: 18px; overflow: hidden;
+        box-shadow: 0 10px 30px rgba(15,45,82,0.10);
+        max-width: 980px; border: 1px solid rgba(15,45,82,0.06);
+    }
+    .admission-form-hero {
+        background: linear-gradient(120deg, var(--navy) 0%, #17406e 70%, #1d5189 100%);
+        color: #fff; padding: 26px 34px; position: relative; overflow: hidden;
+    }
+    .admission-form-hero::after {
+        content: ''; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px;
+        border-radius: 50%; background: rgba(201,162,39,0.16);
+    }
+    .admission-form-hero::before {
+        content: ''; position: absolute; right: 60px; bottom: -80px; width: 160px; height: 160px;
+        border-radius: 50%; background: rgba(255,255,255,0.06);
+    }
+    .admission-form-hero h2 {
+        font-family: 'Fraunces', serif; margin: 0; font-size: 1.45rem; position: relative; z-index: 1;
+    }
+    .admission-form-hero p { margin: 4px 0 0; opacity: .85; font-size: .92rem; position: relative; z-index: 1; }
+    .admission-form-body { padding: 30px 34px 34px; }
+
+    .section-title {
+        display: flex; align-items: center; gap: 10px;
+        font-family: 'Fraunces', serif; color: var(--navy); font-size: 1.05rem;
+        margin: 26px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--gold);
+    }
+    .section-title:first-child { margin-top: 0; }
+    .section-title .section-icon {
+        width: 34px; height: 34px; border-radius: 10px; background: rgba(15,45,82,0.07);
+        display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; color: var(--navy);
+        flex-shrink: 0;
+    }
+    .form-label { font-weight: 600; color: var(--navy); font-size: .88rem; margin-bottom: 5px; }
+    .form-control, .form-select { border-radius: 9px; border: 1px solid #d7dce3; padding: 9px 12px; font-size: .93rem; }
+    .form-control:focus, .form-select:focus { border-color: var(--navy); box-shadow: 0 0 0 .2rem rgba(15,45,82,.12); }
+    .form-control.is-invalid, .form-select.is-invalid { border-color: #dc3545; }
+
+    .photo-box {
+        border: 2px dashed #cdd4dd; border-radius: 12px; padding: 10px; text-align: center;
+        background: #fafbfc;
+    }
+    .photo-box img {
+        width: 108px; height: 108px; object-fit: cover; border-radius: 10px;
+        border: 3px solid #fff; box-shadow: 0 3px 10px rgba(15,45,82,.18); margin-bottom: 8px;
+    }
+    .photo-box .photo-placeholder {
+        width: 108px; height: 108px; margin: 0 auto 8px; border-radius: 10px;
+        background: rgba(15,45,82,.06); color: #8b97a5; display: flex; align-items: center;
+        justify-content: center; font-size: 2rem;
+    }
+
+    .subjects-panel {
+        border: 1px solid #e3e7ec; border-radius: 12px; background: #fafbfc; padding: 16px;
+    }
+    .subject-row {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        background: #fff; border: 1px solid #e7ebf0; border-radius: 9px;
+        padding: 8px 12px; margin-bottom: 7px;
+    }
+    .subject-row .subj-name { font-weight: 500; font-size: .92rem; }
+    .subject-row .subj-code { color: #8b97a5; font-size: .8rem; }
+    .subject-tag {
+        border-radius: 999px; font-size: .72rem; font-weight: 600; padding: 3px 11px; white-space: nowrap;
+    }
+    .subject-tag.tag-mandatory { background: rgba(15,45,82,.09); color: var(--navy); }
+    .subject-tag.tag-auto { background: rgba(25,135,84,.12); color: #198754; }
+    .subject-tag.tag-optional { background: rgba(201,162,39,.16); color: #8a6d10; }
+    .optional-set {
+        border: 1px dashed #d9dee5; border-radius: 10px; padding: 12px; margin-bottom: 10px; background: #fff;
+    }
+    .optional-set .optional-set-title { font-size: .82rem; color: #6c757d; margin-bottom: 8px; }
+
+    .form-actions {
+        display: flex; gap: 10px; flex-wrap: wrap; margin-top: 28px; padding-top: 20px;
+        border-top: 1px solid #edf0f4;
+    }
+    .btn-navy { padding: 10px 22px; font-weight: 600; }
+    .required-star { color: #dc3545; }
+
+    @media (max-width: 768px) {
+        .admission-form-body { padding: 20px 18px 24px; }
+        .admission-form-hero { padding: 20px 18px; }
+    }
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <div>
@@ -10,33 +98,148 @@
     </div>
 </div>
 
-<div class="table-card p-4" style="max-width: 640px;">
-    <form method="POST" enctype="multipart/form-data">
-        {% csrf_token %}
-        {% for field in form %}
-        <div class="mb-3 form-field{% if field.name == 'group' %} group-field{% endif %}"{% if field.name == 'group' %} id="group-field-wrapper"{% endif %}>
-            <label class="form-label">{{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}</label>
-            {{ field }}
-            {% if field.name == 'group' %}
-            <div class="form-text text-muted small" id="group-field-note" style="display:none;">This class has no group — groups start from class 9.</div>
+{% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+{% endif %}
+
+<div class="admission-form-card">
+    <div class="admission-form-hero">
+        <h2><i class="bi bi-person-plus-fill me-2"></i>{% if student %}Edit Student{% else %}New Student Admission{% endif %}</h2>
+        <p>{% if student %}Student ID: {{ student.student_id }} &middot; Form No: {{ student.form_no }}{% else %}The Student ID and Form No. are generated automatically on save{% endif %}</p>
+    </div>
+
+    <div class="admission-form-body">
+        <form method="POST" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
             {% endif %}
-            {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors }}</div>{% endif %}
-        </div>
-        {% endfor %}
 
-        <div class="mb-3" id="subjects-panel" style="display:none;">
-            <label class="form-label">Subjects</label>
-            <div id="subjects-loading" class="text-muted small" style="display:none;">Loading subjects…</div>
-            <div id="subjects-empty" class="text-muted small" style="display:none;">No subject list configured for this institution/class yet.</div>
-            <div id="mandatory-subjects"></div>
-            <div id="conditional-subjects"></div>
-            <div id="optional-subjects"></div>
-        </div>
+            <div class="section-title"><span class="section-icon"><i class="bi bi-person-fill"></i></span>Student Information</div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="id_name">Full Name <span class="required-star">*</span></label>
+                    {{ form.name }}
+                    {% for error in form.name.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_father_name">Father's Name</label>
+                    {{ form.father_name }}
+                    {% for error in form.father_name.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_gender">Gender</label>
+                    {{ form.gender }}
+                    {% for error in form.gender.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_religion">Religion</label>
+                    {{ form.religion }}
+                    <div class="form-text small">Hindu students sit Hindu Religion &amp; Moral Education; everyone else sits Islam &amp; Moral Education.</div>
+                    {% for error in form.religion.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_photo">Photo</label>
+                    {{ form.photo }}
+                    {% for error in form.photo.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-12" id="photo-preview-box" style="display:none;">
+                    <div class="photo-box">
+                        <img id="photo-preview-img" src="#" alt="Photo preview">
+                        <div class="text-muted small">New photo preview</div>
+                    </div>
+                </div>
+                {% if student.photo %}
+                <div class="col-12">
+                    <div class="photo-box">
+                        <img src="{{ student.photo.url }}" alt="Current photo">
+                        <div class="text-muted small">Current photo — pick a new file above to replace it</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
 
-        <button type="submit" class="btn btn-navy">Save</button>
-        <button type="submit" name="save_add_another" value="1" class="btn btn-outline-navy">Save & Add Another</button>
-        <a href="{% url 'student_list' %}" class="btn btn-outline-secondary">Cancel</a>
-    </form>
+            <div class="section-title"><span class="section-icon"><i class="bi bi-mortarboard-fill"></i></span>Academic Details</div>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label" for="id_institution">Institution <span class="required-star">*</span></label>
+                    {{ form.institution }}
+                    {% for error in form.institution.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_admission_class">Class <span class="required-star">*</span></label>
+                    {{ form.admission_class }}
+                    {% for error in form.admission_class.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4 form-field" id="group-field-wrapper">
+                    <label class="form-label" for="id_group">Group{% if form.group.field.required %} <span class="required-star">*</span>{% endif %}</label>
+                    {{ form.group }}
+                    <div class="form-text text-muted small" id="group-field-note" style="display:none;">This class has no group — groups start from class 9.</div>
+                    {% for error in form.group.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_section">Section</label>
+                    {{ form.section }}
+                    {% for error in form.section.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_roll_no">Roll No.</label>
+                    {{ form.roll_no }}
+                    {% for error in form.roll_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_admission_year">Admission Year</label>
+                    {{ form.admission_year }}
+                    {% for error in form.admission_year.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_status">Status</label>
+                    {{ form.status }}
+                    {% for error in form.status.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <div class="section-title"><span class="section-icon"><i class="bi bi-telephone-fill"></i></span>Contact</div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="id_contact_no">Student's Contact No.</label>
+                    {{ form.contact_no }}
+                    {% for error in form.contact_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_guardian_contact_no">Guardian Contact No.</label>
+                    {{ form.guardian_contact_no }}
+                    {% for error in form.guardian_contact_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <div class="section-title"><span class="section-icon"><i class="bi bi-journal-bookmark-fill"></i></span>Subjects</div>
+            <div id="subjects-panel" style="display:none;" class="subjects-panel">
+                <div id="subjects-loading" class="text-muted small" style="display:none;">
+                    <span class="spinner-border spinner-border-sm me-1"></span> Loading subjects…
+                </div>
+                <div id="subjects-empty" class="text-muted small" style="display:none;">
+                    No subject list configured for this institution/class yet — you can assign subjects later from
+                    <strong>Subject Assignments</strong>.
+                </div>
+                <div id="mandatory-subjects"></div>
+                <div id="conditional-subjects"></div>
+                <div id="optional-subjects"></div>
+            </div>
+            <div id="subjects-hint" class="text-muted small">Pick an <strong>Institution</strong> and <strong>Class</strong> above to load this class's subject list.</div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-navy"><i class="bi bi-check-circle-fill me-1"></i>{% if student %}Save Changes{% else %}Save Student{% endif %}</button>
+                {% if not student %}
+                <button type="submit" name="save_add_another" value="1" class="btn btn-outline-navy"><i class="bi bi-plus-circle me-1"></i>Save &amp; Add Another</button>
+                {% endif %}
+                <a href="{% url 'student_list' %}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}
 
@@ -94,6 +297,7 @@
     const groupSelect = document.getElementById('id_group');
     const religionInput = document.getElementById('id_religion');
     const subjectsPanel = document.getElementById('subjects-panel');
+    const subjectsHint = document.getElementById('subjects-hint');
     const subjectsLoading = document.getElementById('subjects-loading');
     const subjectsEmpty = document.getElementById('subjects-empty');
     const mandatoryBox = document.getElementById('mandatory-subjects');
@@ -101,14 +305,26 @@
     const optionalBox = document.getElementById('optional-subjects');
     const preChosenIds = new Set([{{ chosen_requirement_ids|join:"," }}]);
 
+    function subjectRowHtml(subj, tagClass, tagText) {
+        return '<div class="subject-row">' +
+            '<div><span class="subj-name">' + subj.name + '</span> <span class="subj-code">(' + subj.code + ')</span></div>' +
+            '<div class="d-flex align-items-center gap-2">' +
+            '<input class="form-check-input mt-0" type="checkbox" checked disabled>' +
+            '<input type="hidden" name="requirement_ids" value="' + subj.requirement_id + '">' +
+            '<span class="subject-tag ' + tagClass + '">' + tagText + '</span>' +
+            '</div></div>';
+    }
+
     function loadSubjects() {
         const institutionId = institutionSelect.value;
         const admissionClass = classSelect.value;
         if (!institutionId || !admissionClass) {
             subjectsPanel.style.display = 'none';
+            subjectsHint.style.display = '';
             return;
         }
         subjectsPanel.style.display = '';
+        subjectsHint.style.display = 'none';
         subjectsLoading.style.display = '';
         subjectsEmpty.style.display = 'none';
         mandatoryBox.innerHTML = '';
@@ -130,27 +346,17 @@
                 subjectsEmpty.style.display = hasAny ? 'none' : '';
 
                 data.mandatory.forEach(function(subj) {
-                    mandatoryBox.insertAdjacentHTML('beforeend',
-                        '<div class="form-check">' +
-                        '<input class="form-check-input" type="checkbox" checked disabled>' +
-                        '<input type="hidden" name="requirement_ids" value="' + subj.requirement_id + '">' +
-                        '<label class="form-check-label">' + subj.name + ' (' + subj.code + ') — Mandatory</label>' +
-                        '</div>');
+                    mandatoryBox.insertAdjacentHTML('beforeend', subjectRowHtml(subj, 'tag-mandatory', 'Mandatory'));
                 });
 
                 data.conditional.forEach(function(subj) {
-                    conditionalBox.insertAdjacentHTML('beforeend',
-                        '<div class="form-check">' +
-                        '<input class="form-check-input" type="checkbox" checked disabled>' +
-                        '<input type="hidden" name="requirement_ids" value="' + subj.requirement_id + '">' +
-                        '<label class="form-check-label">' + subj.name + ' (' + subj.code + ') — Auto-added</label>' +
-                        '</div>');
+                    conditionalBox.insertAdjacentHTML('beforeend', subjectRowHtml(subj, 'tag-auto', 'Religion paper — auto'));
                 });
 
                 Object.keys(data.optional_groups).forEach(function(key) {
                     const options = data.optional_groups[key];
                     const groupName = 'optional_group_' + key;
-                    let html = '<div class="mb-2"><div class="small text-muted">Choose one (' + key + '):</div>';
+                    let html = '<div class="optional-set"><div class="optional-set-title">Choose one (' + key + '):</div>';
                     options.forEach(function(subj) {
                         const checked = preChosenIds.has(subj.requirement_id) ? 'checked' : '';
                         html += '<div class="form-check">' +
@@ -194,5 +400,22 @@
     });
     updateGroupFieldVisibility();
     if (institutionSelect.value && classSelect.value) { loadSubjects(); }
+
+    // ---- Photo preview ----
+    const photoInput = document.getElementById('id_photo');
+    const photoPreviewBox = document.getElementById('photo-preview-box');
+    const photoPreviewImg = document.getElementById('photo-preview-img');
+    if (photoInput) {
+        photoInput.addEventListener('change', function() {
+            if (photoInput.files && photoInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    photoPreviewImg.src = e.target.result;
+                    photoPreviewBox.style.display = '';
+                };
+                reader.readAsDataURL(photoInput.files[0]);
+            }
+        });
+    }
 </script>
 {% endblock %}
