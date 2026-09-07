@@ -1711,3 +1711,65 @@ class StudentIdHoleTests(TestCase):
 		self.assertNotIn('202509001', ids)
 		self.assertNotIn('202509003', ids)
 		self.assertEqual(len(ids), 2)
+
+
+class StudentListCountAndLookupTests(TestCase):
+	"""The list must show how many students are on screen, and an ID lookup
+	must open that student's profile — otherwise a 132/133 gap is invisible."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Count Campus', classes='6,9')
+		self.user = get_user_model().objects.create_superuser(username='count-admin', password='pw')
+		self.client.force_login(self.user)
+		self.six_a = Student.objects.create(
+			institution=self.institution, student_id='CNT001', name='Six A One',
+			admission_class='6', section='A', roll_no=1, admission_year=2026,
+		)
+		self.six_b = Student.objects.create(
+			institution=self.institution, student_id='CNT002', name='Six B One',
+			admission_class='6', section='B', roll_no=1, admission_year=2026,
+		)
+		self.nine = Student.objects.create(
+			institution=self.institution, student_id='CNT009', name='Nine Science',
+			admission_class='9', section='A', group='SCI', roll_no=1, admission_year=2026,
+		)
+
+	def test_list_shows_total_and_class_section_counts(self):
+		response = self.client.get(reverse('student_list'), {'institution': self.institution.pk})
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.context['student_count'], 3)
+		self.assertContains(response, 'id="student-count"')
+		self.assertContains(response, '>3</strong>')
+		body = response.content.decode()
+		self.assertIn('Class 6 A', body)
+		self.assertIn('Class 6 B', body)
+		self.assertIn('Class 9 A', body)
+		self.assertContains(response, 'Science')
+
+	def test_exact_student_id_opens_the_profile(self):
+		response = self.client.get(reverse('student_list'), {'q': 'CNT009'})
+		self.assertRedirects(response, reverse('student_detail', args=[self.nine.pk]))
+
+		response = self.client.get(reverse('student_by_id', args=['CNT001']))
+		self.assertRedirects(response, reverse('student_detail', args=[self.six_a.pk]))
+
+	def test_unknown_id_stays_on_the_list_with_a_message(self):
+		response = self.client.get(reverse('student_by_id', args=['MISSING99']), follow=True)
+		self.assertContains(response, 'MISSING99')
+		self.assertContains(response, 'No student matching')
+
+	def test_name_search_filters_the_list_without_redirecting(self):
+		response = self.client.get(reverse('student_list'), {'q': 'Six'})
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.context['student_count'], 2)
+		self.assertContains(response, 'Six A One')
+		self.assertContains(response, 'Six B One')
+		self.assertNotContains(response, 'Nine Science')
+
+	def test_archived_student_is_still_reachable_by_id(self):
+		self.six_a.is_archived = True
+		self.six_a.save(update_fields=['is_archived'])
+		response = self.client.get(reverse('student_list'), {'q': 'CNT001'})
+		self.assertRedirects(response, reverse('student_detail', args=[self.six_a.pk]))
+		profile = self.client.get(reverse('student_detail', args=[self.six_a.pk]))
+		self.assertContains(profile, 'archived')

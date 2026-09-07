@@ -120,6 +120,49 @@ def _selected_institution_for_request(request):
 # in this module.
 _class_filter_variants = class_filter_variants
 
+
+def apply_student_text_search(qs, q):
+    """Filter students by ID, name, roll, form no, father, or contact."""
+    q = (q or '').strip()
+    if not q:
+        return qs
+    filters = (
+        Q(student_id__icontains=q)
+        | Q(name__icontains=q)
+        | Q(father_name__icontains=q)
+        | Q(form_no__icontains=q)
+        | Q(contact_no__icontains=q)
+    )
+    if q.isdigit():
+        filters |= Q(roll_no=int(q))
+    return qs.filter(filters)
+
+
+def student_class_counts(students):
+    """Per class / section / group totals for the currently listed students."""
+    buckets = defaultdict(int)
+    for student in students:
+        buckets[(
+            student.admission_class,
+            student.section or '',
+            student.get_group_display() if student.group else '',
+        )] += 1
+
+    def sort_key(item):
+        (cls, section, group), _count = item
+        numeric = int(cls) if str(cls).isdigit() else 10 ** 9
+        return (numeric, str(cls), section, group)
+
+    rows = []
+    for (cls, section, group), count in sorted(buckets.items(), key=sort_key):
+        rows.append({
+            'admission_class': cls,
+            'section': section,
+            'group': group,
+            'count': count,
+        })
+    return rows
+
 def _scope_students_to_user(request, qs):
     """Limit a Student queryset to what the current user is allowed to see.
 
@@ -850,6 +893,18 @@ def employee_detail(request, pk):
 
 #---------------- Student Views ----------------
 @login_required
+def student_by_id(request, student_id):
+    """Open a student's profile from the printed Student ID, not the database pk."""
+    student_id = (student_id or '').strip()
+    qs = _scope_students_to_user(request, Student.objects.all())
+    student = qs.filter(student_id__iexact=student_id).first()
+    if student is None:
+        messages.error(request, f'No student found with ID "{student_id}".')
+        return redirect(f"{reverse('student_list')}?q={student_id}")
+    return redirect('student_detail', pk=student.pk)
+
+
+@login_required
 def student_list(request):
     institutions = Institution.objects.all().order_by('name')
     institutions_data = {
@@ -860,6 +915,7 @@ def student_list(request):
     admission_class = request.GET.get('admission_class')
     section = request.GET.get('section')
     group = request.GET.get('group')
+    search_q = (request.GET.get('q') or '').strip()
     institution_id = request.GET.get('institution')
     department = request.GET.get('department') or request.session.get('selected_department') or 'Office'
 
@@ -868,27 +924,31 @@ def student_list(request):
     else:
         institution = _selected_institution_for_request(request)
 
+    # An exact Student ID jumps straight to the profile — including archived
+    # rows, which is how you find the "missing" 133rd student after an archive.
+    if search_q:
+        exact_matches = list(
+            _scope_students_to_user(
+                request, Student.objects.filter(student_id__iexact=search_q)
+            )[:2]
+        )
+        if len(exact_matches) == 1:
+            return redirect('student_detail', pk=exact_matches[0].pk)
+
     qs = Student.objects.filter(is_archived=False)
     if institution is not None:
         qs = qs.filter(institution=institution)
     qs = _scope_students_to_user(request, qs)
 
-    if request.GET.get('all') == '1':
-        students = list(qs)
-    elif institution_id or institution is not None:
-        qs = qs.filter(institution=institution) if institution is not None else qs
+    if request.GET.get('all') != '1':
         if admission_class:
             qs = qs.filter(admission_class__in=_class_filter_variants(admission_class))
         if section:
             qs = qs.filter(section__iexact=section.strip())
         if group:
             qs = qs.filter(group=group)
-        students = list(qs)
-    else:
-        # No institution selected yet: keep the user on the main student list page
-        # and let the inline filters drive the view instead of redirecting to an
-        # obsolete dedicated landing page.
-        students = list(qs)
+    qs = apply_student_text_search(qs, search_q)
+    students = list(qs.order_by('admission_class', 'section', 'roll_no', 'name', 'pk'))
 
     # ---- Duplicate detection ----
     exact_key_count = defaultdict(int)
@@ -909,6 +969,9 @@ def student_list(request):
 
     return render(request, 'students/student_list.html', {
         'students': students,
+        'student_count': len(students),
+        'class_counts': student_class_counts(students),
+        'search_q': search_q,
         'institution': institution,
         'selected_class': admission_class,
         'selected_section': section,
@@ -937,6 +1000,7 @@ def download_student_list(request):
     admission_class = request.GET.get('admission_class')
     section = request.GET.get('section')
     group = request.GET.get('group')
+    search_q = (request.GET.get('q') or '').strip()
     institution_id = request.GET.get('institution')
 
     qs = Student.objects.select_related('institution').filter(is_archived=False)
@@ -954,6 +1018,7 @@ def download_student_list(request):
             qs = qs.filter(section__iexact=section.strip())
         if group:
             qs = qs.filter(group=group)
+    qs = apply_student_text_search(qs, search_q)
 
     qs = qs.order_by('admission_class', 'section', 'roll_no', 'name')
 

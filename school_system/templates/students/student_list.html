@@ -54,6 +54,7 @@
             Student Management
             {% if selected_class %} — Class {{ selected_class }}{% endif %}
             {% if selected_section %} ({{ selected_section }}){% endif %}
+            — {{ student_count }} student{{ student_count|pluralize }}
         </div>
     </div>
     <div class="page-actions">
@@ -62,7 +63,7 @@
         <a href="{% url 'import_students' %}" class="btn btn-outline-navy">📥 Import from Excel</a>
         {% endif %}
         <a href="{% url 'subject_requirement_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📚 Subject Assignments</a>
-        <a href="{% url 'download_student_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&section={{ selected_section|default:'' }}&group={{ selected_group|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
+        <a href="{% url 'download_student_list' %}?institution={{ institution.id|default:'' }}&admission_class={{ selected_class|default:'' }}&section={{ selected_section|default:'' }}&group={{ selected_group|default:'' }}&q={{ search_q|urlencode }}" class="btn btn-outline-navy">📥 Download Excel</a>
         {% if perms.students.view_student %}
         <a href="{% url 'archived_students' %}{% if institution %}?institution={{ institution.id }}{% endif %}" class="btn btn-outline-navy">🗄️ View Archive</a>
         {% endif %}
@@ -97,6 +98,10 @@
         <select name="admission_class" id="ilf-class" class="form-select form-select-sm">
             <option value="">-- All --</option>
         </select>
+    </div>
+    <div class="field grow">
+        <label for="ilf-q">Search by ID / Name / Roll</label>
+        <input type="text" name="q" id="ilf-q" class="form-control form-control-sm" value="{{ search_q|default:'' }}" placeholder="e.g. 202509001">
     </div>
     <div class="field">
         <label for="ilf-section">Section</label>
@@ -133,10 +138,17 @@
     <input type="hidden" name="admission_class" value="{{ selected_class|default:'' }}">
     <input type="hidden" name="section" value="{{ selected_section|default:'' }}">
 
-    <div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
-        <div class="form-check">
-            <input type="checkbox" class="form-check-input" id="select-all">
-            <label class="form-check-label" for="select-all">Select All</label>
+    <div class="d-flex justify-content-between align-items-center mb-2 d-print-none">
+        <div>
+            <div class="form-check d-inline-block me-3">
+                <input type="checkbox" class="form-check-input" id="select-all">
+                <label class="form-check-label" for="select-all">Select All</label>
+            </div>
+            <strong id="student-count">{{ student_count }}</strong>
+            student{{ student_count|pluralize }}
+            {% if search_q %} matching “{{ search_q }}”{% endif %}
+            {% if selected_class %} in class {{ selected_class }}{% endif %}
+            {% if selected_section %} section {{ selected_section }}{% endif %}
         </div>
         <div class="d-flex gap-2">
             <button type="submit" id="bulk-update-btn" class="btn btn-sm btn-outline-primary" disabled
@@ -155,11 +167,23 @@
         </div>
     </div>
 
+    {% if class_counts %}
+    <div class="d-flex flex-wrap gap-2 mb-3 d-print-none" id="class-counts">
+        {% for row in class_counts %}
+        <span class="badge bg-light text-dark border fw-normal">
+            Class {{ row.admission_class }}{% if row.section %} {{ row.section }}{% endif %}{% if row.group %} · {{ row.group }}{% endif %}:
+            <strong>{{ row.count }}</strong>
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="students-table-wrapper d-print-none">
         <table class="students-table">
             <thead>
                 <tr>
                 <th style="width:36px;"></th>
+                <th>#</th>
                 <th>Roll</th>
                 <th>Student ID</th>
                 <th>Name</th>
@@ -175,9 +199,10 @@
                 {% for student in students %}
                 <tr class="{% if student.id in exact_duplicate_ids %}dup-exact{% elif student.id in possible_duplicate_ids %}dup-possible{% endif %}">
                                    <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
+                <td>{{ forloop.counter }}</td>
                 <td>{{ student.roll_no|default:"—" }}</td>
-                <td class="id-cell">{{ student.student_id }}</td>
-                <td class="name-cell">{{ student.name }}</td>
+                <td class="id-cell"><a href="{% url 'student_detail' student.pk %}">{{ student.student_id }}</a></td>
+                <td class="name-cell"><a href="{% url 'student_detail' student.pk %}">{{ student.name }}</a></td>
                 <td>{{ student.admission_class }}</td>
                 <td>{{ student.section|default:"—" }}</td>
                 <td>{{ student.get_group_display|default:"—" }}</td>
@@ -239,7 +264,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="10" class="students-table-empty">No students to show yet — pick a filter to get started.</td></tr>
+                <tr><td colspan="11" class="students-table-empty">{% if search_q %}No student matching “{{ search_q }}”. Check the ID, or look in Archive.{% else %}No students to show yet — pick a filter to get started.{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -251,6 +276,7 @@
                 <table class="table table-striped mb-0">
                     <thead>
                         <tr>
+                            <th>#</th>
                             <th>Roll</th>
                             <th>Student ID</th>
                             <th>Name</th>
@@ -263,6 +289,7 @@
                     <tbody>
                         {% for student in students %}
                         <tr>
+                            <td>{{ forloop.counter }}</td>
                             <td>{{ student.roll_no }}</td>
                             <td>{{ student.student_id }}</td>
                             <td>{{ student.name }}</td>
@@ -272,7 +299,7 @@
                             <td>{{ student.get_gender_display }}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="7" class="text-center text-muted py-4">No students to show.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted py-4">No students to show.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

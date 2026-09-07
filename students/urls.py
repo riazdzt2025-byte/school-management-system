@@ -17,6 +17,7 @@ urlpatterns = [
 
     # Student URLs
     path('students/', views.student_list, name='student_list'),
+    path('students/id/<str:student_id>/', views.student_by_id, name='student_by_id'),
     path('students/download/', views.download_student_list, name='download_student_list'),
     path('students/bulk-delete/', views.bulk_delete_students, name='bulk_delete_students'),
     path('students/bulk-update/', views.bulk_update_students, name='bulk_update_students'),

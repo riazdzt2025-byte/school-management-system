@@ -8,7 +8,17 @@
         <h1>{{ student.name }}</h1>
         <div class="subtitle">Student ID: {{ student.student_id }} | Class {{ student.admission_class }} - {{ student.section }}</div>
     </div>
+    <div class="page-actions">
+        <form method="GET" action="{% url 'student_list' %}" class="d-flex gap-2">
+            <input type="text" name="q" class="form-control form-control-sm" placeholder="Look up another ID" style="min-width: 180px;">
+            <button type="submit" class="btn btn-sm btn-navy">Find</button>
+        </form>
+    </div>
 </div>
+
+{% if student.is_archived %}
+<div class="alert alert-warning">This student is archived and is not in the active list.</div>
+{% endif %}
 
 <!-- Student Info Card -->
 <div class="table-card mb-4">
@@ -16,6 +26,7 @@
         <tr><th>Student ID</th><td>{{ student.student_id }}</td></tr>
         <tr><th>Class</th><td>{{ student.admission_class }}</td></tr>
         <tr><th>Section</th><td>{{ student.section }}</td></tr>
+        <tr><th>Group</th><td>{{ student.get_group_display|default:"—" }}</td></tr>
         <tr><th>Roll</th><td>{{ student.roll_no }}</td></tr>
         <tr><th>Gender</th><td>{{ student.get_gender_display }}</td></tr>
         <tr><th>Status</th><td>
