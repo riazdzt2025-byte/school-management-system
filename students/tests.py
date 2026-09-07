@@ -16,7 +16,7 @@ except ModuleNotFoundError:
 
 from .models import (
 	AdmissionApplication, AuditLog, AttendanceRecord, Employee, EmployeeStatusLog, Exam, ExamMark, Institution, InstitutionAccess,
-	MoneyReceipt, PromotionBatch, Student, Subject,
+	MoneyReceipt, PromotionBatch, SSCRegistration, Student, StudentSubjectChoice, Subject,
 )
 from .forms import ExamForm, StudentForm, auto_exam_name
 from .permissions import ensure_default_groups
@@ -1477,3 +1477,144 @@ class InstitutionAccessSetupTests(TestCase):
 		             '--department', 'Exam', '--revoke', stdout=out)
 		self.assertIn('Revoked 1 access row(s)', out.getvalue())
 		self.assertFalse(InstitutionAccess.objects.filter(user=user).exists())
+
+
+class ArchiveIntegrityTests(TestCase):
+	"""An archived student is out of every active surface — reports, exports,
+	promotion, bulk edits — and the people who archive must be able to read the
+	archive back."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Archive Campus', classes='6,7,8,9')
+		self.admin = get_user_model().objects.create_superuser(username='arch-admin', password='pw')
+		self.client.force_login(self.admin)
+		self.archived = Student.objects.create(
+			institution=self.institution, student_id='AR001', name='Left The School',
+			admission_class='6', section='A', admission_year=2026, roll_no=1,
+		)
+		self.active = Student.objects.create(
+			institution=self.institution, student_id='AR002', name='Still Here',
+			admission_class='6', section='A', admission_year=2026, roll_no=2,
+		)
+		self.client.post(reverse('delete_student', args=[self.archived.pk]))
+		self.archived.refresh_from_db()
+		self.assertTrue(self.archived.is_archived)
+
+	def _office_user(self):
+		from .permissions import ensure_default_groups
+		ensure_default_groups()
+		user = get_user_model().objects.create_user(username='office_arch', password='pw')
+		InstitutionAccess.objects.create(user=user, institution=self.institution, department='Office')
+		self.client.logout()
+		self.client.post(reverse('login'), {
+			'username': 'office_arch', 'password': 'pw',
+			'institution_id': str(self.institution.pk), 'department': 'Office',
+		})
+		return user
+
+	def test_promotion_leaves_archived_students_behind(self):
+		response = self.client.post(reverse('student_promotion'), {
+			'from_class': '6', 'from_section': 'A',
+			'to_class': '7', 'to_section': 'A', 'session': '2026-2027',
+		})
+		self.assertEqual(response.status_code, 302)
+		self.archived.refresh_from_db()
+		self.active.refresh_from_db()
+		self.assertEqual(self.active.admission_class, '7')
+		self.assertEqual(self.archived.admission_class, '6', 'an archived student must not be promoted')
+
+	def test_excel_export_matches_the_list_and_skips_archived(self):
+		response = self.client.get(
+			reverse('download_student_list') + f'?institution={self.institution.pk}&all=1'
+		)
+		self.assertEqual(response.status_code, 200)
+		from openpyxl import load_workbook
+		sheet = load_workbook(BytesIO(response.content)).active
+		names = [row[1] for row in sheet.iter_rows(min_row=2, values_only=True)]
+		self.assertIn('Still Here', names)
+		self.assertNotIn('Left The School', names)
+
+	def test_class_section_summary_counts_only_active_students(self):
+		response = self.client.get(
+			reverse('class_section_summary') + f'?institution={self.institution.pk}'
+		)
+		body = response.content.decode()
+		self.assertNotIn('Left The School', body)
+		# class 6 / section A now holds exactly one active student
+		self.assertContains(response, '<td>6</td>', html=False)
+
+	def test_bulk_update_skips_archived_students(self):
+		self.client.post(reverse('bulk_update_students'), {
+			'student_ids': [self.archived.pk, self.active.pk], 'new_section': 'Z',
+		})
+		self.archived.refresh_from_db()
+		self.active.refresh_from_db()
+		self.assertEqual(self.active.section, 'Z')
+		self.assertEqual(self.archived.section, 'A', 'bulk update must not touch the archive')
+
+	def test_auto_registration_skips_archived_students(self):
+		from .curriculum_apply import apply_curriculum
+		apply_curriculum(self.institution, '6')
+		response = self.client.post(reverse('auto_register_students'), {
+			'student_ids': [self.archived.pk],
+		})
+		self.assertEqual(response.status_code, 302)
+		self.assertEqual(StudentSubjectChoice.objects.filter(student=self.archived).count(), 0)
+
+	def test_editing_an_archived_student_sends_you_to_the_archive(self):
+		response = self.client.get(reverse('edit_student', args=[self.archived.pk]))
+		self.assertEqual(response.status_code, 302)
+		self.assertIn(reverse('archived_students'), response.url)
+
+	def test_office_department_can_read_the_archive_it_created(self):
+		user = self._office_user()
+		self.assertIn('students.view_student', user.get_all_permissions())
+		response = self.client.get(reverse('archived_students'))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Left The School')
+
+	def test_office_department_can_restore_what_it_archived(self):
+		self._office_user()
+		response = self.client.post(reverse('restore_student', args=[self.archived.pk]))
+		self.assertEqual(response.status_code, 302)
+		self.archived.refresh_from_db()
+		self.assertFalse(self.archived.is_archived)
+		self.assertEqual(self.archived.status, 'ACTIVE')
+
+	def test_restore_needs_the_same_permission_as_archive(self):
+		"""A user who may change students but not archive them must not be able
+		to undo an archive. No InstitutionAccess row here on purpose — that is
+		what keeps the department groups (and their delete_student) away."""
+		from django.contrib.auth.models import Group
+		group = Group.objects.create(name='Editors Only')
+		ct = ContentType.objects.get_for_model(Student)
+		group.permissions.add(Permission.objects.get(content_type=ct, codename='change_student'))
+		user = get_user_model().objects.create_user(username='editor', password='pw')
+		user.groups.add(group)
+		self.client.logout()
+		self.client.force_login(user)
+		self.assertNotIn('students.delete_student', user.get_all_permissions())
+
+		for view_name, payload in [
+			('bulk_restore_students', {'student_ids': [self.archived.pk]}),
+		]:
+			response = self.client.post(reverse(view_name), payload)
+			self.assertEqual(response.status_code, 403, view_name)
+		response = self.client.post(reverse('restore_student', args=[self.archived.pk]))
+		self.assertEqual(response.status_code, 403)
+		self.archived.refresh_from_db()
+		self.assertTrue(self.archived.is_archived)
+
+	@skipUnless(Workbook, 'openpyxl not installed')
+	def test_ssc_import_will_not_attach_to_an_archived_student(self):
+		book = Workbook()
+		sheet = book.active
+		sheet.append(['Student ID', 'Registration No', 'Roll No', 'Session', 'Group', 'Subjects', 'Board'])
+		sheet.append(['AR001', 'REG-900', 1, '2025-2026', 'Science', '', 'Dhaka'])
+		buffer = BytesIO()
+		book.save(buffer)
+		buffer.seek(0)
+		self.client.post(reverse('import_ssc_registrations'), {
+			'excel_file': SimpleUploadedFile('regs.xlsx', buffer.getvalue()),
+		})
+		self.assertFalse(SSCRegistration.objects.filter(student=self.archived).exists())

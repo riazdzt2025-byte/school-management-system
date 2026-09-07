@@ -487,7 +487,9 @@ def class_section_summary(request):
     if not institution_id and institution:
         institution_id = institution.pk
 
-    students_qs = Student.objects.all()
+    # Archived (soft-deleted) students are out of every active count, the same
+    # way they are out of the Student List.
+    students_qs = Student.objects.filter(is_archived=False)
     students_qs = _filter_by_selected_institution(request, students_qs)
     if institution_id:
         institution = get_object_or_404(Institution, pk=institution_id)
@@ -910,7 +912,7 @@ def download_student_list(request):
     group = request.GET.get('group')
     institution_id = request.GET.get('institution')
 
-    qs = Student.objects.select_related('institution').all()
+    qs = Student.objects.select_related('institution').filter(is_archived=False)
     if institution is not None:
         qs = qs.filter(institution=institution)
     elif institution_id:
@@ -1019,7 +1021,7 @@ def bulk_update_students(request):
         elif not new_class and not new_section and not new_group:
             messages.error(request, "Please provide a new Class, Section, or Group to update.")
         else:
-            qs = Student.objects.filter(pk__in=student_ids)
+            qs = Student.objects.filter(pk__in=student_ids, is_archived=False)
             update_fields = {}
             if new_class:
                 update_fields['admission_class'] = new_class
@@ -1090,7 +1092,7 @@ def auto_register_students(request):
         messages.error(request, "No students were selected.")
         return redirect('student_list')
 
-    students = Student.objects.filter(pk__in=student_ids).select_related('institution')
+    students = Student.objects.filter(pk__in=student_ids, is_archived=False).select_related('institution')
     students_updated = 0
     subjects_added = 0
     for student in students:
@@ -1145,7 +1147,7 @@ def bulk_update_select(request):
 
     institution = Institution.objects.filter(pk=institution_id).first() if institution_id else None
     classes = [c.strip() for c in institution.classes.split(',') if c.strip()] if institution else []
-    students = Student.objects.filter(pk__in=student_ids)
+    students = Student.objects.filter(pk__in=student_ids, is_archived=False)
 
     return render(request, 'students/bulk_update_students.html', {
         'students': students,
@@ -1322,6 +1324,12 @@ def add_student(request):
 @permission_required('students.change_student', raise_exception=True)
 def edit_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
+    if student.is_archived:
+        messages.error(
+            request,
+            f"{student.name} is archived. Restore the student from the Archive page before editing.",
+        )
+        return redirect('archived_students')
     if request.method == 'POST':
         form = StudentForm(request.POST, request.FILES, instance=student)
         if form.is_valid():
@@ -1391,10 +1399,14 @@ def archived_students(request):
 
 
 @login_required
-@permission_required('students.change_student', raise_exception=True)
+@permission_required('students.delete_student', raise_exception=True)
 @require_POST
 def restore_student(request, pk):
-    """Bring a single archived student back into the active lists."""
+    """Bring a single archived student back into the active lists.
+
+    Uses the delete permission on purpose: restoring is the exact inverse of
+    archiving, so the two must be granted together — otherwise someone can
+    undo an archive they were never allowed to make."""
     student = get_object_or_404(Student, pk=pk, is_archived=True)
     student.is_archived = False
     student.status = student.pre_archive_status or 'ACTIVE'
@@ -1414,7 +1426,7 @@ def restore_student(request, pk):
 
 
 @login_required
-@permission_required('students.change_student', raise_exception=True)
+@permission_required('students.delete_student', raise_exception=True)
 @require_POST
 def bulk_restore_students(request):
     """Restore multiple archived students at once."""
@@ -2199,7 +2211,9 @@ def import_ssc_registrations(request):
             try:
                 values = (list(row) + [None] * 7)[:7]
                 student_id, reg_no, roll_no, session, group_raw, subjects, board_raw = values
-                student = Student.objects.filter(student_id=str(student_id).strip()).first() if student_id else None
+                student = Student.objects.filter(
+                    student_id=str(student_id).strip(), is_archived=False,
+                ).first() if student_id else None
                 group_code = group_map.get(str(group_raw).strip().lower()) if group_raw else None
                 board_code = board_map.get(str(board_raw).strip().lower()) if board_raw else None
                 if not student or not reg_no or not group_code or not board_code:
@@ -3177,7 +3191,12 @@ def student_promotion(request):
     if request.method == 'POST' and form.is_valid():
         data = {key: value.strip() for key, value in form.cleaned_data.items()}
         with transaction.atomic():
-            students = list(Student.objects.select_for_update().filter(admission_class=data['from_class']))
+            # An archived (soft-deleted) student must not be carried into the
+            # next class along with the batch.
+            students = list(
+                Student.objects.select_for_update()
+                .filter(admission_class=data['from_class'], is_archived=False)
+            )
             if data['from_section']:
                 students = [student for student in students if student.section.lower() == data['from_section'].lower()]
             count = len(students)

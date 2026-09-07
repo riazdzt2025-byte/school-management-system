@@ -140,3 +140,84 @@ Against a running server on a database with **zero** `InstitutionAccess` rows:
 - plain user `clerk` → "Invalid username, password, or institution access."
 - after `grant_institution_access clerk --institution 1 --department Office` → 302, `/students/` 200, `/admin/` 302 (correctly refused)
 - after `--revoke` → refused again
+
+---
+
+# Archive (soft delete) audit and fixes
+
+Audited the archive flow with a throwaway database and a running server. The
+core of it was sound — `Delete` archives instead of deleting, `Restore` puts
+the student back with the status they had, and the student list, dashboard,
+marks scope, result sheets and attendance already ignored archived rows.
+
+Six things were wrong. All six are fixed.
+
+## 1. The department that archives could not read the archive (403)
+
+`archived_students` is guarded by `students.view_student`, but no department
+group was ever granted `view_student`. An Office user could archive a student
+and then got **403** on the only page that lists what they archived:
+
+    [p] Office user delete_student POST    http=302   ← can archive
+    [p] Office user archived_students GET  http=403   ← cannot see it
+
+`students/permissions.py` (and the `setup_groups` command, which mirrors it)
+now grant `view_student` to Office, Admission, Exam and Accounts. It runs from
+`post_migrate`, so the deploy applies it — no shell needed.
+
+## 2. Promotion carried archived students into the next class
+
+`student_promotion` filtered on `admission_class` only:
+
+    [6] archived student now in class 7 | kept student now in class 7
+
+A student who had left the school was promoted along with the batch. Now
+filtered with `is_archived=False`.
+
+## 3. Excel export included archived students
+
+`download_student_list` queried `Student.objects.all()`, so the download and
+the list on screen disagreed:
+
+    row: ('AU101', 'ZZ Archived One', '6', 'A') | status = Discontinued
+
+Now filtered.
+
+## 4. Class/Section summary counted archived students
+
+    row cells: ['6', 'A', '2', ...]   ← one active student, counted as 2
+
+Now filtered.
+
+## 5. Restore was guarded by the wrong permission
+
+Archive needs `students.delete_student`; restore needed `students.both
+change_student`. A user holding only `change_student` could undo an archive
+they were never allowed to make. Both restore views now require
+`delete_student`, so archiving and undoing it are granted together.
+
+## 6. Archived records stayed editable
+
+`GET /edit/<pk>/` on an archived student rendered the form (200). It now
+redirects to the Archive page with "Restore the student before editing".
+
+Also filtered: bulk update, bulk-update selection page, auto registration and
+the SSC registration import — none of them should reach an archived row.
+
+## Verified
+
+    python manage.py test students     # 101 tests, OK (10 new in ArchiveIntegrityTests)
+
+Against a running server, logged in as an Office-department user:
+
+| step | result |
+| --- | --- |
+| archive a student | 302 |
+| `/students/archived/` | **200** (was 403), student listed with a Restore button |
+| student list | archived student gone |
+| Excel export | only the 2 active students |
+| class/section summary | `Total students: 2` (was 3) |
+| promotion 6 → 7 | actives moved, archived stayed in class 6 |
+| `GET /edit/<archived>` | 302 → `/students/archived/` |
+| restore as Office user | 302, `is_archived=False`, `status=ACTIVE` |
+| restore without `delete_student` | 403 (unit test, no department group) |

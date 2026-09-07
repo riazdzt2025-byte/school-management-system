@@ -27,7 +27,7 @@ def _group_permission_map():
     return {
         'Admission': [
             (AdmissionApplication, ['add', 'change', 'view']),
-            (Student, ['add', 'change', 'delete']),
+            (Student, ['add', 'change', 'delete', 'view']),
             (TransferCertificate, ['add', 'change', 'delete']),
             (Certificate, ['add', 'change', 'delete']),
             (PromotionBatch, ['add', 'change', 'view']),
@@ -35,7 +35,11 @@ def _group_permission_map():
         ],
         'Office': [
             (AdmissionApplication, ['add', 'change', 'view']),
-            (Student, ['add', 'change', 'delete']),
+            # 'view' matters: the Archive page is guarded by
+            # students.view_student, and without it the department that does
+            # the archiving gets 403 on the only page that lists what it
+            # archived.
+            (Student, ['add', 'change', 'delete', 'view']),
             (TransferCertificate, ['add', 'change', 'delete']),
             (Certificate, ['add', 'change', 'delete']),
             (PromotionBatch, ['add', 'change', 'view']),
@@ -45,6 +49,7 @@ def _group_permission_map():
             (Subject, ['add', 'change', 'delete']),
         ],
         'Exam': [
+            (Student, ['view']),
             (SSCRegistration, ['add', 'change', 'delete']),
             (BoardResult, ['add', 'change', 'delete']),
             (Exam, ['add', 'change', 'delete']),
@@ -56,6 +61,7 @@ def _group_permission_map():
             (EmployeeStatusLog, ['add', 'view']),
         ],
         'Accounts': [
+            (Student, ['view']),
             (AdmissionApplication, ['change', 'view']),
             (MoneyReceipt, ['add', 'change', 'delete']),
             (Voucher, ['add', 'change', 'delete']),

@@ -19,7 +19,7 @@ from students.models import (
 DEPARTMENT_PERMISSIONS = {
     "Admission": [
         (AdmissionApplication, ["add", "change", "view"]),
-        (Student, ["add", "change", "delete"]),
+        (Student, ["add", "change", "delete", "view"]),
         (TransferCertificate, ["add", "change", "delete"]),
         (Certificate, ["add", "change", "delete"]),
         (PromotionBatch, ["add", "change", "view"]),
@@ -31,7 +31,7 @@ DEPARTMENT_PERMISSIONS = {
     # gets a 403 Forbidden. Same permission set as "Admission" above.
     "Office": [
         (AdmissionApplication, ["add", "change", "view"]),
-        (Student, ["add", "change", "delete"]),
+        (Student, ["add", "change", "delete", "view"]),
         (TransferCertificate, ["add", "change", "delete"]),
         (Certificate, ["add", "change", "delete"]),
         (PromotionBatch, ["add", "change", "view"]),
@@ -41,6 +41,7 @@ DEPARTMENT_PERMISSIONS = {
         (Subject, ["add", "change", "delete"]),
     ],
     "Exam": [
+        (Student, ["view"]),
         (SSCRegistration, ["add", "change", "delete"]),
         (BoardResult, ["add", "change", "delete"]),
         (Exam, ["add", "change", "delete"]),
@@ -52,6 +53,7 @@ DEPARTMENT_PERMISSIONS = {
         (EmployeeStatusLog, ["add", "view"]),
     ],
     "Accounts": [
+        (Student, ["view"]),
         (AdmissionApplication, ["change", "view"]),
         (MoneyReceipt, ["add", "change", "delete"]),
         (Voucher, ["add", "change", "delete"]),
