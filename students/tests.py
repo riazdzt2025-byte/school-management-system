@@ -315,7 +315,7 @@ class ExamWorkflowTests(TestCase):
 		self.assertEqual(str(mark.marks_obtained), '87.50')
 
 	@skipUnless(Workbook, 'openpyxl is required for Excel import tests')
-	def test_invalid_row_rejects_entire_import(self):
+	def test_invalid_row_skips_students_outside_this_exam(self):
 		response = self.client.post(
 			reverse('import_exam_marks', args=[self.exam.pk]),
 			{
@@ -326,9 +326,37 @@ class ExamWorkflowTests(TestCase):
 				]),
 			},
 		)
-		self.assertEqual(response.status_code, 200)
-		self.assertContains(response, 'not a member of this exam class/section')
-		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 0)
+		self.assertRedirects(response, reverse('exam_list'))
+		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 1)
+		self.assertEqual(str(ExamMark.objects.get().marks_obtained), '75.00')
+
+	@skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+	def test_import_matches_roll_and_name_when_the_student_id_changed(self):
+		self.student.roll_no = 117
+		self.student.save(update_fields=['roll_no'])
+		Student.objects.create(
+			institution=self.institution, student_id='202609137', name='Old Khalid Record',
+			admission_class='8', section='A', admission_year=2026, roll_no=117,
+		)
+		workbook = Workbook()
+		sheet = workbook.active
+		sheet.append(['Roll', 'ID', 'Name', 'Marks'])
+		sheet.append([117, '202609137', 'Student One', 81])
+		output = BytesIO()
+		workbook.save(output)
+		response = self.client.post(
+			reverse('import_exam_marks', args=[self.exam.pk]),
+			{
+				'subject': str(self.subject.pk),
+				'excel_file': SimpleUploadedFile(
+					'bangla.xlsx', output.getvalue(),
+					content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				),
+			},
+		)
+		self.assertRedirects(response, reverse('exam_list'))
+		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.subject)
+		self.assertEqual(str(mark.marks_obtained), '81.00')
 
 	def test_import_page_asks_for_a_subject_first(self):
 		response = self.client.get(reverse('import_exam_marks', args=[self.exam.pk]))
@@ -985,8 +1013,7 @@ class ExamScopeConsistencyTests(TestCase):
 				),
 			},
 		)
-		self.assertEqual(response.status_code, 200)
-		self.assertContains(response, 'not a member of this exam class/section/group')
+		self.assertRedirects(response, reverse('exam_list'))
 		self.assertEqual(ExamMark.objects.count(), 0)
 
 	def test_import_skips_rows_without_a_mark(self):

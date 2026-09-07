@@ -143,14 +143,35 @@ def parse_subject_marks_workbook(workbook, exam, subject, students):
     return parse_subject_marks_sheet(pick_marks_sheet(workbook), exam, subject, students)
 
 
-def _skip_unknown_or_reject(lookup):
-    """Rows for students who left are skipped; a living student in the wrong class is an error."""
-    if not lookup:
-        return True
-    existing = Student.objects.filter(student_id__iexact=lookup).first()
-    if existing is None or existing.is_archived:
-        return True
-    raise ValueError('student is not a member of this exam class/section/group')
+def _norm_name(value):
+    return re.sub(r'\s+', ' ', (value or '').strip().lower())
+
+
+def _lookup_student(row, columns, students_by_id, students_by_roll, students_by_roll_name):
+    """Find the exam student for this Excel row.
+
+    After a re-import the Student ID often changes while Roll + Name stay the
+    same. Prefer the current exam ID; if that ID is not on this roll, match
+    Roll + Name so a teacher-filled old sheet still imports.
+    """
+    student_id = _cell_text(row[columns['id']]) if 'id' in columns and columns['id'] < len(row) else ''
+    if student_id:
+        student = students_by_id.get(student_id.lower())
+        if student:
+            return student, student_id
+    roll_raw = _cell_text(row[columns['roll']]) if 'roll' in columns and columns['roll'] < len(row) else ''
+    name = _cell_text(row[columns['name']]) if 'name' in columns and columns['name'] < len(row) else ''
+    if roll_raw.isdigit() and name:
+        matches = students_by_roll_name.get((int(roll_raw), _norm_name(name)), [])
+        if len(matches) == 1:
+            return matches[0], student_id or roll_raw
+    if roll_raw.isdigit() and not student_id:
+        matches = students_by_roll.get(int(roll_raw), [])
+        if len(matches) == 1:
+            return matches[0], roll_raw
+        if len(matches) > 1:
+            raise ValueError('roll number is shared by more than one student — use the ID column')
+    return None, student_id or roll_raw
 
 
 def _column_map(headers):
@@ -173,20 +194,6 @@ def _column_map(headers):
                     mapped.setdefault(part_key, index)
                     break
     return mapped
-
-
-def _lookup_student(row, columns, students_by_id, students_by_roll):
-    student_id = _cell_text(row[columns['id']]) if 'id' in columns and columns['id'] < len(row) else ''
-    if student_id:
-        return students_by_id.get(student_id.lower()), student_id
-    roll_raw = _cell_text(row[columns['roll']]) if 'roll' in columns and columns['roll'] < len(row) else ''
-    if roll_raw.isdigit():
-        matches = students_by_roll.get(int(roll_raw), [])
-        if len(matches) == 1:
-            return matches[0], roll_raw
-        if len(matches) > 1:
-            raise ValueError('roll number is shared by more than one student — use the ID column')
-    return None, student_id or roll_raw
 
 
 def _parse_number(raw, label, maximum):
@@ -221,9 +228,11 @@ def parse_subject_marks_sheet(sheet, exam, subject, students):
     parts = marks_config.parts
     students_by_id = {student.student_id.lower(): student for student in students if student.student_id}
     students_by_roll = defaultdict(list)
+    students_by_roll_name = defaultdict(list)
     for student in students:
         if student.roll_no is not None:
             students_by_roll[int(student.roll_no)].append(student)
+            students_by_roll_name[(int(student.roll_no), _norm_name(student.name))].append(student)
 
     is_legacy = headers[:3] == ['student id', 'subject code', 'marks']
     if not is_legacy:
@@ -258,7 +267,6 @@ def parse_subject_marks_sheet(sheet, exam, subject, students):
                     )
                 student = students_by_id.get(student_id.lower()) if student_id else None
                 if not student:
-                    _skip_unknown_or_reject(student_id)
                     skipped += 1
                     continue
                 if student.pk in seen:
@@ -272,9 +280,10 @@ def parse_subject_marks_sheet(sheet, exam, subject, students):
                 validated.append((student, defaults))
                 continue
 
-            student, lookup = _lookup_student(row, columns, students_by_id, students_by_roll)
+            student, lookup = _lookup_student(
+                row, columns, students_by_id, students_by_roll, students_by_roll_name,
+            )
             if not student:
-                _skip_unknown_or_reject(lookup)
                 skipped += 1
                 continue
             if student.pk in seen:
