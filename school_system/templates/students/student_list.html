@@ -316,10 +316,11 @@
         const groupSelect = document.getElementById('ilf-group');
         const groupContainer = document.getElementById('ilf-group-container');
         const currentClassValue = "{{ selected_class|default:'' }}";
+        const GROUPED_CLASSES = {{ grouped_classes_json|default:'["9", "10", "11", "12"]'|safe }};
 
         function updateGroupVisibility() {
             const cls = classSelect.value;
-            if (cls && ['9', '10', '11', '12'].includes(cls)) {
+            if (cls && GROUPED_CLASSES.includes(String(cls).replace(/^0+(?=\d)/, ''))) {
                 groupContainer.style.display = 'flex';
             } else {
                 groupContainer.style.display = 'none';

@@ -35,6 +35,7 @@
     const institutionSelect = document.getElementById('id_institution');
     const classSelect = document.getElementById('id_requested_class');
     const groupSelect = document.getElementById('id_requested_group');
+    const noteEl = document.getElementById('group-field-note');
     const sectionSelect = document.getElementById('id_requested_section');
 
     function setPlaceholder(select, text) {
@@ -58,25 +59,53 @@
         });
     }
 
+    function setGroupFieldVisible(visible, note) {
+        if (!groupSelect) return;
+        const box = groupSelect.closest('.group-field') || groupSelect.parentElement;
+        if (box) box.style.display = visible ? '' : 'none';
+        let noteNode = noteEl;
+        if (!noteNode && note && box) {
+            noteNode = document.createElement('div');
+            noteNode.className = 'text-muted small';
+            noteNode.style.marginTop = '4px';
+            box.appendChild(noteNode);
+        }
+        if (noteNode) {
+            noteNode.textContent = note || '';
+            noteNode.style.display = note ? '' : 'none';
+        }
+    }
+
     function populateGroupAndSection(institutionId, admissionClass) {
         setPlaceholder(groupSelect, 'Loading...');
         setPlaceholder(sectionSelect, 'Loading...');
         if (!institutionId || !admissionClass) {
             setPlaceholder(groupSelect, '-- Select Class first --');
             setPlaceholder(sectionSelect, '-- Select Class first --');
+            setGroupFieldVisible(false, '');
             return;
         }
         const url = "{% url 'admission_dropdown_options' %}?institution=" + encodeURIComponent(institutionId) + "&admission_class=" + encodeURIComponent(admissionClass);
         fetch(url)
             .then(function(response) { return response.json(); })
             .then(function(data) {
-                setPlaceholder(groupSelect, '-- Not applicable / N/A --');
-                (data.groups || []).forEach(function(g) {
-                    const opt = document.createElement('option');
-                    opt.value = g.value;
-                    opt.textContent = g.label;
-                    groupSelect.appendChild(opt);
-                });
+                // Classes below 9 have no group at all, so the field is hidden
+                // rather than offering a meaningless choice.
+                const supportsGroup = data.supports_group !== false && (data.groups || []).length > 0;
+                if (supportsGroup) {
+                    setPlaceholder(groupSelect, '-- Select Group --');
+                    (data.groups || []).forEach(function(g) {
+                        const opt = document.createElement('option');
+                        opt.value = g.value;
+                        opt.textContent = g.label;
+                        groupSelect.appendChild(opt);
+                    });
+                    setGroupFieldVisible(true, '');
+                } else {
+                    setPlaceholder(groupSelect, '');
+                    groupSelect.value = '';
+                    setGroupFieldVisible(false, 'No group for this class — groups start from class 9.');
+                }
 
                 setPlaceholder(sectionSelect, '-- Select or type a new section --');
                 (data.sections || []).forEach(function(s) {
@@ -116,7 +145,8 @@
         }
     });
 
-    // Initial state
+    // Initial state — no class picked yet, so no group yet either.
+    setGroupFieldVisible(false, '');
     if (institutionSelect.value) {
         populateClasses(institutionSelect.value);
     } else {

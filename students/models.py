@@ -8,6 +8,35 @@ from django.core.serializers.json import DjangoJSONEncoder
 # Board groups offered at SSC level, in Student.GROUP_CHOICES codes.
 SSC_GROUP_CODES = ('SCI', 'BUS', 'HUM')
 
+# Groups only exist from class 9 upwards (SSC 9-10 and HSC 11-12). Primary
+# (Shishu-5) and junior secondary (6-8) follow one common syllabus, so a
+# student there has no group at all.
+#
+# This list is the single source of truth: StudentForm, the admission forms,
+# the Excel import, bulk update and the student-list filter all ask
+# Student.class_supports_group() instead of hard-coding ['9','10','11','12'].
+GROUPED_CLASS_LABELS = ['9', '10', '11', '12']
+
+# Groups an institution can actually pick at SSC/HSC level. Diploma and
+# "General/Non-Group" codes stay in GROUP_CHOICES (legacy rows reference them)
+# but are not offered by the admission screens.
+GENERAL_GROUP_CODES = ('SCI', 'BUS', 'HUM')
+
+
+def normalize_class_label(value):
+    """'09' and '9' are the same class — ``admission_class`` is a free-text
+    CharField written by several screens, so both spellings exist in the
+    database. Returns a lowercase, zero-padding-stripped label."""
+    label = str(value or '').strip().lower()
+    if label.isdigit():
+        label = str(int(label))
+    return label
+
+
+def class_supports_group(admission_class):
+    """True when this class label is one where a group applies (9-12)."""
+    return normalize_class_label(admission_class) in GROUPED_CLASS_LABELS
+
 
 class Institution(models.Model):
     name = models.CharField(max_length=200, unique=True)
@@ -68,6 +97,21 @@ class Student(models.Model):
         ('NON', 'Non-Group'),
     ]
 
+    @classmethod
+    def class_supports_group(cls, admission_class):
+        """True when this class label is one where a group applies (9-12).
+        Primary and junior secondary (6-8) have no group at all."""
+        return class_supports_group(admission_class)
+
+    @classmethod
+    def group_choices_for_class(cls, admission_class):
+        """The groups offered for a class: Science / Business Studies /
+        Humanities from class 9 up, and nothing at all below that."""
+        if not cls.class_supports_group(admission_class):
+            return []
+        return [(code, label) for code, label in cls.GROUP_CHOICES
+                if code in GENERAL_GROUP_CODES]
+
     institution = models.ForeignKey(
         Institution, on_delete=models.PROTECT, null=True, blank=True
     )
@@ -111,6 +155,11 @@ class Student(models.Model):
     )
 
     def save(self, *args, **kwargs):
+        if not self.class_supports_group(self.admission_class):
+            # A junior-secondary student has no group; drop anything that got
+            # typed or imported into the field so it never reaches the DB.
+            self.group = ''
+
         if not self.admission_year:
             from django.utils import timezone
             self.admission_year = timezone.now().year

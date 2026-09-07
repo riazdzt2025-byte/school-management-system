@@ -84,10 +84,11 @@
 <script>
     const newClassSelect = document.getElementById('new_class');
     const newGroupWrapper = document.getElementById('new-group-wrapper');
+    const GROUPED_CLASSES = {{ grouped_classes_json|default:'["9", "10", "11", "12"]'|safe }};
 
     function toggleGroupField() {
         const value = newClassSelect ? newClassSelect.value : '';
-        if (value && ['9', '10', '11', '12'].includes(String(value))) {
+        if (value && GROUPED_CLASSES.includes(String(value).replace(/^0+(?=\d)/, ''))) {
             newGroupWrapper.style.display = 'block';
         } else {
             newGroupWrapper.style.display = 'none';

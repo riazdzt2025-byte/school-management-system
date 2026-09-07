@@ -1132,3 +1132,252 @@ class AbsentSubjectRulesTests(TestCase):
 		from .result_utils import build_exam_results
 		_, results = build_exam_results(self.exam)
 		return results
+
+
+class GroupOnlyFromClass9Tests(TestCase):
+	"""A group exists from class 9 up. Primary and junior secondary (6-8)
+	follow one common syllabus, so the field must be hidden, optional and
+	never stored for them."""
+
+	def setUp(self):
+		self.institution = Institution.objects.create(name='Group Rule Campus', classes='6,7,8,9,10,11,12')
+		self.user = get_user_model().objects.create_superuser(username='group-admin', password='password')
+		self.client.force_login(self.user)
+
+	def _post(self, **overrides):
+		data = {
+			'institution': self.institution.pk,
+			'name': 'Group Rule Student',
+			'admission_class': '6',
+			'section': 'A',
+			'admission_year': 2026,
+			'roll_no': 1,
+			'gender': 'M',
+			'religion': 'Islam',
+			'status': 'ACTIVE',
+			'group': 'SCI',
+		}
+		data.update(overrides)
+		return self.client.post(reverse('add_student'), data)
+
+	def test_group_choices_start_at_class_9(self):
+		self.assertFalse(Student.class_supports_group('6'))
+		self.assertFalse(Student.class_supports_group('08'))
+		self.assertTrue(Student.class_supports_group('9'))
+		self.assertTrue(Student.class_supports_group('12'))
+		codes = [code for code, _ in Student.group_choices_for_class('9')]
+		self.assertEqual(codes, ['SCI', 'BUS', 'HUM'])
+		self.assertEqual(Student.group_choices_for_class('6'), [])
+
+	def test_class_6_admission_ignores_a_submitted_group(self):
+		response = self._post(admission_class='6', group='SCI')
+		self.assertEqual(response.status_code, 302)
+		student = Student.objects.get(name='Group Rule Student')
+		self.assertEqual(student.group, '')
+
+	def test_class_9_admission_requires_a_group(self):
+		response = self._post(name='No Group Nine', admission_class='9', group='')
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Group is required')
+		self.assertFalse(Student.objects.filter(name='No Group Nine').exists())
+
+	def test_class_9_admission_accepts_business_and_humanities(self):
+		for code in ('BUS', 'HUM'):
+			self._post(name=f'Student {code}', admission_class='9', group=code)
+			self.assertEqual(Student.objects.get(name=f'Student {code}').group, code)
+
+	def test_diploma_group_is_not_offered_at_class_9(self):
+		"""A stale dropdown can still post a code the class does not offer;
+		the officer gets a usable message, not a bare 'invalid choice'."""
+		response = self._post(name='Diploma Nine', admission_class='9', group='DCS')
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Select Science, Business Studies or Humanities.')
+		self.assertFalse(Student.objects.filter(name='Diploma Nine').exists())
+
+	def test_model_save_clears_a_stale_group(self):
+		student = Student.objects.create(
+			institution=self.institution, student_id='G001', name='Stale Group',
+			admission_class='7', section='A', admission_year=2026, group='SCI',
+		)
+		self.assertEqual(student.group, '')
+		student.admission_class = '9'
+		student.group = 'HUM'
+		student.save()
+		self.assertEqual(student.group, 'HUM')
+
+	def test_add_student_page_hides_the_group_field_below_class_9(self):
+		response = self.client.get(reverse('add_student'))
+		self.assertContains(response, 'id="group-field-wrapper"')
+		self.assertContains(response, 'const GROUPED_CLASSES = ["9", "10", "11", "12"];')
+
+	def test_admission_dropdown_offers_no_group_below_class_9(self):
+		response = self.client.get(reverse('admission_dropdown_options'), {
+			'institution': self.institution.pk, 'admission_class': '6',
+		})
+		payload = response.json()
+		self.assertEqual(payload['groups'], [])
+		self.assertFalse(payload['supports_group'])
+
+	def test_admission_dropdown_offers_three_groups_from_class_9(self):
+		for cls in ('9', '11'):
+			payload = self.client.get(reverse('admission_dropdown_options'), {
+				'institution': self.institution.pk, 'admission_class': cls,
+			}).json()
+			self.assertTrue(payload['supports_group'])
+			self.assertEqual([g['value'] for g in payload['groups']], ['SCI', 'BUS', 'HUM'])
+
+	def test_bulk_update_into_class_6_clears_the_group(self):
+		student = Student.objects.create(
+			institution=self.institution, student_id='G002', name='Moving Down',
+			admission_class='9', section='A', admission_year=2026, group='SCI',
+		)
+		response = self.client.post(reverse('bulk_update_students'), {
+			'student_ids': [student.pk], 'new_class': '6', 'new_group': 'HUM',
+		})
+		self.assertEqual(response.status_code, 302)
+		student.refresh_from_db()
+		self.assertEqual(student.admission_class, '6')
+		self.assertEqual(student.group, '')
+
+	def test_bulk_update_keeps_the_group_inside_class_9(self):
+		student = Student.objects.create(
+			institution=self.institution, student_id='G003', name='Staying Nine',
+			admission_class='9', section='A', admission_year=2026, group='SCI',
+		)
+		self.client.post(reverse('bulk_update_students'), {
+			'student_ids': [student.pk], 'new_group': 'BUS',
+		})
+		student.refresh_from_db()
+		self.assertEqual(student.group, 'BUS')
+
+	@skipUnless(Workbook, 'openpyxl not installed')
+	def test_excel_import_ignores_the_group_column_below_class_9(self):
+		book = Workbook()
+		sheet = book.active
+		sheet.append([
+			'Institution', 'Name', 'Class', 'Section', 'Admission Year', 'Roll No',
+			'Gender', 'Religion', 'Father Name', 'Contact No', 'Guardian Contact No', 'Group',
+		])
+		sheet.append([
+			self.institution.name, 'Import Six', '6', 'A', 2026, 11,
+			'Male', 'Islam', 'Father', '', '', 'Science',
+		])
+		sheet.append([
+			self.institution.name, 'Import Nine', '9', 'A', 2026, 12,
+			'Female', 'Islam', 'Father', '', '', 'Humanities',
+		])
+		buffer = BytesIO()
+		book.save(buffer)
+		buffer.seek(0)
+
+		response = self.client.post(reverse('import_students'), {
+			'excel_file': SimpleUploadedFile('students.xlsx', buffer.getvalue()),
+		})
+		self.assertEqual(response.status_code, 302)  # redirects back to the list on success
+		self.assertEqual(Student.objects.get(name='Import Six').group, '')
+		self.assertEqual(Student.objects.get(name='Import Nine').group, 'HUM')
+
+	def test_clean_student_groups_command_only_touches_classes_below_9(self):
+		from io import StringIO
+		from django.core.management import call_command
+
+		junior = Student.objects.create(
+			institution=self.institution, student_id='G004', name='Junior Wrong',
+			admission_class='6', section='A', admission_year=2026,
+		)
+		# bypasses save() on purpose: this is the state the live data is in
+		Student.objects.filter(pk=junior.pk).update(group='SCI')
+		senior = Student.objects.create(
+			institution=self.institution, student_id='G005', name='Senior Right',
+			admission_class='9', section='A', admission_year=2026, group='SCI',
+		)
+
+		out = StringIO()
+		call_command('clean_student_groups', stdout=out)
+		junior.refresh_from_db()
+		self.assertEqual(junior.group, 'SCI', 'dry run must not change anything')
+		self.assertIn('Dry run', out.getvalue())
+
+		out = StringIO()
+		call_command('clean_student_groups', '--apply', stdout=out)
+		junior.refresh_from_db()
+		senior.refresh_from_db()
+		self.assertEqual(junior.group, '')
+		self.assertEqual(senior.group, 'SCI')
+		self.assertIn('Cleared the group on 1 student(s)', out.getvalue())
+
+	def test_data_migration_clears_groups_below_class_9(self):
+		# The migration module name starts with a digit, so it cannot be
+		# imported with a normal import statement — load it by path instead.
+		import importlib.util
+		import pathlib
+
+		path = pathlib.Path(__file__).parent / 'migrations' / '0033_clear_groups_below_class_9.py'
+		spec = importlib.util.spec_from_file_location('clear_groups_migration', path)
+		migration = importlib.util.module_from_spec(spec)
+		spec.loader.exec_module(migration)
+
+		wrong = Student.objects.create(
+			institution=self.institution, student_id='G006', name='Migration Target',
+			admission_class='8', section='A', admission_year=2026,
+		)
+		Student.objects.filter(pk=wrong.pk).update(group='HUM')
+
+		class AppsShim:
+			"""Stands in for the migration's historical app registry."""
+			@staticmethod
+			def get_model(app_label, model_name):
+				return Student
+
+		migration.clear_groups_below_class_9(AppsShim, None)
+		wrong.refresh_from_db()
+		self.assertEqual(wrong.group, '')
+
+
+class GroupRuleTemplateSmokeTests(TestCase):
+    """The group-rule templates were edited by hand; make sure they render."""
+
+    def setUp(self):
+        self.institution = Institution.objects.create(name='Smoke Campus', classes='6,9')
+        self.user = get_user_model().objects.create_superuser(username='smoke', password='pw')
+        self.client.force_login(self.user)
+        self.six = Student.objects.create(
+            institution=self.institution, student_id='S001', name='Six Student',
+            admission_class='6', section='A', admission_year=2026,
+        )
+
+    def test_pages_render(self):
+        for name, kwargs in [
+            ('add_student', {}),
+            ('admission', {}),
+            ('public_admission_apply', {}),
+            ('student_list', {}),
+        ]:
+            response = self.client.get(reverse(name, kwargs=kwargs))
+            self.assertEqual(response.status_code, 200, name)
+
+        response = self.client.post(reverse('bulk_update_select'), {
+            'student_ids': [self.six.pk], 'institution': self.institution.pk,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'GROUPED_CLASSES')
+
+        response = self.client.get(reverse('edit_student', args=[self.six.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="group-field-wrapper"')
+
+    def test_add_student_edit_page_marks_the_group_field_hidden_for_class_6(self):
+        response = self.client.get(reverse('edit_student', args=[self.six.pk]))
+        self.assertContains(response, 'const GROUPED_CLASSES = ["9", "10", "11", "12"];')
+        self.assertContains(response, 'This class has no group')
+
+    def test_admission_application_form_hides_the_group_until_a_class_is_picked(self):
+        response = self.client.get(reverse('admission'))
+        self.assertContains(response, 'function setGroupFieldVisible(visible, note)')
+        self.assertContains(response, 'setGroupFieldVisible(false, \'\');')
+        self.assertContains(response, 'data.supports_group')
+
+    def test_public_admission_form_marks_the_group_column(self):
+        response = self.client.get(reverse('public_admission_apply'))
+        self.assertContains(response, 'id="group-field-wrapper"')
+        self.assertContains(response, 'id="group-field-note"')

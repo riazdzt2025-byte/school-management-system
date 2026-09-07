@@ -14,9 +14,12 @@
     <form method="POST" enctype="multipart/form-data">
         {% csrf_token %}
         {% for field in form %}
-        <div class="mb-3">
+        <div class="mb-3 form-field{% if field.name == 'group' %} group-field{% endif %}"{% if field.name == 'group' %} id="group-field-wrapper"{% endif %}>
             <label class="form-label">{{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}</label>
             {{ field }}
+            {% if field.name == 'group' %}
+            <div class="form-text text-muted small" id="group-field-note" style="display:none;">This class has no group — groups start from class 9.</div>
+            {% endif %}
             {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors }}</div>{% endif %}
         </div>
         {% endfor %}
@@ -71,6 +74,20 @@
     // Keep the previous selection when the page loads (Edit mode)
     if (institutionSelect.value) {
         populateClasses(institutionSelect.value, currentClassValue);
+    }
+
+    // ---- Group only applies from class 9 upwards (shared rule, from Student) ----
+    const GROUPED_CLASSES = {{ grouped_classes_json|default:'["9", "10", "11", "12"]'|safe }};
+    const groupFieldWrapper = document.getElementById('group-field-wrapper');
+    const groupFieldNote = document.getElementById('group-field-note');
+
+    function normaliseClass(value) {
+        const v = String(value || '').trim().toLowerCase();
+        return /^\d+$/.test(v) ? String(parseInt(v, 10)) : v;
+    }
+
+    function classHasGroup(value) {
+        return GROUPED_CLASSES.indexOf(normaliseClass(value)) !== -1;
     }
 
     // ---- Mandatory / Optional subject checklist ----
@@ -154,8 +171,28 @@
     [institutionSelect, groupSelect, religionInput].forEach(function(el) {
         if (el) { el.addEventListener('change', loadSubjects); }
     });
+    function updateGroupFieldVisibility() {
+        const grouped = classHasGroup(classSelect.value);
+        if (groupFieldWrapper) {
+            groupFieldWrapper.style.display = grouped ? '' : 'none';
+        }
+        if (groupSelect && !grouped) {
+            groupSelect.value = '';
+        }
+        if (groupFieldNote) {
+            groupFieldNote.style.display = 'none';
+        }
+    }
+
     // Class list is repopulated on institution change, so re-run after that settles.
-    classSelect.addEventListener('change', function() { setTimeout(loadSubjects, 50); });
+    classSelect.addEventListener('change', function() {
+        updateGroupFieldVisibility();
+        setTimeout(loadSubjects, 50);
+    });
+    institutionSelect.addEventListener('change', function() {
+        setTimeout(updateGroupFieldVisibility, 0);
+    });
+    updateGroupFieldVisibility();
     if (institutionSelect.value && classSelect.value) { loadSubjects(); }
 </script>
 {% endblock %}

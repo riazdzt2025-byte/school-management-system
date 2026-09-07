@@ -42,15 +42,63 @@ class StudentForm(forms.ModelForm):
             admission_class = str(self.instance.admission_class)
         elif self.data.get('admission_class'):
             admission_class = str(self.data.get('admission_class'))
-        if admission_class in ['9', '10', '11', '12']:
-            self.fields['group'].required = True
+        self.apply_group_rules(admission_class)
+
+    def apply_group_rules(self, admission_class):
+        """Groups belong to class 9 and above only. Below that the field is
+        hidden (the template watches this flag) and nothing is offered; from
+        class 9 up only Science / Business Studies / Humanities are listed and
+        one of them is required."""
+        group_field = self.fields['group']
+        grouped = Student.class_supports_group(admission_class)
+        group_field.required = grouped
+        group_field.choices = [('', '-- Select Group --')] + Student.group_choices_for_class(admission_class)
+        # The class is picked in the browser without a page reload, so the
+        # submitted code can be one this dropdown no longer lists. Accept any
+        # known group code at the field level and let clean_group() explain it
+        # — a bare "select a valid choice" tells an admissions officer nothing.
+        known_codes = {code for code, _ in Student.GROUP_CHOICES}
+        group_field.valid_value = lambda value: str(value) in known_codes or value == ''
+        if not grouped:
+            # A legacy row can still carry a group in a class that has none.
+            # Reset the bound value so the empty choice validates instead of
+            # erroring on a code that is no longer offered.
+            group_field.initial = ''
+            if self.data:
+                self.data = self.data.copy()
+                self.data['group'] = ''
+        self.grouped_class = grouped
+        return grouped
+
+    def clean_group(self):
+        """Validated against the class submitted in this request, not the one
+        the form was rendered with — the class dropdown is changed in the
+        browser without a page reload."""
+        submitted_class = self.data.get('admission_class', '')
+        if self.instance and self.instance.pk and not submitted_class:
+            submitted_class = self.instance.admission_class
+        grouped = Student.class_supports_group(submitted_class)
+        value = self.cleaned_data.get('group', '')
+        if not grouped:
+            return ''
+        valid_codes = {code for code, _ in Student.group_choices_for_class(submitted_class)}
+        if value and value not in valid_codes:
+            raise forms.ValidationError('Select Science, Business Studies or Humanities.')
+        return value
 
     def clean(self):
         cleaned_data = super().clean()
         admission_class = cleaned_data.get('admission_class')
         group = cleaned_data.get('group')
-        if str(admission_class) in ['9', '10', '11', '12'] and not group:
+
+        grouped = self.apply_group_rules(admission_class)
+        if grouped and not group:
             self.add_error('group', 'Group is required for classes 9, 10, 11, and 12.')
+        elif not grouped and group:
+            # Class 6-8 (and primary): a group makes no sense, so drop it
+            # instead of rejecting an otherwise valid admission.
+            cleaned_data['group'] = ''
+            self.cleaned_data['group'] = ''
 
         institution = cleaned_data.get('institution')
         section = cleaned_data.get('section')
@@ -87,6 +135,21 @@ class AdmissionApplicationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.setdefault('class', 'form-control')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        requested_class = cleaned_data.get('requested_class')
+        requested_group = cleaned_data.get('requested_group')
+        if Student.class_supports_group(requested_class):
+            valid_codes = {code for code, _ in Student.group_choices_for_class(requested_class)}
+            if not requested_group:
+                self.add_error('requested_group', 'Group is required for classes 9, 10, 11, and 12.')
+            elif requested_group not in valid_codes:
+                self.add_error('requested_group', 'Select Science, Business Studies or Humanities.')
+        elif requested_group:
+            cleaned_data['requested_group'] = ''
+            self.cleaned_data['requested_group'] = ''
+        return cleaned_data
 
 
 class AdmissionPaymentForm(forms.ModelForm):

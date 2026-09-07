@@ -15,7 +15,7 @@ from .models import (
     Employee, EmployeeStatusLog, AttendanceRecord, MoneyReceipt, Voucher, SalarySheet,
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
     StudentSubjectChoice, SectionCapacity,
-    MARK_PARTS,
+    MARK_PARTS, GROUPED_CLASS_LABELS,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -55,6 +55,15 @@ try:
 except ModuleNotFoundError:
     openpyxl = None
     
+def grouped_class_variants():
+    """Every spelling of the class labels that have groups (9-12), matching
+    how ``admission_class`` is actually stored ('9' and '09' both occur)."""
+    variants = []
+    for label in GROUPED_CLASS_LABELS:
+        variants.extend(class_filter_variants(label))
+    return sorted(set(variants))
+
+
 def _is_admin(user):
     return user.is_superuser or user.is_staff
 
@@ -870,6 +879,7 @@ def student_list(request):
         'institutions_data': institutions_data,
         'department_choices': InstitutionAccess.DEPARTMENT_CHOICES,
         'group_choices': Student.GROUP_CHOICES,
+        'grouped_classes_json': json.dumps(GROUPED_CLASS_LABELS),
         'exact_duplicate_ids': exact_duplicate_ids,
         'possible_duplicate_ids': possible_duplicate_ids,
     })
@@ -1005,10 +1015,41 @@ def bulk_update_students(request):
                 update_fields['admission_class'] = new_class
             if new_section:
                 update_fields['section'] = new_section
+
+            # A group only applies from class 9 up. This goes straight through
+            # QuerySet.update(), which bypasses Student.save() and its guard,
+            # so the class check has to happen here too.
+            grouped_ids = []
             if new_group:
-                update_fields['group'] = new_group
+                if new_class:
+                    # Everyone moves to new_class: the group applies only if
+                    # that class is a grouped one.
+                    if Student.class_supports_group(new_class):
+                        grouped_ids = list(qs.values_list('pk', flat=True))
+                else:
+                    # Class stays as-is, so only the students already in a
+                    # grouped class get the new group.
+                    grouped_ids = list(
+                        qs.filter(admission_class__in=grouped_class_variants())
+                        .values_list('pk', flat=True)
+                    )
+
             updated_count = qs.update(**update_fields)
-            messages.success(request, f"{updated_count} student(s) updated successfully.")
+            if grouped_ids:
+                Student.objects.filter(pk__in=grouped_ids).update(group=new_group)
+
+            # Moving students into a class with no group clears their old one.
+            if new_class and not Student.class_supports_group(new_class):
+                qs.exclude(group='').update(group='')
+
+            if new_group and not grouped_ids:
+                messages.info(
+                    request,
+                    f"{updated_count} student(s) updated successfully. Group was not "
+                    f"applied — groups only exist from class 9 upwards."
+                )
+            else:
+                messages.success(request, f"{updated_count} student(s) updated successfully.")
 
         url = reverse('student_list')
         params = []
@@ -1104,6 +1145,7 @@ def bulk_update_select(request):
         'section': section,
         'classes': classes,
         'group_choices': Student.GROUP_CHOICES,
+        'grouped_classes_json': json.dumps(GROUPED_CLASS_LABELS),
     })
 
 
@@ -1561,6 +1603,7 @@ def start_entering_marks(request):
         'institutions': institutions,
         'exam_type_choices': Exam.EXAM_TYPE_CHOICES,
         'group_choices': Student.GROUP_CHOICES,
+        'grouped_classes_json': json.dumps(GROUPED_CLASS_LABELS),
         'institutions_data_json': _institutions_data_json(),
     })
     
@@ -1895,19 +1938,14 @@ def admission_dropdown_options(request):
     admission_class = request.GET.get('admission_class', '')
 
     if not institution_id or not admission_class:
-        return JsonResponse({'groups': [], 'sections': []})
+        return JsonResponse({'groups': [], 'sections': [], 'supports_group': False})
 
     institution = get_object_or_404(Institution, pk=institution_id)
 
-    group_codes = list(
-        SubjectRequirement.objects.filter(
-            institution=institution, admission_class=admission_class,
-        ).exclude(group='').values_list('group', flat=True).distinct()
-    )
-    if group_codes:
-        group_choices = [(code, label) for code, label in Student.GROUP_CHOICES if code in group_codes]
-    else:
-        group_choices = list(Student.GROUP_CHOICES)
+    # Classes below 9 have no group at all — the admission form hides the
+    # field for them instead of offering a meaningless "Science".
+    supports_group = Student.class_supports_group(admission_class)
+    group_choices = Student.group_choices_for_class(admission_class)
 
     sections = list(
         Student.objects.filter(
@@ -1918,6 +1956,7 @@ def admission_dropdown_options(request):
     return JsonResponse({
         'groups': [{'value': code, 'label': label} for code, label in group_choices],
         'sections': sections,
+        'supports_group': supports_group,
     })
 
 # ---------------- Excel Import ----------------
@@ -1970,6 +2009,8 @@ def import_students(request):
 
                     gender_code = gender_map.get(str(gender_raw).strip().lower(), '') if gender_raw else ''
                     group_code = group_map.get(str(group_raw).strip().lower(), '') if group_raw else ''
+                    if not Student.class_supports_group(admission_class):
+                        group_code = ''
 
                     Student.objects.create(
                         institution=institution,

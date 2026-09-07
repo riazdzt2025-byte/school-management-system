@@ -97,7 +97,7 @@
 
     function updateGroupVisibility() {
         const cls = classSelect.value;
-        if (cls && ['9', '10', '11', '12'].includes(cls)) {
+        if (cls && GROUPED_CLASSES.includes(String(cls).replace(/^0+(?=\d)/, ''))) {
             groupContainer.style.display = 'block';
         } else {
             groupContainer.style.display = 'none';
