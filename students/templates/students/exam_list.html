@@ -66,8 +66,8 @@
                                 </button>
                             </form>
                             {% endif %}
-                            {% if perms.students.delete_exam %}
-                            <span class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true">Result Locked</span>
+                            {% if user.is_superuser or user.is_staff %}
+                            <a href="{% url 'delete_exam' exam.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
                             {% endif %}
                         </td>
                     </tr>

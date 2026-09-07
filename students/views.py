@@ -1492,6 +1492,7 @@ def archived_students(request):
         'students': students,
         'institution': institution,
         'institutions': institutions,
+        'can_purge': request.user.has_perm('students.delete_student'),
     })
 
 
@@ -1551,6 +1552,66 @@ def bulk_restore_students(request):
     url = reverse('archived_students')
     if request.POST.get('institution'):
         url += f"?institution={request.POST.get('institution')}"
+    return redirect(url)
+
+
+def _purge_archived_student(user, student):
+    """Hard-delete one archived student and the rows that hang off them.
+
+    Admission applications point at the enrolled student with PROTECT, so that
+    link is cleared first. Everything else (marks, receipts, certificates)
+    cascades with the student row.
+    """
+    snapshot = {
+        'student_id': student.student_id,
+        'name': student.name,
+        'admission_class': student.admission_class,
+        'section': student.section,
+        'institution_id': student.institution_id,
+    }
+    with transaction.atomic():
+        AdmissionApplication.objects.filter(enrolled_student=student).update(enrolled_student=None)
+        record_audit(user, 'student_purged', student, snapshot=snapshot,
+                     details={'source': 'purge_archived_student'})
+        student.delete()
+    return snapshot
+
+
+@login_required
+@permission_required('students.delete_student', raise_exception=True)
+@require_POST
+def purge_archived_student(request, pk):
+    """Permanently remove a wrong/duplicate row from the archive."""
+    student = get_object_or_404(Student, pk=pk, is_archived=True)
+    name = student.name
+    student_id = student.student_id
+    institution_id = student.institution_id
+    _purge_archived_student(request.user, student)
+    messages.success(request, f'{name} ({student_id}) was permanently deleted.')
+    url = reverse('archived_students')
+    if institution_id:
+        url += f'?institution={institution_id}'
+    return redirect(url)
+
+
+@login_required
+@permission_required('students.delete_student', raise_exception=True)
+@require_POST
+def bulk_purge_archived_students(request):
+    student_ids = request.POST.getlist('student_ids')
+    if not student_ids:
+        messages.error(request, 'No students were selected.')
+        return redirect('archived_students')
+
+    students = list(Student.objects.filter(pk__in=student_ids, is_archived=True))
+    purged = 0
+    for student in students:
+        _purge_archived_student(request.user, student)
+        purged += 1
+    messages.success(request, f'{purged} archived student(s) permanently deleted.')
+    url = reverse('archived_students')
+    if request.POST.get('institution'):
+        url += f'?institution={request.POST.get("institution")}'
     return redirect(url)
 
 
@@ -2470,13 +2531,30 @@ def edit_exam(request, pk):
 
 
 @login_required
-@permission_required('students.delete_exam', raise_exception=True)
 def delete_exam(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
-    if request.method == 'POST':
-        messages.info(request, 'Exam results are permanent and cannot be deleted.')
+    """Remove a mistaken exam. Administrators only — clerks must not wipe results."""
+    if not _is_admin(request.user):
+        messages.error(request, 'Only an administrator can delete an exam.')
         return redirect('exam_list')
-    return render(request, 'students/delete_exam.html', {'exam': exam})
+    exam = get_object_or_404(Exam, pk=pk)
+    mark_count = ExamMark.objects.filter(exam=exam).count()
+    if request.method == 'POST':
+        name = exam.name
+        record_audit(
+            request.user, 'exam_deleted', exam,
+            snapshot={
+                'name': exam.name, 'exam_type': exam.exam_type,
+                'admission_class': exam.admission_class, 'group': exam.group,
+                'session': exam.session, 'is_published': exam.is_published,
+                'mark_count': mark_count,
+            },
+        )
+        exam.delete()
+        messages.success(request, f'Exam “{name}” deleted ({mark_count} mark row(s) removed).')
+        return redirect('exam_list')
+    return render(request, 'students/delete_exam.html', {
+        'exam': exam, 'mark_count': mark_count,
+    })
 
 
 @login_required

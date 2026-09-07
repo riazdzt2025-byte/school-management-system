@@ -110,6 +110,40 @@ class StudentArchiveSafetyTests(TestCase):
 		self.assertFalse(self.student.is_archived)
 		self.assertFalse(other.is_archived)
 
+	def test_purge_permanently_deletes_archived_student_and_related_rows(self):
+		subject = Subject.objects.create(code='ENG', name='English', full_marks=100)
+		exam = Exam.objects.create(
+			name='Mid Term', exam_type='MID_TERM_1', institution=self.institution,
+			admission_class='6', section='A', session='2026',
+		)
+		ExamMark.objects.create(exam=exam, student=self.student, subject=subject, marks_obtained=50)
+		MoneyReceipt.objects.create(
+			student=self.student, receipt_no='R-PURGE-1', purpose='Fee',
+			amount=100, date=date(2026, 1, 1), created_by=self.user,
+		)
+		application = AdmissionApplication.objects.create(
+			institution=self.institution, applicant_name='Archived Student',
+			applicant_contact_no='01800000000', guardian_name='Guardian',
+			guardian_contact_no='01900000000', requested_class='6',
+			requested_section='A', session='2026-2027', status='ENROLLED',
+			enrolled_student=self.student,
+		)
+		self.client.post(reverse('delete_student', args=[self.student.pk]))
+		pk = self.student.pk
+		response = self.client.post(reverse('purge_archived_student', args=[pk]))
+		self.assertEqual(response.status_code, 302)
+		self.assertFalse(Student.objects.filter(pk=pk).exists())
+		self.assertEqual(ExamMark.objects.filter(exam=exam).count(), 0)
+		self.assertEqual(MoneyReceipt.objects.filter(receipt_no='R-PURGE-1').count(), 0)
+		application.refresh_from_db()
+		self.assertIsNone(application.enrolled_student_id)
+		self.assertTrue(AuditLog.objects.filter(action='student_purged', object_id=str(pk)).exists())
+
+	def test_purge_refuses_an_active_student(self):
+		response = self.client.post(reverse('purge_archived_student', args=[self.student.pk]))
+		self.assertEqual(response.status_code, 404)
+		self.assertTrue(Student.objects.filter(pk=self.student.pk).exists())
+
 
 class PromotionAndAuditTests(TestCase):
 	def setUp(self):
@@ -243,13 +277,29 @@ class ExamWorkflowTests(TestCase):
 		self.assertIn(('J', 'J'), form.fields['section'].choices)
 		self.assertNotIn(('N/A', 'N/A'), form.fields['section'].choices)
 
-	def test_delete_exam_route_is_disabled_for_permanent_results(self):
+	def test_exam_clerk_cannot_delete_an_exam(self):
 		permission = Permission.objects.get_or_create(codename='delete_exam', content_type=ContentType.objects.get_for_model(Exam))[0]
 		self.client.force_login(self.user)
 		self.user.user_permissions.add(permission)
 		response = self.client.post(reverse('delete_exam', args=[self.exam.pk]))
 		self.assertRedirects(response, reverse('exam_list'))
 		self.assertTrue(Exam.objects.filter(pk=self.exam.pk).exists())
+		list_page = self.client.get(reverse('exam_list'))
+		self.assertNotContains(list_page, 'Delete')
+
+	def test_admin_can_delete_a_mistaken_exam_and_its_marks(self):
+		ExamMark.objects.create(
+			exam=self.exam, student=self.student, subject=self.subject, marks_obtained=40,
+		)
+		admin = get_user_model().objects.create_superuser(username='exam-admin', password='password')
+		self.client.force_login(admin)
+		list_page = self.client.get(reverse('exam_list'))
+		self.assertContains(list_page, 'Delete')
+		response = self.client.post(reverse('delete_exam', args=[self.exam.pk]))
+		self.assertRedirects(response, reverse('exam_list'))
+		self.assertFalse(Exam.objects.filter(pk=self.exam.pk).exists())
+		self.assertEqual(ExamMark.objects.filter(student=self.student).count(), 0)
+		self.assertTrue(AuditLog.objects.filter(action='exam_deleted').exists())
 
 	@skipUnless(Workbook, 'openpyxl is required for Excel import tests')
 	def test_import_exam_marks_success(self):
@@ -1649,13 +1699,17 @@ class ArchiveIntegrityTests(TestCase):
 
 		for view_name, payload in [
 			('bulk_restore_students', {'student_ids': [self.archived.pk]}),
+			('bulk_purge_archived_students', {'student_ids': [self.archived.pk]}),
 		]:
 			response = self.client.post(reverse(view_name), payload)
 			self.assertEqual(response.status_code, 403, view_name)
 		response = self.client.post(reverse('restore_student', args=[self.archived.pk]))
 		self.assertEqual(response.status_code, 403)
+		response = self.client.post(reverse('purge_archived_student', args=[self.archived.pk]))
+		self.assertEqual(response.status_code, 403)
 		self.archived.refresh_from_db()
 		self.assertTrue(self.archived.is_archived)
+		self.assertTrue(Student.objects.filter(pk=self.archived.pk).exists())
 
 	@skipUnless(Workbook, 'openpyxl not installed')
 	def test_ssc_import_will_not_attach_to_an_archived_student(self):

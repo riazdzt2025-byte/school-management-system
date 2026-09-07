@@ -52,7 +52,7 @@ def _group_permission_map():
             (Student, ['view']),
             (SSCRegistration, ['add', 'change', 'delete']),
             (BoardResult, ['add', 'change', 'delete']),
-            (Exam, ['add', 'change', 'delete']),
+            (Exam, ['add', 'change']),
             (ExamMark, ['add', 'change', 'delete']),
             (SeatPlan, ['add', 'change', 'delete']),
         ],

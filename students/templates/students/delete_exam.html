@@ -8,10 +8,16 @@
 </div>
 
 <div class="table-card p-4">
-    <p>Delete <strong>{{ exam.name }}</strong>? All marks entered for this exam will also be deleted.</p>
+    <p>Permanently delete <strong>{{ exam.name }}</strong>?</p>
+    <p class="text-muted mb-3">
+        Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
+        · {{ exam.session }}
+        · {{ mark_count }} mark row(s) will also be removed.
+        This cannot be undone. Only an administrator can do this.
+    </p>
     <form method="post">
         {% csrf_token %}
-        <button class="btn btn-danger">Yes, Delete</button>
+        <button class="btn btn-danger">Yes, Delete Exam</button>
         <a class="btn btn-outline-navy" href="{% url 'exam_list' %}">Cancel</a>
     </form>
 </div>

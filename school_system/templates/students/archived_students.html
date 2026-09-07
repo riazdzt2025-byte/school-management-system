@@ -37,7 +37,7 @@
     <div>
         <h1>Archived Students</h1>
         <div class="subtitle">
-            Soft-deleted students — hidden from active lists but kept for record safety
+            Soft-deleted students — restore them, or permanently delete wrong records
         </div>
     </div>
     <div class="page-actions">
@@ -74,6 +74,13 @@
                     onclick="return confirm('Restore all selected students back into the active list?');">
                 ♻️ Restore Selected
             </button>
+            {% if can_purge %}
+            <button type="submit" id="bulk-purge-btn" class="btn btn-sm btn-outline-danger" disabled
+                    formaction="{% url 'bulk_purge_archived_students' %}"
+                    onclick="return confirm('PERMANENTLY delete the selected archived students and all their marks, receipts, and certificates? This cannot be undone.');">
+                🗑️ Delete Selected Permanently
+            </button>
+            {% endif %}
         </div>
     </div>
 
@@ -107,6 +114,13 @@
                             {% csrf_token %}
                             <button type="submit" class="btn btn-sm btn-outline-success">♻️ Restore</button>
                         </form>
+                        {% if can_purge %}
+                        <form method="POST" action="{% url 'purge_archived_student' student.pk %}" class="d-inline"
+                              onsubmit="return confirm('PERMANENTLY delete {{ student.name|escapejs }} ({{ student.student_id }}) and all related records? This cannot be undone.');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️ Delete Permanently</button>
+                        </form>
+                        {% endif %}
                         <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-secondary">Details</a>
                     </td>
                 </tr>
@@ -124,10 +138,12 @@
     const selectAll = document.getElementById('select-all');
     const rowCheckboxes = document.querySelectorAll('.row-checkbox');
     const bulkRestoreBtn = document.getElementById('bulk-restore-btn');
+    const bulkPurgeBtn = document.getElementById('bulk-purge-btn');
 
     function updateBulkButtons() {
         const anyChecked = Array.from(rowCheckboxes).some(cb => cb.checked);
-        bulkRestoreBtn.disabled = !anyChecked;
+        if (bulkRestoreBtn) bulkRestoreBtn.disabled = !anyChecked;
+        if (bulkPurgeBtn) bulkPurgeBtn.disabled = !anyChecked;
     }
 
     if (selectAll) {

@@ -155,9 +155,10 @@ a student their whole result.
 Top 10, detail, card) — an unpublished exam redirects those visitors to the exam
 list, and the result card carries a *DRAFT* banner if printed anyway.
 
-**Exam results are permanent: the delete route is disabled on purpose.** After
-publishing you can still correct marks (they flow straight into the result), then
-unpublish → re-check → republish while the correction is verified.
+**Only an administrator can delete an exam** (the Exam department cannot). Use
+that for a mistaken exam, not for routine corrections. After publishing you can
+still correct marks (they flow straight into the result), then unpublish →
+re-check → republish while the correction is verified.
 
 ## 7. After a board result is published
 
