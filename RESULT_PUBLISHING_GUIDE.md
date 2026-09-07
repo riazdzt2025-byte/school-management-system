@@ -108,20 +108,26 @@ Rules that matter:
 
 ### Import from Excel instead
 
-`Exam List → Import Marks` → **Download Excel template**. The workbook already has
-one row per (student × subject assigned to this exam), plus *How to fill*,
-*Subjects* (this exam's Full Marks, parts and pass marks) and *Students* sheets.
-Fill the Marks column and upload it back:
+`Exam List → Import Marks` → pick **one subject** → **Download Excel template**.
+Each file is that subject only (sheet title like `9SC Physics`), with the students
+already listed. Columns match how teachers already fill marks:
 
-- a row with a blank Marks cell is skipped (the student stays absent in that subject,
-  which still fails the subject), not rejected;
-- an unknown student ID, a student outside the exam's class/section/group, an
-  unknown or unassigned subject code, a duplicate row, or a mark above this exam's
-  Full Marks **rejects the whole upload** — nothing is partially imported.
+`Roll | ID | Name | CQ | MCQ | PT` (and `WT` when a weekly test is configured).
+A subject with no parts has a single `Marks` column instead.
 
-Import writes totals only. Where a subject has parts configured, the part columns
-stay empty, so *Each part must pass* will fail those subjects; enter such subjects
-on screen, or untick the rule for the imported exam type.
+The Physics teacher fills Physics; the Bangla teacher fills Bangla. Do not put
+other subjects on the same sheet.
+
+- Identify students by the **ID** column (roll is a fallback).
+- Leave a cell blank when the student did not sit that paper — blank is skipped,
+  while 0 is a real mark of zero.
+- A mark above that part's maximum, an unknown or out-of-scope student, or a
+  duplicate row **rejects the whole upload** — nothing is partially imported.
+
+Import writes the part fields (CQ / MCQ / Practical / Weekly Test) and the total,
+so *Each part must pass* still works. An older three-column file (`Student ID,
+Subject Code, Marks`) is still accepted for the selected subject, but it only
+stores a total.
 
 ## 5. Check before publishing
 

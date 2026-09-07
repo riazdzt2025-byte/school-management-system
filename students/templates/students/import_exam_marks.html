@@ -5,39 +5,74 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>Import Exam Marks</h1>
+        <h1>Import Exam Marks{% if subject %} — {{ subject.name }}{% endif %}</h1>
         <div class="subtitle">
-            {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if exam.group %} &middot; {{ exam.get_group_display }} group{% endif %}
+            {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if exam.group %} &middot; {{ exam.get_group_display }} group{% elif selected_group %} &middot; {{ selected_group_label }} group{% endif %}
         </div>
     </div>
 </div>
 
 <div class="table-card p-4">
-    <p class="text-muted">Columns: Student ID, Subject Code, Marks &mdash; in that order, starting at row 1.</p>
-    <p class="text-muted">Marks must be between 0 and the Full Marks configured for this exam type. The whole upload is
-    rejected if any row is invalid; a row with a blank Marks cell is skipped, not treated as zero.</p>
+    {% if show_group_picker %}
+    <form method="get" class="mb-3" id="group-filter-form">
+        <label for="group-select" class="form-label fw-semibold">Group</label>
+        <select name="group" id="group-select" class="form-select" onchange="document.getElementById('group-filter-form').submit();">
+            <option value="">-- All groups --</option>
+            {% for code, label in group_choices %}
+            <option value="{{ code }}" {% if code == selected_group %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <div class="form-text">This exam was created without a group. Pick one to match Enter Marks.</div>
+    </form>
+    {% endif %}
+
+    {% if not subject %}
+    <p class="text-muted">Each file is <strong>one subject</strong>. The Physics teacher fills Physics; the Bangla teacher fills Bangla. Pick the subject first, download that sheet, then upload the filled file.</p>
+    {% if is_filtered %}
+    <p class="text-muted small mb-2">
+        Showing subjects assigned to Class {{ exam.admission_class }}{% if exam.group %} &ndash; {{ exam.get_group_display }} group{% elif selected_group %} &ndash; {{ selected_group_label }} group{% else %} (all groups){% endif %}.
+    </p>
+    {% else %}
+    <p class="text-muted small mb-2">No subject assignments are configured for this class yet, so all subjects are listed.</p>
+    {% endif %}
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="group" value="{{ selected_group }}">
+        <select name="subject" class="form-select" required>
+            <option value="">-- Select Subject --</option>
+            {% for item in subjects %}
+            <option value="{{ item.pk }}">{{ item.name }} ({{ item.code }})</option>
+            {% empty %}
+            <option value="" disabled>No subjects available</option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-navy mt-3" type="submit">Continue</button>
+        <a class="btn btn-outline-navy mt-3" href="{% url 'exam_list' %}">Cancel</a>
+    </form>
+    {% else %}
+    <p class="text-muted mb-2">
+        Columns: <strong>Roll, ID, Name</strong>{% if parts %}{% for part in parts %}, <strong>{% if part.key == 'practical' %}PT{% elif part.key == 'weekly_test' %}WT{% else %}{{ part.label }}{% endif %}</strong> (out of {{ part.max_marks }}){% endfor %}{% else %}, <strong>Marks</strong> (out of {{ marks_config.full_marks }}){% endif %}.
+        Sheet name like <em>{{ sheet_title }}</em>.
+    </p>
+    <p class="text-muted">Leave a cell blank when the student did not sit that paper — blank is skipped, 0 is a real mark of zero. A mark above that part’s maximum rejects the whole file.</p>
+    <p class="text-muted small">{{ total_students }} student(s) of this exam will be listed on the template. Identify students by the ID column (roll is a fallback).</p>
 
     <a href="{{ template_url }}" class="btn btn-outline-navy btn-sm mb-3">
-        <i class="bi bi-download"></i> Download Excel template ({{ total_students }} student(s) pre-filled)
+        <i class="bi bi-download"></i> Download {{ subject.name }} template ({{ total_students }} student(s))
     </a>
+    <a class="btn btn-outline-navy btn-sm mb-3" href="{% url 'import_exam_marks' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}">Change subject</a>
 
-    {% if subjects_filtered %}
-    <div class="alert alert-light border small">
-        <strong>Accepted subject codes</strong> for Class {{ exam.admission_class }}{% if exam.group %} &ndash; {{ exam.get_group_display }} group{% endif %}:
-        {% for subject in allowed_subjects %}<span class="badge bg-secondary">{{ subject.code }}</span> {{ subject.name }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}
-        <div class="mt-1 text-muted">Rows using any other subject code will be rejected.</div>
-    </div>
-    {% else %}
-    <p class="text-muted small">No subject assignments are configured for this class yet, so any valid subject code is accepted.</p>
-    {% endif %}
     {% if messages %}
         {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
     {% endif %}
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
+        <input type="hidden" name="subject" value="{{ subject.pk }}">
+        <input type="hidden" name="group" value="{{ selected_group }}">
         {{ form.as_p }}
         <button class="btn btn-navy" type="submit">Upload and Import</button>
         <a class="btn btn-outline-navy" href="{% url 'exam_list' %}">Cancel</a>
     </form>
+    {% endif %}
 </div>
 {% endblock %}

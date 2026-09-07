@@ -44,6 +44,11 @@ from .result_utils import (
     get_subject_marks,
     unassigned_mark_subjects,
 )
+from .marks_import import (
+    build_subject_marks_workbook,
+    marks_import_sheet_title,
+    parse_subject_marks_workbook,
+)
 from .audit import record_audit
 from .permissions import sync_user_department_permissions
 from .models import Student, Subject, Institution, Employee
@@ -2532,186 +2537,148 @@ def select_marks_subject(request, pk):
     })
 
 
+def _exam_group_selection(request, exam):
+    """Group picker for exams created without a group, matching Enter Marks."""
+    group_choices = get_exam_group_choices(exam)
+    valid_group_codes = {code for code, _ in group_choices}
+    selected_group = ''
+    if not exam.group:
+        requested = (request.POST.get('group') or request.GET.get('group') or '').strip()
+        if requested in valid_group_codes:
+            selected_group = requested
+    return group_choices, selected_group
+
+
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
 def import_exam_marks(request, pk):
+    """Import one subject's marks from a teacher-filled Excel sheet.
+
+    Physics teacher uploads Physics (Roll, ID, Name, CQ, MCQ, PT); Bangla
+    teacher uploads Bangla. The file is never a workbook of every subject.
+    """
     exam = get_object_or_404(Exam, pk=pk)
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    subjects, is_filtered = get_exam_subjects(exam, group=selected_group or None)
+    allowed_ids = {subject.pk for subject in subjects}
+
+    raw_subject = (request.POST.get('subject') or request.GET.get('subject') or '').strip()
+    subject = None
+    if raw_subject.isdigit():
+        subject = next((item for item in subjects if item.pk == int(raw_subject)), None)
+        if subject is None and is_filtered:
+            messages.error(request, 'That subject is not assigned to this class/group.')
+            subject = None
+        elif subject is None:
+            subject = Subject.objects.filter(pk=int(raw_subject)).first()
+            if subject and subject.pk not in allowed_ids and is_filtered:
+                messages.error(request, 'That subject is not assigned to this class/group.')
+                subject = None
+
+    if request.method == 'POST' and not request.FILES.get('excel_file'):
+        if not subject:
+            messages.error(request, 'Please select a subject.')
+        else:
+            url = reverse('import_exam_marks', kwargs={'pk': exam.pk}) + f'?subject={subject.pk}'
+            if selected_group:
+                url += f'&group={selected_group}'
+            return redirect(url)
+
+    students = list(get_exam_students(exam, group=selected_group or None))
     form = ExamExcelImportForm(request.POST or None, request.FILES or None)
-    allowed_subjects, subjects_filtered = get_exam_subjects(exam)
-    allowed_subject_ids = {s.pk for s in allowed_subjects}
-    # One student list for the whole exam module, so an imported row can never
-    # land on a student that marks entry would not have offered.
-    exam_students = {student.student_id.lower(): student
-                     for student in get_exam_students(exam) if student.student_id}
+    marks_config = get_subject_marks(exam, subject) if subject else None
+    template_url = ''
+    if subject:
+        template_url = reverse('download_marks_import_template', kwargs={'pk': exam.pk})
+        template_url += f'?subject={subject.pk}'
+        if selected_group:
+            template_url += f'&group={selected_group}'
+
     context = {
         'exam': exam,
         'form': form,
-        'allowed_subjects': allowed_subjects,
-        'subjects_filtered': subjects_filtered,
-        'total_students': len(exam_students),
-        'template_url': reverse('download_marks_import_template', kwargs={'pk': exam.pk}),
+        'subject': subject,
+        'subjects': subjects,
+        'is_filtered': is_filtered,
+        'allowed_subjects': subjects,
+        'subjects_filtered': is_filtered,
+        'marks_config': marks_config,
+        'parts': marks_config.parts if marks_config else [],
+        'total_students': len(students),
+        'template_url': template_url,
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': dict(group_choices).get(selected_group, ''),
+        'show_group_picker': not exam.group and bool(group_choices),
+        'sheet_title': marks_import_sheet_title(exam, subject) if subject else '',
     }
-    if request.method == 'POST' and form.is_valid():
+
+    if request.method == 'POST' and request.FILES.get('excel_file'):
+        if not subject:
+            messages.error(request, 'Please select a subject before uploading.')
+            return render(request, 'students/import_exam_marks.html', context)
         if openpyxl is None:
             messages.error(request, 'Excel import is unavailable because openpyxl is not installed.')
             return render(request, 'students/import_exam_marks.html', context)
+        if not form.is_valid():
+            return render(request, 'students/import_exam_marks.html', context)
         try:
-            sheet = openpyxl.load_workbook(request.FILES['excel_file'], data_only=True).active
-            headers = [str(value).strip().lower() if value is not None else '' for value in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), ())]
-            if headers[:3] != ['student id', 'subject code', 'marks']:
-                raise ValueError('The first row must contain: Student ID, Subject Code, Marks.')
-
-            validated_rows = []
-            seen = set()
-            errors = []
-            skipped_rows = []
-            for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-                if not row or all(cell in (None, '') for cell in row):
-                    continue
-                student_id, subject_code, marks = (list(row) + [None] * 3)[:3]
-                student_id = str(student_id).strip() if student_id is not None else ''
-                subject_code = str(subject_code).strip() if subject_code is not None else ''
-                key = (student_id.lower(), subject_code.lower())
-                try:
-                    if marks in (None, ''):
-                        # Blank on purpose (or still unfilled in a prefilled
-                        # template): skip instead of failing the whole upload.
-                        skipped_rows.append(f'row {row_num} (no mark entered)')
-                        continue
-                    if not student_id or not subject_code:
-                        raise ValueError('student ID and subject code are required')
-                    if key in seen:
-                        raise ValueError('duplicate student and subject row')
-                    seen.add(key)
-                    student = exam_students.get(student_id.lower())
-                    if not student:
-                        if Student.objects.filter(student_id__iexact=student_id).exists():
-                            raise ValueError('student is not a member of this exam class/section/group')
-                        raise ValueError('student ID was not found')
-                    subject = Subject.objects.filter(code__iexact=subject_code).first()
-                    if not subject:
-                        raise ValueError('subject code was not found')
-                    if subjects_filtered and subject.pk not in allowed_subject_ids:
-                        raise ValueError(
-                            f'"{subject.name}" is not assigned to Class {exam.admission_class}'
-                            + (f' ({exam.get_group_display()})' if exam.group else '')
-                        )
-                    # Full marks come from the exam's own configuration, not the
-                    # subject default: a Mid Term marked out of 50 must not reject 75.
-                    marks_limit = get_subject_marks(exam, subject).full_marks
-                    marks_value = float(marks)
-                    if marks_value != marks_value or marks_value in (float('inf'), float('-inf')):
-                        raise ValueError('marks must be numeric')
-                    if marks_value < 0 or marks_value > marks_limit:
-                        raise ValueError(f'marks must be between 0 and {marks_limit}')
-                    validated_rows.append((student, subject, marks_value))
-                except (TypeError, ValueError) as exc:
-                    errors.append(f'Row {row_num}: {exc}')
-
+            workbook = openpyxl.load_workbook(request.FILES['excel_file'], data_only=True)
+            validated_rows, skipped_count, errors = parse_subject_marks_workbook(
+                workbook, exam, subject, students,
+            )
             if errors:
                 messages.error(request, 'Import rejected: ' + ' | '.join(errors[:10]))
                 return render(request, 'students/import_exam_marks.html', context)
 
             with transaction.atomic():
-                for student, subject, marks_value in validated_rows:
+                for student, defaults in validated_rows:
                     ExamMark.objects.update_or_create(
-                        exam=exam, student=student, subject=subject,
-                        defaults={'marks_obtained': marks_value},
+                        exam=exam, student=student, subject=subject, defaults=defaults,
                     )
-            success_message = f'{len(validated_rows)} mark(s) imported successfully.'
-            if skipped_rows:
-                success_message += f' {len(skipped_rows)} row(s) with no mark entered were skipped.'
+            success_message = f'{len(validated_rows)} {subject.name} mark(s) imported successfully.'
+            if skipped_count:
+                success_message += f' {skipped_count} row(s) with no mark entered were skipped.'
             messages.success(request, success_message)
             return redirect('exam_list')
         except Exception as exc:
             messages.error(request, f'Could not import the file: {exc}')
     return render(request, 'students/import_exam_marks.html', context)
 
+
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
 def download_marks_import_template(request, pk):
-    """Excel workbook that Import Marks accepts as-is.
+    """One Excel sheet for one subject, matching how teachers already fill marks.
 
-    Every student of the exam is paired with every subject assigned to the
-    exam's class/group, so the clerk only has to type numbers down the Marks
-    column. Rows left blank are skipped on import (a blank means "not entered",
-    never zero), so deleting rows is optional.
+    Columns are Roll, ID, Name, then CQ / MCQ / PT / WT for whatever this
+    exam type actually uses. Blank cells stay absent on import.
     """
     exam = get_object_or_404(Exam, pk=pk)
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    subjects, is_filtered = get_exam_subjects(exam, group=selected_group or None)
+    raw_subject = (request.GET.get('subject') or '').strip()
+    subject = None
+    if raw_subject.isdigit():
+        subject = next((item for item in subjects if item.pk == int(raw_subject)), None)
+        if subject is None and not is_filtered:
+            subject = Subject.objects.filter(pk=int(raw_subject)).first()
+    if not subject:
+        messages.error(request, 'Pick a subject first — each Excel file is for one subject only.')
+        url = reverse('import_exam_marks', kwargs={'pk': exam.pk})
+        if selected_group:
+            url += f'?group={selected_group}'
+        return redirect(url)
     if openpyxl is None:
         messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
         return redirect('import_exam_marks', pk=exam.pk)
 
-    from openpyxl.styles import Alignment, Font
-
-    students = list(get_exam_students(exam))
-    subjects, is_filtered = get_exam_subjects(exam)
-    subjects = list(subjects)
-
-    workbook = openpyxl.Workbook()
-    sheet = workbook.active
-    sheet.title = 'Marks'
-    sheet.append(['Student ID', 'Subject Code', 'Marks'])
-    for cell in sheet[1]:
-        cell.font = Font(bold=True)
-    for student in students:
-        for subject in subjects:
-            sheet.append([student.student_id, subject.code, None])
-    for column, width in (('A', 16), ('B', 16), ('C', 10)):
-        sheet.column_dimensions[column].width = width
-    sheet.freeze_panes = 'A2'
-
-    guide = workbook.create_sheet('How to fill')
-    guide.column_dimensions['A'].width = 100
-    for line in [
-        f'{exam.name} - Class {exam.admission_class}'
-        + (f' ({exam.section})' if exam.section else '')
-        + (f' ({exam.get_group_display()} group)' if exam.group else ''),
-        '',
-        '1. Fill the Marks column on the Marks sheet. Do not touch the first row.',
-        '2. Leave a mark blank when the student did not sit that paper - a blank row is',
-        '   skipped on import, while 0 is imported as a real mark of zero.',
-        f'3. Marks above Full Marks for this exam type are rejected (see the Subjects sheet).',
-        '4. One row per student per subject. Duplicate rows are rejected.',
-        '',
-        f'{len(students)} student(s) x {len(subjects)} subject(s) = {len(students) * len(subjects)} row(s).',
-    ] + (['', 'No subject assignments are configured for this class yet, so every subject in the',
-          'database appears here. Configure them under Subject Assignments to get a shorter list.']
-         if not is_filtered else []):
-        cell = guide.cell(row=guide.max_row + 1 if guide.max_row > 1 else 1, column=1, value=line)
-        cell.alignment = Alignment(wrap_text=True)
-
-    subjects_sheet = workbook.create_sheet('Subjects')
-    subjects_sheet.append(['Subject Code', 'Subject', 'Full Marks', 'Parts', 'Pass Marks'])
-    for cell in subjects_sheet[1]:
-        cell.font = Font(bold=True)
-    for subject in subjects:
-        marks_config = get_subject_marks(exam, subject)
-        parts = ' + '.join(f"{part['label']} {part['max_marks']}" for part in marks_config.parts)
-        subjects_sheet.append([
-            subject.code, subject.name, marks_config.full_marks,
-            parts or 'single total', marks_config.pass_marks,
-        ])
-    for column, width in (('A', 14), ('B', 30), ('C', 12), ('D', 26), ('E', 12)):
-        subjects_sheet.column_dimensions[column].width = width
-
-    students_sheet = workbook.create_sheet('Students')
-    students_sheet.append(['Roll', 'Student ID', 'Name', 'Section', 'Group'])
-    for cell in students_sheet[1]:
-        cell.font = Font(bold=True)
-    for student in students:
-        students_sheet.append([
-            student.roll_no, student.student_id, student.name,
-            student.section, student.get_group_display() if student.group else '',
-        ])
-    for column, width in (('A', 8), ('B', 16), ('C', 30), ('D', 10), ('E', 20)):
-        students_sheet.column_dimensions[column].width = width
-
-    workbook.active = 0
+    workbook = build_subject_marks_workbook(exam, subject, group=selected_group or None)
+    filename = f'{marks_import_sheet_title(exam, subject)}.xlsx'
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-    response['Content-Disposition'] = f'attachment; filename="marks_import_exam_{exam.pk}.xlsx"'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
     workbook.save(response)
     return response
 

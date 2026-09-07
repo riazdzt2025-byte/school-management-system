@@ -255,7 +255,10 @@ class ExamWorkflowTests(TestCase):
 	def test_import_exam_marks_success(self):
 		response = self.client.post(
 			reverse('import_exam_marks', args=[self.exam.pk]),
-			{'excel_file': self.workbook_upload([['S001', 'ENG', 87.5]])},
+			{
+				'subject': str(self.subject.pk),
+				'excel_file': self.workbook_upload([['S001', 'ENG', 87.5]]),
+			},
 		)
 		self.assertRedirects(response, reverse('exam_list'))
 		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.subject)
@@ -265,14 +268,24 @@ class ExamWorkflowTests(TestCase):
 	def test_invalid_row_rejects_entire_import(self):
 		response = self.client.post(
 			reverse('import_exam_marks', args=[self.exam.pk]),
-			{'excel_file': self.workbook_upload([
-				['S001', 'ENG', 75],
-				['S002', 'ENG', 80],
-			])},
+			{
+				'subject': str(self.subject.pk),
+				'excel_file': self.workbook_upload([
+					['S001', 'ENG', 75],
+					['S002', 'ENG', 80],
+				]),
+			},
 		)
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'not a member of this exam class/section')
 		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 0)
+
+	def test_import_page_asks_for_a_subject_first(self):
+		response = self.client.get(reverse('import_exam_marks', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'one subject')
+		self.assertContains(response, 'name="subject"')
+		self.assertNotContains(response, 'Upload and Import')
 
 
 
@@ -786,6 +799,33 @@ class MarksPartsAndPassRulesTests(TestCase):
 		response = self.client.get(reverse('enter_marks', args=[self.exam.pk, self.physics.pk]))
 		self.assertContains(response, 'add up to 90')
 
+	@skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+	def test_import_writes_cq_mcq_pt_parts(self):
+		self.configure()
+		workbook = Workbook()
+		sheet = workbook.active
+		sheet.title = '9SC Physics'
+		sheet.append(['Roll', 'ID', 'Name', 'CQ', 'MCQ', 'PT'])
+		sheet.append([1, 'M001', 'Marked Student', 60, None, 20])
+		output = BytesIO()
+		workbook.save(output)
+		response = self.client.post(
+			reverse('import_exam_marks', args=[self.exam.pk]),
+			{
+				'subject': str(self.physics.pk),
+				'excel_file': SimpleUploadedFile(
+					'9SC Physics.xlsx', output.getvalue(),
+					content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				),
+			},
+		)
+		self.assertRedirects(response, reverse('exam_list'))
+		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.physics)
+		self.assertEqual(str(mark.marks_obtained), '80.00')
+		self.assertEqual(str(mark.cq_obtained), '60.00')
+		self.assertEqual(str(mark.practical_obtained), '20.00')
+		self.assertIsNone(mark.mcq_obtained)
+
 	def test_weekly_test_is_an_enterable_part(self):
 		self.configure(cq_marks=60, mcq_marks=20, weekly_test_marks=20)
 		self.post_marks({
@@ -871,9 +911,13 @@ class ExamScopeConsistencyTests(TestCase):
 		workbook.save(output)
 		response = self.client.post(
 			reverse('import_exam_marks', args=[self.exam.pk]),
-			{'excel_file': SimpleUploadedFile(
-				'marks.xlsx', output.getvalue(),
-				content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+			{
+				'subject': str(self.physics.pk),
+				'excel_file': SimpleUploadedFile(
+					'marks.xlsx', output.getvalue(),
+					content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				),
+			},
 		)
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'not a member of this exam class/section/group')
@@ -896,9 +940,13 @@ class ExamScopeConsistencyTests(TestCase):
 		workbook.save(output)
 		self.client.post(
 			reverse('import_exam_marks', args=[self.exam.pk]),
-			{'excel_file': SimpleUploadedFile(
-				'marks.xlsx', output.getvalue(),
-				content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+			{
+				'subject': str(self.physics.pk),
+				'excel_file': SimpleUploadedFile(
+					'marks.xlsx', output.getvalue(),
+					content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+				),
+			},
 		)
 		self.assertEqual(ExamMark.objects.count(), 1)
 		self.assertEqual(str(ExamMark.objects.get().marks_obtained), '71.00')
@@ -958,16 +1006,20 @@ class MarksImportTemplateDownloadTests(TestCase):
 			from openpyxl import load_workbook
 		except ModuleNotFoundError:
 			self.skipTest('openpyxl is required for Excel export tests')
-		response = self.client.get(reverse('download_marks_import_template', args=[self.exam.pk]))
+		response = self.client.get(
+			reverse('download_marks_import_template', args=[self.exam.pk]),
+			{'subject': self.subject.pk},
+		)
 		self.assertEqual(response.status_code, 200)
 		self.assertIn('spreadsheetml.sheet', response['Content-Type'])
 		import io
 		workbook = load_workbook(io.BytesIO(response.content), read_only=True)
-		sheet = workbook['Marks']
+		self.assertEqual(workbook.sheetnames[0], '9SC Bangla')
+		sheet = workbook['9SC Bangla']
 		rows = list(sheet.iter_rows(values_only=True))
-		self.assertEqual(rows[0], ('Student ID', 'Subject Code', 'Marks'))
-		self.assertEqual(rows[1], ('T001', 'BNG', None))
-		self.assertIn('Subjects', workbook.sheetnames)
+		self.assertEqual(rows[0], ('Roll', 'ID', 'Name', 'Marks'))
+		self.assertEqual(rows[1], (1, 'T001', 'Template Kid', None))
+		self.assertIn('How to fill', workbook.sheetnames)
 
 
 class ExamNamingAndLayoutTests(TestCase):
