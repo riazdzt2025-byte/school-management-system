@@ -21,6 +21,7 @@
         </thead>
         <tbody>
             {% for sr in result.subject_results %}
+            {% if sr.not_applicable %}{% else %}
             <tr{% if not sr.passed %} class="table-danger"{% endif %}>
                 <td>{{ sr.subject.name }}</td>
                 <td>{{ sr.full }}</td>
@@ -39,12 +40,13 @@
                 <td>{{ sr.grade }}</td>
                 <td>{{ sr.point|default:'&mdash;' }}</td>
             </tr>
+            {% endif %}
             {% endfor %}
             <tr class="summary">
                 <td>Total</td>
                 <td>{{ result.total_full }}</td>
                 <td>{{ result.total_obtained }}</td>
-                <td>{{ result.percentage }}%</td>
+                <td>{% if result.status == 'Pass' %}{{ result.percentage }}%{% else %}&mdash; (not counted){% endif %}</td>
                 <td>{{ result.grade }}</td>
                 <td>{{ result.gpa }}</td>
             </tr>
@@ -52,11 +54,14 @@
     </table>
     <p>
         <strong>Status:</strong> {{ result.status }} &nbsp;
-        <strong>Position:</strong> {{ result.position|default:'-' }}
+        <strong>Position:</strong> {{ result.position|default:'—' }}
         {% if result.absent_subject_count %}&nbsp; <strong>Absent subjects:</strong> {{ result.absent_subject_count }}{% endif %}
     </p>
     <p class="text-muted small">A subject left blank shows as &mdash; rather than 0, but it is still graded F and
-    counted as 0 out of its Full Marks &mdash; a candidate who did not sit a subject has not passed it.</p>
+    counted as 0 out of its Full Marks &mdash; a candidate who did not sit a subject has not passed it.
+    A result is Pass only when every subject is passed individually; a failed result gets no percentage and no position.
+    Religion papers follow the student's religion (Hindu students sit Hindu Religion &amp; Moral Education,
+    everyone else Islam &amp; Moral Education), so the other religion subject is not shown or counted here.</p>
     <a href="{% url 'result_card' exam.pk result.student.pk %}" class="btn btn-navy">Print Result Card</a>
     <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-outline-navy">Back</a>
 </div>

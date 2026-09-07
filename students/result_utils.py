@@ -61,6 +61,10 @@ def get_exam_subjects(exam, group=None):
     the exam nor the caller specifies a group, every group's subjects for that
     class are returned.
 
+    The class filter is zero-padding tolerant ('9' matches '09') for the same
+    reason as :func:`get_exam_students` — requirements and exams were written
+    by different screens over the years.
+
     Returns (subjects_queryset, is_filtered).
     """
     from .models import Subject, SubjectRequirement
@@ -70,7 +74,7 @@ def get_exam_subjects(exam, group=None):
     if exam.institution_id:
         requirements = SubjectRequirement.objects.filter(
             institution_id=exam.institution_id,
-            admission_class=str(exam.admission_class),
+            admission_class__in=class_filter_variants(exam.admission_class),
         )
         if effective_group:
             # Group-neutral subjects (Bangla, English...) apply to every group.
@@ -82,6 +86,103 @@ def get_exam_subjects(exam, group=None):
     return Subject.objects.all().order_by('name'), False
 
 
+def religion_subject_map(exam, subjects):
+    """{subject_pk: religion} for the religion papers among ``subjects``.
+
+    A religion paper is a CONDITIONAL SubjectRequirement whose
+    condition_religion is set (that is how Auto-populate creates Islam /
+    Hindu), or — as a fallback — a subject in the RELIGION category whose name
+    says which religion it is. Non-religion subjects are simply not in the map.
+    """
+    from .models import SubjectRequirement, parse_religion_label
+
+    subjects = [subject for subject in subjects if subject is not None]
+    if not subjects:
+        return {}
+
+    religion_by_pk = {}
+    requirements = SubjectRequirement.objects.filter(
+        institution_id=exam.institution_id,
+        admission_class__in=class_filter_variants(exam.admission_class),
+        requirement_type='CONDITIONAL',
+        subject_id__in=[subject.pk for subject in subjects],
+    ).exclude(condition_religion='')
+    for requirement in requirements:
+        label = parse_religion_label(requirement.condition_religion)
+        if label:
+            religion_by_pk[requirement.subject_id] = label
+
+    for subject in subjects:
+        if subject.pk not in religion_by_pk and subject.category == 'RELIGION':
+            label = parse_religion_label(subject.name)
+            if label:
+                religion_by_pk[subject.pk] = label
+    return religion_by_pk
+
+
+def religion_paper_for(student, religion_by_pk):
+    """The one religion paper this student sits, or ``None`` when the class has
+    no religion paper assigned at all.
+
+    Hindu students sit Hindu Religion & Moral Education; every other student
+    (Islam, blank or any legacy value) sits Islam & Moral Education — and when
+    the class does not have the student's own paper assigned, Islam is the
+    default paper. A paper is never forced on a student of another religion.
+    """
+    from .models import student_religion
+
+    if not religion_by_pk:
+        return None
+    wanted = student_religion(student.religion)
+    for pk, label in religion_by_pk.items():
+        if label == wanted:
+            return pk
+    return next((pk for pk, label in religion_by_pk.items() if label == 'Islam'), None)
+
+
+def applicable_religion_papers(exam, subjects, students):
+    """Split religion papers per student.
+
+    Returns (kept_subjects, paper_by_student_pk, religion_by_pk):
+
+    * ``kept_subjects`` — ``subjects`` minus religion papers that none of these
+      students sit (e.g. Christian / Buddhist papers in a school that has no
+      such students, or Hindu when the class has no Hindu student);
+    * ``paper_by_student_pk`` — the religion paper each student actually sits;
+    * ``religion_by_pk`` — every religion paper that was in ``subjects``.
+    """
+    religion_by_pk = religion_subject_map(exam, subjects)
+    if not religion_by_pk:
+        return list(subjects), {}, {}
+
+    paper_by_student = {}
+    used = set()
+    for student in students:
+        pk = religion_paper_for(student, religion_by_pk)
+        paper_by_student[student.pk] = pk
+        if pk is not None:
+            used.add(pk)
+    kept = [
+        subject for subject in subjects
+        if subject.pk not in religion_by_pk or subject.pk in used
+    ]
+    return kept, paper_by_student, religion_by_pk
+
+
+def get_exam_subjects_for_students(exam, students, group=None):
+    """``get_exam_subjects`` narrowed to the papers these students sit.
+
+    Marks entry, Excel import and their templates must not offer religion
+    papers no student in the exam sits (Christian / Buddhist papers in a school
+    that has none), so a teacher never sees a subject they cannot use. Returns
+    (subjects_list, is_filtered) like :func:`get_exam_subjects`.
+    """
+    subjects, is_filtered = get_exam_subjects(exam, group=group)
+    subjects = list(subjects)
+    kept, _paper_by_student, _religion_by_pk = applicable_religion_papers(exam, subjects, students)
+    return kept, is_filtered
+
+
 def get_exam_group_choices(exam):
     """Groups configured for this exam's institution + class, for the picker."""
     from .models import Student, SubjectRequirement
@@ -91,7 +192,7 @@ def get_exam_group_choices(exam):
     codes = set(
         SubjectRequirement.objects.filter(
             institution_id=exam.institution_id,
-            admission_class=str(exam.admission_class),
+            admission_class__in=class_filter_variants(exam.admission_class),
         ).exclude(group='').values_list('group', flat=True).distinct()
     )
     return [(code, label) for code, label in Student.GROUP_CHOICES if code in codes]
@@ -103,17 +204,25 @@ def get_subject_marks(exam, subject):
     specific SubjectMarkSetting if one exists, otherwise the subject's own
     global defaults. Both expose the same interface (see ``MarksConfigMixin``):
     full_marks, the part columns, pass_marks, parts.
+
+    The setting's class is matched zero-padding tolerant ('9' = '09'), with the
+    exam's own spelling preferred, so a setting saved under either form is
+    found and the same one wins every time.
     """
     from .models import SubjectMarkSetting
 
-    setting = SubjectMarkSetting.objects.filter(
-        institution=exam.institution,
-        admission_class=exam.admission_class,
-        subject=subject,
-        exam_type=exam.exam_type,
-    ).first()
+    exam_class = str(exam.admission_class)
+    for cls in [exam_class] + [v for v in class_filter_variants(exam_class) if v != exam_class]:
+        setting = SubjectMarkSetting.objects.filter(
+            institution=exam.institution,
+            admission_class=cls,
+            subject=subject,
+            exam_type=exam.exam_type,
+        ).first()
+        if setting:
+            return setting
 
-    return setting if setting else subject
+    return subject
 
 
 def get_grade(percentage):
@@ -250,12 +359,24 @@ def build_exam_results(exam):
     Returns (subjects, results). Only the subjects assigned to the exam's class
     and group are printed, and only the subjects a student actually sat count
     towards their total and GPA.
+
+    A result is only a Pass when the student passes every subject they sat
+    individually; failing (or not sitting) one subject makes the whole result
+    Fail with GPA 0.00, and the total-mark percentage and the class position
+    are not counted for a failed result.
+
+    Religion papers are per student: a Hindu student sits Hindu Religion &
+    Moral Education while every other student sits Islam & Moral Education.
+    Each student is graded on their own paper; the other religion column shows
+    a dash and is never counted. Papers that nobody in the class sits are not
+    printed at all.
     """
     from .models import ExamMark
 
     students = get_exam_students(exam)
     subjects, is_filtered = get_exam_subjects(exam)
     subjects = list(subjects) if is_filtered else _subjects_with_marks(exam)
+    subjects, religion_paper, religion_by_pk = applicable_religion_papers(exam, subjects, students)
 
     marks = {}
     for mark in ExamMark.objects.filter(exam=exam).select_related('student', 'subject'):
@@ -269,8 +390,20 @@ def build_exam_results(exam):
         total_full = Decimal('0')
         gpa_points = []
         has_fail = False
+        my_paper = religion_paper.get(student.pk)
 
         for subject in subjects:
+            if subject.pk in religion_by_pk and subject.pk != my_paper:
+                # Another student's religion paper: printed as a plain dash,
+                # never counted and never a fail for this student.
+                subject_results.append({
+                    'subject': subject, 'not_applicable': True, 'absent': True,
+                    'obtained': None, 'full': None, 'percentage': None,
+                    'grade': ABSENT, 'point': None, 'passed': False,
+                    'failed_parts': [], 'parts': [], 'pass_marks': None,
+                })
+                continue
+
             marks_config = get_subject_marks(exam, subject)
             result = compute_subject_result(student_marks.get(subject.pk), marks_config)
             result['subject'] = subject
@@ -292,8 +425,12 @@ def build_exam_results(exam):
             # absent candidate is an attendance problem, not a graded result,
             # and must not appear in the ranking with a fabricated 0.00 GPA.
             overall_gpa, overall_grade, status = None, ABSENT, 'No Marks'
+            overall_percentage = None
         elif has_fail:
+            # One failed subject means the whole result is Fail: the total
+            # percentage is not counted and no position is awarded.
             overall_gpa, overall_grade, status = Decimal('0.00'), 'F', 'Fail'
+            overall_percentage = None
         else:
             overall_gpa = round(sum(gpa_points) / len(gpa_points), 2) if gpa_points else Decimal('0.00')
             overall_grade, _ = get_grade(float(overall_percentage))
@@ -302,19 +439,23 @@ def build_exam_results(exam):
         results.append({
             'student': student, 'subject_results': subject_results,
             'total_obtained': total_obtained, 'total_full': total_full,
-            'percentage': round(float(overall_percentage), 2), 'gpa': overall_gpa,
+            'percentage': round(float(overall_percentage), 2) if overall_percentage is not None else None,
+            'gpa': overall_gpa,
             'grade': overall_grade, 'status': status,
             # "has marks" means there is something to print: a student whose only
             # rows sit in subjects outside this exam still counts as No Marks.
             'has_marks': bool(attempted),
-            'absent_subject_count': sum(1 for r in subject_results if r['absent']),
+            'absent_subject_count': sum(
+                1 for r in subject_results if r['absent'] and not r.get('not_applicable')
+            ),
             'position': None,
         })
 
-    # Only students with a real GPA are placed: a No Marks/Absent student has
-    # gpa None and would blow up the sort.
+    # Only a student who passed every subject individually is placed — the
+    # position is part of the result, so a failed result is not counted here
+    # any more than the percentage is. 'No Marks' students stay unranked too.
     ranked = sorted(
-        (result for result in results if result['gpa'] is not None),
+        (result for result in results if result['status'] == 'Pass'),
         key=lambda result: (-result['gpa'], -result['total_obtained'])
     )
     previous_key = None
@@ -322,7 +463,7 @@ def build_exam_results(exam):
         key = (result['gpa'], result['total_obtained'])
         result['position'] = ranked[index - 1]['position'] if index and key == previous_key else index + 1
         previous_key = key
-    return subjects, ranked + [result for result in results if result['gpa'] is None]
+    return subjects, ranked + [result for result in results if result['position'] is None]
 
 
 def _subjects_with_marks(exam):

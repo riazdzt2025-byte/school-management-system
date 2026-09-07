@@ -30,7 +30,7 @@
                     <td>{{ r.student.student_id }}</td>
                     <td>{{ r.student.name }}</td>
                     <td>{% if r.has_marks %}{{ r.total_obtained }} / {{ r.total_full }}{% else %}-{% endif %}</td>
-                    <td>{% if r.has_marks %}{{ r.percentage }}%{% else %}-{% endif %}</td>
+                    <td>{% if r.status == 'Pass' %}{{ r.percentage }}%{% else %}&mdash;{% endif %}</td>
                     <td>{{ r.gpa|default:'-' }}</td>
                     <td>{{ r.grade }}</td>
                     <td>

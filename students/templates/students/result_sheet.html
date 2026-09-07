@@ -8,6 +8,7 @@
     .table-card table { min-width: 900px; }
     td.absent-mark { color: #6c757d; background: #f1f3f7; }
     td.failed-mark { color: #b02a37; font-weight: 600; }
+    td.not-applicable-mark { color: #adb5bd; background: #f8f9fa; }
 {% endblock %}
 
 {% block content %}
@@ -51,10 +52,14 @@
                     <td>{{ r.student.roll_no }}</td>
                     <td>{{ r.student.name }}</td>
                     {% for sr in r.subject_results %}
+                    {% if sr.not_applicable %}
+                    <td class="not-applicable-mark" title="Not {{ r.student.name }}'s religion paper — religion papers follow the student's religion, so this column is never counted for them">&ndash;</td>
+                    {% else %}
                     <td class="{% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
                         title="{% if sr.absent %}no mark entered - counted as F{% else %}Pass mark {{ sr.pass_marks }}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
                         {% if sr.absent %}&mdash;{% else %}{{ sr.obtained }}{% endif %}{% if not sr.passed %} *{% endif %}
                     </td>
+                    {% endif %}
                     {% endfor %}
                     <td>{% if r.has_marks %}{{ r.total_obtained }}{% else %}-{% endif %}</td>
                     <td>{{ r.gpa|default:'-' }}</td>
@@ -75,5 +80,10 @@
     result becomes Fail with GPA 0.00 (set <code>EXAM_ABSENT_SUBJECT_FAILS=False</code> to
     leave such subjects out of the result instead).
     * = the subject did not pass (hover a cell for the part breakdown and the pass mark).
+    A lighter dash in a religion column = not that student's religion paper (Hindu students
+    sit Hindu Religion &amp; Moral Education, everyone else Islam &amp; Moral Education) —
+    it is never counted for them.
+    A result is <strong>Pass</strong> only when every subject is passed individually;
+    otherwise the percentage and the position are not counted.
 </p>
 {% endblock %}

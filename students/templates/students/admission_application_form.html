@@ -5,24 +5,182 @@
 {% block print_subtitle %}New Admission Application{% endblock %}
 
 {% block extra_style %}
-.form-card { max-width: 700px; background: #fff; border-radius: 14px; box-shadow: 0 4px 14px rgba(15,45,82,0.06); padding: 32px; }
-.form-card p { margin-bottom: 16px; }
-.form-card label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--navy); }
-.form-card input, .form-card select, .form-card textarea { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 8px; }
-.back-link { display: inline-block; margin-top: 16px; }
+<style>
+    .admission-form-card {
+        background: #fff; border-radius: 18px; overflow: hidden;
+        box-shadow: 0 10px 30px rgba(15,45,82,0.10);
+        max-width: 980px; border: 1px solid rgba(15,45,82,0.06);
+    }
+    .admission-form-hero {
+        background: linear-gradient(120deg, var(--navy) 0%, #17406e 70%, #1d5189 100%);
+        color: #fff; padding: 26px 34px; position: relative; overflow: hidden;
+    }
+    .admission-form-hero::after {
+        content: ''; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px;
+        border-radius: 50%; background: rgba(201,162,39,0.16);
+    }
+    .admission-form-hero::before {
+        content: ''; position: absolute; right: 60px; bottom: -80px; width: 160px; height: 160px;
+        border-radius: 50%; background: rgba(255,255,255,0.06);
+    }
+    .admission-form-hero h2 {
+        font-family: 'Fraunces', serif; margin: 0; font-size: 1.45rem; position: relative; z-index: 1;
+    }
+    .admission-form-hero p { margin: 4px 0 0; opacity: .85; font-size: .92rem; position: relative; z-index: 1; }
+    .admission-form-body { padding: 30px 34px 34px; }
+
+    .section-title {
+        display: flex; align-items: center; gap: 10px;
+        font-family: 'Fraunces', serif; color: var(--navy); font-size: 1.05rem;
+        margin: 26px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--gold);
+    }
+    .section-title:first-child { margin-top: 0; }
+    .section-title .section-icon {
+        width: 34px; height: 34px; border-radius: 10px; background: rgba(15,45,82,0.07);
+        display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; color: var(--navy);
+        flex-shrink: 0;
+    }
+    .form-label { font-weight: 600; color: var(--navy); font-size: .88rem; margin-bottom: 5px; }
+    .form-control, .form-select { border-radius: 9px; border: 1px solid #d7dce3; padding: 9px 12px; font-size: .93rem; }
+    .form-control:focus, .form-select:focus { border-color: var(--navy); box-shadow: 0 0 0 .2rem rgba(15,45,82,.12); }
+    .form-actions {
+        display: flex; gap: 10px; flex-wrap: wrap; margin-top: 28px; padding-top: 20px;
+        border-top: 1px solid #edf0f4;
+    }
+    .btn-navy { padding: 10px 22px; font-weight: 600; }
+    .required-star { color: #dc3545; }
+    @media (max-width: 768px) {
+        .admission-form-body { padding: 20px 18px 24px; }
+        .admission-form-hero { padding: 20px 18px; }
+    }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="form-card">
-    <h1>New Admission Application</h1>
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn btn-navy">Submit Application</button>
-    </form>
-    <a href="{% url 'admission_application_list' %}" class="back-link">← Application list</a>
+<div class="page-header d-print-none">
+    <div>
+        <h1>New Admission Application</h1>
+        <div class="subtitle">Applications go to Office review, then Accounts for the payment step</div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+{% endif %}
+
+<div class="admission-form-card">
+    <div class="admission-form-hero">
+        <h2><i class="bi bi-file-earmark-person-fill me-2"></i>Admission Application</h2>
+        <p>Fill in the applicant's details — an application number is generated automatically</p>
+    </div>
+
+    <div class="admission-form-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="section-title"><span class="section-icon"><i class="bi bi-person-fill"></i></span>Applicant Information</div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="id_institution">Institution <span class="required-star">*</span></label>
+                    {{ form.institution }}
+                    {% for error in form.institution.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_applicant_name">Applicant Name <span class="required-star">*</span></label>
+                    {{ form.applicant_name }}
+                    {% for error in form.applicant_name.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_date_of_birth">Date of Birth</label>
+                    {{ form.date_of_birth }}
+                    {% for error in form.date_of_birth.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_gender">Gender</label>
+                    {{ form.gender }}
+                    {% for error in form.gender.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="id_religion">Religion</label>
+                    {{ form.religion }}
+                    <div class="form-text small">Hindu students sit Hindu Religion &amp; Moral Education; everyone else sits Islam &amp; Moral Education.</div>
+                    {% for error in form.religion.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_applicant_contact_no">Contact No. <span class="required-star">*</span></label>
+                    {{ form.applicant_contact_no }}
+                    {% for error in form.applicant_contact_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_applicant_address">Address</label>
+                    {{ form.applicant_address }}
+                    {% for error in form.applicant_address.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <div class="section-title"><span class="section-icon"><i class="bi bi-people-fill"></i></span>Guardian Information</div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="id_guardian_name">Guardian Name <span class="required-star">*</span></label>
+                    {{ form.guardian_name }}
+                    {% for error in form.guardian_name.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_guardian_relation">Relation</label>
+                    {{ form.guardian_relation }}
+                    {% for error in form.guardian_relation.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_guardian_contact_no">Guardian Contact No. <span class="required-star">*</span></label>
+                    {{ form.guardian_contact_no }}
+                    {% for error in form.guardian_contact_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_guardian_address">Guardian Address</label>
+                    {{ form.guardian_address }}
+                    {% for error in form.guardian_address.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <div class="section-title"><span class="section-icon"><i class="bi bi-mortarboard-fill"></i></span>Admission Details</div>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label" for="id_requested_class">Class <span class="required-star">*</span></label>
+                    {{ form.requested_class }}
+                    {% for error in form.requested_class.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-3 group-field" id="group-field-wrapper">
+                    <label class="form-label" for="id_requested_group">Group{% if form.requested_group.field.required %} <span class="required-star">*</span>{% endif %}</label>
+                    {{ form.requested_group }}
+                    <div class="form-text text-muted small" id="group-field-note" style="display:none;"></div>
+                    {% for error in form.requested_group.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="id_requested_section">Section</label>
+                    {{ form.requested_section }}
+                    {% for error in form.requested_section.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="id_session">Session <span class="required-star">*</span></label>
+                    {{ form.session }}
+                    {% for error in form.session.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-navy"><i class="bi bi-send-fill me-1"></i>Submit Application</button>
+                <a href="{% url 'admission_application_list' %}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}
+
 {% block extra_script %}
 <script>
     // Institution -> Class list comes from each institution's stored class list.

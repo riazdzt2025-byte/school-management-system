@@ -22,6 +22,42 @@ GROUPED_CLASS_LABELS = ['9', '10', '11', '12']
 # but are not offered by the admission screens.
 GENERAL_GROUP_CODES = ('SCI', 'BUS', 'HUM')
 
+# ---- Religion ------------------------------------------------------------
+# The school's students are Muslim or Hindu — there are no Christian, Buddhist
+# or other-religion students. The single religion paper a student sits
+# follows from that: Hindu students sit Hindu Religion & Moral Education and
+# every other student (including a blank legacy value) sits Islam & Moral
+# Education.
+RELIGION_CHOICES = [
+    ('Islam', 'Islam'),
+    ('Hindu', 'Hindu'),
+]
+
+
+def parse_religion_label(value):
+    """Normalise a free-text religion ('Muslim', 'হিন্দু', 'ISLAM', …) to one
+    of 'Islam' / 'Hindu' / 'Christian' / 'Buddhist'. Returns '' when the value
+    says nothing recognisable, so callers can decide their own default."""
+    text = str(value or '').strip().lower()
+    if not text:
+        return ''
+    if 'hindu' in text or 'হিন্দু' in text:
+        return 'Hindu'
+    if 'christ' in text or 'খ্রিষ্ট' in text or 'খ্রিস্ট' in text:
+        return 'Christian'
+    if 'buddh' in text or 'বৌদ্ধ' in text:
+        return 'Buddhist'
+    if 'islam' in text or 'muslim' in text or 'মুসলিম' in text or 'ইসলাম' in text:
+        return 'Islam'
+    return ''
+
+
+def student_religion(value):
+    """The religion paper this student sits: 'Hindu' for Hindu students and
+    'Islam' for everyone else — the school has no Christian/Buddhist students,
+    and a blank or unrecognised legacy value means the default, Islam."""
+    return 'Hindu' if parse_religion_label(value) == 'Hindu' else 'Islam'
+
 
 def normalize_class_label(value):
     """'09' and '9' are the same class — ``admission_class`` is a free-text
