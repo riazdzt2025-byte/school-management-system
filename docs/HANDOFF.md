@@ -191,3 +191,10 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 3. After D-6, complete P0-11 (single permission source).
 4. After D-7, complete P1-11 (media persistence).
 5. Then proceed to P0-1 (BUG-1 fix), P0-2…P0-5 (isolation + validation), P0-6 (regression tests), P0-7 (live confirm), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code).
+
+---
+
+## Merge confirmation — 2026-09-08
+- PR #9 merged to `main` (commit `10258cb`) at 18:30:22Z with owner's explicit approval (`merge করো`).
+- Remote branch `arena/01a08241-school-management-system` remains; local `main` fast-forwarded to `10258cb`.
+- No destructive operations performed; no SSC restoration; only verified security/settings/uploads/docs changes integrated.

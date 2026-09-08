@@ -178,3 +178,9 @@ The following **cannot be verified from this repository** and are marked unknown
 - No bulk cleanup, no `merge_duplicate_subjects --apply`, no purge.
 - No live notification or payment trigger.
 - No secret or password written to chat / logs / docs beyond the existing rotated fallback already documented in `settings.py` comments.
+
+---
+
+## 8. Merge record (2026-09-08)
+- PR #9 (`arena/01a08241-school-management-system` → `main`) merged at `10258cb` with owner approval.
+- Changes: production settings block, upload validation, `.gitignore`, regression tests, docs updates (no migrations, no feature changes, no SSC restoration).
