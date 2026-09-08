@@ -2231,6 +2231,18 @@ class AdmissionSubjectScopeTests(TestCase):
 		):
 			StudentSubjectChoice.objects.create(student=student, requirement=optional_requirement)
 
+	def test_unselected_optional_is_not_offered_on_any_exam_screen(self):
+		from .models import SubjectRequirement
+		higher_math = Subject.objects.create(code='ASH', name='Higher Math', full_marks=100)
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', subject=higher_math,
+			requirement_type='OPTIONAL', optional_set_key='elective',
+		)
+		from .result_utils import get_exam_subjects_for_students, get_exam_students
+		students = list(get_exam_students(self.exam))
+		subjects, _is_filtered = get_exam_subjects_for_students(self.exam, students)
+		self.assertNotIn(higher_math, subjects)
+
 	def test_subject_scope_is_the_union_of_admission_assignments(self):
 		from .result_utils import get_exam_subjects_for_students, get_exam_students
 		students = list(get_exam_students(self.exam))

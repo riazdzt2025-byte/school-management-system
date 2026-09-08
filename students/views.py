@@ -1861,26 +1861,17 @@ def mark_evaluation_settings(request):
             institution_id=institution_id,
             admission_class__in=class_variants,
         )
-        subjects = Subject.objects.filter(
-            pk__in=requirement_scope.values('subject_id'),
-        ).distinct().order_by('name')
-        current_student_ids = Student.objects.filter(
+        from types import SimpleNamespace
+        exam_like = SimpleNamespace(
             institution_id=institution_id,
-            admission_class__in=class_variants,
-            is_archived=False,
-        ).values('pk')
-        chosen_scope = StudentSubjectChoice.objects.filter(
-            student_id__in=current_student_ids,
-            requirement_id__in=requirement_scope.values('pk'),
+            admission_class=admission_class,
+            group='',
+            section='',
         )
-        if chosen_scope.exists():
-            auto_subject_ids = requirement_scope.filter(
-                requirement_type__in=('MANDATORY', 'CONDITIONAL'),
-            ).values('subject_id')
-            chosen_subject_ids = chosen_scope.values('requirement__subject_id')
-            subjects = subjects.filter(
-                Q(pk__in=auto_subject_ids) | Q(pk__in=chosen_subject_ids),
-            )
+        current_students = list(get_exam_students(exam_like))
+        subjects, _is_filtered = get_exam_subjects_for_students(
+            exam_like, current_students,
+        )
 
         existing = {
             s.subject_id: s
@@ -2188,6 +2179,24 @@ def subject_requirements_json(request):
         return JsonResponse({'mandatory': [], 'conditional': [], 'optional_groups': {}})
 
     institution = get_object_or_404(Institution, pk=institution_id)
+    if request.GET.get('assigned_only'):
+        from types import SimpleNamespace
+        exam_like = SimpleNamespace(
+            institution_id=institution.pk,
+            admission_class=admission_class,
+            group=group or '',
+            section='',
+        )
+        students = list(get_exam_students(exam_like, group=group or None))
+        subjects, _is_filtered = get_exam_subjects_for_students(
+            exam_like, students, group=group or None,
+        )
+        return JsonResponse({
+            'subjects': [
+                {'id': subject.pk, 'code': subject.code, 'name': subject.name}
+                for subject in subjects
+            ],
+        })
     data = get_applicable_subjects(institution, admission_class, group, religion)
     return JsonResponse(data)
 

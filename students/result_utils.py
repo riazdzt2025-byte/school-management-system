@@ -227,10 +227,6 @@ def get_student_subject_ids(exam, students, subjects=None, group=None):
         'subject_id', 'group', 'requirement_type', 'condition_religion',
         'subject__category', 'subject__name',
     ))
-    requirements_by_group = defaultdict(set)
-    for row in requirement_rows:
-        requirements_by_group[row['group'] or ''].add(row['subject_id'])
-
     choice_subjects = defaultdict(set)
     choice_present = set()
     choice_rows = StudentSubjectChoice.objects.filter(
@@ -258,8 +254,6 @@ def get_student_subject_ids(exam, students, subjects=None, group=None):
         student_group = effective_group or (student.group or '')
         wanted_religion = student_religion(student.religion)
         auto_subjects = set()
-        fallback = set(requirements_by_group.get('', set()))
-        fallback.update(requirements_by_group.get(student_group, set()))
 
         for row in requirement_rows:
             requirement_group = row['group'] or ''
@@ -277,15 +271,14 @@ def get_student_subject_ids(exam, students, subjects=None, group=None):
             elif row['requirement_type'] == 'CONDITIONAL' and label == wanted_religion:
                 auto_subjects.add(row['subject_id'])
 
-        # The admission form stores selected optional choices and may also have
-        # stored auto-assigned rows. Derived auto subjects are always included,
-        # while an optional subject is included only when the student selected
-        # it. With no choice rows at all, retain the legacy class requirement
-        # fallback (which historically exposed every class subject).
+        # Mandatory and the student's own religion paper come from the class
+        # assignment table. Optional papers only count when the student (or
+        # office edit) actually selected them at admission. Never fall back to
+        # every optional on the class catalogue — that is why unused electives
+        # and other-group papers used to appear on marks/result screens.
+        assigned[student.pk] = set(auto_subjects)
         if student.pk in choice_present:
-            assigned[student.pk] = auto_subjects | choice_subjects[student.pk]
-        else:
-            assigned[student.pk] = fallback | auto_subjects
+            assigned[student.pk] |= choice_subjects[student.pk]
     return assigned
 
 
