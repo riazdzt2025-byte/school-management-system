@@ -78,6 +78,7 @@
     var classSelect = document.getElementById('id_admission_class');
     var groupWrapper = document.getElementById('group-field-wrapper');
     var groupSelect = document.getElementById('id_group');
+    var examTypeSelect = document.getElementById('id_exam_type');
     var subjectSelect = document.getElementById('id_subject');
     var groupClasses = ['9', '10', '11', '12'];
 
@@ -115,6 +116,7 @@
         subjectSelect.innerHTML = '<option value="">-- Loading... --</option>';
         var url = '{% url "subject_requirements_json" %}?assigned_only=1&institution=' + encodeURIComponent(instId) +
                   '&admission_class=' + encodeURIComponent(cls) +
+                  '&exam_type=' + encodeURIComponent(examTypeSelect.value || '') +
                   '&group=' + encodeURIComponent(groupSelect.value || '');
         fetch(url).then(function(r) { return r.json(); }).then(function(data) {
             var all = data.subjects || [];
@@ -139,6 +141,7 @@
     institutionSelect.addEventListener('change', populateClasses);
     classSelect.addEventListener('change', toggleGroupField);
     groupSelect.addEventListener('change', loadSubjects);
+    examTypeSelect.addEventListener('change', loadSubjects);
 })();
 </script>
 {% endblock %}

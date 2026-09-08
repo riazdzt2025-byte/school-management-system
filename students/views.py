@@ -1937,6 +1937,7 @@ def mark_evaluation_settings(request):
                     subject=subject,
                     exam_type=exam_type,
                     defaults={
+                        'is_active': f'is_active_{subject.id}' in request.POST,
                         'full_marks': full_value,
                         'pass_percentage': pass_percentage,
                         'require_all_parts_pass': f'require_all_parts_pass_{subject.id}' in request.POST,
@@ -1962,6 +1963,7 @@ def mark_evaluation_settings(request):
             config = setting if setting else subject
             subjects_with_settings.append({
                 'subject': subject,
+                'is_active': setting.is_active if setting else True,
                 'full_marks': config.full_marks,
                 'cq_marks': config.cq_marks,
                 'mcq_marks': config.mcq_marks,
@@ -2205,6 +2207,7 @@ def subject_requirements_json(request):
             admission_class=admission_class,
             group=group or '',
             section='',
+            exam_type=request.GET.get('exam_type', '') or '',
         )
         students = list(get_exam_students(exam_like, group=group or None))
         subjects, _is_filtered = get_exam_subjects_for_students(

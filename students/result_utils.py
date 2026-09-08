@@ -92,11 +92,53 @@ def get_exam_subjects(exam, group=None):
     subject_ids = list(requirements.values_list('subject_id', flat=True).distinct())
     if not subject_ids:
         return [], False
+    subject_ids = list(active_exam_subject_ids(exam, subject_ids))
+    if not subject_ids:
+        return [], True
     # The printed register follows the examination subject serial/code
     # (101, 102, 107, 108, 136, 150 in the school's result format), not
     # alphabetical subject names. This keeps marks entry, imports and the
     # result sheet in the same predictable order.
     return list(Subject.objects.filter(pk__in=subject_ids).order_by('code', 'name')), True
+
+
+def active_exam_subject_ids(exam, subject_ids):
+    """Subject ids still enabled in Mark Evaluation for this exam type.
+
+    Mark Evaluation has an Active/Count checkbox per Institution + Class +
+    Subject + Exam Type. A missing row means the subject remains active so old
+    data behaves exactly as before; only an explicit unchecked setting disables
+    a subject for marks entry/import/result calculation.
+    """
+    from .models import SubjectMarkSetting
+
+    subject_ids = list(subject_ids)
+    if not subject_ids:
+        return set()
+    exam_type = getattr(exam, 'exam_type', '') or ''
+    institution_id = getattr(exam, 'institution_id', None)
+    admission_class = getattr(exam, 'admission_class', '')
+    if not exam_type or not institution_id or not admission_class:
+        return set(subject_ids)
+
+    preferred_class = str(admission_class).strip()
+    class_variants = class_filter_variants(preferred_class)
+    class_rank = {preferred_class: 0}
+    for value in class_variants:
+        class_rank.setdefault(value, len(class_rank))
+
+    settings = SubjectMarkSetting.objects.filter(
+        institution_id=institution_id,
+        admission_class__in=class_variants,
+        subject_id__in=subject_ids,
+        exam_type=exam_type,
+    ).values('subject_id', 'admission_class', 'is_active')
+
+    active_by_subject = {}
+    for row in sorted(settings, key=lambda item: class_rank.get(item['admission_class'], 99)):
+        active_by_subject.setdefault(row['subject_id'], row['is_active'])
+
+    return {subject_id for subject_id in subject_ids if active_by_subject.get(subject_id, True)}
 
 
 def no_subjects_assigned_message(exam):

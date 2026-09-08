@@ -2690,3 +2690,62 @@ class ResultSheetSubjectAssignmentConnectionTests(TestCase):
 			subject_assignments_url(exam),
 			f"{reverse('subject_requirement_list')}?institution={self.institution.pk}&admission_class=9&group=BUS",
 		)
+
+
+class MarkEvaluationActiveSubjectTests(TestCase):
+	def setUp(self):
+		from .models import SubjectRequirement, SubjectMarkSetting
+		self.institution = Institution.objects.create(name='Active Subject School', classes='6')
+		self.user = get_user_model().objects.create_superuser(username='active-subject-admin', password='password')
+		self.client.force_login(self.user)
+		self.bangla = Subject.objects.create(code='BAN', name='Bangla', full_marks=100)
+		self.english = Subject.objects.create(code='ENG', name='English', full_marks=100)
+		for subject in (self.bangla, self.english):
+			SubjectRequirement.objects.create(
+				institution=self.institution, admission_class='6', subject=subject,
+				requirement_type='MANDATORY',
+			)
+		self.student = Student.objects.create(
+			institution=self.institution, student_id='A001', name='Active Kid',
+			admission_class='6', section='A', roll_no=1, admission_year=2026,
+		)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='6', session='2026', is_published=True,
+		)
+		SubjectMarkSetting.objects.create(
+			institution=self.institution, admission_class='6', subject=self.english,
+			exam_type='SECOND_TERM', full_marks=100, is_active=False,
+		)
+		ExamMark.objects.create(exam=self.exam, student=self.student, subject=self.bangla, marks_obtained=80)
+		ExamMark.objects.create(exam=self.exam, student=self.student, subject=self.english, marks_obtained=90)
+
+	def test_unchecked_subject_is_not_counted_in_result_sheet(self):
+		from .result_utils import build_exam_results
+		columns, results = build_exam_results(self.exam)
+		self.assertIn(self.bangla, columns)
+		self.assertNotIn(self.english, columns)
+		result = results[0]
+		self.assertEqual(result['total_full'], 100)
+		self.assertEqual(result['total_obtained'], 80)
+
+	def test_assigned_only_subject_api_hides_inactive_for_selected_exam_type(self):
+		response = self.client.get(reverse('subject_requirements_json'), {
+			'assigned_only': '1',
+			'institution': self.institution.pk,
+			'admission_class': '6',
+			'exam_type': 'SECOND_TERM',
+		})
+		self.assertEqual(response.status_code, 200)
+		names = [item['name'] for item in response.json()['subjects']]
+		self.assertEqual(names, ['Bangla'])
+
+	def test_mark_evaluation_page_still_shows_unchecked_subject_for_re_enable(self):
+		response = self.client.get(reverse('mark_evaluation_settings'), {
+			'institution': self.institution.pk,
+			'admission_class': '6',
+			'exam_type': 'SECOND_TERM',
+		})
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'English')
+		self.assertContains(response, f'name="is_active_{self.english.pk}"')

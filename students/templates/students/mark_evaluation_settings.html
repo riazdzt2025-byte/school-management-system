@@ -12,10 +12,10 @@
 <div class="table-card p-4">
     <div class="alert alert-info small mb-4">
         Select Institution, Class and Exam Type to configure Full Marks and the parts of each subject:
-        CQ, MCQ, Practical and Weekly Test. The pass mark is calculated from Pass % (40% by default),
-        and <strong>Each part must pass</strong> makes a single failed part fail the whole subject.
-        A blank part box means "this subject has no such part"; leave the whole row blank to fall back
-        to the subject's own defaults.
+        CQ, MCQ, Practical and Weekly Test. Keep the tick beside a subject to make that subject active;
+        unchecked subjects will not be offered for marks entry/import and will not be counted in result sheets
+        for this exam type. The pass mark is calculated from Pass % (40% by default), and
+        <strong>Each part must pass</strong> makes a single failed part fail the whole subject.
     </div>
 
     <form method="get" class="row g-3 mb-4">
@@ -57,6 +57,7 @@
                 <thead>
                     <tr>
                         <th>Subject</th>
+                        <th>Count</th>
                         <th>Full Marks</th>
                         <th>CQ</th>
                         <th>MCQ</th>
@@ -72,6 +73,12 @@
                     {% for row in subjects_with_settings %}
                     <tr>
                         <td>{{ row.subject.name }} <span class="text-muted small">({{ row.subject.code }})</span></td>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input subject-active-toggle"
+                                   name="is_active_{{ row.subject.id }}" value="1"
+                                   title="Tick থাকলে এই subject result-এ count হবে"
+                                   {% if row.is_active %}checked{% endif %}>
+                        </td>
                         <td>
                             <input type="number" min="1" class="form-control" style="width: 100px;"
                                    name="full_marks_{{ row.subject.id }}" value="{{ row.full_marks }}">
