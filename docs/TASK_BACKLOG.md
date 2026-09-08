@@ -202,3 +202,26 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | P0-9 | Documentation refresh | Needs P0-1…P0-8 done first for accurate roadmap |
 | P0-10 | Dead-code cleanup | Safe; can do independently |
 | P0-11 | Permission single source (`setup_groups` vs `permissions.py`) | Needs D-6 confirmation |
+
+---
+
+## Update — 2026-09-08 · Read / Export isolation session (this session)
+
+### Completed in this session (no feature change, no migration)
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P0-2 | List-level `?institution=` override (SEC-1, SEC-2) | **Done** | `student_list`, `employee_list`, `download_student_list`, `archived_students`, `class_section_summary` now resolve the GET param via `_resolve_requested_institution` (only allowed institutions honoured; scoped clerk falls back to session). |
+| P0-3 (read half) | Object-level pk isolation — *read/export/print/JSON* views (SEC-3) | **Done (read side)** | `_get_scoped_object_or_404` applied to student/employee detail & history, TC/certificate views, all result views, seat-plan views, exam edit/publish, marks entry/import/template, admission_application_detail. *Write* endpoints (employee/student edit/delete, `_application_transition`, promotion) intentionally left for a write-scope pass (see below). |
+| P0-6 (partial) | Isolation regression tests | **Done** | `students/test_institution_isolation.py` — 16 two-institution tests (list/export, pk 404s, JSON endpoint, session-less fallback, A↔B switch, cross-institution admin). |
+
+### Still open (this specific scope ended)
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P0-3 (write half) | pk-level *write* isolation (`edit_student`, `delete_student`, `discontinue_student`, `edit_employee`, `delete_employee`, `change_employee_status`, money/voucher/salary edit+delete, `_application_transition`, `restore_*`/`purge_*`, `toggle_publish_exam` save, `enter_marks` POST) | Write-scope, not read/export; deferred to keep this session's rule-2 scope |
+| P0-4 | Promotion institution-scoping (SEC-4) | Needs D-9 (query-only vs. `PromotionBatch` model column) |
+| P1-1 | Voucher institution isolation (SEC-5) | Needs D-3 + a migration (no institution FK) |
+| P0-1 | BUG-1 (`tc_print` NoReverseMatch → 500) | Different scope; a student-detail-with-TC page still 500s |
+| P0-5 | Server-side money validation | Not addressed here |
+| P0-11 | Permission single source (PERM-1) | Needs D-6 |

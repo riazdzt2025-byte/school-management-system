@@ -1,9 +1,9 @@
 # Project Status — School Management System
 
-_Last updated: 2026-09-08 (audit session `arena/01a08222-school-management-system`)_
-_Base commit: `91c14c5` (PR #7 merged — SSC registration / board-result removal)_
+_Last updated: 2026-09-08 (read/export isolation session `arena/01a08254-school-management-system`)_
+_Base commit: `10258cbb6c3b6a33551dff6ad7b6db6091af35c1` (on `main`; session branch `arena/01a08254-school-management-system`)_
 
-**Bengali TL;DR:** এই সেশনে সম্পূর্ণ code audit করা হয়েছে। ১৫৯টা test pass (Django 5.2.17 / Python 3.11.2), migrations synced। SSC removal পরিষ্কার — dangling reference নেই। কিন্তু একটা verified bug পাওয়া গেছে (student detail-এ TC থাকলে 500), আর multi-institution isolation-এ গুরুতর গ্যাপ আছে (`?institution=` GET param দিয়ে অন্য institution-এর data দেখা যায়, promotion সব institution-এ apply হয়)। বিস্তারিত নিচে।
+**Bengali TL;DR (এই সেশন — read/export isolation):** multi-institution read isolation-এর মূল ফাঁকগুলো বন্ধ করা হয়েছে—`?institution=` GET param আর pk-ভিত্তিক detail/result/seat-plan/TC/certificate view-গুলো এখন scoped clerk-এর জন্য শুধু নিজের institution-এ সীমিত; admin/staff (cross-institution) আগের মতোই সব দেখে। নতুন `students/test_institution_isolation.py`-তে ১৬টা দুই-institution isolation test যোগ হয়েছে। মোট **১৮০ test pass** (Django 5.2.17 / Python 3.11.2), migrations synced। FIFTH সম্পূর্ণ list/export/detail/json scope এখন enforced। বাকি: promotion (SEC-4), Voucher/no-institution (SEC-5), এবং write-transition পথ — শুধু schema/সিদ্ধান্ত-নির্ভর, এই সেশনে ইচ্ছাকৃতভাবে রাখা হয়নি (নিচে §8)। SSC Registration / SSC Result Summary **অপরিবর্তিত — restore করা হয়নি**।
 
 ---
 
@@ -178,3 +178,47 @@ The following **cannot be verified from this repository** and are marked unknown
 - No bulk cleanup, no `merge_duplicate_subjects --apply`, no purge.
 - No live notification or payment trigger.
 - No secret or password written to chat / logs / docs beyond the existing rotated fallback already documented in `settings.py` comments.
+
+---
+
+## 8. Multi-institution READ / EXPORT isolation — 2026-09-08 (this session)
+
+**Scope (session rule 2):** only read/export/print/JSON access scope. No migration, no data change, no feature addition. SSC Registration / SSC Result Summary NOT restored. General exams & curriculum intact.
+
+### 8.1 What changed (`students/views.py`)
+
+New helpers (used across list/detail/export/JSON views):
+
+- `_institutionally_scoped(user)` — a non-admin with ≥1 active `InstitutionAccess` row is scoped; admin/staff and users with no access row (test fallback) are unrestricted.
+- `_scoped_institution_ids(user)` — the user's active institution ids, or `None` when unrestricted.
+- `_user_can_access_institution(request, institution)` — admin/unrestricted → True; scoped clerk → only their institutions; `None`-institution objects hidden from a scoped clerk.
+- `_get_scoped_object_or_404(request, model, pk, institution_getter)` — pk-level guard (404 for non-owned institution).
+- `_resolve_requested_institution(request, requested_id)` — honours `?institution=<id>` only for admin/unrestricted or when the id is in the user's allowed set; otherwise falls back to the session institution.
+- `_scope_by_allowed_institutions(request, qs, field_name)` — queryset bound to the user's allowed institutions.
+- `_scope_institution_qs(request, qs, institution, field_name)` — filter to one institution, else the safe allowed-set fallback.
+- `_visible_institutions(request)` — institutions a scoped clerk may pick in a filter/selector.
+
+List/export/read views now scoped (a scoped clerk of A cannot read B's rows, and `?institution=<B>` falls back to A): `student_list`, `download_student_list`, `employee_list`, `student_by_id`, `archived_students`, `class_section_summary`, `attendance_report`, `attendance_summary`, `mark_attendance_bulk`, `dashboard`, `money_receipt_list`/`salary_sheet_list`/`finance_dashboard` (via `_filter_by_selected_institution` / allowed-set fallback).
+
+pk-level views now guarded with `_get_scoped_object_or_404`: `student_detail`, `student_id_card`, `student_exams`, `employee_detail`, `employee_status_history`, `view_tc`, `view_certificate`, `certificate_list`, `issue_tc`, `issue_certificate`, `admission_application_detail`, and all exam results/seat-plan/entry/import views (`result_sheet`, `result_summary`, `top_10`, `student_result_detail`, `result_card`, `seat_plan_list`, `view_seat_plan_room`, `signature_sheet`, `generate_seat_plan`, `clear_seat_plan`, `edit_exam`, `toggle_publish_exam`, `select_marks_subject`, `enter_marks`, `import_exam_marks`, `download_marks_import_template`).
+
+JSON/selector endpoints: `subject_requirements_json` now resolves institution via `_resolve_requested_institution`; `_institutions_data_json(request)` and the `institutions` dropdowns are narrowed to `_visible_institutions`; `start_entering_marks` rejects a POST to an institution the clerk cannot access.
+
+### 8.2 What is intentionally NOT covered (needs a decision / schema change — see TASK_BACKLOG)
+
+| ID | Remaining | Why |
+|---|---|---|
+| SEC-4 | `student_promotion` promotes a class across **every** institution; `PromotionBatch` has no institution column | Requires a schema/decision (D-1/D-2) — out of read-scope |
+| SEC-5 | `Voucher` has no `institution` FK → `voucher_list`/finance dashboard vouchers are global | Requires a migration (D-3 decision) — not made this session |
+| SEC-3 (write) | `_application_transition` (approve/reject/handoff) and employee/student edit/delete still resolve by pk without an institution guard | Write-scope, not read/export |
+| — | `audit_log_list`/`audit_log_detail`, `admission_dropdown_options` | Audit log is a global admin trail; the admission dropdown is the public admission helper (must work unauthenticated for the public form) |
+
+### 8.3 Tests added
+
+`students/test_institution_isolation.py` — 16 two-institution isolation tests covering list/export leakage, pk 404s, JSON endpoint, session-less fallback, controlled A↔B switch, and the deliberate cross-institution admin who still reads everything.
+
+### 8.4 Verification
+
+- `manage.py check` — 0 issues.
+- `manage.py test students` — **180 tests, all pass** (previously 164; +16 isolation tests).
+- No migration, no data change. SSC untouched.

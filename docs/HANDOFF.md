@@ -191,3 +191,38 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 3. After D-6, complete P0-11 (single permission source).
 4. After D-7, complete P1-11 (media persistence).
 5. Then proceed to P0-1 (BUG-1 fix), P0-2…P0-5 (isolation + validation), P0-6 (regression tests), P0-7 (live confirm), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code).
+
+---
+
+## Session update — 2026-09-08 · Read / Export isolation session (`arena/01a08254-school-management-system`)
+
+**Previous state:** prior sessions completed docs-only audit (159 tests) and security/upload work (+5 tests). This session fixes the multi-institution **read/export** access gaps.
+
+**What this session did (scope only — read/export/print/JSON isolation, no feature change, no migration, no data):**
+
+1. Verified prior findings (SEC-1/2/3, SEC-L1) against the live code; set up `.venv` with Django 5.2.17 / Python 3.11.2; baseline `manage.py test students` = 164 tests OK.
+2. Added read-scope helpers to `students/views.py`: `_institutionally_scoped`, `_scoped_institution_ids`, `_user_can_access_institution`, `_get_scoped_object_or_404`, `_resolve_requested_institution`, `_scope_by_allowed_institutions`, `_scope_institution_qs`, `_visible_institutions`. A non-admin with ≥1 active `InstitutionAccess` row is scoped; admin/staff (and test fallback users with no access row) stay unrestricted.
+3. Scoped list/export/search/summary/report views: `student_list`, `download_student_list`, `employee_list`, `student_by_id`, `archived_students`, `class_section_summary`, `attendance_report`, `attendance_summary`, `mark_attendance_bulk`, `dashboard`. `?institution=<B>` is now honoured only when B is in the user's allowed set; otherwise it falls back to the session institution (never "all").
+4. Scoped object-level (pk) **read/export/print** views via `_get_scoped_object_or_404`: `student_detail`, `student_id_card`, `student_exams`, `employee_detail`, `employee_status_history`, `view_tc`, `view_certificate`, `certificate_list`, `issue_tc`, `issue_certificate`, `admission_application_detail`, and all result/seat-plan/entry/import views plus `edit_exam`/`toggle_publish_exam`.
+5. Scoped JSON/selector endpoints: `subject_requirements_json`, `_institutions_data_json(request)`, institution dropdowns; `start_entering_marks` now rejects a POST to an institution the clerk cannot access.
+6. Added `students/test_institution_isolation.py` — 16 two-institution isolation tests (list/export leakage, pk 404s, JSON endpoint, session-less fallback, controlled A↔B switch, cross-institution admin still reads everything).
+
+**Verified:** `manage.py check` = 0 issues; `manage.py test students` = **180 tests, all pass** (was 164 + 16). No migration, no data change. SSC untouched.
+
+**Intentionally NOT done (deferred, needs decision / schema change — see TASK_BACKLOG):**
+
+- `student_promotion` scoping (SEC-4) — needs D-9 (query-only vs `PromotionBatch` column).
+- `Voucher` isolation (SEC-5) — no institution FK; needs D-3 + migration (P1-1).
+- pk-level **write** isolation (`edit_student`/`delete_student`, employee money/voucher/salary edit+delete, `_application_transition`, restore/purge, promotion rollback) — write-scope, not this session's read/export focus.
+- `audit_log_list`/`audit_log_detail` (global admin trail) and `admission_dropdown_options` (public admission helper, must work unauthenticated) intentionally left unscoped.
+
+**Branch / remote status:**
+
+- Branch: `arena/01a08254-school-management-system` (base `main` @ `10258cb`).
+- Not yet committed/pushed (session rule 14 says push at the end; remote push permitted for verified changes; PR open only with owner approval — rule 13).
+
+**Next session recommendations:**
+
+1. Confirm D-1…D-10 with the owner (esp. D-3 voucher, D-9 promotion, D-6 permissions, D-2 multi-institution switch).
+2. P0-1 (BUG-1 `tc_print` 500), P0-3 write half, P0-4 (promotion, after D-9), P0-5 (money validation), P0-6 (remaining regression tests), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code), P0-11 (permission source, after D-6).
+3. P1-1 voucher isolation (after D-3).
