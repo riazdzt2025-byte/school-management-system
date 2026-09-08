@@ -203,7 +203,7 @@
         .result-footer { align-items: flex-start; flex-direction: column; }
     }
 
-    @page { size: A4 landscape; margin: 7mm; }
+    @page { size: A4 landscape; margin: 8mm; }
     @media print {
         html, body { background: #fff !important; color: #000 !important; }
         .result-page { max-width: none; color: #000 !important; }
@@ -211,67 +211,71 @@
         .result-paper { margin: 0; padding: 0; border: 0; border-radius: 0; background: #fff !important; box-shadow: none !important; }
         .result-paper::before { display: none; }
 
-        /* Compact official header: normal readable text, no oversized card. */
-        .result-header { grid-template-columns: minmax(0, 1fr) 245px; gap: 14px; padding: 0 0 8px; border-bottom: 1px solid #000 !important; break-inside: avoid; }
-        .school-identity { gap: 10px; }
-        .school-seal { flex-basis: 58px; width: 58px; height: 62px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; box-shadow: none !important; }
-        .school-seal img { width: 54px; height: 60px; }
+        /* Readable print composition: remove screen cards, keep the text normal-sized. */
+        .result-header { grid-template-columns: minmax(0, 1fr) 255px; gap: 16px; padding: 0 0 10px; border-bottom: 1px solid #000 !important; break-inside: avoid; }
+        .school-identity { gap: 11px; }
+        .school-seal { flex-basis: 64px; width: 64px; height: 68px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; box-shadow: none !important; }
+        .school-seal img { width: 60px; height: 66px; }
         .school-eyebrow, .school-identity h1, .school-founder, .school-address { color: #000 !important; }
-        .school-eyebrow { margin-bottom: 2px; font-size: 8px; letter-spacing: 1px; }
-        .school-identity h1 { font-size: 19px; line-height: 1.05; letter-spacing: -.2px; }
-        .school-founder { margin-top: 3px; font-size: 9px; }
-        .school-address { margin-top: 2px; font-size: 8px; line-height: 1.15; }
-        .report-card { padding: 8px 10px; border: 1px solid #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; box-shadow: none !important; text-align: center; }
+        .school-eyebrow { margin-bottom: 3px; font-size: 9px; letter-spacing: 1px; }
+        .school-identity h1 { font-size: 21px; line-height: 1.08; letter-spacing: -.2px; }
+        .school-founder { margin-top: 4px; font-size: 10px; }
+        .school-address { margin-top: 3px; font-size: 9px; line-height: 1.2; }
+        .report-card { padding: 10px 12px; border: 1px solid #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; box-shadow: none !important; text-align: center; }
         .report-card .report-label, .report-card strong, .report-card .report-session { color: #000 !important; }
-        .report-card .report-label { font-size: 8px; letter-spacing: .9px; }
-        .report-card strong { margin: 4px 0 5px; font-size: 14px; line-height: 1.05; }
-        .report-card .report-session { padding: 3px 6px; border-color: #000 !important; border-radius: 0; background: #fff !important; font-size: 8px; }
+        .report-card .report-label { font-size: 9px; letter-spacing: 1px; }
+        .report-card strong { margin: 5px 0 6px; font-size: 16px; line-height: 1.1; }
+        .report-card .report-session { padding: 4px 7px; border-color: #000 !important; border-radius: 0; background: #fff !important; font-size: 9px; }
 
-        /* Replace the six large screen cards with one thin print metadata row. */
+        /* The large screen cards are replaced by the one-line print metadata strip. */
         .result-summary { display: none !important; }
-        .print-meta { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; margin: 8px 0 8px; border: 1px solid #000 !important; background: #fff !important; break-inside: avoid; }
-        .print-meta span { display: block; padding: 5px 7px; border-right: 1px solid #000 !important; color: #000 !important; font-size: 9px; line-height: 1.1; white-space: nowrap; }
+        .print-meta { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; margin: 10px 0 10px; border: 1px solid #000 !important; background: #fff !important; break-inside: avoid; }
+        .print-meta span { display: block; padding: 6px 8px; border-right: 1px solid #000 !important; color: #000 !important; font-size: 10px; line-height: 1.15; white-space: nowrap; }
         .print-meta span:last-child { border-right: 0 !important; }
-        .print-meta strong { display: block; margin-bottom: 2px; color: #000 !important; font-size: 7px; letter-spacing: .4px; text-transform: uppercase; }
+        .print-meta strong { display: block; margin-bottom: 2px; color: #000 !important; font-size: 8px; letter-spacing: .4px; text-transform: uppercase; }
 
-        .result-section-heading { margin-bottom: 5px; }
+        .result-section-heading { margin-bottom: 6px; }
         .result-section-heading h2, .result-section-heading p, .result-count { color: #000 !important; }
-        .result-section-heading h2 { font-size: 11px; }
-        .result-section-heading p { margin-top: 2px; font-size: 8px; }
-        .result-count { padding: 3px 6px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; font-size: 8px; }
-        .result-notice { margin-bottom: 6px; padding: 5px 7px; border-color: #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; font-size: 8px; }
+        .result-section-heading h2 { font-size: 13px; }
+        .result-section-heading p { margin-top: 2px; font-size: 9px; }
+        .result-count { padding: 4px 7px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; font-size: 9px; }
+        .result-notice { margin-bottom: 7px; padding: 6px 8px; border-color: #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; font-size: 9px; }
         .result-notice strong, .result-notice .badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
 
         .result-table-card { overflow: visible; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
         .result-table-wrap { overflow: visible; }
-        .result-table-card table { min-width: 0; border-collapse: collapse; line-height: 1.1; }
-        .result-table-card th, .result-table-card th.group-heading { padding: 4px 3px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 9px; line-height: 1.1; }
-        .result-table-card td { height: 22px; padding: 3px 3px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 9px; line-height: 1.1; }
-        .result-table-card th small { color: #000 !important; font-size: 8px; }
-        .result-table-card td.student-col { min-width: 0; max-width: 0; color: #000 !important; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .result-table-card table { min-width: 0; border-collapse: collapse; line-height: 1.15; }
+        .result-table-card th, .result-table-card th.group-heading { padding: 7px 5px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 11px; line-height: 1.15; }
+        .result-table-card td { height: 29px; padding: 5px 4px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 10.5px; line-height: 1.15; }
+        .result-table-card th small { color: #000 !important; font-size: 9px; }
+        .result-table-card td.student-col { min-width: 0; max-width: 0; color: #000 !important; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .result-table-card tbody tr { break-inside: avoid; }
         .result-table-card tbody tr:nth-child(even) td, .result-table-card td.failed-mark, .result-table-card td.absent-mark, .result-table-card td.not-applicable-mark { color: #000 !important; background: #fff !important; }
-        .roll-badge { width: 19px; height: 19px; border-radius: 2px; color: #000 !important; background: #fff !important; border: 1px solid #000 !important; font-size: 8px; }
-        .overall-stack, .result-stack { gap: 1px; }
-        .overall-stack .metric-label { color: #000 !important; font-size: 7px; letter-spacing: 0; }
+
+        /* Plain roll numbers instead of individual rounded boxes. */
+        .roll-badge { display: inline; width: auto; height: auto; padding: 0; border: 0 !important; border-radius: 0; color: #000 !important; background: transparent !important; font-size: 10.5px; }
+        /* Total/Place and Grade/GPA read from the same left edge. */
+        .overall-stack, .result-stack { justify-items: start; align-items: start; text-align: left; gap: 2px; width: 100%; }
+        .overall-stack .metric-label { color: #000 !important; font-size: 8px; letter-spacing: 0; }
         .overall-stack strong, .mark-number, .grade-label, .gpa-label { color: #000 !important; }
-        .overall-stack strong, .mark-number { font-size: 9px; }
-        .gpa-label { font-size: 7px; }
-        .mark-row { gap: 2px; }
-        .grade-badge { min-width: 19px; padding: 2px 3px; border-radius: 2px; color: #000 !important; background: #fff !important; border: 1px solid #000 !important; font-size: 7px; }
-        .status-badge { margin-top: 1px; padding: 2px 4px; color: #000 !important; background: #fff !important; border: 1px solid #000 !important; font-size: 7px; }
+        .overall-stack strong, .mark-number { font-size: 10.5px; }
+        .gpa-label { font-size: 8px; }
+        .mark-row { gap: 3px; }
+        .grade-badge { min-width: 21px; padding: 2px 3px; border-radius: 2px; color: #000 !important; background: #fff !important; border: 1px solid #000 !important; font-size: 8px; }
+        .status-badge { display: inline; margin-top: 1px; padding: 0; color: #000 !important; background: transparent !important; border: 0 !important; font-size: 8px; }
+        .status-muted { display: none !important; }
         .fail-star { color: #000 !important; }
 
-        .subject-codes { gap: 3px 5px; margin-top: 6px; color: #000 !important; font-size: 7px; }
+        .subject-codes { gap: 3px 5px; margin-top: 7px; color: #000 !important; font-size: 8px; }
         .subject-codes strong, .subject-codes .code { color: #000 !important; background: #fff !important; border-color: #000 !important; }
-        .subject-codes .code { padding: 1px 3px; font-size: 6.5px; }
-        .result-bottom { gap: 8px; margin-top: 7px; }
-        .grading-box, .verification-box { padding: 6px 8px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; break-inside: avoid; }
-        .box-title { margin-bottom: 4px; color: #000 !important; font-size: 7px; }
-        .grading-list { gap: 4px 7px; }
-        .grading-item, .verification-box p, .signature-line { color: #000 !important; font-size: 7px; }
-        .signature-line { width: 100px; margin-top: 8px; padding-top: 3px; border-color: #000 !important; }
-        .result-footer { margin-top: 6px; padding-top: 5px; border-color: #000 !important; color: #000 !important; font-size: 7px; break-inside: avoid; }
+        .subject-codes .code { padding: 1px 3px; font-size: 7px; }
+        .result-bottom { gap: 9px; margin-top: 8px; }
+        .grading-box, .verification-box { padding: 7px 9px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; break-inside: avoid; }
+        .box-title { margin-bottom: 4px; color: #000 !important; font-size: 8px; }
+        .grading-list { gap: 5px 8px; }
+        .grading-item, .verification-box p, .signature-line { color: #000 !important; font-size: 8px; }
+        .signature-line { width: 105px; margin-top: 9px; padding-top: 3px; border-color: #000 !important; }
+        .result-footer { margin-top: 7px; padding-top: 5px; border-color: #000 !important; color: #000 !important; font-size: 8px; break-inside: avoid; }
         .result-footer strong { color: #000 !important; }
         .result-notice { break-inside: avoid; }
         .result-table-card thead { display: table-header-group; }
@@ -390,9 +394,11 @@
                                 </td>
                                 <td>
                                     <div class="result-stack">
+                                        {% if r.status != 'No Marks' %}
                                         <span class="grade-label {% if r.grade == 'A+' %}grade-a-plus{% elif r.grade == 'A' %}grade-a{% elif r.grade == 'A-' %}grade-a-minus{% elif r.grade == 'B' %}grade-b{% elif r.grade == 'C' %}grade-c{% elif r.grade == 'F' %}grade-f{% else %}grade-muted{% endif %}">{{ r.grade|default:"—" }}</span>
                                         <span class="gpa-label">GPA {{ r.gpa|default:"—" }}</span>
                                         <span class="status-badge {% if r.status == 'Pass' %}status-pass{% elif r.status == 'Fail' %}status-fail{% else %}status-muted{% endif %}">{{ r.status }}</span>
+                                        {% endif %}
                                     </div>
                                 </td>
                                 {% for sr in r.subject_results %}
