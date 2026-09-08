@@ -22,6 +22,8 @@
     }
 
     .main > .print-header { display: none !important; }
+    /* The result sheet has its own school identity header. */
+    .school-header { display: none !important; }
     .result-page { max-width: 1440px; margin: 0 auto; }
     .result-page, .result-page * { box-sizing: border-box; }
 
@@ -164,9 +166,10 @@
     .status-pass { color: #087f66; background: #dff5ee; }
     .status-fail { color: #a33142; background: #fde0e5; }
     .status-muted { color: #687681; background: #edf1f3; }
-    .absent-mark { color: #6c757d !important; background: #f1f3f7 !important; }
+    .absent-mark { color: transparent !important; background: #fff !important; }
     .failed-mark { color: #b02a37 !important; background: #fff1f1 !important; font-weight: 700; }
-    .not-applicable-mark { color: #8b98a1 !important; background: #f4f6f7 !important; }
+    .not-applicable-mark { color: transparent !important; background: #fff !important; }
+    .absent-mark .mark-number, .not-applicable-mark .mark-number { color: transparent !important; }
     .fail-star { display: block; margin-top: 2px; color: var(--result-danger); font-size: .65rem; font-weight: 900; }
 
     .subject-codes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 10px; color: var(--result-muted); font-size: .68rem; line-height: 1.55; }
@@ -199,21 +202,43 @@
         .result-footer { align-items: flex-start; flex-direction: column; }
     }
 
+    @page { size: A4 landscape; margin: 8mm; }
     @media print {
-        body { background: #fff !important; }
-        .result-page { max-width: none; }
+        html, body { background: #fff !important; color: #000 !important; }
+        .result-page { max-width: none; color: #000 !important; }
         .result-toolbar, .d-print-none { display: none !important; }
-        .result-paper { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+        .result-paper { margin: 0; padding: 0; border: 0; border-radius: 0; background: #fff !important; box-shadow: none !important; }
         .result-paper::before { display: none; }
-        .result-header { padding-top: 0; }
+        .result-header { grid-template-columns: minmax(0, 1fr) 220px; gap: 16px; padding-top: 0; padding-bottom: 10px; border-bottom: 1px solid #000 !important; }
+        .school-seal { border: 1px solid #000 !important; border-radius: 0; background: #fff !important; box-shadow: none !important; }
+        .school-eyebrow, .school-identity h1, .school-founder, .school-address { color: #000 !important; }
+        .report-card { padding: 9px 10px; border: 1px solid #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; box-shadow: none !important; text-align: center; }
+        .report-card .report-label, .report-card strong, .report-card .report-session { color: #000 !important; }
+        .report-card strong { margin: 3px 0 5px; }
+        .report-card .report-session { border-color: #000 !important; border-radius: 0; background: #fff !important; }
+        .result-summary { gap: 0; margin: 10px 0 12px; }
+        .result-summary-card, .result-summary-card.accent { min-height: 45px; padding: 7px 9px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
+        .result-summary-card .summary-label, .result-summary-card .summary-value { color: #000 !important; }
+        .result-section-heading h2, .result-section-heading p, .result-count { color: #000 !important; }
+        .result-count { padding: 4px 7px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
+        .result-notice { border-color: #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; }
+        .result-notice strong, .result-notice .badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
+        .result-table-card { overflow: visible; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
         .result-table-wrap { overflow: visible; }
-        .result-table-card table { min-width: 0; }
-        .result-table-card th, .result-table-card td { padding: 5px 3px; font-size: 8px; }
+        .result-table-card table { min-width: 0; border-collapse: collapse; }
+        .result-table-card th, .result-table-card th.group-heading, .result-table-card td { padding: 5px 3px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 8px; }
         .result-table-card th small, .result-table-card td.student-col, .overall-stack .metric-label, .gpa-label, .status-badge, .grade-badge { font-size: 7px; }
-        .result-table-card td.student-col { min-width: 0; }
-        .result-summary-card { min-height: 45px; padding: 7px 9px; }
-        .result-summary-card .summary-value { font-size: 11px; }
-        .result-bottom, .result-footer { break-inside: avoid; }
+        .result-table-card td.student-col { min-width: 0; color: #000 !important; }
+        .result-table-card tbody tr:nth-child(even) td, .result-table-card td.failed-mark, .result-table-card td.absent-mark, .result-table-card td.not-applicable-mark { color: #000 !important; background: #fff !important; }
+        .roll-badge, .grade-badge, .status-badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
+        .mark-number, .grade-label, .overall-stack strong, .overall-stack .place, .gpa-label { color: #000 !important; }
+        .fail-star { color: #000 !important; }
+        .subject-codes, .subject-codes strong, .subject-codes .code { color: #000 !important; background: #fff !important; border-color: #000 !important; }
+        .result-bottom, .grading-box, .verification-box { break-inside: avoid; }
+        .grading-box, .verification-box { border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
+        .box-title, .grading-item, .verification-box p, .signature-line, .result-footer, .result-footer strong { color: #000 !important; }
+        .signature-line, .result-footer { border-color: #000 !important; }
+        .result-footer { break-inside: avoid; }
         .result-notice { break-inside: avoid; }
         .result-table-card thead { display: table-header-group; }
     }
@@ -236,9 +261,9 @@
                 <div class="school-seal"><img src="{% static 'students/img/school_logo.png' %}" alt="School emblem"></div>
                 <div>
                     <p class="school-eyebrow">Academic performance report</p>
-                    <h1>{{ SCHOOL_INFO.name|default:"Principal Kazi Faruky School And College" }}</h1>
+                    <h1>Principal Kazi Faruky School</h1>
                     <p class="school-founder">Founder: Professor Kazi Faruky Kollan Trust</p>
-                    <p class="school-address">{{ SCHOOL_INFO.address|default:"Rakhalia, Raipur, Lakshmipur" }} &nbsp; • &nbsp; {{ SCHOOL_INFO.phone|default:"+880 1234-567890" }}</p>
+                    <p class="school-address">West Rakhalia, Raipur, Lakshmipur–3711 &nbsp; • &nbsp; Mobile: 01850790086</p>
                 </div>
             </div>
             <div class="report-card">
@@ -330,14 +355,18 @@
                                 {% for sr in r.subject_results %}
                                 {% if sr.religion_unassigned %}
                                 <td class="mark-cell not-applicable-mark" title="No {{ r.student.religion|default:'religion' }} religion paper is assigned to this class, so the Religion column is not counted for this student">
-                                    <div class="mark-row"><span class="mark-number">&mdash;</span></div>
+                                    <div class="mark-row"><span class="mark-number">&nbsp;</span></div>
                                 </td>
                                 {% else %}
                                 <td class="mark-cell {% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
                                     title="{% if sr.absent %}no mark entered - counted as F{% else %}Pass mark {{ sr.pass_marks }}{% if sr.paper %} &middot; {{ sr.paper.name }}{% endif %}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
                                     <div class="mark-row">
-                                        <span class="mark-number">{% if sr.absent %}&mdash;{% else %}{{ sr.obtained|floatformat:"-2" }}{% endif %}</span>
+                                        {% if sr.absent %}
+                                        <span class="mark-number">&nbsp;</span>
+                                        {% else %}
+                                        <span class="mark-number">{{ sr.obtained|floatformat:"-2" }}</span>
                                         <span class="grade-badge {% if sr.grade == 'A+' %}grade-a-plus{% elif sr.grade == 'A' %}grade-a{% elif sr.grade == 'A-' %}grade-a-minus{% elif sr.grade == 'B' %}grade-b{% elif sr.grade == 'C' %}grade-c{% elif sr.grade == 'F' %}grade-f{% else %}grade-muted{% endif %}">{{ sr.grade|default:"—" }}</span>
+                                        {% endif %}
                                     </div>
                                     {% if not sr.passed and not sr.absent %}<span class="fail-star">*</span>{% endif %}
                                 </td>

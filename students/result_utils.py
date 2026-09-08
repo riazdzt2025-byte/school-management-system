@@ -91,7 +91,11 @@ def get_exam_subjects(exam, group=None):
     subject_ids = list(requirements.values_list('subject_id', flat=True).distinct())
     if not subject_ids:
         return [], False
-    return list(Subject.objects.filter(pk__in=subject_ids).order_by('name')), True
+    # The printed register follows the examination subject serial/code
+    # (101, 102, 107, 108, 136, 150 in the school's result format), not
+    # alphabetical subject names. This keeps marks entry, imports and the
+    # result sheet in the same predictable order.
+    return list(Subject.objects.filter(pk__in=subject_ids).order_by('code', 'name')), True
 
 
 def no_subjects_assigned_message(exam):
