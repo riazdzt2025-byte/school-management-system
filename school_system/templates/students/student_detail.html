@@ -91,31 +91,55 @@
     <!-- Subjects Tab -->
     <div class="tab-pane fade show active" id="subjects" role="tabpanel" aria-labelledby="subjects-tab">
         <div class="table-card">
+            <div class="p-3 pb-0">
+                <p class="text-muted small mb-0">
+                    Subjects assigned at admission for Class {{ student.admission_class }}{% if student.group %} &ndash; {{ student.get_group_display }} group{% endif %}
+                    &mdash; the same subjects this student's marks and result pages use.
+                </p>
+            </div>
             <table class="table table-striped mb-0">
                 <thead class="table-light">
                     <tr>
                         <th>Subject</th>
                         <th>Code</th>
-                        <th>Curriculum</th>
+                        <th>How it is assigned</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for s in subjects %}
+                    {% for row in subject_rows %}
                     <tr>
-                        <td>{{ s.subject.name }}</td>
-                        <td>{{ s.subject.code }}</td>
-                        <td>{{ s.curriculum }}</td>
+                        <td>{{ row.subject.name }}</td>
+                        <td>{{ row.subject.code }}</td>
                         <td>
-                            {% if s.is_discontinued %}
-                                <span class="badge bg-danger">Discontinued</span>
+                            {% if row.requirement_type == 'MANDATORY' %}
+                                <span class="badge bg-secondary">Mandatory</span>
+                            {% elif row.requirement_type == 'CONDITIONAL' %}
+                                <span class="badge bg-info text-dark">Own religion paper</span>
+                            {% elif row.requirement_type == 'OPTIONAL' %}
+                                <span class="badge bg-primary">Optional &ndash; chosen at admission</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark border">Class assignment</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.chosen_at_admission %}
+                                <span class="badge bg-success">Selected</span>
                             {% else %}
                                 <span class="badge bg-success">Active</span>
                             {% endif %}
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="4" class="text-center text-muted">No subjects assigned yet.</td></tr>
+                    <tr>
+                        <td colspan="4" class="text-center text-muted">
+                            No subjects are assigned to this student yet. Assign subjects to Class
+                            {{ student.admission_class }}{% if student.group %} ({{ student.get_group_display }}){% endif %}
+                            from <a href="{% url 'subject_requirement_list' %}?institution={{ student.institution_id }}&amp;admission_class={{ student.admission_class }}">Subject Assignments</a>,
+                            then pick this student's optional papers in
+                            <a href="{% url 'edit_student' student.pk %}">Edit Student</a>.
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>

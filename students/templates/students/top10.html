@@ -13,10 +13,23 @@
         <h1>Top 10 &mdash; {{ exam.name }}</h1>
         <div class="subtitle">
             Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
-            {% if exam.group %} &middot; {{ exam.get_group_display }} group{% endif %} &middot; Session {{ exam.session }}
+            {% if not is_all_groups %} &middot; {{ selected_group_label }} group{% endif %} &middot; Session {{ exam.session }}
         </div>
     </div>
 </div>
+
+{% if show_group_picker %}
+<form method="get" class="mb-3" id="group-filter-form">
+    <label for="group-select" class="form-label fw-semibold">Group</label>
+    <select name="group" id="group-select" class="form-select form-select-sm w-auto" onchange="document.getElementById('group-filter-form').submit();">
+        {% for code, label in group_choices %}
+        <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+        <option value="all" {% if selected_group == 'all' %}selected{% endif %}>All groups (whole class)</option>
+    </select>
+    <div class="form-text">The ranking covers one group at a time for an exam created without a group &mdash; the same scope as the Full Mark Sheet.</div>
+</form>
+{% endif %}
 
 <div class="table-card">
     <div class="table-responsive">

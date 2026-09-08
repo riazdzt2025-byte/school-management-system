@@ -24,7 +24,8 @@ shows an empty list with a link to Subject Assignments — the Subject master li
 is never offered instead. One scope, one place: `result_utils` decides which
 subjects an exam works on (`get_exam_subjects` → narrowed to the subjects the
 admitted students were actually assigned at admission), and marks entry, the
-Excel import, the marks settings and every result page all read that same list.
+Excel import, the marks settings, every result page and the **Student page's
+Subjects tab** all read that same list (`student_subject_rows` for one student).
 Configure assignments for classes 9–12 before publishing anything.
 
 ## 1. Mark Evaluation Settings (`Exam → Mark Evaluation`)
@@ -141,13 +142,16 @@ Read them in this order:
 1. **Result Sheet** (`Exam List → Result Sheet`) — the grid: dashes for absent,
    `*` and red for a failed subject, hover any cell for the part breakdown and the
    pass mark. The columns are only the subjects assigned at admission to the
-   students on the sheet — never the class catalogue. An exam created **without a
-   group** gets the same group picker as Enter Marks: pick a group to print that
-   group's students and their own subjects instead of every group's papers side by
-   side (the Summary, Top 10 and result-card links keep the picked group). A
-   yellow notice at the top lists marks held in **subjects that are not assigned
-   to this exam** (they are deliberately excluded from the numbers — fix the
-   assignments or the marks, then re-check).
+   students on the sheet — never the class catalogue. **A register never mixes
+   groups:** for an exam created without a group the sheet defaults to the first
+   group configured for the class (Science, then Business Studies, then
+   Humanities) and the picker at the top switches group; *All groups (whole
+   class)* brings every group's students and subjects back on one sheet when that
+   is what you want. The Summary, Top 10 and result cards follow the same scope,
+   and the links between them keep it. A yellow notice at the top lists marks
+   held in **subjects that are not assigned to any student on that sheet** (they
+   are deliberately excluded from the numbers — fix the assignments or the marks,
+   then re-check); another group's marks are not reported as stray.
 2. **Result Summary** — Pass/Fail counts, totals, positions, and per-student
    detail links.
 3. **Top 10** — ranking sanity check: ties share a position, and a student whose

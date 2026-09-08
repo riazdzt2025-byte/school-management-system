@@ -95,26 +95,40 @@
                     <h5 class="mb-0">Current Subjects & Curriculum</h5>
                 </div>
                 <div class="card-body">
-                    {% if subjects %}
+                    {% if subject_rows %}
+                        <p class="text-muted small mb-2">
+                            Subjects assigned at admission for Class {{ student.admission_class }}{% if student.group %} &ndash; {{ student.get_group_display }} group{% endif %}.
+                            These are the same subjects the marks entry and result pages use for this student.
+                        </p>
                         <div class="table-responsive">
                             <table class="table table-striped table-bordered">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Subject Name</th>
                                         <th>Subject Code</th>
-                                        <th>Curriculum</th>
+                                        <th>How it is assigned</th>
                                         <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for subject_choice in subjects %}
+                                    {% for row in subject_rows %}
                                         <tr>
-                                            <td>{{ subject_choice.subject.name }}</td>
-                                            <td>{{ subject_choice.subject.code }}</td>
-                                            <td>{{ subject_choice.curriculum }}</td>
+                                            <td>{{ row.subject.name }}</td>
+                                            <td>{{ row.subject.code }}</td>
                                             <td>
-                                                {% if subject_choice.is_discontinued %}
-                                                    <span class="badge bg-danger">Discontinued</span>
+                                                {% if row.requirement_type == 'MANDATORY' %}
+                                                    <span class="badge bg-secondary">Mandatory</span>
+                                                {% elif row.requirement_type == 'CONDITIONAL' %}
+                                                    <span class="badge bg-info text-dark">Own religion paper</span>
+                                                {% elif row.requirement_type == 'OPTIONAL' %}
+                                                    <span class="badge bg-primary">Optional &ndash; chosen at admission</span>
+                                                {% else %}
+                                                    <span class="badge bg-light text-dark border">Class assignment</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if row.chosen_at_admission %}
+                                                    <span class="badge bg-success">Selected</span>
                                                 {% else %}
                                                     <span class="badge bg-success">Active</span>
                                                 {% endif %}
@@ -125,7 +139,13 @@
                             </table>
                         </div>
                     {% else %}
-                        <div class="alert alert-info mb-0">No subjects assigned to this student yet.</div>
+                        <div class="alert alert-info mb-0">
+                            No subjects are assigned to this student yet. Assign subjects to
+                            Class {{ student.admission_class }}{% if student.group %} ({{ student.get_group_display }}){% endif %}
+                            from <a class="alert-link" href="{% url 'subject_requirement_list' %}?institution={{ student.institution_id }}&amp;admission_class={{ student.admission_class }}">Subject Assignments</a>,
+                            and pick this student's optional papers in
+                            <a class="alert-link" href="{% url 'edit_student' student.pk %}">Edit Student</a>.
+                        </div>
                     {% endif %}
                 </div>
             </div>

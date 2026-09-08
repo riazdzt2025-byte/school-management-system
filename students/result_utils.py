@@ -302,6 +302,66 @@ def get_exam_subjects_for_students(exam, students, group=None):
     return kept, is_filtered
 
 
+def student_subject_rows(student):
+    """The subjects assigned to one student at admission, with their rule.
+
+    The Student page's "Current Subjects" list. It reads the same admission
+    scope as the exam screens (:func:`get_student_subject_ids` over an
+    exam-like view of the student's own institution + class + group), so the
+    page can never show a subject the marks and result pages will not. The
+    legacy ``StudentSubject`` rows are not consulted — the admission screens do
+    not write them any more.
+
+    Each row is a dict: ``subject``, ``requirement_type`` ('MANDATORY' /
+    'OPTIONAL' / 'CONDITIONAL', '' when the subject has no assignment row),
+    ``group`` and ``chosen_at_admission`` (an optional paper this student
+    actually selected).
+    """
+    from types import SimpleNamespace
+
+    from .models import StudentSubjectChoice, Subject, SubjectRequirement
+
+    if not student.institution_id:
+        return []
+    exam_like = SimpleNamespace(
+        institution_id=student.institution_id,
+        admission_class=student.admission_class,
+        group=student.group or '',
+        section='',
+    )
+    assigned_ids = get_student_subject_ids(exam_like, [student]).get(student.pk, set())
+    if not assigned_ids:
+        return []
+
+    # One subject can be assigned to several groups; the row for this
+    # student's own group is the rule that put it on their list.
+    requirement_by_subject = {}
+    for row in SubjectRequirement.objects.filter(
+        institution_id=student.institution_id,
+        admission_class__in=class_filter_variants(student.admission_class),
+        subject_id__in=assigned_ids,
+    ).values('subject_id', 'group', 'requirement_type'):
+        current = requirement_by_subject.get(row['subject_id'])
+        if current is None or (row['group'] and row['group'] == student.group):
+            requirement_by_subject[row['subject_id']] = row
+    chosen = set(
+        StudentSubjectChoice.objects.filter(
+            student=student, requirement__subject_id__in=assigned_ids,
+        ).values_list('requirement__subject_id', flat=True)
+    )
+
+    rows = []
+    for subject in Subject.objects.filter(pk__in=assigned_ids).order_by('code', 'name'):
+        requirement = requirement_by_subject.get(subject.pk) or {}
+        rows.append({
+            'subject': subject,
+            'requirement_type': requirement.get('requirement_type', ''),
+            'group': requirement.get('group', ''),
+            'chosen_at_admission': subject.pk in chosen,
+        })
+    return rows
+
+
 def get_exam_group_choices(exam):
     """Groups configured for this exam's institution + class, for the picker."""
     from .models import Student, SubjectRequirement
@@ -315,6 +375,28 @@ def get_exam_group_choices(exam):
         ).exclude(group='').values_list('group', flat=True).distinct()
     )
     return [(code, label) for code, label in Student.GROUP_CHOICES if code in codes]
+
+
+# The value a result page uses when the user deliberately asks for the whole
+# class instead of one group (``?group=all``).
+ALL_GROUPS = 'all'
+
+
+def default_exam_group(exam):
+    """The group a result page shows for an exam created without one.
+
+    A printed register cannot mix groups: a Science sheet must not carry
+    Accounting columns with blank cells down the page. So instead of defaulting
+    to the union of every group's subjects, a group-less exam defaults to the
+    first group configured for its class — ``Student.GROUP_CHOICES`` order, so
+    Science before Business Studies before Humanities — and the picker on the
+    page switches groups or asks for :data:`ALL_GROUPS` on purpose.
+
+    ``''`` means the class has no groups at all (below class 9, or a class with
+    no Subject Assignments yet), where the whole class is the only answer.
+    """
+    choices = get_exam_group_choices(exam)
+    return choices[0][0] if choices else ''
 
 
 def get_subject_marks(exam, subject):
@@ -512,15 +594,20 @@ class ReligionColumn:
         return self.name
 
 
-def unassigned_mark_subjects(exam, subjects):
-    """Subjects that hold marks for this exam but are not assigned to any
-    student in the exam's admission subject scope.
+def unassigned_mark_subjects(exam, subjects, students=None):
+    """Subjects that hold marks but are not assigned to any student on the
+    page's own admission subject scope.
 
     The result sheet only prints the exam's own student-assigned subjects, so
     without this the stray marks would simply vanish. The page shows them as a
     notice instead.
     ``subjects`` may include a :class:`ReligionColumn`, whose merged papers
     count as assigned so marks in either religion paper never look stray.
+
+    ``students`` limits the check to the students the page actually prints.
+    A group-scoped sheet must do this: Accounting marks are perfectly correct
+    for the Business students of the same exam, and a Science sheet has no
+    business calling them stray.
     """
     from .models import ExamMark, Subject
 
@@ -532,6 +619,8 @@ def unassigned_mark_subjects(exam, subjects):
             assigned_ids.add(subject.pk)
 
     marks = ExamMark.objects.filter(exam=exam)
+    if students is not None:
+        marks = marks.filter(student_id__in=[student.pk for student in students])
     if marks.exists():
         return Subject.objects.filter(
             id__in=marks.values_list('subject_id', flat=True).distinct(),

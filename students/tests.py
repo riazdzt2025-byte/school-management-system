@@ -2735,11 +2735,54 @@ class FullMarkSheetAdmissionScopeTests(TestCase):
 		self.assertEqual(self._column_codes(self.exam, group='SCI'),
 					 [subject.code for subject in scoped])
 
-	def test_ungrouped_sheet_offers_the_picker_instead_of_guessing(self):
+	def test_ungrouped_sheet_defaults_to_the_first_configured_group(self):
+		"""A register never mixes groups: with no group asked for, the sheet
+		prints the first group configured for the class, not every group's
+		papers side by side."""
 		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
 		self.assertTrue(response.context['show_group_picker'])
-		self.assertContains(response, '-- All groups --')
 		self.assertContains(response, 'id="result-group-form"')
+		self.assertEqual(response.context['selected_group'], 'SCI')
+		self.assertEqual(
+			{result['student'].pk for result in response.context['results']},
+			{self.science_agriculture.pk, self.science_math.pk},
+		)
+		content = response.content.decode()
+		self.assertIn('<th>FSP<br>', content)
+		self.assertNotIn('<th>FSA<br>', content)
+
+	def test_whole_class_union_is_still_available_on_purpose(self):
+		response = self.client.get(
+			reverse('result_sheet', args=[self.exam.pk]), {'group': 'all'},
+		)
+		self.assertEqual(response.context['selected_group'], 'all')
+		self.assertTrue(response.context['is_all_groups'])
+		self.assertEqual(len(response.context['results']), 3)
+		content = response.content.decode()
+		self.assertIn('<th>FSP<br>', content)
+		self.assertIn('<th>FSA<br>', content)
+
+	def test_group_scoped_sheet_does_not_flag_other_groups_marks_as_stray(self):
+		"""Accounting marks are correct marks for the Business/Humanities
+		students of the same exam — a Science sheet must not call them stray."""
+		response = self.client.get(
+			reverse('result_sheet', args=[self.exam.pk]), {'group': 'SCI'},
+		)
+		self.assertEqual(list(response.context['ignored_subjects']), [])
+		self.assertNotContains(response, 'not assigned to its class/group')
+		# The whole-class view still sees them as assigned, not stray.
+		whole = self.client.get(
+			reverse('result_sheet', args=[self.exam.pk]), {'group': 'all'},
+		)
+		self.assertEqual(list(whole.context['ignored_subjects']), [])
+
+	def test_summary_defaults_to_the_same_group_as_the_sheet(self):
+		summary = self.client.get(reverse('exam_result_summary', args=[self.exam.pk]))
+		self.assertEqual(summary.context['selected_group'], 'SCI')
+		self.assertEqual(
+			{result['student'].pk for result in summary.context['results']},
+			{self.science_agriculture.pk, self.science_math.pk},
+		)
 
 	def test_picker_is_hidden_when_the_exam_has_its_own_group(self):
 		self.exam.group = 'SCI'
@@ -2772,3 +2815,74 @@ class FullMarkSheetAdmissionScopeTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Agriculture')
 		self.assertNotContains(response, 'Accounting')
+
+
+class StudentDetailSubjectScopeTests(TestCase):
+	"""The Student page lists the subjects assigned at admission — the same
+	scope the marks and result pages use — not the legacy StudentSubject rows."""
+
+	def setUp(self):
+		from .models import SubjectRequirement
+		self.institution = Institution.objects.create(name='Detail Scope School', classes='9')
+		self.user = get_user_model().objects.create_superuser(
+			username='detail-scope-admin', password='password'
+		)
+		self.client.force_login(self.user)
+		self.bangla = Subject.objects.create(code='DSB', name='Bangla', full_marks=100)
+		self.physics = Subject.objects.create(code='DSP', name='Physics', full_marks=100)
+		self.agriculture = Subject.objects.create(code='DSG', name='Agriculture', full_marks=100)
+		self.higher_math = Subject.objects.create(code='DSH', name='Higher Math', full_marks=100)
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', subject=self.bangla,
+			requirement_type='MANDATORY',
+		)
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='SCI',
+			subject=self.physics, requirement_type='MANDATORY',
+		)
+		self.agriculture_requirement = SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='SCI',
+			subject=self.agriculture, requirement_type='OPTIONAL', optional_set_key='sci_4th',
+		)
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='SCI',
+			subject=self.higher_math, requirement_type='OPTIONAL', optional_set_key='sci_4th',
+		)
+		self.student = Student.objects.create(
+			institution=self.institution, student_id='DS001', name='Scope Student',
+			admission_class='9', section='A', roll_no=1, admission_year=2026, group='SCI',
+		)
+		StudentSubjectChoice.objects.create(
+			student=self.student, requirement=self.agriculture_requirement,
+		)
+
+	def test_page_lists_the_admission_subjects_only(self):
+		from .models import StudentSubject
+		# A legacy row for a subject this student never took at admission.
+		StudentSubject.objects.create(student=self.student, subject=self.higher_math, marks=0)
+		response = self.client.get(reverse('student_detail', args=[self.student.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Bangla')
+		self.assertContains(response, 'Physics')
+		self.assertContains(response, 'Agriculture')
+		self.assertNotContains(response, 'Higher Math')
+		self.assertContains(response, 'Optional &ndash; chosen at admission')
+
+	def test_rows_match_the_exam_scope(self):
+		from .result_utils import student_subject_rows
+		rows = student_subject_rows(self.student)
+		self.assertEqual(
+			[row['subject'].code for row in rows],
+			['DSB', 'DSG', 'DSP'],  # ordered by subject code
+		)
+		by_code = {row['subject'].code: row for row in rows}
+		self.assertEqual(by_code['DSB']['requirement_type'], 'MANDATORY')
+		self.assertTrue(by_code['DSG']['chosen_at_admission'])
+		self.assertFalse(by_code['DSP']['chosen_at_admission'])
+
+	def test_student_with_nothing_assigned_gets_the_empty_state(self):
+		from .models import SubjectRequirement
+		SubjectRequirement.objects.all().delete()
+		response = self.client.get(reverse('student_detail', args=[self.student.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'No subjects are assigned to this student yet')

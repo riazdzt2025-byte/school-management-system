@@ -36,8 +36,10 @@ from decimal import Decimal, InvalidOperation
 from datetime import date
 from uuid import uuid4
 from .result_utils import (
+    ALL_GROUPS,
     build_exam_results,
     class_filter_variants,
+    default_exam_group,
     get_exam_group_choices,
     get_exam_students,
     get_exam_subjects,
@@ -47,6 +49,7 @@ from .result_utils import (
     no_subjects_assigned_message,
     religion_paper_for,
     religion_subject_map,
+    student_subject_rows,
     unassigned_mark_subjects,
 )
 
@@ -1281,9 +1284,12 @@ def bulk_update_select(request):
 @login_required
 def student_detail(request, pk):
     student = get_object_or_404(Student, pk=pk)
-    
-    # Get subjects
-    subjects = student.subjects.select_related('subject')
+
+    # Subjects assigned at admission — the same scope the exam, marks and
+    # result screens use. The legacy StudentSubject rows are not read: the
+    # admission screens do not write them, so they went stale and the page
+    # listed subjects this student never took.
+    subject_rows = student_subject_rows(student)
     
     # Get transfer certificate
     transfer_certificate = getattr(student, 'transfer_certificate', None)
@@ -1316,7 +1322,7 @@ def student_detail(request, pk):
     
     return render(request, 'students/student_detail.html', {
         'student': student,
-        'subjects': subjects,
+        'subject_rows': subject_rows,
         'transfer_certificate': transfer_certificate,
         'last_registration': last_registration,
         'attendance_records': attendance_records_display,
@@ -2730,6 +2736,46 @@ def _exam_group_selection(request, exam):
     return group_choices, selected_group
 
 
+def _result_scope(request, exam):
+    """Group scope for the result pages: sheet, summary, Top 10 and cards.
+
+    Marks entry can afford to leave the group open — a teacher picks a subject
+    and sees one group's roll. A printed register cannot: with no group chosen
+    it would carry every group's papers side by side and blank cells for most
+    of the class. So a group-less exam defaults to :func:`default_exam_group`
+    (the first group configured for the class), and ``?group=all`` brings the
+    whole-class union back when that is what is actually wanted.
+
+    Returns the context dict for the page plus ``build_group`` — what
+    :func:`build_exam_results` receives (``None`` = whole class).
+    """
+    group_choices = get_exam_group_choices(exam)
+    labels = dict(group_choices)
+    show_picker = not exam.group and bool(group_choices)
+
+    if exam.group:
+        selected, label, build_group = exam.group, exam.get_group_display(), None
+    else:
+        requested = (request.POST.get('group') or request.GET.get('group') or '').strip()
+        if requested == ALL_GROUPS:
+            selected, label, build_group = ALL_GROUPS, 'All groups', None
+        elif requested in labels:
+            selected, label, build_group = requested, labels[requested], requested
+        else:
+            default = default_exam_group(exam)
+            selected = default
+            label = labels.get(default, '')
+            build_group = default or None
+    return {
+        'group_choices': group_choices,
+        'selected_group': selected,
+        'selected_group_label': label,
+        'show_group_picker': show_picker,
+        'is_all_groups': build_group is None,
+        'build_group': build_group,
+    }
+
+
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
 def import_exam_marks(request, pk):
@@ -3086,11 +3132,11 @@ def result_sheet(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    # Same group picker as Enter Marks: an exam created without a group can be
-    # narrowed here, and the printed columns are then only the subjects
-    # assigned at admission to that group's students.
-    group_choices, selected_group = _exam_group_selection(request, exam)
-    columns, results = build_exam_results(exam, group=selected_group or None)
+    # A register never mixes groups: an exam created without one defaults to
+    # the first group configured for the class, and the picker switches it.
+    scope = _result_scope(request, exam)
+    build_group = scope.pop('build_group')
+    columns, results = build_exam_results(exam, group=build_group)
     # Column headers show the subject code (BAN1, ENG1, REL…); the full names
     # sit in the 'Subject codes' legend under the table. Full Marks come from
     # the exam's own setting, not the subject's global default (a Mid Term can
@@ -3109,18 +3155,22 @@ def result_sheet(request, pk):
             ) if marks_config else '',
         })
     no_subjects = not columns
-    ignored = unassigned_mark_subjects(exam, columns)
-    return render(request, 'students/result_sheet.html', {
+    # Only the students on this sheet: another group's marks are correct marks,
+    # not stray ones.
+    ignored = unassigned_mark_subjects(
+        exam, columns, students=[result['student'] for result in results],
+    )
+    context = {
         'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
         'ignored_subjects': ignored,
         'no_subjects': no_subjects,
         'no_subjects_message': no_subjects_assigned_message(exam),
-        'subject_assignments_url': subject_assignments_url(exam, selected_group),
-        'group_choices': group_choices,
-        'selected_group': selected_group,
-        'selected_group_label': dict(group_choices).get(selected_group, ''),
-        'show_group_picker': not exam.group and bool(group_choices),
-    })
+        'subject_assignments_url': subject_assignments_url(
+            exam, '' if build_group is None else build_group,
+        ),
+    }
+    context.update(scope)
+    return render(request, 'students/result_sheet.html', context)
 
 
 @login_required
@@ -3129,11 +3179,12 @@ def result_summary(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _group_choices, selected_group = _exam_group_selection(request, exam)
-    _, results = build_exam_results(exam, group=selected_group or None)
-    return render(request, 'students/exam_result_summary.html', {
-        'exam': exam, 'results': results, 'selected_group': selected_group,
-    })
+    scope = _result_scope(request, exam)
+    build_group = scope.pop('build_group')
+    _, results = build_exam_results(exam, group=build_group)
+    context = {'exam': exam, 'results': results}
+    context.update(scope)
+    return render(request, 'students/exam_result_summary.html', context)
 
 
 @login_required
@@ -3142,12 +3193,15 @@ def top_10(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _group_choices, selected_group = _exam_group_selection(request, exam)
-    _, results = build_exam_results(exam, group=selected_group or None)
-    return render(request, 'students/top10.html', {
-        'exam': exam, 'selected_group': selected_group,
+    scope = _result_scope(request, exam)
+    build_group = scope.pop('build_group')
+    _, results = build_exam_results(exam, group=build_group)
+    context = {
+        'exam': exam,
         'results': [r for r in results if r['position']][:10],
-    })
+    }
+    context.update(scope)
+    return render(request, 'students/top10.html', context)
 
 
 def _exam_result(exam, student_pk, group=None):
@@ -3166,8 +3220,7 @@ def student_result_detail(request, pk, student_pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _group_choices, selected_group = _exam_group_selection(request, exam)
-    student, result = _exam_result(exam, student_pk, group=selected_group or None)
+    student, result = _exam_result(exam, student_pk, group=_result_scope(request, exam)['build_group'])
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)
@@ -3180,8 +3233,7 @@ def result_card(request, pk, student_pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _group_choices, selected_group = _exam_group_selection(request, exam)
-    student, result = _exam_result(exam, student_pk, group=selected_group or None)
+    student, result = _exam_result(exam, student_pk, group=_result_scope(request, exam)['build_group'])
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)

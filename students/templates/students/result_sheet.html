@@ -312,12 +312,14 @@
     <form method="get" class="result-group-picker d-print-none" id="result-group-form">
         <label for="result-group-picker">Group</label>
         <select name="group" id="result-group-picker" onchange="document.getElementById('result-group-form').submit();">
-            <option value="">-- All groups --</option>
             {% for code, label in group_choices %}
             <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
+            <option value="all" {% if selected_group == 'all' %}selected{% endif %}>All groups (whole class)</option>
         </select>
-        <span>This exam was created without a group — pick one to print only that group's students and their admission subjects, exactly like Enter Marks.</span>
+        <span>This exam was created without a group, so the sheet prints one group at a time —
+            {% if is_all_groups %}showing every group's students and subjects together{% else %}showing {{ selected_group_label }} only{% endif %}.
+            Pick another group, or “All groups” for the whole class.</span>
     </form>
     {% endif %}
 
@@ -380,7 +382,7 @@
                 <div>
                     <h2 id="register-title">Class Performance Register</h2>
                     <p>Subject-wise marks, letter grades and overall standing &middot;
-                        columns are only the subjects assigned at admission{% if exam.group %} for the {{ exam.get_group_display }} group{% elif selected_group %} for the {{ selected_group_label }} group{% else %} (all groups){% endif %}</p>
+                        columns are only the subjects assigned at admission{% if is_all_groups %} (all groups){% else %} for the {{ selected_group_label }} group{% endif %}</p>
                 </div>
                 <span class="result-count">{{ results|length }} students · {{ columns|length }} subjects</span>
             </div>
