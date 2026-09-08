@@ -1,0 +1,176 @@
+# Task Backlog — first production release scope
+
+_Last updated: 2026-09-08 (audit session)_
+_Priorities: P0 = required before the first production release · P1 = after release · P2 = optional_
+_Status: OPEN unless marked. Every task lists its dependencies, acceptance criteria, tests and data/migration risk._
+
+**Bengali TL;DR:** Production release-এর আগে P0 task গুলো করা উচিত (১টা verified crash bug + institution isolation + validation + regression tests + production config verify + docs refresh)। Voucher institution, fee schedule, PostgreSQL switch ইত্যাদি P1। Business decision-গুলো (D-1…D-10) নিচে — কিছু task decision-এর উপর নির্ভরশীল।
+
+---
+
+## P0 — Required before the first production release
+
+### P0-1 · Fix student-detail 500 when a student has a Transfer Certificate (BUG-1)
+- **Priority:** P0 (crash on a real page) · **Depends on:** — · **Effort:** small
+- **What:** `school_system/templates/students/student_detail.html` references URL name `tc_print` (nonexistent) and `transfer_certificate.get_status_display` (nonexistent model field). Either point the button at the existing `view_tc` URL (the print template `tc_print.html` is what `view_tc` renders) or add a dedicated print URL; remove/replace the status line.
+- **Acceptance:** a student with an issued TC renders the detail page with HTTP 200; the Print button navigates to a working page.
+- **Tests:** add to `StudentDetailPageTests` — create `TransferCertificate`, GET `student_detail`, assert 200 and that the rendered href resolves (no `NoReverseMatch`).
+- **Risk:** none (template-only, no data, no migration).
+
+### P0-2 · Institution isolation — list-level `?institution=` override (SEC-1, SEC-2)
+- **Priority:** P0 · **Depends on:** D-1 (confirm multi-institution isolation is a hard requirement) · **Effort:** small
+- **What:** In `student_list` and `employee_list`, the `?institution=` GET parameter currently *replaces* the session institution for users who hold `InstitutionAccess`. A scoped user must only be able to select an institution they have an active `InstitutionAccess` row for (admins/staff keep the free choice). `download_student_list` and `archived_students` already use the safer `if/elif` pattern — align the other two with it (plus the access check where the GET param is honoured).
+- **Acceptance:** a clerk of institution A requesting `?institution=<B>` sees no institution-B rows (404 or empty, decided in D-1's implementation note); a user with access rows for both A and B may switch between A and B but not C.
+- **Tests:** new `CrossInstitutionIsolationTests` class: two institutions, one Office clerk, session on A → GET with B's id must not leak B's students/employees; plus the legitimate two-institution switch case.
+- **Risk:** none (query filtering only, no data change, no migration).
+
+### P0-3 · Institution isolation — object-level (pk) views (SEC-3)
+- **Priority:** P0 · **Depends on:** P0-2 (shared helper) · **Effort:** medium
+- **What:** Introduce one helper (e.g. `get_scoped_object(request, Model, pk)` that 404s/redirects when the object belongs to another institution than the user's session institution, and treats staff/admin as unscoped) and apply it to: `student_detail`, `student_id_card`, `student_exams`, `employee_detail`, `edit_exam`, `toggle_publish_exam`, the five result views, `seat_plan_list`/`generate_seat_plan`/`view_seat_plan_room`/`signature_sheet`/`clear_seat_plan`, `enter_marks`/`select_marks_subject`/`import_exam_marks`/`start_entering_marks` (exam creation must be forced to the session institution), TC/certificate views (`issue_tc`, `view_tc`, `issue_certificate`, `view_certificate`, `certificate_list`), `admission_application_detail`, `restore_student`, `bulk_restore_students`, `purge_archived_student`, `bulk_purge_archived_students`, `rollback_student_promotion`, `discontinue_student`, `edit_student`, `delete_student`.
+- **Acceptance:** for every listed endpoint, a scoped user with a valid permission on institution A receives 404 (or a safe redirect) for a pk belonging to institution B; behaviour for staff/admin is unchanged.
+- **Tests:** parameterised regression tests per view (one per view, using two institutions and a scoped clerk).
+- **Risk:** low — behaviour changes only for users reaching another institution's row; legitimate single-institution usage is untouched. No migration.
+
+### P0-4 · Promotion must be institution-scoped (SEC-4)
+- **Priority:** P0 · **Depends on:** D-9 (choose query-scope fix vs. model column) · **Effort:** small–medium
+- **What:** `student_promotion` currently promotes a class across *all* institutions. Minimum fix (no migration): restrict the `select_for_update` queryset to the session institution (scoped users only; staff keep the all-institution behaviour or get a forced institution choice — decide in D-9). `student_promotion_history` and `rollback_student_promotion` must then be scoped consistently (a batch's institutions can be derived from its students for the history list until an institution column exists).
+- **Acceptance:** promoting class 6 in institution A changes no student in institution B; a scoped clerk sees only their institution's batches; rollback of another institution's batch is refused.
+- **Tests:** extend `PromotionAndAuditTests` with a two-institution case.
+- **Risk:** none for the query-only variant. If D-9 chooses the model column, migration risk is low (additive nullable column) but it *is* a migration — requires the P0-8 backup step first.
+
+### P0-5 · Server-side validation for money amounts (SEC-7)
+- **Priority:** P0 · **Depends on:** — · **Effort:** small
+- **What:** `AdmissionPaymentForm.payment_amount`, `MoneyReceiptForm.amount`, `VoucherForm.amount`, `SalarySheetForm.amount` accept any number (the HTML `min="0"` is client-side only). Add `MinValue(0)` (and a sane maximum, e.g. `Decimal('9999999.99')` matching the column width) on each field.
+- **Acceptance:** POSTing a negative or over-sized amount returns a form error and creates no row.
+- **Tests:** one case per form (negative amount rejected).
+- **Risk:** none.
+
+### P0-6 · Regression tests for the isolation & endpoint gaps
+- **Priority:** P0 · **Depends on:** P0-1…P0-5 · **Effort:** medium
+- **What:** Land the tests specified in P0-1…P0-5 plus: public admission endpoint smoke test (GET 200, POST creates a `SUBMITTED` application), promotion scoping, and the `attendance`/`promotion` navigation check (assert the nav contains working links once P1-4 lands, or at least that the pages are 200).
+- **Acceptance:** `python manage.py test students` is green with the new classes; the suite grows by ~15–25 focused tests without weakening existing assertions.
+- **Risk:** none.
+
+### P0-7 · Production configuration verification checklist (run on Render before release)
+- **Priority:** P0 · **Depends on:** — · **Effort:** checklist, no code
+- **What:** Verify on the live service and record the answers in `HANDOFF.md` §"Production state":
+  1. `DEBUG` is `False`; `SECRET_KEY` is a real env value (not the committed fallback);
+  2. `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` contain the production host;
+  3. `TRUST_FORWARDED_PROTO=True` + `USE_X_FORWARDED_HOST=True` behind Render's proxy (otherwise login POSTs 403);
+  4. `EXAM_ABSENT_SUBJECT_FAILS` value matches the school's intended rule;
+  5. database engine and whether a persistent disk is attached (photos + DB survive redeploys);
+  6. group permissions in production match `permissions.py` (run `grant_institution_access --list-users` and compare groups) — see PERM-1.
+- **Acceptance:** all six answered in the handoff doc; any deviation becomes a follow-up task.
+- **Risk:** none (read-only inspection; changes only after owner approval).
+
+### P0-8 · Backup runbook before any destructive operation
+- **Priority:** P0 · **Depends on:** — · **Effort:** docs only
+- **What:** `DEPLOY_NOTES.md` already warns that migration 0035 is irreversible. Add a short "Backup before you deploy" section: how to dump the production DB (Postgres `pg_dump` or copy of the persistent-disk SQLite file), where to keep it, and the rule that *no* destructive migration/command (`merge_duplicate_subjects --apply`, `clean_student_groups --apply`, purge endpoints) runs without a fresh backup.
+- **Acceptance:** runbook section exists; next deploy uses it.
+- **Risk:** none.
+
+### P0-9 · Documentation refresh
+- **Priority:** P0 · **Depends on:** — · **Effort:** small
+- **What:** (a) Update the README roadmap — tick the items verified done in `PROJECT_STATUS.md` §3, reword the partials; (b) fix the stale "SSC registrations" reference in `.github/agents/school-system-maintainer.agent.md`; (c) add a `docs/` index (one line per file) in the README.
+- **Acceptance:** README roadmap matches the code; no doc mentions the removed SSC feature as live functionality.
+- **Risk:** none.
+
+### P0-10 · Dead-code cleanup (no behaviour change)
+- **Priority:** P0 (cheap, removes confusion) · **Depends on:** — · **Effort:** small
+- **What:** remove the duplicate `employees/` route in `students/urls.py` (keep the first); delete orphan templates `students/templates/students/student_list_filter.html`, `school_system/templates/students/admission.html`, and the shadowed stale `students/templates/students/student_detail.html`; delete the duplicate `@login_required`/`@permission_required` decorators; replace the admin header placeholder in `admin.py` with the real school name (or delete it since `urls.py` sets it anyway).
+- **Acceptance:** `python manage.py test students` stays green; `grep` finds no remaining references; no rendered page changes.
+- **Tests:** the full suite is the guard; add a trivial assert that `reverse('employee_list')` still resolves.
+- **Risk:** low — deletion of files no template or view references (verified by cross-check in this session); double-check before deleting anything new.
+
+### P0-11 · Single source of truth for department group permissions (PERM-1)
+- **Priority:** P0 · **Depends on:** D-6 (confirm the intended permission sets, incl. Exam `delete_exam` and Accounts' exam/marks permissions) · **Effort:** small
+- **What:** make `setup_groups.py` call `ensure_default_groups()` (or delete the command's own map) so `permissions.py` is the only map; document the chosen Exam/Accounts sets in the command's help text.
+- **Acceptance:** running `setup_groups` after a fresh migrate changes nothing; the permission sets reported by both paths are identical.
+- **Tests:** a test that builds a fresh DB, runs the command, and asserts group permissions equal `permissions.py`'s map.
+- **Risk:** low — if production currently has the wider `delete_exam` permission, this change removes it on the next migrate (desirable per current code, but confirm in D-6 first).
+
+## P1 — After the first release
+
+### P1-1 · Voucher institution isolation (SEC-5)
+- **Depends on:** D-3 · **Effort:** small + migration
+- Add nullable `institution` FK to `Voucher` (migration), backfill by a dry-run management command (vouchers have no owner link — backfill may be impossible for old rows; decide the fallback: keep unscoped rows visible to staff only), scope `voucher_list`/`finance_dashboard` with the P0-3 helper, replace the no-op `voucher_qs.filter()`.
+- **Tests:** two-institution voucher list + finance dashboard cases.
+- **Migration risk:** low (additive nullable column); backfill is a data decision.
+
+### P1-2 · Class-wise fee schedule & payment rules (roadmap "class-wise Accounts confirmation")
+- **Depends on:** D-4 · **Effort:** medium + migration (new model)
+- New `Fee` (institution/class/amount) model; admission payment approval pre-fills and validates against it (or warns on mismatch); optional confirmation step before `PAYMENT_APPROVED`.
+- **Tests:** fee prefill, mismatch rejection, approval flow unchanged when no fee is configured.
+- **Migration risk:** low (new table).
+
+### P1-3 · Auto receipt numbers for manual money receipts
+- **Depends on:** — · Make `receipt_no` auto-generated (unique, collision-safe like the admission path) and hidden from the form; keep the field unique.
+- **Tests:** create two receipts, assert distinct auto numbers; concurrent-create safety.
+- **Migration risk:** none (field stays, generation moves).
+
+### P1-4 · Navigation: add Attendance and Student Promotion entries
+- **Depends on:** — · Add an "Attendance" flyout (mark attendance / report / summary) and a "Promotion" link (Office flyout) in `base.html`; keep them visible only when the user has the related permissions.
+- **Tests:** template smoke test asserting the links for a staff user.
+- **Risk:** none.
+
+### P1-5 · Student detail "Subjects & Curriculum" tab should show current assignments
+- **Depends on:** D-10 · Replace the legacy `StudentSubject` query with `StudentSubjectChoice`-derived data (via `get_applicable_subjects`/`save_student_subject_choices` semantics), or remove the tab and point to the subject-assignment pages.
+- **Tests:** a student with mandatory + chosen optional subjects shows exactly those; legacy rows stop rendering.
+- **Risk:** low; if removing legacy data later, that is a separate destructive step (needs backup + approval).
+
+### P1-6 · Exam form class choices beyond 1–12
+- **Depends on:** D-8/curriculum needs · `ExamForm.admission_class` is hard-coded `1..12`; drive choices from the selected institution's `classes` (like the add-student form) so Shishu/diploma-semester classes can have exams.
+- **Tests:** create an exam for a "Shishu" class via the form.
+- **Risk:** none (form-level).
+
+### P1-7 · Excel student import should honour `SectionCapacity`
+- **Depends on:** — · Check `SectionCapacity.has_room` per row (like `StudentForm.clean`); report over-capacity rows as skipped instead of creating them.
+- **Tests:** import into a full section stops at the limit.
+- **Risk:** none.
+
+### P1-8 · Zero-padding tolerance in `save_student_subject_choices`
+- **Depends on:** — · Use `class_filter_variants(student.admission_class)` instead of the exact string so `9`/`09` don't silently drop subject picks.
+- **Tests:** student stored as `09`, requirement stored as `9` → pick survives.
+- **Risk:** none.
+
+### P1-9 · Public admission form protection (SEC-6)
+- **Depends on:** D-5 · Rate limiting (per IP, e.g. `django-ratelimit` or a simple session counter), a confirmation/captcha step, and audit on public submissions.
+- **Tests:** repeated submissions beyond the limit are rejected.
+- **Risk:** low (code only).
+
+### P1-10 · PostgreSQL for production (README roadmap)
+- **Depends on:** D-8, P0-7 findings · `DATABASE_URL` is already wired via `dj-database-url`; the switch is a deployment change plus a test pass against Postgres (conditional unique constraints on `AttendanceRecord` need verification on Postgres — they are standard, but prove it).
+- **Tests:** run the full suite with `DATABASE_URL` pointed at a local Postgres.
+- **Migration risk:** medium — a real data migration; requires the P0-8 backup, a staging copy, and a rollback plan. Do it as its own session.
+
+### P1-11 · Media storage strategy (student photos)
+- **Depends on:** D-7 · Either attach a Render persistent disk (document the mount) or move to object storage (S3-compatible, `django-storages`).
+- **Tests:** upload → redeploy → image still present (manual on Render).
+- **Risk:** medium for the S3 route (new dependency + env config); low for the persistent-disk route.
+
+## P2 — Optional
+
+| ID | Task | Notes |
+|----|------|-------|
+| P2-1 | CI: GitHub Actions running `manage.py test students` on push/PR | ~30 lines of YAML; would have caught BUG-1 |
+| P2-2 | Login rate limiting / lockout (currently unlimited attempts) | small, uses the same mechanism as P1-9 |
+| P2-3 | i18n / Bengali UI strings | large-ish; the codebase is English-UI only |
+| P2-4 | Audit entries for `edit_student` / `edit_employee` field changes | `record_audit` exists; just wire it into the edit views |
+| P2-5 | Refresh or delete `.elastic-copilot/memory` (stale since 2026-08-28) | housekeeping |
+| P2-6 | Dashboard quick links (add student, admission, enter marks) | cosmetic |
+| P2-7 | Remove the legacy `StudentSubject` model entirely (after P1-5 + data migration) | destructive; own session + backup |
+
+## Business decisions required
+
+| ID | Question | Why it blocks |
+|----|----------|---------------|
+| D-1 | Is strict per-institution data isolation a hard requirement for release 1? (The fixtures contain 6 institutions — are they all live?) | Scales P0-2…P0-4 effort; if only one institution is used in practice, P0-3/P0-4 could drop to P1 (P0-2 stays — it's cheap) |
+| D-2 | May a user hold access to several institutions and switch between them in one session (current login picks one)? | Shapes the P0-2/P0-3 helper (allowed set = all active rows vs. only the session row) |
+| D-3 | Are vouchers per-institution (needs the P1-1 migration) or school-wide? | P1-1; affects what the finance dashboard shows |
+| D-4 | Admission/fee amounts: keep free-form entry, or introduce a class-wise fee schedule (P1-2) that validates payment approval? | P1-2 scope; P0-5 (≥0 validation) proceeds either way |
+| D-5 | Keep the unauthenticated public admission form? If yes, which protection (rate limit / captcha / confirm email)? | P1-9 |
+| D-6 | Confirm intended permission sets: (a) Exam group — should it include `delete_exam` (setup_groups says yes, permissions.py says no)? (b) Accounts group — should it keep `Exam` add/change and `ExamMark` add/change/delete? | P0-11 |
+| D-7 | Student photos: Render persistent disk (cheap) or object storage (durable)? | P1-11 |
+| D-8 | Production database: stay on SQLite (on a persistent disk) or switch to Postgres (P1-10, README roadmap)? | P1-10, P0-7 |
+| D-9 | Promotion scoping: minimal query-level fix (no migration) now, or add an `institution` column to `PromotionBatch` (small migration) in the same change? | P0-4 |
+| D-10 | Legacy `StudentSubject` data: keep admin-only forever, migrate it into the current models, or drop it? | P1-5 / P2-7 |
