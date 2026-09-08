@@ -22,6 +22,24 @@ SECRET_KEY = os.environ.get(
 # Set DEBUG=False as an environment variable in production.
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
+# Production hardening — only activates when DEBUG=False. Development / preview
+# stays unchanged (DEBUG=True allows ALLOWED_HOSTS=['*'], no SSL redirect).
+if not DEBUG:
+    # These must be confirmed with a real HTTPS endpoint before raising HSTS
+    # to a high value; 3600 is a safe starting point that can be increased.
+    SECURE_HSTS_SECONDS = 3600
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    # The default fallback SECRET_KEY must never be used in production.
+    if SECRET_KEY.startswith('django-insecure-'):
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            "SECRET_KEY is using the default fallback. Set a real SECRET_KEY environment "
+            "variable before running with DEBUG=False (production)."
+        )
+
 # ALLOWED_HOSTS: comma-separated list via env var, e.g. "myapp.onrender.com,mydomain.com"
 _allowed_hosts = os.environ.get('ALLOWED_HOSTS', '')
 ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts.split(',') if h.strip()] or ['*']

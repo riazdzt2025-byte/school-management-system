@@ -129,3 +129,52 @@ The following **cannot be verified from this repository** and are marked unknown
 5. Whether migration 0035 has already run in production (it is irreversible; a backup from before it is the only recovery path).
 6. Current group/user permission state in production (may differ from `permissions.py` if `setup_groups` was run at some point).
 7. Whether duplicate subjects were merged in production (the `merge_duplicate_subjects --apply` step from `DEPLOY_NOTES.md`).
+
+---
+
+## 7. Security / production audit — 2026-09-08 (this session)
+
+**Scope (session rule 2 — only this session):** production settings verification, upload security, sensitive-file exposure, Django deployment checks. No feature code changed; SSC not restored; no migration.
+
+### 7.1 Verification performed
+
+| Check | Method / result |
+|---|---|
+| `manage.py check --deploy` (DEBUG=True / default env) | 6 warnings (DEBUG, SECRET_KEY fallback, SESSION/CSRF cookie secure, HSTS, SSL redirect) — **expected for development** |
+| `manage.py check --deploy` (DEBUG=False, real SECRET_KEY) | 2 optional warnings (SECURE_HSTS_INCLUDE_SUBDOMAINS, SECURE_HSTS_PRELOAD) — **production-ready** |
+| Settings import with DEBUG=False + fallback SECRET_KEY | `ImproperlyConfigured` raised correctly |
+| Photo upload validation (`StudentForm.clean_photo`) | Rejects >2MB, bad extensions (`.php`), non-image content-type; passes valid PNG |
+| Excel import validation (`ExcelImportForm`, `ExamExcelImportForm`) | Rejects >10MB, wrong extension (`.xls`) |
+| Media / file exposure | `media/` not served by default in production; `.gitignore` updated; no direct file-serving view found |
+| `.env.example` guidance | Added production requirements (DEBUG=False, real SECRET_KEY, ALLOWED_HOSTS, media notes) |
+
+### 7.2 Fixes applied (no migration, no data change)
+
+- `school_system/settings.py`: production hardening block (only when `DEBUG=False`): `SECURE_HSTS_SECONDS=3600`, `SECURE_SSL_REDIRECT=True`, `SESSION_COOKIE_SECURE=True`, `CSRF_COOKIE_SECURE=True`, `SESSION_COOKIE_SAMESITE='Lax'`, plus `SECRET_KEY` fallback guard.
+- `students/forms.py`: `clean_photo()` (size + type + extension); `clean_excel_file()` (size + `.xlsx`) on both import forms.
+- `.gitignore`: added `media/` and `media_root/`.
+- `students/test_upload_security.py`: 5 focused regression tests.
+- `.env.example`: documented production env and upload/media notes.
+
+### 7.3 Remaining operational tasks (not done — need owner approval / live check)
+
+| ID | Task | Why not done this session |
+|---|---|---|
+| P0-7 | Production checklist on Render (DEBUG=False, SECRET_KEY real, ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS, TRUST_FORWARDED_PROTO=True + USE_X_FORWARDED_HOST=True, EXAM_ABSENT_SUBJECT_FAILS, DB engine / persistent disk, group permissions vs `permissions.py`) | Requires live Render access and owner confirmation of env values (rule 7) |
+| P1-11 | Media storage strategy (persistent disk vs S3 / object storage for student photos across redeploys) | Business / infrastructure decision (D-7) — needs owner confirmation |
+| SEC-3 / P0-3 | Institution isolation — pk-level views (object-level scope missing on many endpoints) | Out of scope for this security-session; listed in §4 / BACKLOG |
+| P0-5 | Server-side money validation (`MinValue(0)`) | Listed in BACKLOG; not part of upload/security session |
+| P1-5 | Student detail Subjects tab uses legacy `StudentSubject` instead of `StudentSubjectChoice` | Listed in BACKLOG; requires D-10 decision |
+
+### 7.4 Development vs production separation
+
+- Preview / local development keeps `DEBUG=True`, `TRUST_FORWARDED_PROTO=False`, `ALLOWED_HOSTS=['*']`, and the fallback `SECRET_KEY` — all safe for sandbox preview.
+- Production must set `DEBUG=False`, a real `SECRET_KEY`, specific `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS=https://...`, and `TRUST_FORWARDED_PROTO=True` + `USE_X_FORWARDED_HOST=True` (see `.env.example` and `DEPLOY_NOTES.md`).
+- The production settings block in `settings.py` activates automatically when `DEBUG=False`; it does **not** change development behavior.
+
+### 7.5 No destructive operations / no production file changes
+
+- No `manage.py migrate` executed.
+- No bulk cleanup, no `merge_duplicate_subjects --apply`, no purge.
+- No live notification or payment trigger.
+- No secret or password written to chat / logs / docs beyond the existing rotated fallback already documented in `settings.py` comments.

@@ -19,3 +19,7 @@ test_*.txt
 
 # Stale editor/backup copies
 *.bak
+
+# Uploaded files (PII / photos) — never commit
+media/
+media_root/
