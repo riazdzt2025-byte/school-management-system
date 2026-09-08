@@ -9,7 +9,6 @@ from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from students.models import (
     Student, Subject, TransferCertificate, Certificate,
-    SSCRegistration, BoardResult,
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog,
@@ -42,8 +41,6 @@ DEPARTMENT_PERMISSIONS = {
     ],
     "Exam": [
         (Student, ["view"]),
-        (SSCRegistration, ["add", "change", "delete"]),
-        (BoardResult, ["add", "change", "delete"]),
         (Exam, ["add", "change", "delete"]),
         (ExamMark, ["add", "change", "delete"]),
         (SeatPlan, ["add", "change", "delete"]),

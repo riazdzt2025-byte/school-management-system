@@ -11,7 +11,7 @@ from .curriculum_apply import apply_curriculum
 from .models import SubjectMarkSetting
 from .models import (
     Student, Subject, Institution, InstitutionAccess, TransferCertificate, Certificate,
-    SSCRegistration, BoardResult, Exam, ExamMark, SeatPlan,
+    Exam, ExamMark, SeatPlan,
     Employee, EmployeeStatusLog, AttendanceRecord, MoneyReceipt, Voucher, SalarySheet,
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
     StudentSubjectChoice, SectionCapacity,
@@ -20,7 +20,7 @@ from .models import (
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
     TransferCertificateForm,
-    CertificateForm, SSCRegistrationForm, BoardResultForm, SSCExcelImportForm,
+    CertificateForm,
     ExamForm, auto_exam_name, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm,
     EmployeeStatusChangeForm, MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
     AdmissionApplicationForm, AdmissionPaymentForm, AttendanceMarkingForm, DailyAttendanceSelectionForm,
@@ -1289,9 +1289,6 @@ def student_detail(request, pk):
     # Get transfer certificate
     transfer_certificate = getattr(student, 'transfer_certificate', None)
     
-    # Get SSC registration
-    last_registration = student.last_registration()
-    
     # Get attendance records (last 30 records)
     from datetime import timedelta, date
     thirty_days_ago = date.today() - timedelta(days=30)
@@ -1319,7 +1316,6 @@ def student_detail(request, pk):
         'student': student,
         'subjects': subjects,
         'transfer_certificate': transfer_certificate,
-        'last_registration': last_registration,
         'attendance_records': attendance_records_display,
         'attendance_rate': attendance_rate,
         'exam_results': exam_results,
@@ -2398,204 +2394,6 @@ def download_import_template(request):
     response["Content-Disposition"] = 'attachment; filename="student_import_template.xlsx"'
     wb.save(response)
     return response
-
-
-@login_required
-def download_ssc_import_template(request):
-    wb = openpyxl.Workbook()
-    sheet = wb.active
-    sheet.title = "SSC Registrations"
-
-    headers = [
-        "Student ID", "Registration Number", "Roll Number", "Session",
-        "Group", "Subjects", "Board",
-    ]
-    sheet.append(headers)
-
-    sheet.append([
-        "2026001", "REG-2026-001", "101", "2025-2026",
-        "Science", "Bangla, English, Math", "Dhaka",
-    ])
-
-    for col in sheet.columns:
-        max_length = max(len(str(cell.value)) for cell in col if cell.value)
-        sheet.column_dimensions[col[0].column_letter].width = max_length + 4
-
-    response = HttpResponse(
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-    response["Content-Disposition"] = 'attachment; filename="ssc_registration_template.xlsx"'
-    wb.save(response)
-    return response
-
-
-# ---------------- SSC Registration Views ----------------
-
-@login_required
-def ssc_registration_list(request):
-    registrations = SSCRegistration.objects.select_related('student', 'board_result').all()
-    registrations = _filter_by_selected_institution(request, registrations, 'student__institution')
-    session = request.GET.get('session')
-    if session:
-        registrations = registrations.filter(session=session)
-    group = request.GET.get('group')
-    if group:
-        registrations = registrations.filter(group=group)
-    sessions = registrations.values_list('session', flat=True).distinct().order_by('session')
-    return render(request, 'students/ssc_registration_list.html', {
-        'registrations': registrations,
-        'sessions': sessions,
-        'selected_session': session,
-        'group_choices': SSCRegistration.GROUP_CHOICES,
-        'selected_group': group,
-    })
-
-
-@login_required
-@permission_required('students.add_sscregistration', raise_exception=True)
-def add_ssc_registration(request, pk):
-    student = get_object_or_404(Student, pk=pk)
-    if hasattr(student, 'ssc_registration'):
-        messages.info(request, "This student is already registered for SSC.")
-        return redirect('ssc_registration_list')
-    form = SSCRegistrationForm(request.POST or None, student=student)
-    if request.method == 'POST' and form.is_valid():
-        registration = form.save(commit=False)
-        registration.student = student
-        registration.save()
-        messages.success(request, f"SSC registration added — {registration.registration_number}")
-        return redirect('ssc_registration_list')
-    return render(request, 'students/add_ssc_registration.html', {'form': form, 'student': student})
-
-
-@login_required
-@permission_required('students.change_sscregistration', raise_exception=True)
-def edit_ssc_registration(request, pk):
-    registration = get_object_or_404(SSCRegistration, pk=pk)
-    form = SSCRegistrationForm(request.POST or None, instance=registration)
-    if request.method == 'POST' and form.is_valid():
-        form.save()
-        messages.success(request, "SSC registration updated.")
-        return redirect('ssc_registration_list')
-    return render(request, 'students/add_ssc_registration.html', {
-        'form': form, 'student': registration.student, 'registration': registration,
-    })
-
-
-@login_required
-@permission_required('students.delete_sscregistration', raise_exception=True)
-def delete_ssc_registration(request, pk):
-    registration = get_object_or_404(SSCRegistration, pk=pk)
-    if request.method == 'POST':
-        registration.delete()
-        messages.success(request, "SSC registration deleted.")
-        return redirect('ssc_registration_list')
-    return render(request, 'students/delete_ssc_registration.html', {'registration': registration})
-
-
-@login_required
-@permission_required('students.add_sscregistration', raise_exception=True)
-def import_ssc_registrations(request):
-    form = SSCExcelImportForm(request.POST or None, request.FILES or None)
-    if request.method == 'POST' and form.is_valid():
-        try:
-            sheet = openpyxl.load_workbook(request.FILES['excel_file'], data_only=True).active
-        except Exception as exc:
-            messages.error(request, f"Could not read the file: {exc}")
-            return render(request, 'students/import_ssc_registrations.html', {'form': form})
-
-        group_map = {label.lower(): code for code, label in SSCRegistration.GROUP_CHOICES}
-        board_map = {label.lower(): code for code, label in SSCRegistration.BOARD_CHOICES}
-        success_count, error_rows = 0, []
-        for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
-            if not row or all(cell in (None, '') for cell in row):
-                continue
-            try:
-                values = (list(row) + [None] * 7)[:7]
-                student_id, reg_no, roll_no, session, group_raw, subjects, board_raw = values
-                student = Student.objects.filter(
-                    student_id=str(student_id).strip(), is_archived=False,
-                ).first() if student_id else None
-                group_code = group_map.get(str(group_raw).strip().lower()) if group_raw else None
-                board_code = board_map.get(str(board_raw).strip().lower()) if board_raw else None
-                if not student or not reg_no or not group_code or not board_code:
-                    raise ValueError('student ID, registration number, group, or board is invalid')
-                if hasattr(student, 'ssc_registration'):
-                    raise ValueError('student is already registered')
-                SSCRegistration.objects.create(
-                    student=student, registration_number=str(reg_no).strip(),
-                    roll_number=str(roll_no).strip() if roll_no else '',
-                    session=str(session).strip() if session else '', group=group_code,
-                    subjects=str(subjects).strip() if subjects else '', board=board_code,
-                )
-                success_count += 1
-            except Exception as exc:
-                error_rows.append(f"Row {row_num}: {exc}")
-        if success_count:
-            messages.success(request, f"{success_count} SSC registration(s) added successfully.")
-        if error_rows:
-            messages.warning(request, f"{len(error_rows)} row(s) had issues: " + ' | '.join(error_rows[:10]))
-        return redirect('ssc_registration_list')
-    return render(request, 'students/import_ssc_registrations.html', {'form': form})
-
-
-# ---------------- Board Result Views ----------------
-
-@login_required
-@permission_required('students.add_boardresult', raise_exception=True)
-def add_board_result(request, pk):
-    registration = get_object_or_404(SSCRegistration, pk=pk)
-    if hasattr(registration, 'board_result'):
-        messages.info(request, "Result for this student has already been published.")
-        return redirect('result_summary')
-    form = BoardResultForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        result = form.save(commit=False)
-        result.ssc_registration = registration
-        result.save()
-        messages.success(request, f"Result published for {registration.student.name}")
-        return redirect('result_summary')
-    return render(request, 'students/add_board_result.html', {'form': form, 'registration': registration})
-
-
-@login_required
-@permission_required('students.change_boardresult', raise_exception=True)
-def edit_board_result(request, pk):
-    result = get_object_or_404(BoardResult, pk=pk)
-    form = BoardResultForm(request.POST or None, instance=result)
-    if request.method == 'POST' and form.is_valid():
-        form.save()
-        messages.success(request, "Result updated.")
-        return redirect('result_summary')
-    return render(request, 'students/add_board_result.html', {
-        'form': form, 'registration': result.ssc_registration, 'result': result,
-    })
-    
-    
-@login_required
-def ssc_result_summary(request):
-    session = request.GET.get('session')
-    registrations = SSCRegistration.objects.select_related('board_result', 'student').all()
-    if session:
-        registrations = registrations.filter(session=session)
-    sessions = SSCRegistration.objects.values_list('session', flat=True).distinct().order_by('session')
-    results = [registration.board_result for registration in registrations if hasattr(registration, 'board_result')]
-    pass_count = sum(result.result_status == 'PASS' for result in results)
-    gpa_buckets = {'5.00': 0, '4.00-4.99': 0, '3.50-3.99': 0, '3.00-3.49': 0, 'Below 3.00': 0}
-    for result in results:
-        if result.gpa is None:
-            continue
-        gpa = float(result.gpa)
-        key = '5.00' if gpa >= 5 else '4.00-4.99' if gpa >= 4 else '3.50-3.99' if gpa >= 3.5 else '3.00-3.49' if gpa >= 3 else 'Below 3.00'
-        gpa_buckets[key] += 1
-    return render(request, 'students/result_summary.html', {
-        'sessions': sessions, 'selected_session': session,
-        'total_registered': registrations.count(), 'total_published': len(results),
-        'pass_count': pass_count, 'fail_count': len(results) - pass_count,
-        'pass_rate': round(pass_count / len(results) * 100, 2) if results else 0,
-        'gpa_buckets': gpa_buckets,
-        'a_plus_students': [result for result in results if result.grade == 'A+'],
-    })
 
 
 # ---------------- Exam Views ----------------

@@ -4,7 +4,6 @@ admin.site.site_title = "...... High School"
 admin.site.index_title = "School Management System"
 from .models import (
     Student, Subject, StudentSubject, Institution, InstitutionAccess, TransferCertificate, Certificate,
-    SSCRegistration, BoardResult,
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog,
@@ -35,8 +34,6 @@ class InstitutionAccessAdmin(admin.ModelAdmin):
     list_select_related = ('user', 'institution')
 admin.site.register(TransferCertificate)
 admin.site.register(Certificate)
-admin.site.register(SSCRegistration)
-admin.site.register(BoardResult)
 admin.site.register(Exam)
 admin.site.register(ExamMark)
 admin.site.register(SeatPlan)

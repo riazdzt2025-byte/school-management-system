@@ -27,8 +27,7 @@ A web-based Student Management System built with Python and Django, inspired by 
    - Transfer Certificate issue and print workflow
    - Character, Study, and Bonafide certificate workflow
    - Class/section student summary with gender counts
-   - SSC registration and board-result storage
-   - Student and SSC registration Excel import
+   - Student Excel import
 - **Exam Module**
    - Exam and subject-wise bulk marks entry
    - Result sheet, summary, detail result, result card, and top-10 views

@@ -247,11 +247,6 @@
                                     <li><a class="dropdown-item" href="{% url 'certificate_list' student.pk %}">Certificates</a></li>
                                     {% endif %}
                                     {% if student.admission_class == '9' or student.admission_class == '09' or student.admission_class == '10' %}
-                                        {% if student.ssc_registration %}
-                                        <li><a class="dropdown-item" href="{% url 'edit_ssc_registration' student.ssc_registration.pk %}">SSC</a></li>
-                                        {% elif perms.students.add_sscregistration %}
-                                        <li><a class="dropdown-item" href="{% url 'add_ssc_registration' student.pk %}">Register SSC</a></li>
-                                        {% endif %}
                                     {% endif %}
                                 {% endif %}
 

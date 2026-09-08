@@ -3,7 +3,7 @@ import re
 from django import forms
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
-    Institution, SSCRegistration, BoardResult,
+    Institution,
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
     AdmissionApplication, SectionCapacity,
@@ -323,69 +323,6 @@ class CertificateForm(forms.ModelForm):
                 'placeholder': 'e.g. Principal',
             }),
         }
-
-
-def _ssc_group_label(code):
-    return dict(SSCRegistration.GROUP_CHOICES).get(code, code)
-
-
-class SSCRegistrationForm(forms.ModelForm):
-    """SSC board registration.
-
-    The group is checked against the student's own group: the two are stored on
-    different tables and used to be stored with different codes, which let a
-    Science student be registered under Business Studies without any warning.
-    """
-
-    def __init__(self, *args, student=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.forced_student = student
-        if not self.instance.pk and student and student.group:
-            self.fields['group'].initial = student.group
-
-    def clean(self):
-        cleaned = super().clean()
-        student = self.forced_student or getattr(self.instance, 'student', None)
-        group = cleaned.get('group')
-        if student and group and student.group and student.group != group:
-            self.add_error(
-                'group',
-                f'This student is {student.get_group_display()} in the school record, '
-                f'not {_ssc_group_label(group)}. '
-                'Fix the student group or register the matching board group.',
-            )
-        return cleaned
-
-    class Meta:
-        model = SSCRegistration
-        fields = ['registration_number', 'roll_number', 'session', 'group', 'subjects', 'board', 'center']
-        widgets = {
-            'registration_number': forms.TextInput(attrs={'class': 'form-control'}),
-            'roll_number': forms.TextInput(attrs={'class': 'form-control'}),
-            'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2025-2026'}),
-            'group': forms.Select(attrs={'class': 'form-select'}),
-            'subjects': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Bangla, English, Math'}),
-            'board': forms.Select(attrs={'class': 'form-select'}),
-            'center': forms.TextInput(attrs={'class': 'form-control'}),
-        }
-
-
-class BoardResultForm(forms.ModelForm):
-    class Meta:
-        model = BoardResult
-        fields = ['gpa', 'grade', 'result_status', 'subject_wise_grades']
-        widgets = {
-            'gpa': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '5'}),
-            'grade': forms.Select(attrs={'class': 'form-select'}),
-            'result_status': forms.Select(attrs={'class': 'form-select'}),
-            'subject_wise_grades': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
-        }
-
-
-class SSCExcelImportForm(forms.Form):
-    excel_file = forms.FileField(
-        widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
-    )
 
 
 EXAM_SECTION_CHOICES = [(letter, letter) for letter in 'ABCDEFGHIJ']

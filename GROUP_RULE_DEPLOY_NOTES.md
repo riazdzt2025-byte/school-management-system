@@ -202,7 +202,7 @@ they were never allowed to make. Both restore views now require
 redirects to the Archive page with "Restore the student before editing".
 
 Also filtered: bulk update, bulk-update selection page, auto registration and
-the SSC registration import — none of them should reach an archived row.
+other active-student workflows — none of them should reach an archived row.
 
 ## Verified
 
