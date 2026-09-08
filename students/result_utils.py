@@ -254,8 +254,6 @@ def get_student_subject_ids(exam, students, subjects=None, group=None):
         student_group = effective_group or (student.group or '')
         wanted_religion = student_religion(student.religion)
         auto_subjects = set()
-        fallback = set(requirements_by_group.get('', set()))
-        fallback.update(requirements_by_group.get(student_group, set()))
 
         for row in requirement_rows:
             requirement_group = row['group'] or ''
