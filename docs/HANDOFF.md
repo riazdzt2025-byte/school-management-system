@@ -1,0 +1,124 @@
+# Handoff
+
+**Session:** `arena/01a08222-school-management-system` (audit & release scoping)
+**Date:** 2026-09-08 · **Base:** `main` @ `91c14c5` (after PR #7)
+**Scope performed:** repository audit + documentation only. **No feature code was changed in this session** (one throwaway verification test was created, run, and deleted).
+
+**Bengali TL;DR:** এই সেশন শুধু audit ও docs করেছে — code change নেই। ১৫৯ test pass, migration synced। একটা verified crash bug (TC থাকলে student detail 500) আর institution isolation-এর কয়েকটা গ্যাপ পাওয়া গেছে, সব `PROJECT_STATUS.md` ও `TASK_BACKLOG.md`-এ documented। পরের সেশন শুরু করলে: D-1…D-10 decision-গুলো owner-এর কাছ থেকে নিন, তারপর P0-1 থেকে P0-5 implement করুন। Production-এর অনেক অবস্থা (DEBUG, DB engine, backup) এখান থেকে verify করা সম্ভব ছিল না — সেগুলো আলাদা করে "unknown" চিহ্নিত করা আছে।
+
+---
+
+## 1. What this session did
+
+1. Read all prior artifacts: `README.md`, `DEPLOY_NOTES.md`, `GROUP_RULE_DEPLOY_NOTES.md`,
+   `RESULT_PUBLISHING_GUIDE.md`, `.env.example`, migrations 0001–0035, models, views, urls,
+   forms, permissions, tests, templates, fixtures, management commands, `.github/agents`.
+   **Note:** there was no previous `docs/` folder or handoff document in the repository — the
+   only "prior notes" are stale auto-generated files in `.elastic-copilot/memory/` from
+   2026-08-28 (they describe the repo at migration 0011 and list SSC templates that no
+   longer exist; treat them as outdated, not as history). Git history on the local clone is
+   squashed to one commit, but the GitHub PR history (PRs #1–#7, all merged) was reviewed.
+2. Verified the code instead of trusting prior reports:
+   - set up a local venv (Python 3.11.2 + Django 5.2.17 per the README's documented fallback),
+   - ran the full suite: **159 tests pass**,
+   - `makemigrations --check`: clean,
+   - cross-checked every template's `{% url %}` against `urls.py` and every `render()`
+     target against the template tree,
+   - reproduced the BUG-1 crash with a temporary test (then deleted it).
+3. Classified every module — see `docs/PROJECT_STATUS.md` §2 (implemented / partial /
+   missing / verification-needed / legacy).
+4. Compared the README roadmap against the code — `PROJECT_STATUS.md` §3.
+5. Checked the SSC removal (session rule 4: **do not restore**): no dangling references in
+   live code, URLs, templates or navigation; only historical migrations (0008, 0032) and
+   curriculum-data naming remain, which is correct and intentional. `RetiredBoardFeatureTests`
+   guards the removal and passes.
+6. Produced `docs/PROJECT_STATUS.md`, `docs/TASK_BACKLOG.md` and this handoff.
+
+## 2. Headline findings (details in the other two docs)
+
+- **BUG-1 (verified crash):** student detail page returns 500 when the student has an issued
+  Transfer Certificate — the template links the non-existent URL name `tc_print`.
+  Fix is task **P0-1** (template-only, no migration).
+- **Institution isolation gaps:** `student_list`/`employee_list` can be pointed at another
+  institution via `?institution=`; pk-level views (detail, results, exams, TC, restore/purge,
+  promotion rollback) have no institution check at all; **bulk promotion promotes a class in
+  every institution**; vouchers have no institution column. Tasks **P0-2…P0-4, P1-1**.
+  These matter because the fixtures contain 6 institutions.
+- **Money validation:** all amount fields accept negative values server-side (P0-5).
+- **Dead code:** duplicate `employees/` route, two orphan templates, one shadowed stale
+  template, duplicate decorators (P0-10).
+- **Permission drift:** `setup_groups.py` vs `permissions.py` disagree on Exam `delete_exam`
+  (P0-11, needs D-6).
+- **README roadmap is stale** — several "open" items are actually done (P0-9).
+- **Unknown production state** — see §4.
+
+## 3. What was NOT done in this session (and why)
+
+- No feature implementation (session scope = audit + docs).
+- No SSC restoration (session rule 4).
+- No destructive commands, no migrations, no data changes, no production access.
+- No business-policy changes; every such point is parked as a decision (D-1…D-10).
+
+## 4. Production state — explicitly unknown
+
+The following were **not** verifiable from this sandbox and must be confirmed on the live
+Render service before release 1 (checklist = task P0-7):
+
+| Item | State |
+|---|---|
+| Database engine (SQLite vs Postgres) | **unknown** — `psycopg2-binary` is in requirements and `DEPLOY_NOTES.md` mentions Postgres, but nothing in-repo proves which is live |
+| Production env vars (`DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `TRUST_FORWARDED_PROTO`, `EXAM_ABSENT_SUBJECT_FAILS`) | **unknown** |
+| Whether a persistent disk is attached (photo + DB durability across redeploys) | **unknown** |
+| How many of the 6 fixture institutions are actually used | **unknown** |
+| Whether migration 0035 already ran in production (irreversible) | **unknown** |
+| Live group/permission state (may include Exam `delete_exam` if `setup_groups` was ever run) | **unknown** |
+| Whether duplicate subjects were merged in production | **unknown** |
+| Data volume (students/exams/marks) | **unknown** |
+
+## 5. Recommended order for the next session(s)
+
+1. **Ask the owner D-1…D-10** (one short message; recommended defaults are noted in
+   `TASK_BACKLOG.md` §"Business decisions").
+2. **Session A (P0 bug + isolation):** P0-1 → P0-2 → P0-3 → P0-4 → P0-5, each with its
+   regression tests (P0-6). All are code-only, no migrations, no data risk. Re-run the full
+   suite after each task.
+3. **Session B (release prep):** P0-7 (live checklist), P0-8 (backup runbook), P0-9 (docs),
+   P0-10 (dead code), P0-11 (permission source of truth, after D-6).
+4. **Session C+:** P1 items, each as a separate small change (P1-10/Postgres and P2-7/legacy
+   removal are destructive enough to deserve their own session + backup).
+
+## 6. Local run & verify (for the next developer)
+
+```bash
+# Python 3.12+ → requirements.txt as-is (Django 6.1). Python 3.11 → Django 5.2 (README note).
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt     # or: "Django>=5.2,<6" on 3.11
+python3 .venv/bin/manage.py migrate
+python3 .venv/bin/manage.py loaddata students/fixtures/institutions.json
+python3 .venv/bin/manage.py createsuperuser
+python3 .venv/bin/manage.py test students        # 159 tests, ~1 min
+python3 .venv/bin/manage.py runserver 0.0.0.0:8000
+```
+
+Useful commands already in the repo: `grant_institution_access --list-users` (who can log in),
+`merge_duplicate_subjects` (dry-run by default), `clean_student_groups` (dry-run by default),
+`seed_subjects` / `seed_subject_requirements` (curriculum setup).
+
+## 7. Deployment notes
+
+- Render auto-deploys from `main`; this branch is an **open PR — do not merge without the
+  owner** (session rule 13).
+- This session ships **documentation only**: merging it requires no migration and no restart
+  beyond the normal deploy. Nothing in it touches data.
+- Before any future deploy containing migrations or destructive commands: follow the P0-8
+  backup runbook; migration 0035 is already in `main` and **irreversible** (SSC tables +
+  content types dropped) — a pre-0035 backup is the only way to recover that data.
+- Behind Render's proxy the app needs `TRUST_FORWARDED_PROTO=True` and
+  `CSRF_TRUSTED_ORIGINS=https://school-management-system-27mn.onrender.com` (see `.env.example`).
+
+## 8. Files touched by this session
+
+- `docs/PROJECT_STATUS.md` (new)
+- `docs/TASK_BACKLOG.md` (new)
+- `docs/HANDOFF.md` (new — this file)
+
+Nothing else was modified. The working tree should be clean apart from these three files.
