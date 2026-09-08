@@ -2628,3 +2628,147 @@ class SubjectAssignmentsConditionalNoteTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'two religion rows')
 		self.assertContains(response, 'one Religion column')
+
+
+class FullMarkSheetAdmissionScopeTests(TestCase):
+	"""The Full Mark Sheet prints the same admission subject scope as marks
+	entry: only subjects assigned at admission, and — for an exam created
+	without a group — only the picked group's students and their subjects."""
+
+	def setUp(self):
+		from .models import SubjectRequirement
+		self.institution = Institution.objects.create(name='Full Sheet School', classes='9')
+		self.user = get_user_model().objects.create_superuser(
+			username='full-sheet-admin', password='password'
+		)
+		self.client.force_login(self.user)
+
+		def mandatory(code, name, group=''):
+			subject = Subject.objects.create(code=code, name=name, full_marks=100)
+			SubjectRequirement.objects.create(
+				institution=self.institution, admission_class='9', group=group,
+				subject=subject, requirement_type='MANDATORY',
+			)
+			return subject
+
+		def optional(code, name, group):
+			subject = Subject.objects.create(code=code, name=name, full_marks=100)
+			requirement = SubjectRequirement.objects.create(
+				institution=self.institution, admission_class='9', group=group,
+				subject=subject, requirement_type='OPTIONAL', optional_set_key='elective',
+			)
+			return subject, requirement
+
+		self.bangla = mandatory('FSB', 'Bangla')
+		self.english = mandatory('FSE', 'English')
+		self.physics = mandatory('FSP', 'Physics', 'SCI')
+		self.accounting = mandatory('FSA', 'Accounting', 'HUM')
+		self.agriculture, self.agriculture_requirement = optional('FSG', 'Agriculture', 'SCI')
+		self.higher_math, self.higher_math_requirement = optional('FSH', 'Higher Math', 'SCI')
+
+		def admit(student_id, name, group, roll, requirement=None):
+			student = Student.objects.create(
+				institution=self.institution, student_id=student_id, name=name,
+				admission_class='9', section='A', roll_no=roll, admission_year=2026,
+				group=group,
+			)
+			if requirement is not None:
+				StudentSubjectChoice.objects.create(student=student, requirement=requirement)
+			return student
+
+		self.science_agriculture = admit('FS001', 'Science Agriculture', 'SCI', 1, self.agriculture_requirement)
+		self.science_math = admit('FS002', 'Science Higher Math', 'SCI', 2, self.higher_math_requirement)
+		self.humanities = admit('FS003', 'Humanities Student', 'HUM', 3)
+
+		# An exam created without a group: every marks page then offers a group
+		# picker, and the result pages must offer the same one.
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='9', session='2026',
+			is_published=True,
+		)
+		for student, marks in (
+			(self.science_agriculture, {self.bangla: 80, self.english: 75, self.physics: 70, self.agriculture: 85}),
+			(self.science_math, {self.bangla: 82, self.english: 78, self.physics: 72, self.higher_math: 80}),
+			(self.humanities, {self.bangla: 90, self.english: 88, self.accounting: 76}),
+		):
+			for subject, value in marks.items():
+				ExamMark.objects.create(
+					exam=self.exam, student=student, subject=subject, marks_obtained=value,
+				)
+
+	def _column_codes(self, exam, group=None):
+		from .result_utils import build_exam_results
+		columns, _results = build_exam_results(exam, group=group)
+		return [getattr(column, 'code', '') for column in columns]
+
+	def test_result_sheet_columns_are_the_central_admission_scope(self):
+		"""One scope, one place: the sheet's columns are exactly what
+		``get_exam_subjects_for_students`` returns for these students."""
+		from .result_utils import get_exam_students, get_exam_subjects_for_students
+		students = list(get_exam_students(self.exam))
+		scoped, _is_filtered = get_exam_subjects_for_students(self.exam, students)
+		self.assertEqual(self._column_codes(self.exam), [subject.code for subject in scoped])
+
+	def test_group_picker_scopes_the_full_mark_sheet_to_one_group(self):
+		from .result_utils import get_exam_students, get_exam_subjects_for_students
+		response = self.client.get(
+			reverse('result_sheet', args=[self.exam.pk]), {'group': 'SCI'},
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(response.context['show_group_picker'])
+		self.assertEqual(response.context['selected_group'], 'SCI')
+		content = response.content.decode()
+		# Science subjects only — the Humanities paper is not this group's.
+		for code in ('FSB', 'FSE', 'FSP', 'FSG', 'FSH'):
+			self.assertIn(f'<th>{code}<br>', content)
+		self.assertNotIn('<th>FSA<br>', content)
+		# Students follow the same group as the columns.
+		self.assertEqual(
+			{result['student'].pk for result in response.context['results']},
+			{self.science_agriculture.pk, self.science_math.pk},
+		)
+		science_students = list(get_exam_students(self.exam, group='SCI'))
+		scoped, _is_filtered = get_exam_subjects_for_students(
+			self.exam, science_students, group='SCI',
+		)
+		self.assertEqual(self._column_codes(self.exam, group='SCI'),
+					 [subject.code for subject in scoped])
+
+	def test_ungrouped_sheet_offers_the_picker_instead_of_guessing(self):
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		self.assertTrue(response.context['show_group_picker'])
+		self.assertContains(response, '-- All groups --')
+		self.assertContains(response, 'id="result-group-form"')
+
+	def test_picker_is_hidden_when_the_exam_has_its_own_group(self):
+		self.exam.group = 'SCI'
+		self.exam.save(update_fields=['group'])
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		self.assertFalse(response.context['show_group_picker'])
+		content = response.content.decode()
+		self.assertIn('<th>FSP<br>', content)
+		self.assertNotIn('<th>FSA<br>', content)
+		self.assertNotContains(response, 'id="result-group-form"')
+
+	def test_summary_and_top10_follow_the_same_group_scope(self):
+		summary = self.client.get(
+			reverse('exam_result_summary', args=[self.exam.pk]), {'group': 'HUM'},
+		)
+		self.assertEqual(
+			{result['student'].pk for result in summary.context['results']},
+			{self.humanities.pk},
+		)
+		top = self.client.get(reverse('top_10', args=[self.exam.pk]), {'group': 'HUM'})
+		self.assertContains(top, 'Humanities Student')
+		self.assertNotContains(top, 'Science Agriculture')
+
+	def test_result_card_keeps_the_student_own_scope_for_a_foreign_group(self):
+		"""A group that does not cover the student must not blank their card."""
+		response = self.client.get(
+			reverse('result_card', args=[self.exam.pk, self.science_agriculture.pk]),
+			{'group': 'HUM'},
+		)
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Agriculture')
+		self.assertNotContains(response, 'Accounting')

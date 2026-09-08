@@ -539,12 +539,20 @@ def unassigned_mark_subjects(exam, subjects):
     return Subject.objects.none()
 
 
-def build_exam_results(exam):
+def build_exam_results(exam, group=None):
     """Compute every student's result for one exam.
 
-    Returns (columns, results). The printed columns are the union of subjects
-    assigned to at least one student during admission; only the subjects each
-    student actually takes count towards that student's total and GPA.
+    Returns (columns, results). The printed columns come from
+    :func:`get_exam_subjects_for_students` — the one admission subject scope
+    marks entry, the Excel import and the marks settings use — so the result
+    pages can never print a subject no admitted student was assigned, and can
+    never fall back to the class catalogue. Only the subjects each student
+    actually takes count towards that student's total and GPA.
+
+    ``group`` narrows an exam that was created without one, exactly like the
+    group picker on the marks pages: both the students and the subject columns
+    then follow that group, so a Science sheet never carries Humanities
+    columns (and vice versa). ``None`` keeps the exam's own group.
 
     A result is only a Pass when the student passes every subject they sat
     individually; failing (or not sitting) one subject makes the whole result
@@ -560,16 +568,18 @@ def build_exam_results(exam):
     """
     from .models import ExamMark
 
-    students = list(get_exam_students(exam))
-    assigned, _is_filtered = get_exam_subjects(exam)
-    student_subject_ids = get_student_subject_ids(
-        exam, students, subjects=assigned,
+    students = list(get_exam_students(exam, group=group))
+    assigned, _is_filtered = get_exam_subjects_for_students(
+        exam, students, group=group,
     )
-    used_ids = set().union(*(ids for ids in student_subject_ids.values()))
-    assigned = [subject for subject in assigned if subject.pk in used_ids]
+    student_subject_ids = get_student_subject_ids(
+        exam, students, subjects=assigned, group=group,
+    )
 
     # Papers no student in this exam sits (e.g. a Christian paper in a school
-    # with no Christian students) drop out before the column is built.
+    # with no Christian students) are already gone from ``assigned``; this
+    # second pass only rebuilds the per-student paper map for the merged
+    # Religion column.
     kept_subjects, religion_paper, religion_by_pk = applicable_religion_papers(
         exam, assigned, students,
     )

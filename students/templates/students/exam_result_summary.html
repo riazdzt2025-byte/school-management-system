@@ -31,8 +31,8 @@
     </div>
 
     <div class="mb-3 summary-actions d-print-none">
-        <a href="{% url 'result_sheet' exam.pk %}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
-        <a href="{% url 'top_10' exam.pk %}" class="btn btn-outline-warning btn-sm">Top 10</a>
+        <a href="{% url 'result_sheet' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
+        <a href="{% url 'top_10' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}" class="btn btn-outline-warning btn-sm">Top 10</a>
         <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back to Exams</a>
     </div>
 
@@ -64,8 +64,8 @@
                         </td>
                         <td class="d-print-none">
                             {% if r.has_marks %}
-                            <a href="{% url 'student_result_detail' exam.pk r.student.pk %}" class="btn btn-sm btn-outline-navy">Details</a>
-                            <a href="{% url 'result_card' exam.pk r.student.pk %}" class="btn btn-sm btn-navy">Card</a>
+                            <a href="{% url 'student_result_detail' exam.pk r.student.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}" class="btn btn-sm btn-outline-navy">Details</a>
+                            <a href="{% url 'result_card' exam.pk r.student.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}" class="btn btn-sm btn-navy">Card</a>
                             {% endif %}
                         </td>
                     </tr>

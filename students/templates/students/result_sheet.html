@@ -42,6 +42,21 @@
     .result-toolbar .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .result-toolbar .btn { border-radius: 9px; padding: 8px 12px; font-weight: 600; }
 
+    .result-group-picker {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: -6px 0 16px;
+        padding: 12px 14px;
+        border: 1px solid var(--result-line);
+        border-radius: 12px;
+        background: #fbfdfe;
+    }
+    .result-group-picker label { margin: 0; color: var(--result-navy); font-size: .78rem; font-weight: 800; }
+    .result-group-picker select { max-width: 220px; padding: 6px 10px; border: 1px solid #cbd9e0; border-radius: 9px; font-size: .8rem; }
+    .result-group-picker span { color: var(--result-muted); font-size: .72rem; }
+
     .result-paper {
         position: relative;
         overflow: hidden;
@@ -287,11 +302,24 @@
     <div class="result-toolbar d-print-none">
         <div class="toolbar-title"><i class="bi bi-file-earmark-bar-graph me-1"></i> Official academic result register</div>
         <div class="toolbar-actions">
-            <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Summary</a>
+            <a href="{% url 'exam_result_summary' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Summary</a>
             <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
             <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>
         </div>
     </div>
+
+    {% if show_group_picker %}
+    <form method="get" class="result-group-picker d-print-none" id="result-group-form">
+        <label for="result-group-picker">Group</label>
+        <select name="group" id="result-group-picker" onchange="document.getElementById('result-group-form').submit();">
+            <option value="">-- All groups --</option>
+            {% for code, label in group_choices %}
+            <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <span>This exam was created without a group — pick one to print only that group's students and their admission subjects, exactly like Enter Marks.</span>
+    </form>
+    {% endif %}
 
     <div class="result-paper">
         <header class="result-header">
@@ -314,7 +342,7 @@
         <section class="result-summary" aria-label="Exam summary">
             <div class="result-summary-card"><span class="summary-label">Session</span><span class="summary-value">{{ exam.session }}</span></div>
             <div class="result-summary-card"><span class="summary-label">Class</span><span class="summary-value">{{ exam.admission_class }}</span></div>
-            <div class="result-summary-card"><span class="summary-label">Section / Group</span><span class="summary-value">{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if exam.group %} · {{ exam.get_group_display }}{% endif %}</span></div>
+            <div class="result-summary-card"><span class="summary-label">Section / Group</span><span class="summary-value">{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if exam.group %} · {{ exam.get_group_display }}{% elif selected_group %} · {{ selected_group_label }}{% endif %}</span></div>
             <div class="result-summary-card"><span class="summary-label">Students</span><span class="summary-value">{{ results|length }}</span></div>
             <div class="result-summary-card"><span class="summary-label">Subjects</span><span class="summary-value">{{ columns|length }}</span></div>
             <div class="result-summary-card accent"><span class="summary-label">Pass rate</span><span class="summary-value" id="passRate">—</span></div>
@@ -323,7 +351,7 @@
         <div class="print-meta" aria-label="Printable exam details">
             <span><strong>Session</strong>{{ exam.session }}</span>
             <span><strong>Class</strong>{{ exam.admission_class }}</span>
-            <span><strong>Section / Group</strong>{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if exam.group %} · {{ exam.get_group_display }}{% endif %}</span>
+            <span><strong>Section / Group</strong>{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if exam.group %} · {{ exam.get_group_display }}{% elif selected_group %} · {{ selected_group_label }}{% endif %}</span>
             <span><strong>Students</strong>{{ results|length }}</span>
             <span><strong>Subjects</strong>{{ columns|length }}</span>
             <span><strong>Pass rate</strong><span id="printPassRate">—</span></span>
@@ -351,7 +379,8 @@
             <div class="result-section-heading">
                 <div>
                     <h2 id="register-title">Class Performance Register</h2>
-                    <p>Subject-wise marks, letter grades and overall standing</p>
+                    <p>Subject-wise marks, letter grades and overall standing &middot;
+                        columns are only the subjects assigned at admission{% if exam.group %} for the {{ exam.get_group_display }} group{% elif selected_group %} for the {{ selected_group_label }} group{% else %} (all groups){% endif %}</p>
                 </div>
                 <span class="result-count">{{ results|length }} students · {{ columns|length }} subjects</span>
             </div>

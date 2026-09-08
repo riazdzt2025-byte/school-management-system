@@ -3086,7 +3086,11 @@ def result_sheet(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    columns, results = build_exam_results(exam)
+    # Same group picker as Enter Marks: an exam created without a group can be
+    # narrowed here, and the printed columns are then only the subjects
+    # assigned at admission to that group's students.
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    columns, results = build_exam_results(exam, group=selected_group or None)
     # Column headers show the subject code (BAN1, ENG1, REL…); the full names
     # sit in the 'Subject codes' legend under the table. Full Marks come from
     # the exam's own setting, not the subject's global default (a Mid Term can
@@ -3111,7 +3115,11 @@ def result_sheet(request, pk):
         'ignored_subjects': ignored,
         'no_subjects': no_subjects,
         'no_subjects_message': no_subjects_assigned_message(exam),
-        'subject_assignments_url': subject_assignments_url(exam),
+        'subject_assignments_url': subject_assignments_url(exam, selected_group),
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': dict(group_choices).get(selected_group, ''),
+        'show_group_picker': not exam.group and bool(group_choices),
     })
 
 
@@ -3121,8 +3129,11 @@ def result_summary(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _, results = build_exam_results(exam)
-    return render(request, 'students/exam_result_summary.html', {'exam': exam, 'results': results})
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    _, results = build_exam_results(exam, group=selected_group or None)
+    return render(request, 'students/exam_result_summary.html', {
+        'exam': exam, 'results': results, 'selected_group': selected_group,
+    })
 
 
 @login_required
@@ -3131,13 +3142,21 @@ def top_10(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _, results = build_exam_results(exam)
-    return render(request, 'students/top10.html', {'exam': exam, 'results': [r for r in results if r['position']][:10]})
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    _, results = build_exam_results(exam, group=selected_group or None)
+    return render(request, 'students/top10.html', {
+        'exam': exam, 'selected_group': selected_group,
+        'results': [r for r in results if r['position']][:10],
+    })
 
 
-def _exam_result(exam, student_pk):
+def _exam_result(exam, student_pk, group=None):
     student = get_object_or_404(Student, pk=student_pk)
-    _, results = build_exam_results(exam)
+    if group and student.group != group:
+        # The picked group does not cover this student — print their own
+        # exam scope rather than an empty card.
+        group = None
+    _, results = build_exam_results(exam, group=group)
     return student, next((r for r in results if r['student'].pk == student.pk), None)
 
 
@@ -3147,7 +3166,8 @@ def student_result_detail(request, pk, student_pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    student, result = _exam_result(exam, student_pk)
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    student, result = _exam_result(exam, student_pk, group=selected_group or None)
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)
@@ -3160,7 +3180,8 @@ def result_card(request, pk, student_pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    student, result = _exam_result(exam, student_pk)
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    student, result = _exam_result(exam, student_pk, group=selected_group or None)
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)
