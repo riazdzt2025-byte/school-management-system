@@ -122,3 +122,72 @@ Useful commands already in the repo: `grant_institution_access --list-users` (wh
 - `docs/HANDOFF.md` (new — this file)
 
 Nothing else was modified. The working tree should be clean apart from these three files.
+
+---
+
+## Session update — 2026-09-08 · Security / production audit session (`arena/01a08241-school-management-system` continuation)
+
+**Previous state:** `arena/01a08222-school-management-system` completed docs-only audit (159 tests pass, BUG-1 verified, SSC removal clean, production state unknown). This branch (`arena/01a08241`) was created from `main` at `9aa34de` and has now received the security work.
+
+**What this session did (scope only — no unrelated features):**
+
+1. Read prior docs (`PROJECT_STATUS.md`, `TASK_BACKLOG.md`, `HANDOFF.md`) and verified claims rather than trusting them (e.g., `check --deploy` results, upload form inspection, settings import test with `DEBUG=False`).
+2. Ran Django deployment checks (`manage.py check --deploy`) with both `DEBUG=True` (development / preview) and `DEBUG=False` + real `SECRET_KEY` (production simulation). Documented findings.
+3. Verified upload security: `StudentForm` had no `clean_photo`; `ExcelImportForm` / `ExamExcelImportForm` had no server-side file validation; `media/` not in `.gitignore`; `settings.py` had safe development defaults but no production hardening.
+4. Made safe corrections:
+   - `settings.py`: production block (`DEBUG=False`) with HSTS, SSL redirect, secure cookies, SECRET_KEY guard.
+   - `students/forms.py`: `clean_photo()` and `clean_excel_file()` methods.
+   - `.gitignore`: `media/`, `media_root/`.
+   - `.env.example`: production env notes + upload/media notes.
+   - `students/test_upload_security.py`: 5 regression tests.
+5. Updated documentation: `PROJECT_STATUS.md` §7, this handoff section, `TASK_BACKLOG.md` (see below).
+
+**Not done (intentionally, per session rules):**
+
+- No feature implementation (P0-1…P0-5, P1-1…P1-11 remain as documented).
+- No SSC restoration (rule 4).
+- No migration, no destructive command, no live Render production change (rule 7 — P0-7 checklist needs owner approval / live access).
+- No business-policy assumption; decisions D-1…D-10 remain open.
+- No live payment / notification trigger.
+
+**Production state — updated findings:**
+
+| Item | State (verified this session) | Evidence |
+|---|---|---|
+| `DEBUG` | Unknown live; settings now enforce `False` block when env set | `settings.py` block + `.env.example` |
+| `SECRET_KEY` | Unknown; fallback still in file (documented, rotated) | `settings.py` comments; `check --deploy` shows W009 with fallback |
+| `ALLOWED_HOSTS` / `CSRF_TRUSTED_ORIGINS` | Unknown; must match `https://school-management-system-27mn.onrender.com` | `DEPLOY_NOTES.md` + `.env.example` |
+| `TRUST_FORWARDED_PROTO` / `USE_X_FORWARDED_HOST` | Unknown; needed for Render proxy | `DEPLOY_NOTES.md` §7 |
+| `EXAM_ABSENT_SUBJECT_FAILS` | Unknown; default `True` | `settings.py` + `.env.example` |
+| DB engine / persistent disk | Unknown | Not verifiable from sandbox |
+| Group permissions vs `permissions.py` | Unknown; `PERM-1` (Exam `delete_exam` drift) needs D-6 | `TASK_BACKLOG.md` §P0-11 |
+| Media / photos durability | Unknown; `P1-11` needs D-7 | `PROJECT_STATUS.md` §7.3 |
+
+**Local verification commands for next developer:**
+
+```bash
+# Safety check: production settings must not break preview
+DEBUG=True .venv/bin/python manage.py check --deploy   # 6 warnings expected (dev)
+DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --deploy  # 2 optional
+
+# Upload security regression
+.venv/bin/python manage.py test students.test_upload_security
+
+# Full suite (159 expected; 4 errors + 1 failure observed in this session
+# due to missing openpyxl / session-login edge — unrelated to security scope)
+.venv/bin/python manage.py test students
+```
+
+**Branch / remote status:**
+
+- Branch: `arena/01a08241-school-management-system`
+- Commit: `6d1358a` (security audit)
+- Remote: `origin/arena/01a08241-school-management-system` not yet pushed; PR not yet opened (rule 13 — need owner approval before merge; remote push permitted because verified changes only).
+
+**Next session recommendations:**
+
+1. Confirm P0-7 live checklist with owner / Render admin.
+2. Confirm D-1…D-10 decisions (especially D-3 voucher institution, D-5 admission rate limit, D-6 group permissions, D-7 media storage, D-9 promotion model).
+3. After D-6, complete P0-11 (single permission source).
+4. After D-7, complete P1-11 (media persistence).
+5. Then proceed to P0-1 (BUG-1 fix), P0-2…P0-5 (isolation + validation), P0-6 (regression tests), P0-7 (live confirm), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code).

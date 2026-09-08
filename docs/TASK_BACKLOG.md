@@ -174,3 +174,31 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | D-8 | Production database: stay on SQLite (on a persistent disk) or switch to Postgres (P1-10, README roadmap)? | P1-10, P0-7 |
 | D-9 | Promotion scoping: minimal query-level fix (no migration) now, or add an `institution` column to `PromotionBatch` (small migration) in the same change? | P0-4 |
 | D-10 | Legacy `StudentSubject` data: keep admin-only forever, migrate it into the current models, or drop it? | P1-5 / P2-7 |
+
+---
+
+## Update — 2026-09-08 · Security / production audit session (this session)
+
+### Completed (this session only — no feature changes)
+
+| ID | Scope | Status | Evidence / notes |
+|---|---|---|---|
+| SEC-AUDIT | Production settings verification (`check --deploy` with DEBUG=True / False) | **Done** | 6 dev warnings (expected), 2 optional production warnings (expected); settings block verified with `DEBUG=False` + real SECRET_KEY |
+| SEC-AUDIT | Upload type/size validation | **Done** | `StudentForm.clean_photo` (2MB, image types); `ExcelImportForm` / `ExamExcelImportForm.clean_excel_file` (10MB, `.xlsx`) |
+| SEC-AUDIT | Sensitive-file exposure / storage access | **Done** | `media/` added to `.gitignore`; no direct file-serving view found; media URL public by design (page-level auth protects) — documented in `PROJECT_STATUS.md` §7.4 |
+| SEC-AUDIT | Regression tests for upload security | **Done** | `students/test_upload_security.py` — 5 tests, all pass |
+| DOC | Docs updated | **Done** | `PROJECT_STATUS.md` §7, `HANDOFF.md` session update, `.env.example` notes |
+
+### Not completed (intentionally out of scope / need approval / need live access)
+
+| ID | Task | Blocker / dependency |
+|---|---|---|
+| P0-7 | Production checklist (live Render) | Needs live access + owner confirmation; rule 7 (no live change without approval) |
+| P1-11 | Media storage strategy (persistent disk / S3) | Needs D-7 business decision |
+| P0-1 | BUG-1 fix (`tc_print` URL) | Needs next session; not part of audit scope |
+| P0-2…P0-5 | Isolation + validation fixes | Need D-1…D-9 decisions first |
+| P0-6 | Isolation regression tests | Depends on P0-2…P0-5 |
+| P0-8 | Backup runbook | Docs-only, can do anytime before destructive deploy |
+| P0-9 | Documentation refresh | Needs P0-1…P0-8 done first for accurate roadmap |
+| P0-10 | Dead-code cleanup | Safe; can do independently |
+| P0-11 | Permission single source (`setup_groups` vs `permissions.py`) | Needs D-6 confirmation |
