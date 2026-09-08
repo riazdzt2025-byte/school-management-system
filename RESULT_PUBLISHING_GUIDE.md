@@ -162,12 +162,6 @@ that for a mistaken exam, not for routine corrections. After publishing you can
 still correct marks (they flow straight into the result), then unpublish →
 re-check → republish while the correction is verified.
 
-## 7. After a board result is published
-
-`SSC Registration → Add Board Result` for the cohort, then
-`Office → SSC Result Summary`. Board GPA is entered by hand — it is the board's
-number, not the school's exam calculation, and nothing here overwrites it.
-
 ---
 
 ## Housekeeping that affects results

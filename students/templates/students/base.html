@@ -194,8 +194,6 @@
             <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
             <a href="{% url 'import_students' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Import Students</a>
             {% if user.is_staff %}<a href="{% url 'audit_log_list' %}"><i class="bi bi-clock-history"></i> Audit Log</a>{% endif %}
-            <a href="{% url 'ssc_registration_list' %}"><i class="bi bi-file-earmark-text-fill"></i> SSC Registration</a>
-            <a href="{% url 'result_summary' %}"><i class="bi bi-clipboard-data-fill"></i> SSC Result Summary</a>
             <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> Certificates</a>
         </div>
     </div>
@@ -205,7 +203,6 @@
         <div class="flyout">
             <a href="{% url 'start_entering_marks' %}"><i class="bi bi-pencil-fill"></i> Enter Marks</a>
             <a href="{% url 'exam_list' %}"><i class="bi bi-journal-check"></i> Exam List</a>
-            <a href="{% url 'result_summary' %}"><i class="bi bi-clipboard-data-fill"></i> SSC Result Summary</a>
             <a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>
         </div>
     </div>

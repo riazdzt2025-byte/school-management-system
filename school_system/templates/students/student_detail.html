@@ -51,9 +51,6 @@
     {% if perms.students.view_certificate %}
         <a href="{% url 'certificate_list' student.pk %}" class="btn btn-outline-navy btn-sm">View Certificates</a>
     {% endif %}
-    {% if perms.students.add_sscregistration %}
-        <a href="{% url 'add_ssc_registration' student.pk %}" class="btn btn-outline-dark btn-sm">Register for SSC</a>
-    {% endif %}
     <a href="{% url 'student_list' %}" class="btn btn-outline-secondary btn-sm">← Back to List</a>
 </div>
 
@@ -72,11 +69,6 @@
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="results-tab" data-bs-toggle="tab" data-bs-target="#results" type="button" role="tab" aria-controls="results" aria-selected="false">
             Exam Results
-        </button>
-    </li>
-    <li class="nav-item" role="presentation">
-        <button class="nav-link" id="registration-tab" data-bs-toggle="tab" data-bs-target="#registration" type="button" role="tab" aria-controls="registration" aria-selected="false">
-            SSC Registration
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -196,24 +188,6 @@
                 </table>
             {% else %}
                 <div class="alert alert-info mb-0">No exam results available for this student yet.</div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Registration Tab -->
-    <div class="tab-pane fade" id="registration" role="tabpanel" aria-labelledby="registration-tab">
-        <div class="table-card">
-            {% if last_registration %}
-                <table class="table table-bordered mb-0">
-                    <tr><th>Registration No</th><td>{{ last_registration.registration_no }}</td></tr>
-                    <tr><th>Roll No</th><td>{{ last_registration.roll_no }}</td></tr>
-                    <tr><th>Board</th><td>{{ last_registration.board }}</td></tr>
-                    <tr><th>Exam Year</th><td>{{ last_registration.exam_year }}</td></tr>
-                    <tr><th>Exam Type</th><td>{{ last_registration.exam_type }}</td></tr>
-                    <tr><th>Status</th><td><span class="badge bg-success">{{ last_registration.get_status_display }}</span></td></tr>
-                </table>
-            {% else %}
-                <div class="alert alert-info mb-0">No SSC registration found for this student.</div>
             {% endif %}
         </div>
     </div>

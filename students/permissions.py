@@ -14,14 +14,12 @@ def _group_permission_map():
         MoneyReceipt,
         PromotionBatch,
         SeatPlan,
-        SSCRegistration,
         Student,
         StudentPromotionHistory,
         Subject,
         TransferCertificate,
         Voucher,
         SalarySheet,
-        BoardResult,
     )
 
     return {
@@ -50,8 +48,6 @@ def _group_permission_map():
         ],
         'Exam': [
             (Student, ['view']),
-            (SSCRegistration, ['add', 'change', 'delete']),
-            (BoardResult, ['add', 'change', 'delete']),
             (Exam, ['add', 'change']),
             (ExamMark, ['add', 'change', 'delete']),
             (SeatPlan, ['add', 'change', 'delete']),

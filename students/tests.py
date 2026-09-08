@@ -16,7 +16,7 @@ except ModuleNotFoundError:
 
 from .models import (
 	AdmissionApplication, AuditLog, AttendanceRecord, Employee, EmployeeStatusLog, Exam, ExamMark, Institution, InstitutionAccess,
-	MoneyReceipt, PromotionBatch, SSCRegistration, Student, StudentSubjectChoice, Subject,
+	MoneyReceipt, PromotionBatch, Student, StudentSubjectChoice, Subject,
 )
 from .forms import ExamForm, StudentForm, auto_exam_name
 from .permissions import ensure_default_groups
@@ -1214,49 +1214,6 @@ class ExamNamingAndLayoutTests(TestCase):
 		self.assertEqual(warnings, [])
 
 
-class SSCGroupAlignmentTests(TestCase):
-	def setUp(self):
-		self.institution = Institution.objects.create(name='SSC School', classes='9,10')
-		self.user = get_user_model().objects.create_superuser(username='ssc-admin', password='password')
-		self.client.force_login(self.user)
-		self.student = Student.objects.create(
-			institution=self.institution, student_id='SSC01', name='SSC Kid',
-			admission_class='10', section='A', group='SCI', roll_no=1, admission_year=2026,
-		)
-
-	def test_ssc_group_codes_are_the_student_group_codes(self):
-		from .models import SSCRegistration
-		student_codes = {code for code, _label in Student.GROUP_CHOICES}
-		self.assertTrue(SSCRegistration.GROUP_CHOICES)
-		for code, _label in SSCRegistration.GROUP_CHOICES:
-			self.assertIn(code, student_codes)
-
-	def test_form_refuses_a_group_that_disagrees_with_the_student(self):
-		from .forms import SSCRegistrationForm
-		from .models import SSCRegistration
-		form = SSCRegistrationForm(student=self.student, data={
-			'registration_number': 'R-1', 'session': '2025-2026', 'group': 'BUS',
-			'board': 'DHAKA', 'subjects': '', 'roll_number': '', 'center': '',
-		})
-		self.assertFalse(form.is_valid())
-		self.assertIn('group', form.errors)
-		self.assertIn('Science', form.errors['group'][0])
-
-	def test_form_accepts_a_matching_group_and_prefills_it(self):
-		from .forms import SSCRegistrationForm
-		form = SSCRegistrationForm(student=self.student)
-		self.assertEqual(form.fields['group'].initial, 'SCI')
-		form = SSCRegistrationForm(student=self.student, data={
-			'registration_number': 'R-2', 'session': '2025-2026', 'group': 'SCI',
-			'board': 'DHAKA', 'subjects': 'Bangla', 'roll_number': '', 'center': '',
-		})
-		self.assertTrue(form.is_valid(), form.errors)
-		registration = form.save(commit=False)
-		registration.student = self.student
-		registration.save()
-		self.assertEqual(registration.get_group_display(), 'Science')
-
-
 class AbsentSubjectRulesTests(TestCase):
 	"""NCTB/SSC reading: not sitting an assigned subject is a fail, not a free pass."""
 
@@ -1807,19 +1764,6 @@ class ArchiveIntegrityTests(TestCase):
 		self.assertTrue(self.archived.is_archived)
 		self.assertTrue(Student.objects.filter(pk=self.archived.pk).exists())
 
-	@skipUnless(Workbook, 'openpyxl not installed')
-	def test_ssc_import_will_not_attach_to_an_archived_student(self):
-		book = Workbook()
-		sheet = book.active
-		sheet.append(['Student ID', 'Registration No', 'Roll No', 'Session', 'Group', 'Subjects', 'Board'])
-		sheet.append(['AR001', 'REG-900', 1, '2025-2026', 'Science', '', 'Dhaka'])
-		buffer = BytesIO()
-		book.save(buffer)
-		buffer.seek(0)
-		self.client.post(reverse('import_ssc_registrations'), {
-			'excel_file': SimpleUploadedFile('regs.xlsx', buffer.getvalue()),
-		})
-		self.assertFalse(SSCRegistration.objects.filter(student=self.archived).exists())
 
 
 class StudentImportLabelTests(TestCase):
@@ -2749,3 +2693,48 @@ class MarkEvaluationActiveSubjectTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'English')
 		self.assertContains(response, f'name="is_active_{self.english.pk}"')
+
+
+class RetiredBoardFeatureTests(TestCase):
+    def test_old_endpoints_are_not_routable(self):
+        from django.urls import Resolver404, resolve
+
+        for path in (
+            '/ssc-registrations/', '/ssc-registrations/import/',
+            '/ssc-registrations/import/template/', '/students/1/ssc-register/',
+            '/ssc-registrations/1/edit/', '/ssc-registrations/1/delete/',
+            '/ssc-registrations/1/add-result/', '/board-results/1/edit/',
+            '/results/summary/',
+        ):
+            with self.subTest(path=path), self.assertRaises(Resolver404):
+                resolve(path)
+
+    def test_retired_models_and_permissions_are_absent(self):
+        from django.apps import apps
+
+        for name in ('SSCRegistration', 'BoardResult'):
+            with self.subTest(model=name):
+                with self.assertRaises(LookupError):
+                    apps.get_model('students', name)
+                self.assertFalse(ContentType.objects.filter(
+                    app_label='students', model=name.lower(),
+                ).exists())
+
+    def test_student_pages_no_longer_show_board_features(self):
+        user = get_user_model().objects.create_superuser(
+            username='retired-feature-admin', password='password',
+        )
+        self.client.force_login(user)
+        institution = Institution.objects.create(name='Test School', classes='10')
+        student = Student.objects.create(
+            institution=institution, name='Test Student', student_id='RETIRED01',
+            admission_class='10', admission_year=2026, section='A', roll_no=1,
+        )
+        for url in (reverse('student_list'), reverse('student_detail', args=[student.pk])):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertNotContains(response, 'SSC Registration')
+                self.assertNotContains(response, 'SSC Result Summary')
+                self.assertNotContains(response, 'ssc-registrations')
+                self.assertNotContains(response, 'Register for SSC')

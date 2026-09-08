@@ -74,3 +74,23 @@ and the student list are all constrained to that group automatically.
 If a class has no `SubjectRequirement` rows configured, every subject is shown
 (with a notice on the page) so marks entry is never blocked. Configure subject
 assignments per class/group to get the filtered behaviour.
+
+## Remove retired SSC registration and board-result features
+
+Migration `0035_remove_ssc_registration_and_board_result` permanently drops the
+SSC registration and board-result tables and removes their content types,
+permissions, and user/group permission assignments. Back up the database before
+upgrading if these records need to be retained externally. This migration is
+irreversible; restoring the removed data requires the backup.
+
+Deploy the updated code and run:
+
+```bash
+python manage.py migrate
+```
+
+The registration/import/board-result endpoints and SSC summary are removed,
+including their navigation, student-profile tabs/actions and admin entries.
+Regular school exam results, exam summaries and class 9–10 curriculum remain
+unchanged. Historical migrations are intentionally retained so both existing
+and fresh databases can migrate correctly.
