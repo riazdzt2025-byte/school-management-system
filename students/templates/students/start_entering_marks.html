@@ -113,17 +113,14 @@
             return;
         }
         subjectSelect.innerHTML = '<option value="">-- Loading... --</option>';
-        var url = '{% url "subject_requirements_json" %}?institution=' + encodeURIComponent(instId) +
+        var url = '{% url "subject_requirements_json" %}?assigned_only=1&institution=' + encodeURIComponent(instId) +
                   '&admission_class=' + encodeURIComponent(cls) +
                   '&group=' + encodeURIComponent(groupSelect.value || '');
         fetch(url).then(function(r) { return r.json(); }).then(function(data) {
-            var all = (data.mandatory || []).concat(data.conditional || []);
-            Object.keys(data.optional_groups || {}).forEach(function(key) {
-                all = all.concat(data.optional_groups[key]);
-            });
+            var all = data.subjects || [];
             subjectSelect.innerHTML = '';
             if (!all.length) {
-                subjectSelect.innerHTML = '<option value="">-- No subjects assigned to this class --</option>';
+                subjectSelect.innerHTML = '<option value="">-- No subjects assigned at admission --</option>';
                 return;
             }
             var placeholder = document.createElement('option');
