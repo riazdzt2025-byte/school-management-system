@@ -110,6 +110,23 @@ class StudentForm(forms.ModelForm):
             raise forms.ValidationError('Select Science, Business Studies or Humanities.')
         return value
 
+    def clean_photo(self):
+        photo = self.cleaned_data.get('photo')
+        if photo:
+            # Size cap (2 MB)
+            max_size = 2 * 1024 * 1024
+            if photo.size > max_size:
+                raise forms.ValidationError('Photo must be under 2 MB.')
+            # Type and extension check
+            valid_exts = {'.jpg', '.jpeg', '.png', '.gif'}
+            name = photo.name.lower()
+            if not any(name.endswith(ext) for ext in valid_exts):
+                raise forms.ValidationError('Only JPG, PNG or GIF images are allowed.')
+            # Content-type guard (Django already checks, but reinforce)
+            if not photo.content_type.startswith('image/'):
+                raise forms.ValidationError('Uploaded file is not a valid image.')
+        return photo
+
     def clean(self):
         cleaned_data = super().clean()
         admission_class = cleaned_data.get('admission_class')
@@ -290,6 +307,15 @@ class ExcelImportForm(forms.Form):
         widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
     )
 
+    def clean_excel_file(self):
+        f = self.cleaned_data.get('excel_file')
+        if f:
+            if f.size > 10 * 1024 * 1024:
+                raise forms.ValidationError('Excel file must be under 10 MB.')
+            if not f.name.lower().endswith('.xlsx'):
+                raise forms.ValidationError('Only .xlsx files are allowed.')
+        return f
+
 
 class TransferCertificateForm(forms.ModelForm):
     class Meta:
@@ -395,6 +421,15 @@ class ExamExcelImportForm(forms.Form):
     excel_file = forms.FileField(
         widget=forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': '.xlsx'})
     )
+
+    def clean_excel_file(self):
+        f = self.cleaned_data.get('excel_file')
+        if f:
+            if f.size > 10 * 1024 * 1024:
+                raise forms.ValidationError('Excel file must be under 10 MB.')
+            if not f.name.lower().endswith('.xlsx'):
+                raise forms.ValidationError('Only .xlsx files are allowed.')
+        return f
 
 
 class GenerateSeatPlanForm(forms.Form):
