@@ -57,12 +57,13 @@ def subject_assignments_url(exam, group=''):
     Shown by the Enter Marks, Excel Import and Result Sheet pages when a class
     has no subjects assigned yet, so the link always lands on the right class.
     """
+    effective_group = (group or getattr(exam, 'group', '') or '').strip()
     url = (
         f"{reverse('subject_requirement_list')}?institution={exam.institution_id}"
         f"&admission_class={exam.admission_class}"
     )
-    if group:
-        url += f"&group={group}"
+    if effective_group:
+        url += f"&group={effective_group}"
     return url
 from .marks_import import (
     build_subject_marks_workbook,
@@ -2026,9 +2027,26 @@ def subject_requirement_list(request):
             grouped[label] = bucket
 
     can_auto_fill = False
+    result_sheet_links = []
     if institution_id and admission_class:
         common_rows, _ = curriculum_for_class(admission_class)
         can_auto_fill = common_rows is not None
+        exam_scope = Exam.objects.filter(
+            institution_id=institution_id,
+            admission_class__in=class_filter_variants(admission_class),
+            is_published=True,
+        ).order_by('-session', '-exam_date', '-id')
+        if group:
+            exam_scope = exam_scope.filter(Q(group=group) | Q(group=''))
+        for exam in exam_scope[:8]:
+            url = reverse('result_sheet', args=[exam.pk])
+            if group and not exam.group:
+                url += f'?group={group}'
+            result_sheet_links.append({
+                'exam': exam,
+                'url': url,
+                'group_label': exam.get_group_display() or dict(Student.GROUP_CHOICES).get(group, ''),
+            })
 
     institutions = Institution.objects.all().order_by('name')
     institutions_data = {
@@ -2047,6 +2065,7 @@ def subject_requirement_list(request):
         'selected_group': group,
         'query': query,
         'can_auto_fill': can_auto_fill,
+        'result_sheet_links': result_sheet_links,
         'current_querystring': request.GET.urlencode(),
     })
 
@@ -3086,7 +3105,11 @@ def result_sheet(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    columns, results = build_exam_results(exam)
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    columns, results = build_exam_results(exam, group=selected_group or None)
     # Column headers show the subject code (BAN1, ENG1, REL…); the full names
     # sit in the 'Subject codes' legend under the table. Full Marks come from
     # the exam's own setting, not the subject's global default (a Mid Term can
@@ -3105,13 +3128,19 @@ def result_sheet(request, pk):
             ) if marks_config else '',
         })
     no_subjects = not columns
-    ignored = unassigned_mark_subjects(exam, columns)
+    ignored = unassigned_mark_subjects(exam, columns, group=selected_group or None)
     return render(request, 'students/result_sheet.html', {
         'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
         'ignored_subjects': ignored,
         'no_subjects': no_subjects,
         'no_subjects_message': no_subjects_assigned_message(exam),
-        'subject_assignments_url': subject_assignments_url(exam),
+        'subject_assignments_url': subject_assignments_url(exam, selected_group),
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': selected_group_label,
+        'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
     })
 
 
@@ -3121,8 +3150,20 @@ def result_summary(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _, results = build_exam_results(exam)
-    return render(request, 'students/exam_result_summary.html', {'exam': exam, 'results': results})
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    _, results = build_exam_results(exam, group=selected_group or None)
+    return render(request, 'students/exam_result_summary.html', {
+        'exam': exam, 'results': results,
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': selected_group_label,
+        'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+    })
 
 
 @login_required
@@ -3131,7 +3172,8 @@ def top_10(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _, results = build_exam_results(exam)
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    _, results = build_exam_results(exam, group=selected_group or None)
     return render(request, 'students/top10.html', {'exam': exam, 'results': [r for r in results if r['position']][:10]})
 
 

@@ -2628,3 +2628,65 @@ class SubjectAssignmentsConditionalNoteTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'two religion rows')
 		self.assertContains(response, 'one Religion column')
+
+
+class ResultSheetSubjectAssignmentConnectionTests(TestCase):
+	def setUp(self):
+		from .models import SubjectRequirement
+		self.institution = Institution.objects.create(name='Group Link School', classes='9')
+		self.user = get_user_model().objects.create_superuser(username='group-link-admin', password='password')
+		self.client.force_login(self.user)
+		self.business = Subject.objects.create(code='BUS101', name='Business Studies', full_marks=100)
+		self.science = Subject.objects.create(code='SCI101', name='Science', full_marks=100)
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='BUS',
+			subject=self.business, requirement_type='MANDATORY',
+		)
+		SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', group='SCI',
+			subject=self.science, requirement_type='MANDATORY',
+		)
+		self.bus_student = Student.objects.create(
+			institution=self.institution, student_id='BUS001', name='Business Kid',
+			admission_class='9', group='BUS', section='A', roll_no=1, admission_year=2026,
+		)
+		self.sci_student = Student.objects.create(
+			institution=self.institution, student_id='SCI001', name='Science Kid',
+			admission_class='9', group='SCI', section='A', roll_no=2, admission_year=2026,
+		)
+		# Older exams may be created for the whole class; the result sheet must be
+		# able to follow the group selected from Subject Assignments.
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='9', session='2026', is_published=True,
+		)
+		ExamMark.objects.create(exam=self.exam, student=self.bus_student, subject=self.business, marks_obtained=80)
+		ExamMark.objects.create(exam=self.exam, student=self.sci_student, subject=self.science, marks_obtained=70)
+
+	def test_subject_assignment_filter_links_to_matching_group_result_sheet(self):
+		response = self.client.get(reverse('subject_requirement_list'), {
+			'institution': self.institution.pk,
+			'admission_class': '9',
+			'group': 'BUS',
+		})
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Published Result Sheet')
+		self.assertContains(response, f"{reverse('result_sheet', args=[self.exam.pk])}?group=BUS")
+
+	def test_result_sheet_group_query_filters_students_and_links_back_to_assignments(self):
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]), {'group': 'BUS'})
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Business Kid')
+		self.assertNotContains(response, 'Science Kid')
+		self.assertContains(response, f"{reverse('subject_requirement_list')}?institution={self.institution.pk}&amp;admission_class=9&amp;group=BUS")
+
+	def test_grouped_exam_assignment_url_keeps_exam_group(self):
+		from .views import subject_assignments_url
+		exam = Exam.objects.create(
+			name='Grouped Exam', exam_type='SECOND_TERM', institution=self.institution,
+			admission_class='9', group='BUS', session='2026', is_published=True,
+		)
+		self.assertEqual(
+			subject_assignments_url(exam),
+			f"{reverse('subject_requirement_list')}?institution={self.institution.pk}&admission_class=9&group=BUS",
+		)

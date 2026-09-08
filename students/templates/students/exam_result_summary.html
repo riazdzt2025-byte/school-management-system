@@ -26,13 +26,29 @@
     <div class="page-header">
         <div>
             <h1>Result Summary</h1>
-            <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} - Session {{ exam.session }}</div>
+            <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} - {{ result_group_label }}{% endif %} - Session {{ exam.session }}</div>
         </div>
     </div>
 
+    {% if show_group_picker %}
+    <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
+        <div>
+            <label class="form-label fw-semibold mb-1">Group</label>
+            <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-navy">Show Summary</button>
+        {% if selected_group %}<a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+    </form>
+    {% endif %}
+
     <div class="mb-3 summary-actions d-print-none">
-        <a href="{% url 'result_sheet' exam.pk %}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
-        <a href="{% url 'top_10' exam.pk %}" class="btn btn-outline-warning btn-sm">Top 10</a>
+        <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
+        <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm">Top 10</a>
         <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back to Exams</a>
     </div>
 

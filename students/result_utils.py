@@ -512,7 +512,7 @@ class ReligionColumn:
         return self.name
 
 
-def unassigned_mark_subjects(exam, subjects):
+def unassigned_mark_subjects(exam, subjects, group=None):
     """Subjects that hold marks for this exam but are not assigned to any
     student in the exam's admission subject scope.
 
@@ -532,6 +532,9 @@ def unassigned_mark_subjects(exam, subjects):
             assigned_ids.add(subject.pk)
 
     marks = ExamMark.objects.filter(exam=exam)
+    effective_group = (group if group is not None else exam.group) or ''
+    if effective_group:
+        marks = marks.filter(student__group=effective_group)
     if marks.exists():
         return Subject.objects.filter(
             id__in=marks.values_list('subject_id', flat=True).distinct(),
@@ -539,7 +542,7 @@ def unassigned_mark_subjects(exam, subjects):
     return Subject.objects.none()
 
 
-def build_exam_results(exam):
+def build_exam_results(exam, group=None):
     """Compute every student's result for one exam.
 
     Returns (columns, results). The printed columns are the union of subjects
@@ -560,10 +563,10 @@ def build_exam_results(exam):
     """
     from .models import ExamMark
 
-    students = list(get_exam_students(exam))
-    assigned, _is_filtered = get_exam_subjects(exam)
+    students = list(get_exam_students(exam, group=group))
+    assigned, _is_filtered = get_exam_subjects(exam, group=group)
     student_subject_ids = get_student_subject_ids(
-        exam, students, subjects=assigned,
+        exam, students, subjects=assigned, group=group,
     )
     used_ids = set().union(*(ids for ids in student_subject_ids.values()))
     assigned = [subject for subject in assigned if subject.pk in used_ids]
