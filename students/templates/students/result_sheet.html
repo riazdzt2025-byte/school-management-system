@@ -202,43 +202,68 @@
         .result-footer { align-items: flex-start; flex-direction: column; }
     }
 
-    @page { size: A4 landscape; margin: 8mm; }
+    @page { size: A4 landscape; margin: 5mm; }
     @media print {
         html, body { background: #fff !important; color: #000 !important; }
-        .result-page { max-width: none; color: #000 !important; }
+        .result-page { max-width: none; color: #000 !important; font-size: 7px; }
         .result-toolbar, .d-print-none { display: none !important; }
         .result-paper { margin: 0; padding: 0; border: 0; border-radius: 0; background: #fff !important; box-shadow: none !important; }
         .result-paper::before { display: none; }
-        .result-header { grid-template-columns: minmax(0, 1fr) 220px; gap: 16px; padding-top: 0; padding-bottom: 10px; border-bottom: 1px solid #000 !important; }
-        .school-seal { border: 1px solid #000 !important; border-radius: 0; background: #fff !important; box-shadow: none !important; }
+        .result-header { grid-template-columns: minmax(0, 1fr) 205px; gap: 10px; padding-top: 0; padding-bottom: 6px; border-bottom: 1px solid #000 !important; break-inside: avoid; }
+        .school-identity { gap: 8px; }
+        .school-seal { flex-basis: 48px; width: 48px; height: 48px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; box-shadow: none !important; }
+        .school-seal img { width: 44px; height: 47px; }
         .school-eyebrow, .school-identity h1, .school-founder, .school-address { color: #000 !important; }
-        .report-card { padding: 9px 10px; border: 1px solid #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; box-shadow: none !important; text-align: center; }
+        .school-eyebrow { margin-bottom: 2px; font-size: 6px; letter-spacing: .8px; }
+        .school-identity h1 { font-size: 16px; line-height: 1; letter-spacing: -.2px; }
+        .school-founder { margin-top: 2px; font-size: 6.5px; }
+        .school-address { margin-top: 1px; font-size: 6px; line-height: 1.1; }
+        .report-card { padding: 5px 7px; border: 1px solid #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; box-shadow: none !important; text-align: center; }
         .report-card .report-label, .report-card strong, .report-card .report-session { color: #000 !important; }
-        .report-card strong { margin: 3px 0 5px; }
-        .report-card .report-session { border-color: #000 !important; border-radius: 0; background: #fff !important; }
-        .result-summary { gap: 0; margin: 10px 0 12px; }
-        .result-summary-card, .result-summary-card.accent { min-height: 45px; padding: 7px 9px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
+        .report-card .report-label { font-size: 6px; letter-spacing: .7px; }
+        .report-card strong { margin: 2px 0 3px; font-size: 10px; line-height: 1; }
+        .report-card .report-session { padding: 2px 4px; border-color: #000 !important; border-radius: 0; background: #fff !important; font-size: 6px; }
+        .result-summary { gap: 0; margin: 5px 0 7px; break-inside: avoid; }
+        .result-summary-card, .result-summary-card.accent { display: flex; align-items: center; gap: 3px; min-height: 0; padding: 3px 4px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
         .result-summary-card .summary-label, .result-summary-card .summary-value { color: #000 !important; }
+        .result-summary-card .summary-label { font-size: 5.5px; letter-spacing: .2px; }
+        .result-summary-card .summary-value { margin-top: 0; font-size: 7px; }
+        .result-section-heading { margin-bottom: 3px; }
         .result-section-heading h2, .result-section-heading p, .result-count { color: #000 !important; }
-        .result-count { padding: 4px 7px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
-        .result-notice { border-color: #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; }
+        .result-section-heading h2 { font-size: 8px; }
+        .result-section-heading p { margin-top: 1px; font-size: 6px; }
+        .result-count { padding: 2px 4px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; font-size: 5.5px; }
+        .result-notice { margin-bottom: 5px; padding: 4px 5px; border-color: #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; font-size: 6px; }
         .result-notice strong, .result-notice .badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
         .result-table-card { overflow: visible; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
         .result-table-wrap { overflow: visible; }
-        .result-table-card table { min-width: 0; border-collapse: collapse; }
-        .result-table-card th, .result-table-card th.group-heading, .result-table-card td { padding: 5px 3px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 8px; }
-        .result-table-card th small, .result-table-card td.student-col, .overall-stack .metric-label, .gpa-label, .status-badge, .grade-badge { font-size: 7px; }
-        .result-table-card td.student-col { min-width: 0; color: #000 !important; }
+        .result-table-card table { min-width: 0; border-collapse: collapse; line-height: 1; }
+        .result-table-card th, .result-table-card th.group-heading { padding: 3px 2px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 6.5px; line-height: 1; }
+        .result-table-card td { height: 18px; padding: 2px 2px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 6.5px; line-height: 1; }
+        .result-table-card th small, .result-table-card td.student-col, .overall-stack .metric-label, .gpa-label, .status-badge, .grade-badge { font-size: 5.5px; }
+        .result-table-card td.student-col { min-width: 0; max-width: 0; color: #000 !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .result-table-card tbody tr { break-inside: avoid; }
         .result-table-card tbody tr:nth-child(even) td, .result-table-card td.failed-mark, .result-table-card td.absent-mark, .result-table-card td.not-applicable-mark { color: #000 !important; background: #fff !important; }
-        .roll-badge, .grade-badge, .status-badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
-        .mark-number, .grade-label, .overall-stack strong, .overall-stack .place, .gpa-label { color: #000 !important; }
+        .roll-badge { width: 15px; height: 15px; border-radius: 0; font-size: 5.5px; }
+        .overall-stack, .result-stack { gap: 1px; }
+        .overall-stack .metric-label { letter-spacing: 0; }
+        .overall-stack strong, .mark-number { color: #000 !important; font-size: 6.5px; }
+        .overall-stack .place, .grade-label, .gpa-label { color: #000 !important; }
+        .mark-row { gap: 2px; }
+        .grade-badge { min-width: 15px; padding: 1px 2px; border-radius: 0; color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
+        .status-badge { margin-top: 1px; padding: 1px 3px; color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
         .fail-star { color: #000 !important; }
-        .subject-codes, .subject-codes strong, .subject-codes .code { color: #000 !important; background: #fff !important; border-color: #000 !important; }
+        .subject-codes { gap: 2px 4px; margin-top: 5px; color: #000 !important; font-size: 5.5px; }
+        .subject-codes strong, .subject-codes .code { color: #000 !important; background: #fff !important; border-color: #000 !important; }
+        .subject-codes .code { padding: 1px 2px; font-size: 5px; }
         .result-bottom, .grading-box, .verification-box { break-inside: avoid; }
-        .grading-box, .verification-box { border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
-        .box-title, .grading-item, .verification-box p, .signature-line, .result-footer, .result-footer strong { color: #000 !important; }
-        .signature-line, .result-footer { border-color: #000 !important; }
-        .result-footer { break-inside: avoid; }
+        .result-bottom { gap: 6px; margin-top: 6px; }
+        .grading-box, .verification-box { padding: 5px 6px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
+        .box-title { margin-bottom: 3px; font-size: 5.5px; }
+        .grading-list { gap: 3px 5px; }
+        .grading-item, .verification-box p, .signature-line, .result-footer, .result-footer strong { color: #000 !important; font-size: 5.5px; }
+        .signature-line { width: 80px; margin-top: 6px; padding-top: 2px; border-color: #000 !important; }
+        .result-footer { margin-top: 5px; padding-top: 4px; border-color: #000 !important; break-inside: avoid; }
         .result-notice { break-inside: avoid; }
         .result-table-card thead { display: table-header-group; }
     }
