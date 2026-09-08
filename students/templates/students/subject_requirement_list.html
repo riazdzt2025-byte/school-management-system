@@ -54,6 +54,26 @@
 
 {{ institutions_data|json_script:"sr-institutions-data" }}
 
+{% if result_sheet_links %}
+<div class="table-card p-3 mb-3 d-print-none">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+            <div class="fw-semibold">Published Result Sheet</div>
+            <div class="text-muted" style="font-size:0.85rem;">
+                Open the matching result sheet for this Institution, Class{% if selected_group %}, and Group{% endif %} filter.
+            </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            {% for item in result_sheet_links %}
+            <a href="{{ item.url }}" class="btn btn-sm btn-outline-navy">
+                {{ item.exam.get_exam_type_display }} {{ item.exam.session }}{% if item.group_label %} · {{ item.group_label }}{% endif %}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% if selected_institution_id and selected_class and perms.students.add_subjectrequirement %}
 <div class="table-card p-3 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>

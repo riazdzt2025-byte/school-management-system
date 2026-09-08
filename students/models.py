@@ -767,6 +767,10 @@ class SubjectMarkSetting(MarksConfigMixin):
         null=True, blank=True,
         help_text='Only used for exam types that carry a weekly test (e.g. Mid Term).',
     )
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Only checked subjects are offered for marks entry and counted in results for this exam type.',
+    )
 
     class Meta:
         constraints = [

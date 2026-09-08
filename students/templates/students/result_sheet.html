@@ -287,11 +287,28 @@
     <div class="result-toolbar d-print-none">
         <div class="toolbar-title"><i class="bi bi-file-earmark-bar-graph me-1"></i> Official academic result register</div>
         <div class="toolbar-actions">
-            <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Summary</a>
+            <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Summary</a>
+            <a href="{{ subject_assignments_url }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-journal-check me-1"></i> Subject Assignments</a>
             <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
             <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>
         </div>
     </div>
+
+    {% if show_group_picker %}
+    <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
+        <div>
+            <label class="form-label fw-semibold mb-1">Group</label>
+            <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-navy">Show Result Sheet</button>
+        {% if selected_group %}<a href="{% url 'result_sheet' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+    </form>
+    {% endif %}
 
     <div class="result-paper">
         <header class="result-header">
@@ -314,7 +331,7 @@
         <section class="result-summary" aria-label="Exam summary">
             <div class="result-summary-card"><span class="summary-label">Session</span><span class="summary-value">{{ exam.session }}</span></div>
             <div class="result-summary-card"><span class="summary-label">Class</span><span class="summary-value">{{ exam.admission_class }}</span></div>
-            <div class="result-summary-card"><span class="summary-label">Section / Group</span><span class="summary-value">{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if exam.group %} · {{ exam.get_group_display }}{% endif %}</span></div>
+            <div class="result-summary-card"><span class="summary-label">Section / Group</span><span class="summary-value">{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if result_group_label %} · {{ result_group_label }}{% endif %}</span></div>
             <div class="result-summary-card"><span class="summary-label">Students</span><span class="summary-value">{{ results|length }}</span></div>
             <div class="result-summary-card"><span class="summary-label">Subjects</span><span class="summary-value">{{ columns|length }}</span></div>
             <div class="result-summary-card accent"><span class="summary-label">Pass rate</span><span class="summary-value" id="passRate">—</span></div>
@@ -323,7 +340,7 @@
         <div class="print-meta" aria-label="Printable exam details">
             <span><strong>Session</strong>{{ exam.session }}</span>
             <span><strong>Class</strong>{{ exam.admission_class }}</span>
-            <span><strong>Section / Group</strong>{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if exam.group %} · {{ exam.get_group_display }}{% endif %}</span>
+            <span><strong>Section / Group</strong>{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if result_group_label %} · {{ result_group_label }}{% endif %}</span>
             <span><strong>Students</strong>{{ results|length }}</span>
             <span><strong>Subjects</strong>{{ columns|length }}</span>
             <span><strong>Pass rate</strong><span id="printPassRate">—</span></span>
