@@ -2183,6 +2183,114 @@ class ReligionPaperTests(TestCase):
 			exam=self.exam, student=self.hindu_kid, subject=self.islam).exists())
 
 
+class AdmissionSubjectScopeTests(TestCase):
+	"""Marks and results use the subjects selected for each admitted student,
+	while retaining mandatory subjects and a union of subjects for the class
+	columns."""
+
+	def setUp(self):
+		from .models import SubjectRequirement
+		self.institution = Institution.objects.create(name='Admission Scope School', classes='9')
+		self.user = get_user_model().objects.create_superuser(
+			username='admission-scope-admin', password='password'
+		)
+		self.client.force_login(self.user)
+		self.bangla = Subject.objects.create(code='ASB', name='Bangla', full_marks=100)
+		self.ict = Subject.objects.create(code='ASI', name='ICT', full_marks=100)
+		self.agriculture = Subject.objects.create(code='ASA', name='Agriculture', full_marks=100)
+		self.bangla_requirement = SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', subject=self.bangla,
+			requirement_type='MANDATORY',
+		)
+		self.ict_requirement = SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', subject=self.ict,
+			requirement_type='OPTIONAL', optional_set_key='elective',
+		)
+		self.agriculture_requirement = SubjectRequirement.objects.create(
+			institution=self.institution, admission_class='9', subject=self.agriculture,
+			requirement_type='OPTIONAL', optional_set_key='elective',
+		)
+		self.exam = Exam.objects.create(
+			name='Second Term Examination-2026', exam_type='SECOND_TERM',
+			institution=self.institution, admission_class='9', session='2026', is_published=True,
+		)
+		self.ict_student = Student.objects.create(
+			institution=self.institution, student_id='AS001', name='ICT Student',
+			admission_class='9', section='A', roll_no=1, admission_year=2026,
+		)
+		self.agriculture_student = Student.objects.create(
+			institution=self.institution, student_id='AS002', name='Agriculture Student',
+			admission_class='9', section='A', roll_no=2, admission_year=2026,
+		)
+		# Mandatory subjects are intentionally not stored as choices here: the
+		# admission model derives them from SubjectRequirement. Only the selected
+		# optional subject is student-specific.
+		for student, optional_requirement in (
+			(self.ict_student, self.ict_requirement),
+			(self.agriculture_student, self.agriculture_requirement),
+		):
+			StudentSubjectChoice.objects.create(student=student, requirement=optional_requirement)
+
+	def test_subject_scope_is_the_union_of_admission_assignments(self):
+		from .result_utils import get_exam_subjects_for_students, get_exam_students
+		students = list(get_exam_students(self.exam))
+		subjects, is_filtered = get_exam_subjects_for_students(self.exam, students)
+		self.assertTrue(is_filtered)
+		self.assertEqual({subject.pk for subject in subjects}, {
+			self.bangla.pk, self.ict.pk, self.agriculture.pk,
+		})
+
+	def test_unselected_optional_subject_is_blank_and_not_counted(self):
+		from .result_utils import build_exam_results
+		ExamMark.objects.create(exam=self.exam, student=self.ict_student, subject=self.bangla, marks_obtained=80)
+		ExamMark.objects.create(exam=self.exam, student=self.ict_student, subject=self.ict, marks_obtained=70)
+		ExamMark.objects.create(exam=self.exam, student=self.agriculture_student, subject=self.bangla, marks_obtained=80)
+		ExamMark.objects.create(exam=self.exam, student=self.agriculture_student, subject=self.agriculture, marks_obtained=60)
+		_columns, results = build_exam_results(self.exam)
+		ict_result = next(r for r in results if r['student'].pk == self.ict_student.pk)
+		agriculture_row = next(
+			row for row in ict_result['subject_results']
+			if row.get('subject') == self.agriculture
+		)
+		self.assertTrue(agriculture_row['subject_unassigned'])
+		self.assertEqual(ict_result['total_full'], 200)
+		self.assertEqual(ict_result['total_obtained'], 150)
+		self.assertEqual(ict_result['status'], 'Pass')
+		self.assertEqual(ict_result['absent_subject_count'], 0)
+
+	def test_marks_input_is_enabled_only_for_assigned_student(self):
+		response = self.client.get(reverse('enter_marks', args=[self.exam.pk, self.ict.pk]))
+		self.assertEqual(response.status_code, 200)
+		content = response.content.decode()
+		self.assertIn(f'name="marks_{self.ict_student.pk}"', content)
+		self.assertNotIn(f'name="marks_{self.agriculture_student.pk}"', content)
+
+	@skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+	def test_excel_import_skips_a_student_who_did_not_choose_the_subject(self):
+		from .marks_import import parse_subject_marks_workbook
+		from .result_utils import get_exam_students
+		workbook = Workbook()
+		sheet = workbook.active
+		sheet.append(['Roll', 'ID', 'Name', 'Marks'])
+		sheet.append([1, self.ict_student.student_id, self.ict_student.name, 70])
+		sheet.append([2, self.agriculture_student.student_id, self.agriculture_student.name, 70])
+		validated, skipped, errors = parse_subject_marks_workbook(
+			workbook, self.exam, self.ict, list(get_exam_students(self.exam)),
+		)
+		self.assertFalse(errors)
+		self.assertEqual(skipped, 1)
+		self.assertEqual([student.pk for student, _defaults in validated], [self.ict_student.pk])
+
+	def test_summary_total_has_no_full_marks_denominator_and_actions_are_print_hidden(self):
+		ExamMark.objects.create(exam=self.exam, student=self.ict_student, subject=self.bangla, marks_obtained=80)
+		ExamMark.objects.create(exam=self.exam, student=self.ict_student, subject=self.ict, marks_obtained=70)
+		response = self.client.get(reverse('exam_result_summary', args=[self.exam.pk]))
+		self.assertContains(response, '150')
+		self.assertNotContains(response, '150 / 300')
+		self.assertContains(response, 'class="d-print-none"')
+		self.assertContains(response, 'A4 landscape')
+
+
 class ResultCountingRulesTests(TestCase):
 	"""A result is Pass only when every subject is passed individually. A
 	failed result gets no percentage and no position — they are not counted."""

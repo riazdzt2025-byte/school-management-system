@@ -10,7 +10,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .models import ExamMark, MARK_PARTS, Student, normalize_class_label
 from .result_utils import (
-    get_exam_students, get_exam_subjects, get_subject_marks,
+    get_exam_students, get_exam_subjects, get_student_subject_ids, get_subject_marks,
     religion_paper_for, religion_subject_map,
 )
 
@@ -73,12 +73,21 @@ def build_subject_marks_workbook(exam, subject, group=None):
     # covers every assigned religion paper, so a Hindu student who has a Hindu
     # paper does not appear on the Islam sheet.
     all_subjects, _filtered = get_exam_subjects(exam, group=group)
+    student_subject_ids = get_student_subject_ids(
+        exam, students, subjects=all_subjects, group=group,
+    )
     religion_by_pk = religion_subject_map(exam, all_subjects)
-    is_religion_paper = bool(religion_by_pk)
+    is_religion_paper = subject.pk in religion_by_pk
     if is_religion_paper:
         students = [
             student for student in students
-            if religion_paper_for(student, religion_by_pk) == subject.pk
+            if subject.pk in student_subject_ids.get(student.pk, set())
+            and religion_paper_for(student, religion_by_pk) == subject.pk
+        ]
+    else:
+        students = [
+            student for student in students
+            if subject.pk in student_subject_ids.get(student.pk, set())
         ]
     headers = marks_import_headers(marks_config)
     parts = marks_config.parts
@@ -247,15 +256,22 @@ def parse_subject_marks_sheet(sheet, exam, subject, students):
 
     marks_config = get_subject_marks(exam, subject)
     parts = marks_config.parts
-    # Marks for a student who does not sit this religion paper are skipped:
-    # the result never counts them anyway. The map covers every assigned
-    # religion paper so the student's own paper wins over the Islam fallback.
+    # Only students assigned this subject during admission are importable.
+    # Religion papers add the student's own-paper check on top of that map.
     all_subjects, _filtered = get_exam_subjects(exam)
+    student_subject_ids = get_student_subject_ids(exam, students, subjects=all_subjects)
     religion_by_pk = religion_subject_map(exam, all_subjects)
-    students = [
-        student for student in students
-        if not religion_by_pk or religion_paper_for(student, religion_by_pk) == subject.pk
-    ]
+    if subject.pk in religion_by_pk:
+        students = [
+            student for student in students
+            if subject.pk in student_subject_ids.get(student.pk, set())
+            and religion_paper_for(student, religion_by_pk) == subject.pk
+        ]
+    else:
+        students = [
+            student for student in students
+            if subject.pk in student_subject_ids.get(student.pk, set())
+        ]
     students_by_id = {student.student_id.lower(): student for student in students if student.student_id}
     students_by_roll = defaultdict(list)
     students_by_roll_name = defaultdict(list)

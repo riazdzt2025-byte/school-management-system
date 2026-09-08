@@ -38,7 +38,7 @@
     {% elif not subject %}
     <p class="text-muted">Each file is <strong>one subject</strong>. The Physics teacher fills Physics; the Bangla teacher fills Bangla. Pick the subject first, download that sheet, then upload the filled file.</p>
     <p class="text-muted small mb-2">
-        Showing subjects assigned to Class {{ exam.admission_class }}{% if exam.group %} &ndash; {{ exam.get_group_display }} group{% elif selected_group %} &ndash; {{ selected_group_label }} group{% else %} (all groups){% endif %}.
+        Showing subjects assigned during admission to at least one student in Class {{ exam.admission_class }}{% if exam.group %} &ndash; {{ exam.get_group_display }} group{% elif selected_group %} &ndash; {{ selected_group_label }} group{% else %} (all groups){% endif %}.
     </p>
     <form method="post">
         {% csrf_token %}

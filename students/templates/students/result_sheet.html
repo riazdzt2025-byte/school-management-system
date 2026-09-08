@@ -340,9 +340,9 @@
         {% if ignored_subjects %}
         <div class="result-notice">
             <i class="bi bi-exclamation-triangle-fill"></i>
-            <div>Marks exist for subject(s) that are not assigned to its class/group, so they are <strong>not counted here</strong>:
+            <div>Marks exist for subject(s) that are not assigned to any student in this exam (not assigned to its class/group), so they are <strong>not counted here</strong>:
                 {% for subject in ignored_subjects %}<span class="badge bg-secondary">{{ subject.name }}</span>{% endfor %}
-                &mdash; fix the subject assignments or correct the marks under Enter Marks.
+                &mdash; fix the admission subject assignments or correct the marks under Enter Marks.
             </div>
         </div>
         {% endif %}
@@ -402,8 +402,8 @@
                                     </div>
                                 </td>
                                 {% for sr in r.subject_results %}
-                                {% if sr.religion_unassigned %}
-                                <td class="mark-cell not-applicable-mark" title="No {{ r.student.religion|default:'religion' }} religion paper is assigned to this class, so the Religion column is not counted for this student">
+                                {% if sr.religion_unassigned or sr.subject_unassigned %}
+                                <td class="mark-cell not-applicable-mark" title="This subject was not selected for this student at admission and is not counted">
                                     <div class="mark-row"><span class="mark-number">&nbsp;</span></div>
                                 </td>
                                 {% else %}

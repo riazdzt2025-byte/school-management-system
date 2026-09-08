@@ -5,6 +5,7 @@ things or the school ends up with a different set of students/subjects per
 screen: who belongs to an exam, and how a mark turns into a grade. Both live
 here so there is exactly one implementation of each.
 """
+from collections import defaultdict
 from decimal import Decimal
 
 from django.db.models import Q
@@ -195,16 +196,115 @@ def applicable_religion_papers(exam, subjects, students):
     return kept, paper_by_student, religion_by_pk
 
 
-def get_exam_subjects_for_students(exam, students, group=None):
-    """``get_exam_subjects`` narrowed to the papers these students sit.
+def get_student_subject_ids(exam, students, subjects=None, group=None):
+    """Return the subjects that each student actually takes.
 
-    Marks entry, Excel import and their templates must not offer religion
-    papers no student in the exam sits (Christian / Buddhist papers in a school
-    that has none), so a teacher never sees a subject they cannot use. Returns
-    (subjects_list, is_filtered) like :func:`get_exam_subjects`.
+    SubjectRequirement rows describe the curriculum offered to a class. A
+    student's admission choices add the selected optional subjects; mandatory
+    and religion-conditioned rows are derived for the student's own group and
+    religion. Older students with no choice rows fall back to all applicable
+    class requirements so legacy data remains usable.
+    """
+    from .models import StudentSubjectChoice, SubjectRequirement, parse_religion_label, student_religion
+
+    students = list(students)
+    if subjects is None:
+        subjects, _is_filtered = get_exam_subjects(exam, group=group)
+    subjects = list(subjects)
+    base_subject_ids = {subject.pk for subject in subjects if getattr(subject, 'pk', None)}
+    if not students or not base_subject_ids:
+        return {student.pk: set() for student in students}
+
+    student_ids = [student.pk for student in students]
+    effective_group = (group if group is not None else exam.group) or ''
+    class_variants = class_filter_variants(exam.admission_class)
+
+    requirement_rows = list(SubjectRequirement.objects.filter(
+        institution_id=exam.institution_id,
+        admission_class__in=class_variants,
+        subject_id__in=base_subject_ids,
+    ).values(
+        'subject_id', 'group', 'requirement_type', 'condition_religion',
+        'subject__category', 'subject__name',
+    ))
+    requirements_by_group = defaultdict(set)
+    for row in requirement_rows:
+        requirements_by_group[row['group'] or ''].add(row['subject_id'])
+
+    choice_subjects = defaultdict(set)
+    choice_present = set()
+    choice_rows = StudentSubjectChoice.objects.filter(
+        student_id__in=student_ids,
+        requirement__institution_id=exam.institution_id,
+        requirement__admission_class__in=class_variants,
+        requirement__subject_id__in=base_subject_ids,
+    ).values(
+        'student_id', 'requirement__subject_id', 'requirement__group',
+    )
+    student_by_id = {student.pk: student for student in students}
+    for row in choice_rows:
+        student = student_by_id.get(row['student_id'])
+        if student is None:
+            continue
+        student_group = effective_group or (student.group or '')
+        requirement_group = row['requirement__group'] or ''
+        if requirement_group and requirement_group != student_group:
+            continue
+        choice_present.add(student.pk)
+        choice_subjects[student.pk].add(row['requirement__subject_id'])
+
+    assigned = {}
+    for student in students:
+        student_group = effective_group or (student.group or '')
+        wanted_religion = student_religion(student.religion)
+        auto_subjects = set()
+        fallback = set(requirements_by_group.get('', set()))
+        fallback.update(requirements_by_group.get(student_group, set()))
+
+        for row in requirement_rows:
+            requirement_group = row['group'] or ''
+            if requirement_group and requirement_group != student_group:
+                continue
+            label = ''
+            if row['condition_religion'] and row['requirement_type'] == 'CONDITIONAL':
+                label = parse_religion_label(row['condition_religion'])
+            elif row['subject__category'] == 'RELIGION':
+                label = parse_religion_label(row['subject__name'])
+
+            if row['requirement_type'] == 'MANDATORY':
+                if not label or label == wanted_religion:
+                    auto_subjects.add(row['subject_id'])
+            elif row['requirement_type'] == 'CONDITIONAL' and label == wanted_religion:
+                auto_subjects.add(row['subject_id'])
+
+        # The admission form stores selected optional choices and may also have
+        # stored auto-assigned rows. Derived auto subjects are always included,
+        # while an optional subject is included only when the student selected
+        # it. With no choice rows at all, retain the legacy class requirement
+        # fallback (which historically exposed every class subject).
+        if student.pk in choice_present:
+            assigned[student.pk] = auto_subjects | choice_subjects[student.pk]
+        else:
+            assigned[student.pk] = fallback | auto_subjects
+    return assigned
+
+
+def get_exam_subjects_for_students(exam, students, group=None):
+    """``get_exam_subjects`` narrowed to subjects assigned to these students.
+
+    Marks entry, Excel import and their templates must not offer optional
+    subjects not selected during admission, or religion papers no student in
+    the exam sits (Christian / Buddhist papers in a school that has none), so a
+    teacher never sees a subject they cannot use. Returns (subjects_list,
+    is_filtered) like :func:`get_exam_subjects`.
     """
     subjects, is_filtered = get_exam_subjects(exam, group=group)
     subjects = list(subjects)
+    student_subject_ids = get_student_subject_ids(
+        exam, students, subjects=subjects, group=group,
+    )
+    used_ids = set().union(*(ids for ids in student_subject_ids.values()))
+    subjects = [subject for subject in subjects if subject.pk in used_ids]
     kept, _paper_by_student, _religion_by_pk = applicable_religion_papers(exam, subjects, students)
     return kept, is_filtered
 
@@ -420,10 +520,12 @@ class ReligionColumn:
 
 
 def unassigned_mark_subjects(exam, subjects):
-    """Subjects that hold marks for this exam but are not assigned to it.
+    """Subjects that hold marks for this exam but are not assigned to any
+    student in the exam's admission subject scope.
 
-    The result sheet only prints the exam's own subjects, so without this the
-    stray marks would simply vanish. The page shows them as a notice instead.
+    The result sheet only prints the exam's own student-assigned subjects, so
+    without this the stray marks would simply vanish. The page shows them as a
+    notice instead.
     ``subjects`` may include a :class:`ReligionColumn`, whose merged papers
     count as assigned so marks in either religion paper never look stray.
     """
@@ -447,9 +549,9 @@ def unassigned_mark_subjects(exam, subjects):
 def build_exam_results(exam):
     """Compute every student's result for one exam.
 
-    Returns (columns, results). Only the subjects assigned to the exam's class
-    and group are printed, and only the subjects a student actually sat count
-    towards their total and GPA.
+    Returns (columns, results). The printed columns are the union of subjects
+    assigned to at least one student during admission; only the subjects each
+    student actually takes count towards that student's total and GPA.
 
     A result is only a Pass when the student passes every subject they sat
     individually; failing (or not sitting) one subject makes the whole result
@@ -467,6 +569,11 @@ def build_exam_results(exam):
 
     students = list(get_exam_students(exam))
     assigned, _is_filtered = get_exam_subjects(exam)
+    student_subject_ids = get_student_subject_ids(
+        exam, students, subjects=assigned,
+    )
+    used_ids = set().union(*(ids for ids in student_subject_ids.values()))
+    assigned = [subject for subject in assigned if subject.pk in used_ids]
 
     # Papers no student in this exam sits (e.g. a Christian paper in a school
     # with no Christian students) drop out before the column is built.
@@ -511,9 +618,10 @@ def build_exam_results(exam):
         has_fail = False
 
         for column in columns:
+            selected_subject_ids = student_subject_ids.get(student.pk, set())
             if isinstance(column, ReligionColumn):
                 paper = column.paper_for(student)
-                if paper is None:
+                if paper is None or paper.pk not in selected_subject_ids:
                     # This student's own religion paper is not assigned for
                     # the class: a plain dash, never counted and never a fail.
                     subject_results.append({
@@ -531,6 +639,18 @@ def build_exam_results(exam):
                 result['religion_column'] = True
                 result['paper'] = paper
             else:
+                if column.pk not in selected_subject_ids:
+                    # Optional subjects are columns shared by the class, but a
+                    # student who did not select one gets a blank, never an
+                    # absent/fail result and never a total/GPA contribution.
+                    subject_results.append({
+                        'subject': column, 'subject_unassigned': True,
+                        'not_applicable': True, 'absent': True,
+                        'obtained': None, 'full': None, 'percentage': None,
+                        'grade': ABSENT, 'point': None, 'passed': False,
+                        'failed_parts': [], 'parts': [], 'pass_marks': None,
+                    })
+                    continue
                 marks_config = get_subject_marks(exam, column)
                 result = compute_subject_result(student_marks.get(column.pk), marks_config)
                 result['subject'] = column

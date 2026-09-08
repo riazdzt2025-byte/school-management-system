@@ -2,54 +2,79 @@
 
 {% block title %}Result Summary - {{ block.super }}{% endblock %}
 
+{% block extra_style %}
+    .result-summary-page .summary-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    @page { size: A4 landscape; margin: 10mm; }
+    @media print {
+        html, body { background: #fff !important; color: #000 !important; }
+        .result-summary-page { color: #000 !important; }
+        .result-summary-page .page-header { background: #fff !important; border-color: #000 !important; }
+        .result-summary-page .page-header h1,
+        .result-summary-page .page-header .subtitle { color: #000 !important; }
+        .result-summary-page .table-card { border: 1px solid #000 !important; border-radius: 0; background: #fff !important; box-shadow: none !important; }
+        .result-summary-page .table-responsive { overflow: visible; }
+        .result-summary-page table { border-collapse: collapse; }
+        .result-summary-page th,
+        .result-summary-page td { border: 1px solid #000 !important; color: #000 !important; background: #fff !important; padding: 6px 5px; font-size: 10px; }
+        .result-summary-page .badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
+        .result-summary-page thead { display: table-header-group; }
+    }
+{% endblock %}
+
 {% block content %}
-<div class="page-header">
-    <div>
-        <h1>Result Summary</h1>
-        <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} - Session {{ exam.session }}</div>
+<div class="result-summary-page">
+    <div class="page-header">
+        <div>
+            <h1>Result Summary</h1>
+            <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} - Session {{ exam.session }}</div>
+        </div>
     </div>
-</div>
 
-<div class="mb-3 d-print-none">
-    <a href="{% url 'result_sheet' exam.pk %}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
-    <a href="{% url 'top_10' exam.pk %}" class="btn btn-outline-warning btn-sm">Top 10</a>
-    <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back to Exams</a>
-</div>
+    <div class="mb-3 summary-actions d-print-none">
+        <a href="{% url 'result_sheet' exam.pk %}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
+        <a href="{% url 'top_10' exam.pk %}" class="btn btn-outline-warning btn-sm">Top 10</a>
+        <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back to Exams</a>
+    </div>
 
-<div class="table-card">
-    <div class="table-responsive">
-        <table class="table table-striped mb-0">
-            <thead>
-                <tr><th>Position</th><th>Roll</th><th>ID</th><th>Name</th><th>Total</th><th>Percentage</th><th>GPA</th><th>Grade</th><th>Status</th><th>Action</th></tr>
-            </thead>
-            <tbody>
-                {% for r in results %}
-                <tr>
-                    <td>{{ r.position|default:'-' }}</td>
-                    <td>{{ r.student.roll_no }}</td>
-                    <td>{{ r.student.student_id }}</td>
-                    <td>{{ r.student.name }}</td>
-                    <td>{% if r.has_marks %}{{ r.total_obtained }} / {{ r.total_full }}{% else %}-{% endif %}</td>
-                    <td>{% if r.status == 'Pass' %}{{ r.percentage }}%{% else %}&mdash;{% endif %}</td>
-                    <td>{{ r.gpa|default:'-' }}</td>
-                    <td>{{ r.grade }}</td>
-                    <td>
-                        {% if r.status == 'Pass' %}<span class="badge bg-success">Pass</span>
-                        {% elif r.status == 'Fail' %}<span class="badge bg-danger">Fail</span>
-                        {% else %}<span class="badge bg-secondary">No Marks</span>{% endif %}
-                    </td>
-                    <td>
-                        {% if r.has_marks %}
-                        <a href="{% url 'student_result_detail' exam.pk r.student.pk %}" class="btn btn-sm btn-outline-navy">Details</a>
-                        <a href="{% url 'result_card' exam.pk r.student.pk %}" class="btn btn-sm btn-navy">Card</a>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="10" class="text-center py-4">No students found.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="table-card">
+        <div class="table-responsive">
+            <table class="table table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Position</th><th>Roll</th><th>ID</th><th>Name</th>
+                        <th>Total</th><th>Percentage</th><th>GPA</th><th>Grade</th><th>Status</th>
+                        <th class="d-print-none">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in results %}
+                    <tr>
+                        <td>{{ r.position|default:'-' }}</td>
+                        <td>{{ r.student.roll_no }}</td>
+                        <td>{{ r.student.student_id }}</td>
+                        <td>{{ r.student.name }}</td>
+                        <td>{% if r.has_marks %}{{ r.total_obtained }}{% else %}-{% endif %}</td>
+                        <td>{% if r.status == 'Pass' %}{{ r.percentage }}%{% else %}&mdash;{% endif %}</td>
+                        <td>{{ r.gpa|default:'-' }}</td>
+                        <td>{{ r.grade }}</td>
+                        <td>
+                            {% if r.status == 'Pass' %}<span class="badge bg-success">Pass</span>
+                            {% elif r.status == 'Fail' %}<span class="badge bg-danger">Fail</span>
+                            {% else %}<span class="badge bg-secondary">No Marks</span>{% endif %}
+                        </td>
+                        <td class="d-print-none">
+                            {% if r.has_marks %}
+                            <a href="{% url 'student_result_detail' exam.pk r.student.pk %}" class="btn btn-sm btn-outline-navy">Details</a>
+                            <a href="{% url 'result_card' exam.pk r.student.pk %}" class="btn btn-sm btn-navy">Card</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10" class="text-center py-4">No students found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

@@ -100,27 +100,32 @@
                         <td>
                             {{ row.student.name }}
                             {% if not row.sits_subject %}
-                            <span class="badge-not-sitting" title="Religion papers follow the student's religion — this student sits their own religion subject, not this one.">
-                                sits {{ row.student.religion }} paper
+                            <span class="badge-not-sitting" title="{% if religion_paper_subject %}Religion papers follow the student's religion — this student sits their own religion subject, not this one.{% else %}This subject was not selected for the student during admission.{% endif %}">
+                                {% if religion_paper_subject %}sits {{ row.student.religion }} paper{% else %}not assigned{% endif %}
                             </span>
                             {% endif %}
                         </td>
                         {% if parts %}
                             {% for value in row.part_values %}
                             <td class="{% if value.missing %}part-missing{% endif %}">
+                                {% if row.sits_subject %}
                                 <input type="number" name="{{ value.key }}_{{ row.student.pk }}"
                                        value="{{ value.value }}" step="0.01" min="0" max="{{ value.max_marks }}"
                                        class="form-control marks-input"
-                                       placeholder="{{ value.pass_marks }} to pass"
-                                       {% if not row.sits_subject %}disabled{% endif %}>
+                                       placeholder="{{ value.pass_marks }} to pass">
                                 {% if value.missing %}
                                 <div class="text-danger" style="font-size:.72rem;">not entered</div>
                                 {% endif %}
+                                {% else %}&nbsp;{% endif %}
                             </td>
                             {% endfor %}
-                            <td>{{ row.marks_obtained|default_if_none:"&mdash;" }}</td>
+                            <td>{% if row.sits_subject %}{{ row.marks_obtained|default_if_none:"&mdash;" }}{% else %}&nbsp;{% endif %}</td>
                         {% else %}
-                        <td><input type="number" name="marks_{{ row.student.pk }}" value="{{ row.marks_obtained }}" step="0.01" min="0" max="{{ marks_config.full_marks }}" class="form-control marks-input" {% if not row.sits_subject %}disabled{% endif %}></td>
+                        <td>
+                            {% if row.sits_subject %}
+                            <input type="number" name="marks_{{ row.student.pk }}" value="{{ row.marks_obtained }}" step="0.01" min="0" max="{{ marks_config.full_marks }}" class="form-control marks-input">
+                            {% else %}&nbsp;{% endif %}
+                        </td>
                         {% endif %}
                     </tr>
                     {% empty %}
