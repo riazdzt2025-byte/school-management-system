@@ -66,10 +66,17 @@ apply only if the service is on a paid plan. Setup: `docs/FREE_TIER_MEDIA_STORAG
 | Check | How | Status |
 |---|---|---|
 | Scheduled backup runs | Render cron running `scripts/backup_cron.sh` | 🔧 owner |
-| `P0B_BACKUP_ROOT` is persistent (ephemeral is lost) | env → disk / object storage | 🔧 owner |
+| Backup persisted **off-cron** | A cron job has **no persistent disk** (it is ephemeral). Copy the backup to **object storage** (R2/S3) or run the backup from a **background worker** that has a disk. `P0B_BACKUP_ROOT` alone on a cron is **not** durable. | 🔧 owner |
 | `check_backups` exits 0 when healthy | `python manage.py check_backups` | ✅ |
 | Failure alert wired | `HEALTHCHECK_PING_URL` set + health check created | 🔧 owner |
 | Restore practised on a disposable DB | `manage.py restore_backup --yes --verify` | ✅ runbook §6 |
+
+> **Correction (important):** Render **cron jobs cannot attach a persistent disk**.
+> A disk is available on a paid **web service / private service / background
+> worker** only, and a service's disk is not reachable from another service. So a
+> cron-run `backup_data` writing to a local `P0B_BACKUP_ROOT` is lost after the
+> run — you must upload the backup to object storage (or run the backup from a
+> background worker). See `docs/OWNER_RENDER_OPS_TUTORIAL.md` step 2.
 
 ## 7. Before a destructive deploy (hard rule)
 

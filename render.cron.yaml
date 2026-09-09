@@ -5,21 +5,21 @@
 # does NOT redefine the existing web service (which is deployed today without a
 # render.yaml), so applying this file will not recreate or alter the live app.
 #
-# Owner actions / decisions required (see docs/BACKUP_AND_RESTORE.md §8):
-#   * A cron job's filesystem is EPHEMERAL — it is wiped after each run. A
-#     backup written to a local path is lost. You MUST set P0B_BACKUP_ROOT to a
-#     persistent location that survives: either (a) a Render persistent disk,
-#     (b) upload-after-backup to object storage (S3/R2), or (c) a remote
-#     server/Drive you control. Render does not attach a running service's disk
-#     to a cron job, so (a) requires a disk-mounted service + an off-box copy.
-#   * Cron Jobs have no free tier — this runs on a paid plan.
+# Owner actions / decisions required (see docs/OWNER_RENDER_OPS_TUTORIAL.md):
+#   * A cron job has NO PERSISTENT DISK and can't read another service's disk.
+#     Its filesystem is wiped after each run. To keep a backup you MUST upload it
+#     to OBJECT STORAGE (R2/S3) after `backup_data`, or run the backup from a
+#     BACKGROUND WORKER that does have a disk. `P0B_BACKUP_ROOT` alone does NOT
+#     persist on a cron job — it is only a staging path on the cron.
+#   * Cron Jobs have no free tier — this runs on a paid plan (>= $1/month).
 #   * Confirm Postgres tooling (pg_dump/pg_restore) exists in the runtime, and
 #     that DATABASE_URL is set (never commit the password).
-#   * Create a health check (e.g. Healthchecks.io) and set HEALTHCHECK_PING_URL
-#     so a silent stop or a broken backup alerts you.
+#   * Create a health check (e.g. Healthchecks.io) and set HEALTHCHECK_PING_URL;
+#     `backup_cron.sh` pings <url> on success and <url>/fail on failure. A
+#     non-zero exit also lets Render's own failure notifications fire.
 #
 # Environment variables are owned by you (sync: false) so no secrets are stored
-# in this file.
+# in this file. Object-storage upload vars (e.g. R2/S3) are owner-supplied too.
 
 services:
   - type: cron
@@ -36,6 +36,17 @@ services:
       - key: HEALTHCHECK_PING_URL
         sync: false
       - key: DATABASE_URL
+        sync: false
+      # Object-storage upload (durable off-box copy) — set whichever you use.
+      - key: BACKUP_OBJECT_STORAGE_URL
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_BUCKET
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_ACCESS_KEY
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_SECRET_KEY
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_ENDPOINT
         sync: false
       - key: BACKUP_MAX_AGE_HOURS
         value: "48"

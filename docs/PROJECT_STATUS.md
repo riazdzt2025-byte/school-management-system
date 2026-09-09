@@ -546,9 +546,13 @@ level (one new table). The live Render ops steps still need owner account access
 
 ### 14.2 Deliberately NOT done (owner / destructive / very large — safe limit, rule 10)
 
-- **P0-7 / P0-8 live Render ops** — `docs/PRODUCTION_CHECKLIST.md` is ready; the
-  persistent-disk / object-storage / health-check-alert / scheduled cron wiring
-  need Render account access (owner only). No secret/API token is ever requested.
+- **P0-7 / P0-8 live Render ops** — `docs/PRODUCTION_CHECKLIST.md` +
+  `docs/OWNER_RENDER_OPS_TUTORIAL.md` are ready; the object-storage /
+  health-check-alert / scheduled-cron wiring need Render account access (owner only).
+  **Correction:** a Render **cron job has no persistent disk** (and can't read
+  another service's disk), so backups must be uploaded to object storage (R2/S3)
+  or run from a disk-backed worker — `P0B_BACKUP_ROOT` on a cron alone is ephemeral.
+  No secret/API token is ever requested.
 - **P1-10 production switch** — the code already reads `DATABASE_URL`; switching
   the live DB is a deployment + staged data migration requiring a backup + rollback
   plan (runbook §9). CI now proves Postgres compatibility.
