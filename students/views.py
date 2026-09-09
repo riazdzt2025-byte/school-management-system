@@ -3514,14 +3514,23 @@ def delete_money_receipt(request, pk):
 
 @login_required
 def voucher_list(request):
-    vouchers = Voucher.objects.select_related('created_by').all()
+    vouchers = Voucher.objects.select_related('institution', 'created_by').all()
+    # Per-institution isolation (D-3/P1-1): a scoped clerk sees only vouchers of
+    # their own institutions; NULL-institution (legacy) vouchers are hidden from
+    # a scoped clerk but visible to admin/staff.
+    if _institutionally_scoped(request.user):
+        allowed_ids = _scoped_institution_ids(request.user) or set()
+        if not allowed_ids:
+            vouchers = vouchers.none()
+        else:
+            vouchers = vouchers.filter(institution_id__in=allowed_ids)
     return render(request, 'students/voucher_list.html', {'vouchers': vouchers})
 
 
 @login_required
 @permission_required('students.add_voucher', raise_exception=True)
 def add_voucher(request):
-    form = VoucherForm(request.POST or None)
+    form = VoucherForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
         voucher = form.save(commit=False)
         voucher.created_by = request.user
@@ -3534,8 +3543,10 @@ def add_voucher(request):
 @login_required
 @permission_required('students.change_voucher', raise_exception=True)
 def edit_voucher(request, pk):
-    voucher = get_object_or_404(Voucher, pk=pk)
-    form = VoucherForm(request.POST or None, instance=voucher)
+    voucher = _get_scoped_object_or_404(
+        request, Voucher, pk, lambda v: v.institution,
+    )
+    form = VoucherForm(request.POST or None, instance=voucher, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Voucher updated.')
@@ -3546,7 +3557,9 @@ def edit_voucher(request, pk):
 @login_required
 @permission_required('students.delete_voucher', raise_exception=True)
 def delete_voucher(request, pk):
-    voucher = get_object_or_404(Voucher, pk=pk)
+    voucher = _get_scoped_object_or_404(
+        request, Voucher, pk, lambda v: v.institution,
+    )
     if request.method == 'POST':
         voucher.delete()
         messages.success(request, 'Voucher deleted.')
@@ -3609,17 +3622,21 @@ def delete_salary_sheet(request, pk):
 def finance_dashboard(request):
     institution = _selected_institution_for_request(request)
     receipts_qs = MoneyReceipt.objects.select_related('student')
-    voucher_qs = Voucher.objects.all()
+    voucher_qs = Voucher.objects.select_related('institution').all()
     salary_qs = SalarySheet.objects.select_related('employee')
     if institution is not None:
         receipts_qs = receipts_qs.filter(student__institution=institution)
+        voucher_qs = voucher_qs.filter(institution=institution)
         salary_qs = salary_qs.filter(employee__institution=institution)
     else:
         # A scoped clerk with no session institution must not see the whole
-        # ledger — bound receipts/salaries to their allowed institutions.
-        # Vouchers carry no institution FK (see docs), so they stay as-is
-        # pending the D-3 schema decision and are not silently narrowed here.
+        # ledger — bound receipts/vouchers/salaries to their allowed
+        # institutions. Vouchers now carry an institution FK (D-3/P1-1), so
+        # they are narrowed the same way as receipts/salaries; NULL-institution
+        # (legacy) vouchers are hidden from a scoped clerk but visible to
+        # admin/staff.
         receipts_qs = _scope_by_allowed_institutions(request, receipts_qs, 'student__institution')
+        voucher_qs = _scope_by_allowed_institutions(request, voucher_qs, 'institution')
         salary_qs = _scope_by_allowed_institutions(request, salary_qs, 'employee__institution')
 
     total_collection = receipts_qs.aggregate(total=Sum('amount'))['total'] or 0

@@ -136,7 +136,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# MEDIA_ROOT is configurable via env so production can point it at a persistent
+# disk (Render) or an object-storage mount, keeping uploaded photos across
+# redeploys. Local/preview defaults to BASE_DIR/media.
+MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
 # Manifest static storage hashes and verifies asset URLs — it needs
 # `collectstatic` to have run, so it is only enabled when DEBUG is off.
 # With it on in development (or under the test runner) every {% static %} tag

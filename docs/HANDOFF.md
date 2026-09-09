@@ -309,3 +309,26 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 **Branch / remote status:** branch `arena/01a08254-school-management-system`; changes committed/pushed this session.
 
 **Next session recommendations:** get owner decision on **D-3 (voucher per-institution vs school-wide)** then implement P1-1; confirm **D-7 (media storage)**; and **P0-10 (dead-code cleanup)** if approved.
+
+---
+
+## Session update — 2026-09-09 · P1-1 voucher isolation + D-7 media (arena/01a08254-school-management-system, continuation)
+
+**Previous state:** P0-1/P0-5/P0-11 done, commit `802425b`. Owner then confirmed **D-3 = per-institution vouchers** and **D-7 = Render persistent disk**. This session implements both.
+
+**What this session did:**
+
+1. **P1-1 voucher isolation (D-3 = per-institution):**
+   - Added nullable `Voucher.institution` FK (`SET_NULL`) — migration `0036_voucher_institution` (additive nullable, low risk).
+   - `VoucherForm` now includes a scoped `institution` field + `clean_institution`, keeps money validators.
+   - `voucher_list` scoped to the clerk's institutions (legacy NULL vouchers hidden from clerks, visible to admins); added an Institution column.
+   - `add_voucher`/`edit_voucher`/`delete_voucher` now pass `user=` and use `_get_scoped_object_or_404`.
+   - `finance_dashboard` vouchers now scoped via `_scope_by_allowed_institutions` (was a no-op).
+   - Tests: 6 new voucher tests in `test_institution_write_isolation.py`.
+2. **D-7 media (persistent disk):** `MEDIA_ROOT` now configurable via the `MEDIA_ROOT` env var (defaults to `BASE_DIR/media`); documented in `.env.example` + backup runbook. The actual Render disk attach/mount is an owner action.
+
+**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; migration `0036` applied cleanly; `manage.py test students` = **229 tests, all pass** (was 223 + 6).
+
+**Still open:** D-9 (`PromotionBatch.institution` column — optional; already query-scoped), P0-10 (dead-code cleanup), P0-8 ops (Render backup scheduling / off-box storage / alert wiring — owner + access).
+
+**Branch / remote status:** branch `arena/01a08254-school-management-system`; committed/pushed this session; works through PR #10 (open, not merged — owner approval).

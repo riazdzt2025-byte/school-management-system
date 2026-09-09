@@ -182,6 +182,8 @@ session should not assume (rule 7):
 - **Persistent disk:** the default Render filesystem is ephemeral. A backup
   written to it is lost on redeploy. Store backups on a persistent disk or
   upload them to object storage (S3/R2/Render Disks) — an **owner decision**.
+  The same disk should host `MEDIA_ROOT` (set `MEDIA_ROOT=/data/media`) so
+  uploaded student photos also survive redeploys (D-7).
 - **Notification:** no live e-mail/Slack alert is configured; decide how a
   non-zero exit is surfaced.
 - **Postgres:** production likely uses `DATABASE_URL` → Postgres. Confirm

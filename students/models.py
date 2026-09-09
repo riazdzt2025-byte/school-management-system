@@ -871,6 +871,13 @@ class Voucher(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     date = models.DateField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='UNPAID')
+    # Per-institution isolation (D-3). Nullable so legacy/unalphabetised rows can
+    # exist (and are hidden from a scoped clerk); a scoped clerk may only create
+    # vouchers for their own institution. Admin/staff see everything.
+    institution = models.ForeignKey(
+        Institution, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vouchers',
+    )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='vouchers_created')
 
     class Meta:

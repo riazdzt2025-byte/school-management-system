@@ -285,12 +285,13 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | P0-1 | BUG-1 — student-detail 500 when a student has a Transfer Certificate | **Done** | `school_system/templates/students/student_detail.html` Print TC now links to `view_tc`; card shows real fields (`tc_number`, `issue_date`, `issued_by`, `reason`); removed `tc_print`/`get_status_display`/`issued_date`. Test: `StudentDetailPageTests.test_student_detail_with_transfer_certificate_does_not_500`. |
 | P0-5 | Server-side money validation (SEC-7) | **Done** | `AdmissionPaymentForm.payment_amount`, `MoneyReceiptForm.amount`, `VoucherForm.amount`, `SalarySheetForm.amount` now `MinValueValidator(0)` + `MaxValueValidator(99999999.99)`. Tests: `students/test_money_validation.py` (8 tests). |
 | P0-11 | Single source of truth for group permissions (PERM-1) | **Done** | `setup_groups.py` delegates to `ensure_default_groups()` (permissions.py is the only map). Verified `manage.py setup_groups` produces exactly the permissions.py map; Exam group no longer diverges on `delete_exam`. |
+| P1-1 | Voucher institution isolation (SEC-5) — owner chose **per-institution** (D-3) | **Done** | `Voucher.institution` nullable FK added (migration `0036`); `VoucherForm` includes scoped `institution` + `clean_institution`; `voucher_list` scoped; `add/edit/delete_voucher` use `_get_scoped_object_or_404`; `finance_dashboard` vouchers scoped; legacy NULL vouchers hidden from clerks / visible to admins. Tests: 6 voucher tests. |
+| D-7 | Media storage strategy — owner chose **Render persistent disk** | **Done (guidance)** | `MEDIA_ROOT` now configurable via env var; documented in `.env.example` + backup runbook. The actual Render disk attach/mount is an owner action. |
 
 ### Still open
 
 | ID | Task | Why it stays open |
 |---|---|---|
-| D-3 / P1-1 | `Voucher` institution column + scoping | Needs schema migration + business decision (per-institution vs school-wide) — owner input required |
-| D-7 | Media storage strategy (persistent disk vs S3) | Owner/infra decision |
-| D-9 | `PromotionBatch.institution` column | Already query-scoped; column optional, needs migration |
+| D-9 | `PromotionBatch.institution` column | Already query-scoped; column optional, needs a further migration |
 | P0-10 | Dead-code cleanup | Separate scope |
+| P0-8 (ops) | Render backup scheduling / off-box storage / alert wiring | Owner + access, not yet configured |

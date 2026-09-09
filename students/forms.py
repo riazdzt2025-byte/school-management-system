@@ -627,12 +627,29 @@ class MoneyReceiptForm(forms.ModelForm):
 class VoucherForm(forms.ModelForm):
     class Meta:
         model = Voucher
-        fields = ['purpose', 'amount', 'date', 'status']
-        widgets = {'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
+        fields = ['purpose', 'institution', 'amount', 'date', 'status']
+        widgets = {'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'institution': forms.Select(attrs={'class': 'form-select'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
 
     def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['institution'].queryset = Institution.objects.filter(
+                pk__in=self.allowed_institution_ids
+            )
         self.fields['amount'].validators += _money_field_validators()
+
+    def clean_institution(self):
+        institution = self.cleaned_data.get('institution')
+        if institution is None:
+            return institution
+        if self.allowed_institution_ids is not None:
+            if institution.pk not in self.allowed_institution_ids:
+                raise forms.ValidationError(
+                    'Select an institution you have access to.'
+                )
+        return institution
 
 
 class SalarySheetForm(forms.ModelForm):

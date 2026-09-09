@@ -395,11 +395,47 @@ admin-only in the view, so removing it from the Exam group changes no clerk path
 - `manage.py test students` — **223 tests, all pass** (was 214; +9 tests).
 - No migration, no data change. SSC untouched.
 
-### 11.6 Still open (decision/infra-bound)
+### 11.6 Still open (decision/infra-bound) — now resolved by owner
 
-| ID | Remaining | Why |
-|---|---|---|
-| D-3 / P1-1 | `Voucher` institution column + scoping | Needs a schema migration + a business decision (per-institution vs school-wide) — owner input required |
-| D-7 | Media storage strategy (persistent disk vs S3) | Owner/infra decision |
-| D-9 | `PromotionBatch.institution` column | Already query-scoped; column optional, needs migration |
-| P0-10 | Dead-code cleanup | Separate scope, not requested this turn |
+Owner confirmed: **D-3 = per-institution vouchers**; **D-7 = Render persistent disk**. Implemented in §12 below.
+
+---
+
+## 12. P1-1 voucher isolation + D-7 media persistent-disk guidance — 2026-09-09
+
+**Scope:** implement P1-1 (per-institution voucher isolation, D-3 = per-institution)
+and set up D-7 (persistent disk) guidance + env override. **One additive nullable
+migration** (low risk). SSC not restored.
+
+### 12.1 Voucher isolation (P1-1)
+
+- `Voucher.institution` — nullable `FK(SET_NULL)` added (migration
+  `0036_voucher_institution`). `on_delete=SET_NULL` so deleting an institution
+  never destroys its voucher history.
+- `VoucherForm` now includes `institution` (scoped to the clerk's allowed set +
+  `clean_institution`), with the existing money validators.
+- Views:
+  - `voucher_list` scopes to the scoped clerk's institutions; legacy NULL
+    vouchers are hidden from a scoped clerk (deny-by-default), visible to
+    admin/staff. Added an Institution column.
+  - `add_voucher`/`edit_voucher`/`delete_voucher` now pass `user=` and/or use
+    `_get_scoped_object_or_404` for pk-level 404 on another institution's voucher.
+  - `finance_dashboard` vouchers are now scoped with `_scope_by_allowed_institutions`
+    (previously a no-op filter; commented pending D-3).
+- Tests: 6 new voucher tests in `test_institution_write_isolation.py` (list scope,
+  cross-institution POST rejection, edit/delete 404, NULL hidden from clerk,
+  admin sees all incl. legacy).
+
+### 12.2 Media persistence (D-7)
+
+`MEDIA_ROOT` is now configurable via the `MEDIA_ROOT` env var (defaults to
+`BASE_DIR/media`). Documented in `.env.example` and the backup runbook: on Render,
+attach a persistent disk and set `MEDIA_ROOT=/data/media` so uploaded photos
+survive redeploys. The actual disk attach/mount is an owner/Render action (not
+possible from this sandbox).
+
+### 12.3 Verification
+
+- `manage.py check` — 0 issues; `makemigrations --check` — clean.
+- `manage.py test students` — **229 tests, all pass** (was 223; +6 voucher tests).
+- Migration `0036` applied cleanly; **additive nullable column** (no data loss).

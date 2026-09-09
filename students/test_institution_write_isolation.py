@@ -19,7 +19,7 @@ from django.urls import reverse
 from .models import (
     AdmissionApplication, Employee, Exam, ExamMark, Institution, InstitutionAccess,
     MoneyReceipt, PromotionBatch, SalarySheet, Student, StudentPromotionHistory,
-    Subject, SubjectRequirement,
+    Subject, SubjectRequirement, Voucher,
 )
 
 
@@ -116,6 +116,15 @@ class InstitutionWriteIsolationTests(TestCase):
             requested_class='6', session='2026-2027',
         )
 
+        self.voucher_a = Voucher.objects.create(
+            institution=self.institution, purpose='Fee A', amount=100,
+            date=date(2026, 1, 1), status='UNPAID',
+        )
+        self.voucher_b = Voucher.objects.create(
+            institution=self.other, purpose='Fee B', amount=100,
+            date=date(2026, 1, 1), status='UNPAID',
+        )
+
         self.grant(
             (Student, 'add_student'), (Student, 'change_student'),
             (Student, 'delete_student'),
@@ -125,6 +134,8 @@ class InstitutionWriteIsolationTests(TestCase):
             (MoneyReceipt, 'delete_moneyreceipt'),
             (SalarySheet, 'add_salarysheet'), (SalarySheet, 'change_salarysheet'),
             (SalarySheet, 'delete_salarysheet'),
+            (Voucher, 'add_voucher'), (Voucher, 'change_voucher'),
+            (Voucher, 'delete_voucher'), (Voucher, 'view_voucher'),
             (Exam, 'add_exam'), (Exam, 'change_exam'),
             (AdmissionApplication, 'add_admissionapplication'),
             (AdmissionApplication, 'change_admissionapplication'),
@@ -408,6 +419,59 @@ class InstitutionWriteIsolationTests(TestCase):
         self.assertNotContains(
             response, reverse('rollback_student_promotion', args=[batch_b.pk]),
         )
+
+    # ------------------------------------------------------------- voucher (D-3/P1-1)
+    def test_voucher_list_scoped_to_own_institution(self):
+        self.login_as_clerk()
+        response = self.client.get(reverse('voucher_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fee A')
+        self.assertNotContains(response, 'Fee B')
+
+    def test_add_voucher_rejects_other_institution_in_post(self):
+        self.login_as_clerk()
+        before = Voucher.objects.count()
+        response = self.client.post(reverse('add_voucher'), {
+            'purpose': 'Sneaky Voucher', 'institution': self.other.pk,
+            'amount': '50.00', 'date': '2026-02-01', 'status': 'UNPAID',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Voucher.objects.count(), before)
+        self.assertFalse(Voucher.objects.filter(purpose='Sneaky Voucher').exists())
+
+    def test_edit_voucher_404_for_other_institution(self):
+        self.login_as_clerk()
+        response = self.client.get(reverse('edit_voucher', args=[self.voucher_b.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_voucher_404_for_other_institution(self):
+        self.login_as_clerk()
+        response = self.client.get(reverse('delete_voucher', args=[self.voucher_b.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Voucher.objects.filter(pk=self.voucher_b.pk).exists())
+
+    def test_voucher_without_institution_hidden_from_scoped_clerk(self):
+        # Legacy rows with a NULL institution must stay staff-only (deny by
+        # default for a scoped clerk).
+        NULL_VOUCHER = Voucher.objects.create(
+            institution=None, purpose='Legacy Voucher', amount=100,
+            date=date(2026, 1, 1), status='UNPAID',
+        )
+        self.login_as_clerk()
+        response = self.client.get(reverse('voucher_list'))
+        self.assertNotContains(response, 'Legacy Voucher')
+        self.assertEqual(self.client.get(reverse('edit_voucher', args=[NULL_VOUCHER.pk])).status_code, 404)
+
+    def test_admin_sees_all_vouchers_including_legacy(self):
+        NULL_VOUCHER = Voucher.objects.create(
+            institution=None, purpose='Legacy Voucher', amount=100,
+            date=date(2026, 1, 1), status='UNPAID',
+        )
+        self.login_as_admin()
+        response = self.client.get(reverse('voucher_list'))
+        self.assertContains(response, 'Fee A')
+        self.assertContains(response, 'Fee B')
+        self.assertContains(response, 'Legacy Voucher')
 
     # ------------------------------------------------------------- cross-institution admin
     def test_admin_can_write_across_institutions(self):

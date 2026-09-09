@@ -13,11 +13,12 @@
 <div class="table-card">
     <table class="table table-striped mb-0">
         <thead>
-            <tr><th>Purpose</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr>
+            <tr><th>Institution</th><th>Purpose</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr>
         </thead>
         <tbody>
             {% for v in vouchers %}
             <tr>
+                <td>{{ v.institution.name|default:'—' }}</td>
                 <td>{{ v.purpose }}</td>
                 <td>BDT {{ v.amount }}</td>
                 <td>{{ v.date }}</td>
@@ -29,7 +30,7 @@
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="6" class="text-center py-4">No vouchers.</td></tr>
+            <tr><td colspan="7" class="text-center py-4">No vouchers.</td></tr>
             {% endfor %}
         </tbody>
     </table>
