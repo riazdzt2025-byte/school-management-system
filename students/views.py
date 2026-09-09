@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse, Http404
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q
 from django.urls import reverse
@@ -395,6 +396,18 @@ def institution_login(request):
     institutions = list(Institution.objects.order_by('name'))
     departments = [label for label, _ in InstitutionAccess.DEPARTMENT_CHOICES]
     if request.method == 'POST':
+        # P2-2: lock out after too many failed attempts from one IP.
+        if _login_fail_count(request) >= LOGIN_MAX_ATTEMPTS:
+            messages.error(
+                request,
+                'Too many failed login attempts. Please wait 15 minutes and try again.',
+            )
+            return render(request, 'students/login.html', {
+                'institutions': institutions,
+                'departments': departments,
+                'default_institution_id': institutions[0].id if institutions else '',
+            })
+
         username = (request.POST.get('username') or '').strip()
         password = request.POST.get('password') or ''
         institution_id = request.POST.get('institution_id')
@@ -413,12 +426,14 @@ def institution_login(request):
             ).select_related('institution').first()
 
         if user is not None and (user.is_superuser or user.is_staff or access is not None):
+            _login_fail_reset(request)
             login(request, user)
             sync_user_department_permissions(user)
             request.session['selected_institution_id'] = str(institution_id) if institution_id else ''
             request.session['selected_department'] = department or 'Office'
             return redirect('dashboard')
 
+        _login_fail_increment(request)
         messages.error(request, 'Invalid username, password, or institution access.')
 
     return render(request, 'students/login.html', {
@@ -564,12 +579,27 @@ def create_admission_application(request):
 
 
 def public_admission_apply(request):
-    form = AdmissionApplicationForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        application = form.save()
-        return render(request, 'students/public_admission_success.html', {
-            'application': application,
-        })
+    # P1-9: rate-limit the unauthenticated public form per IP (5 submissions /
+    # 10 min) so it can't be scripted into a spam/bulk-submit vector. The form
+    # stays open to real applicants; only an abusive burst is throttled.
+    if request.method == 'POST':
+        if _rate_limit_exceeded(request, 'public_admission', limit=5, window_seconds=600):
+            messages.error(
+                request,
+                'Too many submissions from this address. Please wait a few minutes and try again.',
+            )
+            return render(request, 'students/public_admission_form.html', {
+                'form': AdmissionApplicationForm(),
+                'rate_limited': True,
+            })
+        form = AdmissionApplicationForm(request.POST or None)
+        if form.is_valid():
+            application = form.save()
+            return render(request, 'students/public_admission_success.html', {
+                'application': application,
+            })
+        return render(request, 'students/public_admission_form.html', {'form': form})
+    form = AdmissionApplicationForm()
     return render(request, 'students/public_admission_form.html', {'form': form})
 
 
@@ -652,6 +682,47 @@ def accounts_admission_queue(request):
 
 def _new_receipt_number():
     return f"ADM-{date.today():%Y}-{uuid4().hex[:10].upper()}"
+
+
+# ---------------- rate limiting (P1-9 public admission, P2-2 login) ----------------
+# A lightweight per-IP counter backed by the Django cache (no new dependency,
+# works on LocMem and Redis alike). It is a throttle, not a hard identity store:
+# behind NAT a whole office shares one IP, so the limiter is deliberately
+# generous and intended to blunt spam/brute-force, not to be a per-user quota.
+
+def _client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '')
+
+
+def _rate_limit_exceeded(request, scope, limit, window_seconds):
+    """True when this IP has already recorded `limit` requests in the window."""
+    ck = f'rl:{scope}:{_client_ip(request)}'
+    count = cache.get(ck, 0)
+    if count >= limit:
+        return True
+    cache.set(ck, count + 1, window_seconds)
+    return False
+
+
+def _login_fail_count(request):
+    return cache.get(f'loginfail:{_client_ip(request)}', 0)
+
+
+def _login_fail_increment(request):
+    ck = f'loginfail:{_client_ip(request)}'
+    cache.set(ck, _login_fail_count(request) + 1, LOGIN_LOCKOUT_SECONDS)
+
+
+def _login_fail_reset(request):
+    cache.delete(f'loginfail:{_client_ip(request)}')
+
+
+# 5 failed attempts -> 15 minute lockout (P2-2).
+LOGIN_LOCKOUT_SECONDS = 15 * 60
+LOGIN_MAX_ATTEMPTS = 5
 
 
 def _new_money_receipt_number():

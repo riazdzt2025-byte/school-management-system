@@ -79,6 +79,12 @@
 
 <div class="main">
     <div class="form-card">
+        {% if rate_limited %}
+        <div class="alert alert-warning py-2" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            Too many submissions from this address. Please wait a few minutes and try again.
+        </div>
+        {% endif %}
         <form method="post" novalidate>
             {% csrf_token %}
             {% if form.non_field_errors %}
