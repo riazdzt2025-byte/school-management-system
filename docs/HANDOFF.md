@@ -428,3 +428,26 @@ that proves it: upload a photo → redeploy → photo still loads.
 
 **Branch / remote status:** branch `arena/01a084de-school-management-system`,
 pushed to origin; **PR #11** opened for owner review (not merged).
+
+## Session close — 2026-09-09 · PR #11 merged
+
+**PR #11 merged to `main` as `84e12d8`** on owner instruction ("merge করো"). CI green
+on `main` (`Django tests`, both matrix jobs). The five commits: P1-11 code (`225d16a`),
+restored ops docs (`f68e89b` = orphaned `653bc6d`), two reconciliations (`e93b2be`,
+`41e1f67`), runbook corrections (`bab5b8f`: R2 has no object versioning; a Free web
+service has no Shell/one-off jobs, so the copy step lists the three real routes).
+
+**Open, owner-only:** the R2 bucket + API token, the six env vars in Render, `check
+--deploy` added to the Build command. Until then `USE_S3` is unset and behaviour is
+byte-for-byte what it was before the merge — nothing in production changed.
+
+**Explicitly waived:** the manual upload → redeploy → photo-still-loads proof. P1-11 is
+therefore closed on tests + CI, not on observed production durability; anyone picking
+this up should say so rather than assume the live check happened.
+
+**Also flagged, unaddressed:** if the live database is SQLite under `BASE_DIR/`, it sits
+on the same ephemeral disk as media did, and a Free instance cannot attach a persistent
+disk — so a deploy wipes the database, not just photos. `docs/FREE_TIER_MEDIA_STORAGE.md`
+§6 and `docs/OWNER_RENDER_OPS_TUTORIAL.md` cover backups, but nobody has confirmed which
+engine production actually uses (P0-7 item). That is now the biggest open risk in the
+repo, bigger than the one this session fixed.

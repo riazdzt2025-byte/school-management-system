@@ -43,7 +43,7 @@ apply only if the service is on a paid plan. Setup: `docs/FREE_TIER_MEDIA_STORAG
 | Photos already on disk were copied into the bucket | `python manage.py copy_media_to_storage --dry-run` then without it | ✅ command |
 | Student photos are not world-readable unless intended | no `AWS_S3_PUBLIC_BASE_URL` → signed URLs | ⚠️ owner decision |
 | Persistent disk attached + mounted at that path (paid plans only) | Render dashboard | 🔧 |
-| A test upload survives a redeploy | upload a photo → redeploy → photo still loads | 🔧 (manual) |
+| A test upload survives a redeploy | upload a photo → redeploy → photo still loads | ⚠️ **owner waived 2026-09-09** (optional; the only live proof) |
 
 ## 4. Institution isolation / permissions
 

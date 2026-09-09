@@ -103,8 +103,11 @@ build image and served by whitenoise, which is faster and free.
    ```
 
    The URL must be an `https://…/<bucket>/media/…` link that opens in a browser.
-   Then in the live app: upload a photo on a student, **deploy again**, confirm
-   the photo still renders. That last step is the only real proof (P1-11's test).
+   Then, **if you want live proof** (optional — waived by the owner on 2026-09-09):
+   upload a photo on a student, **deploy again**, confirm the photo still renders.
+   That last step is the only check that exercises production instead of tests, so
+   skipping it leaves P1-11 closed on code + CI evidence only — say so in the notes
+   rather than letting the next person assume the live check happened.
 
 ## 4. Optional: public bucket / CDN
 
@@ -128,14 +131,22 @@ disk). Keys are identical, so `copy_media_to_storage` in reverse is just a
 
 ## 6. What this does *not* do
 
-- It does not move the **database**, and it does not upload **backups**.
+- **If `DATABASE_URL` is unset, the database is `BASE_DIR/db.sqlite3` — on the same
+  ephemeral disk this PR exists to escape.** A deploy then wipes students, marks and
+  fees, not just photos, and a Free instance cannot attach a disk to fix it. Check
+  Render → Environment for `DATABASE_URL` before assuming records are safe
+  (`docs/PRODUCTION_CHECKLIST.md` §2, and the open item in `docs/BACKUP_AND_RESTORE.md`).
+- It does not upload **backups** from the app itself.
   `backup_data` writes a folder on the local disk; on a Render cron that folder is
   gone after the run, so backups still need their own off-box copy — see
   `docs/OWNER_RENDER_OPS_TUTORIAL.md` Step 2 (Option A) and
   `docs/BACKUP_AND_RESTORE.md`. Same provider, different concern: `USE_S3` covers
   **uploads**, not **dumps**.
-- It does not back the bucket up. Versioning + bucket replication is the owner's
-  choice; `backup_data` archives the database only when media is remote.
+- It does not back the **bucket** up. R2 keeps no versions, so an object that is
+  overwritten or deleted stays gone (Cloudflare's *Bucket Locks* only block
+  deletion for a retention period) — if undo matters to you, use S3/B2 with
+  versioning, where the app config is unchanged. Separately, `backup_data` keeps
+  archiving the **database**, and its `media.tar.gz` is empty once media is remote.
 - It does not create the bucket, and on the free tier you cannot run one-off
   commands on the service at all (no Shell), which is why §3 step 4 lists routes
   instead of one command.
