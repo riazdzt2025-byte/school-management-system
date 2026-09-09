@@ -6,17 +6,35 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  # SQLite (the local default) is used by tests; no external DB needed.
-  DJANGO_SETTINGS_MODULE: school_system.settings
-
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
+        include:
+          # SQLite (the local default) — no external DB.
+          - name: sqlite
+            python-version: "3.12"
+          # Postgres (P1-10) — run the suite against a real Postgres so the
+          # conditional unique constraints and everything else are proven on
+          # the engine production is expected to use.
+          - name: postgres
+            python-version: "3.12"
+            postgres: true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sms_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DJANGO_SETTINGS_MODULE: school_system.settings
     steps:
       - uses: actions/checkout@v4
 
@@ -36,5 +54,11 @@ jobs:
       - name: Migrations in sync (no missing migrations)
         run: python manage.py makemigrations --check
 
-      - name: Run test suite
-        run: python manage.py test students --verbosity 1
+      - name: Run test suite (${{ matrix.name }})
+        run: |
+          # P1-10: point at the real Postgres service only for the postgres job;
+          # the sqlite job keeps the local default (no DATABASE_URL).
+          if [ "${{ matrix.postgres }}" = "true" ]; then
+            export DATABASE_URL="postgres://postgres:postgres@localhost:5432/sms_test"
+          fi
+          python manage.py test students --verbosity 1
