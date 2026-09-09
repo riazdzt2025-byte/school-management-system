@@ -21,14 +21,21 @@ service's local files is **lost on redeploy/restart**. To keep data you use one 
 
 > ⚠️ **A Render Cron Job cannot attach a persistent disk**, and it cannot read a
 > disk belonging to any other service. So:
-> - **Student photos → disk on the web service** (`MEDIA_ROOT=/data/media`). ✅
+> - **Student photos → disk on the web service** (`MEDIA_ROOT=/data/media`), Step 1.
+>   ✅ — but only on a **paid** instance type. On the **free tier** a disk cannot
+>   be attached at all, so use **Step 1-alt**: media in object storage via
+>   `USE_S3` (`docs/FREE_TIER_MEDIA_STORAGE.md`). That route is now wired in code.
 > - **Backups → object storage** (R2/S3) or a **background worker** running the
 >   backup. A cron writing to a local `P0B_BACKUP_ROOT` is **ephemeral — gone
 >   after the run**.
 
 ---
 
-## Step 1 — Persistent disk + `MEDIA_ROOT` (student photos, D-7)
+## Step 1 — Persistent disk + `MEDIA_ROOT` (student photos, D-7) — paid plans
+
+**On the free tier, skip to Step 1-alt below.** A Render disk is a paid add-on and
+cannot be attached to a free web service, which is the whole reason the app now
+supports `USE_S3` for media.
 
 1. In the Render dashboard, open your **Web Service** (`school-management-system-27mn`).
 2. Open its **Disks** tab → **Add Disk**.
@@ -48,6 +55,27 @@ service's local files is **lost on redeploy/restart**. To keep data you use one 
 
 **Verify:** log in, upload a student photo from the student edit page, then it
 still loads after a redeploy.
+
+### Step 1-alt — `USE_S3` object storage for media (the free-tier route)
+
+Same outcome (uploads survive a redeploy), no disk, no paid instance:
+
+1. Create an R2/S3 bucket + API token — steps 1–3 of
+   `docs/FREE_TIER_MEDIA_STORAGE.md` (six env vars, listed there).
+2. `python manage.py check` → no `students.E011`; `check --deploy` → no
+   `students.W010`.
+3. `python manage.py copy_media_to_storage --dry-run` and then for real, to move
+   the photos that already exist on disk.
+4. Upload a photo → **deploy** → photo still loads.
+
+Pick **one** of Step 1 / Step 1-alt. Do not set both a disk and `USE_S3` and then
+wonder which copy is authoritative: with `USE_S3` on, `MEDIA_ROOT` is ignored for
+new uploads.
+
+> Step 2 (backups) also wants object storage. It can be the **same provider and
+> account**, but **not the same bucket prefix**: `backup_data` writes a folder of
+> dumps and has no S3 uploader, so that upload is still done by the script in
+> Step 2 Option A, not by the app.
 
 ---
 

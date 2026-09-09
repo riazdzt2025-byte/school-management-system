@@ -102,9 +102,12 @@ disk). Keys are identical, so `copy_media_to_storage` in reverse is just a
 
 ## 6. What this does *not* do
 
-- It does not move the **database** — Postgres/SQLite is still Render's job (see
-  `docs/BACKUP_AND_RESTORE.md`, and the free-tier caveat that `P0B_BACKUP_ROOT`
-  must be off-box).
+- It does not move the **database**, and it does not upload **backups**.
+  `backup_data` writes a folder on the local disk; on a Render cron that folder is
+  gone after the run, so backups still need their own off-box copy — see
+  `docs/OWNER_RENDER_OPS_TUTORIAL.md` Step 2 (Option A) and
+  `docs/BACKUP_AND_RESTORE.md`. Same provider, different concern: `USE_S3` covers
+  **uploads**, not **dumps**.
 - It does not back the bucket up. Versioning + bucket replication is the owner's
   choice; `backup_data` archives the database only when media is remote.
 - No migration, no schema change, no new URL route — it is settings, one command,
