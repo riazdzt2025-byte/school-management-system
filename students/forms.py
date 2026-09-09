@@ -472,6 +472,10 @@ class ExamForm(forms.ModelForm):
     (and so the marks workflow, which looks exams up by type+session+group,
     never creates a near-duplicate under a hand-typed name).
     """
+    # Class choices are filled from the selected institution's `classes` field in
+    # __init__ (P1-6), so Shishu / diploma-semester classes validate server-side
+    # instead of being rejected by a hard-coded 1..12 list (the JS dropdown
+    # already repopulates from `institutions_data_json`).
     admission_class = forms.ChoiceField(
         choices=[(str(i), f'Class {i}') for i in range(1, 13)],
         label='Class',
@@ -516,6 +520,36 @@ class ExamForm(forms.ModelForm):
             self.fields['institution'].queryset = Institution.objects.filter(
                 pk__in=self.allowed_institution_ids
             )
+        self._set_class_choices()
+
+    def _get_selected_institution(self):
+        """The institution this exam belongs to (bound instance or POST choice)."""
+        if self.instance and self.instance.pk and self.instance.institution_id:
+            return self.instance.institution
+        inst_id = None
+        if self.data and self.data.get('institution'):
+            inst_id = self.data.get('institution')
+        elif self.initial.get('institution'):
+            inst_id = self.initial.get('institution')
+        if not inst_id:
+            return None
+        try:
+            return Institution.objects.filter(pk=inst_id).first()
+        except (ValueError, TypeError):
+            return None
+
+    def _set_class_choices(self):
+        """Populate the Class dropdown from the institution's `classes` string."""
+        inst = self._get_selected_institution()
+        if inst is not None:
+            classes = inst.get_class_list()
+        else:
+            classes = [str(i) for i in range(1, 13)]
+        if not classes:
+            classes = [str(i) for i in range(1, 13)]
+        self.fields['admission_class'].choices = [
+            (c, c if not c.isdigit() else f'Class {int(c)}') for c in classes
+        ]
 
     def clean_institution(self):
         institution = self.cleaned_data.get('institution')
@@ -599,8 +633,10 @@ class EmployeeStatusChangeForm(forms.Form):
 class MoneyReceiptForm(forms.ModelForm):
     class Meta:
         model = MoneyReceipt
-        fields = ['student', 'receipt_no', 'purpose', 'amount', 'date']
-        widgets = {'student': forms.Select(attrs={'class': 'form-select'}), 'receipt_no': forms.TextInput(attrs={'class': 'form-control'}), 'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})}
+        # receipt_no is excluded (P1-3): it is auto-generated on create and never
+        # editable in the UI, so a clerk cannot repurpose/duplicate a number.
+        fields = ['student', 'purpose', 'amount', 'date']
+        widgets = {'student': forms.Select(attrs={'class': 'form-select'}), 'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})}
 
     def __init__(self, *args, **kwargs):
         user = kwargs.pop('user', None)

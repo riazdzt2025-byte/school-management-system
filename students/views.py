@@ -654,6 +654,20 @@ def _new_receipt_number():
     return f"ADM-{date.today():%Y}-{uuid4().hex[:10].upper()}"
 
 
+def _new_money_receipt_number():
+    """Collision-safe unique receipt number for manual money receipts (P1-3).
+
+    Mirrors the admission path (ADM-...) with a distinct RC- prefix so manual
+    receipts are never confused with admission receipts. Retries on the small
+    chance a UUID collides.
+    """
+    for _ in range(50):
+        candidate = f"RC-{date.today():%Y}-{uuid4().hex[:10].upper()}"
+        if not MoneyReceipt.objects.filter(receipt_no=candidate).exists():
+            return candidate
+    raise IntegrityError('Could not generate a unique money receipt number.')
+
+
 @login_required
 @permission_required('students.change_admissionapplication', raise_exception=True)
 @_require_department('Accounts')
@@ -1913,10 +1927,13 @@ def save_student_subject_choices(student, requirement_ids):
     """Replace a student's SubjectRequirement selections (mandatory, conditional,
     and chosen optional subjects) with the given requirement ids. Ids that don't
     belong to the student's institution/class are silently ignored."""
+    # Zero-padding tolerant (P1-8): a student stored as '09' must still match
+    # requirements stored as '9' (and vice-versa), so picks aren't silently
+    # dropped. `class_filter_variants` is imported at the top of this module.
     valid_ids = SubjectRequirement.objects.filter(
         pk__in=requirement_ids,
         institution=student.institution,
-        admission_class=str(student.admission_class),
+        admission_class__in=class_filter_variants(student.admission_class),
     ).values_list('pk', flat=True)
     StudentSubjectChoice.objects.filter(student=student).exclude(requirement_id__in=valid_ids).delete()
     existing_ids = set(StudentSubjectChoice.objects.filter(student=student).values_list('requirement_id', flat=True))
@@ -3477,9 +3494,13 @@ def money_receipt_list(request):
 def add_money_receipt(request):
     form = MoneyReceiptForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
-        receipt = form.save(commit=False)
-        receipt.created_by = request.user
-        receipt.save()
+        with transaction.atomic():
+            receipt = form.save(commit=False)
+            receipt.created_by = request.user
+            # receipt_no is auto-generated (P1-3) and not editable in the form.
+            if not receipt.receipt_no:
+                receipt.receipt_no = _new_money_receipt_number()
+            receipt.save()
         messages.success(request, 'Money receipt saved.')
         return redirect('money_receipt_list')
     return render(request, 'students/add_money_receipt.html', {'form': form})

@@ -195,8 +195,20 @@
             <a href="{% url 'import_students' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Import Students</a>
             {% if user.is_staff %}<a href="{% url 'audit_log_list' %}"><i class="bi bi-clock-history"></i> Audit Log</a>{% endif %}
             <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> Certificates</a>
+            {% if perms.students.change_student %}<a href="{% url 'student_promotion' %}"><i class="bi bi-arrow-up-right-circle"></i> Promotion</a>{% endif %}
         </div>
     </div>
+
+    {% if perms.students.view_attendancerecord or perms.students.add_attendancerecord %}
+    <div class="nav-group">
+        <div class="group-label"><span><i class="bi bi-calendar-check-fill"></i><span class="nav-text">Attendance</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="flyout">
+            {% if perms.students.add_attendancerecord %}<a href="{% url 'mark_attendance' %}"><i class="bi bi-pencil-fill"></i> Mark Attendance</a>{% endif %}
+            {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_report' %}"><i class="bi bi-clipboard-data"></i> Attendance Report</a>{% endif %}
+            {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_summary' %}"><i class="bi bi-bar-chart-fill"></i> Attendance Summary</a>{% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="nav-group">
         <div class="group-label"><span><i class="bi bi-pencil-square"></i><span class="nav-text">Exam</span></span><i class="bi bi-chevron-right"></i></div>
