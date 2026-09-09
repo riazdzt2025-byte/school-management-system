@@ -7,6 +7,13 @@ cannot use a persistent disk (a fact that the earlier draft missed)._
 You have approved the code (PR #10 merged). These steps are dashboard + one small
 config choice. No credentials are ever stored in this repo.
 
+> ⚠️ **Before you start looking for a "Shell" tab:** it does not exist on a **Free**
+> instance type, and neither do one-off jobs — both are paid-plan features
+> (<https://render.com/docs/free>). The commands below are therefore either typed
+> in a Shell on a temporarily upgraded service, or moved into the **Build command**
+> (which runs on every plan). For the media/upload half of this, see
+> `docs/FREE_TIER_MEDIA_STORAGE.md` §3, which spells out both routes.
+
 ---
 
 ## Very important background (read this first)

@@ -3,8 +3,9 @@
 Turning on ``USE_S3`` fixes the future but not the past: photos already sitting
 in ``MEDIA_ROOT`` on a container that is about to be replaced still need to be
 moved into the bucket. This does that, one way, without touching the source
-files, so it is safe to re-run — and safe to run from a one-off shell
-(``render.sh`` / ``manage.py shell``) before the next deploy wipes the disk.
+files, so it is safe to re-run. Render's *free* web service has no shell and no
+one-off jobs, so see docs/FREE_TIER_MEDIA_STORAGE.md §3 step 4 for how to get a
+run in (re-upload instead, a temporary paid instance, or from a local copy).
 
 Only the key names are shared between the two storages: a file at
 ``<MEDIA_ROOT>/student_photos/x.jpg`` is written to ``<AWS_LOCATION>/

@@ -34,10 +34,18 @@ build image and served by whitenoise, which is faster and free.
 
 ## 3. Setup (Cloudflare R2 shown; AWS S3 / B2 / MinIO are the same five variables)
 
-1. **Create the bucket.** R2 dashboard → Object Storage → Create bucket, e.g.
-   `school-media`. Private (no `--public` development URL) unless you deliberately
-   want public reads. Enable **versioning** — it is the undo button for a bad
-   `copy_media_to_storage` run and it costs nothing at this scale.
+1. **Create the bucket.** R2 dashboard → **R2 Object Storage** → **Create bucket**,
+   e.g. `school-media`. Keep it private (do **not** enable the `pub-….r2.dev`
+   development URL) unless you deliberately want public reads.
+
+   **About versioning:** R2 has **no object versioning** (`PutBucketVersioning` is
+   not implemented; it has Cloudflare *Bucket Locks* for retention instead). So the
+   bucket is not an undo button. What actually protects you here:
+   `copy_media_to_storage` never deletes or overwrites a *source* file, it only
+   skips or replaces bucket objects; the database dump still lives elsewhere
+   (§6); and if you want true versions, choose **AWS S3** (versioning on the bucket)
+   or **Backblaze B2** (native file versions) — the app config is identical, only
+   `AWS_S3_ENDPOINT_URL` / `AWS_S3_REGION_NAME` change.
 2. **API token.** R2 → Manage R2 API Tokens → create, scoped to that bucket,
    Object Read & Write. That gives you an Access Key ID, a Secret Access Key and
    an endpoint like `https://<account-id>.r2.cloudflarestorage.com`.
@@ -57,15 +65,33 @@ build image and served by whitenoise, which is faster and free.
    B2: `https://s3.<region>.backblazeb2.com`. For MinIO: `http://<host>:9000`.
    `AWS_LOCATION` (default `media`) is the key prefix, so one bucket can hold more
    than one app.
-4. **Copy the existing photos over** (Render shell, before the next deploy
-   replaces this container):
+4. **Copy the existing photos over** — *if there are any left to copy*. A Render
+   **free web service has no Shell access and cannot run one-off jobs** (paid
+   plans only), so pick the route that fits:
+
+   | Route | When | How |
+   |---|---|---|
+   | **Skip the copy** | the usual case on the free tier: the disk was wiped by the last deploy, so only photos uploaded since then exist | just tell the office to re-upload those few photos after the switch. Zero ops, zero risk |
+   | **Run it on Render** | the photos on the live disk matter and there are many | upgrade the service to **Starter ($7)** → *Shell* tab → `python manage.py copy_media_to_storage --dry-run` then without the flag → downgrade to Free. Billing is hourly, so this costs cents |
+   | **Run it from a laptop** | you have the same media tree locally (dev machine, a disk snapshot) | `USE_S3=… AWS_…=… python manage.py copy_media_to_storage --media-root ./media` with the six variables exported locally |
+
+   Nothing is deleted by the command, so running it twice, or running it and then
+   re-uploading a photo by hand, is harmless.
+
+   > Deliberately **not** a web endpoint: it iterates every upload and issues one
+   > S3 request per file, which would sit inside a 60-second request timeout and
+   > turn a maintenance task into a user-visible failure. The existing
+   > admin-only maintenance pages are for single-record actions; this is not.
+
+5. **Verify.** On a paid instance use the Shell; on the free tier put the commands
+   in the service's **Build & System Commands → Build command** instead — they run
+   at build time, need no media, and a failing `check` already stops a bad deploy:
 
    ```bash
-   python manage.py copy_media_to_storage --dry-run   # read the list
-   python manage.py copy_media_to_storage             # do it
+   pip install -r requirements.txt && python manage.py collectstatic --noinput \
+     && python manage.py check --deploy
    ```
 
-5. **Verify** from the same shell:
 
    ```bash
    python manage.py check --deploy        # no students.W010 / E011
@@ -110,6 +136,9 @@ disk). Keys are identical, so `copy_media_to_storage` in reverse is just a
   **uploads**, not **dumps**.
 - It does not back the bucket up. Versioning + bucket replication is the owner's
   choice; `backup_data` archives the database only when media is remote.
+- It does not create the bucket, and on the free tier you cannot run one-off
+  commands on the service at all (no Shell), which is why §3 step 4 lists routes
+  instead of one command.
 - No migration, no schema change, no new URL route — it is settings, one command,
   and two checks.
 
