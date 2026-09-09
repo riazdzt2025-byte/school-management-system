@@ -332,3 +332,35 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 **Still open:** D-9 (`PromotionBatch.institution` column — optional; already query-scoped), P0-10 (dead-code cleanup), P0-8 ops (Render backup scheduling / off-box storage / alert wiring — owner + access).
 
 **Branch / remote status:** branch `arena/01a08254-school-management-system`; committed/pushed this session; works through PR #10 (open, not merged — owner approval).
+
+## Session update — 2026-09-09 · D-9 promotion isolation + P0-10 cleanup + P0-8 ops readiness (arena/01a08254-school-management-system, continuation)
+
+**Previous state:** P1-1 voucher isolation + D-7 media done, commit `54a4b4e` (229 tests). This session completes D-9, P0-10, and prepares P0-8 ops config.
+
+**What this session did:**
+
+1. **D-9 · `PromotionBatch.institution` (migration `0037`):**
+   - Added a nullable `institution` FK (`SET_NULL`, `related_name="promotion_batches"`).
+   - A single-institution promotion run records `batch.institution`; multi-institution runs leave it NULL.
+   - `rollback_student_promotion` 404s a scoped clerk rolling back a non-owned batch; legacy NULL batches remain scoped via the derived student filter.
+   - `student_promotion_history` selects + shows an Institution column and stays scoped.
+   - Tests: 3 additions → 34 in `test_institution_write_isolation.py`.
+
+2. **P0-10 · dead-code cleanup (no behavior change):**
+   - Removed the duplicate `employees/` → `employee_list` URL block (kept the top block + `employee_detail`, which is only defined there).
+   - Deleted orphan templates `students/templates/students/student_list_filter.html`, `school_system/templates/students/admission.html`.
+   - Deleted shadowed `students/templates/students/student_detail.html` (the project-dir copy is the resolved one; the app copy referenced non-existent `id_card_print`).
+   - Removed the dead admin-branding placeholder in `students/admin.py` (all set in `urls.py`).
+   - No duplicate consecutive decorators in `views.py` (scanned 0) — none removed.
+
+3. **P0-8 ops readiness (config; live wiring = owner):**
+   - `manage.py check_backups` — backup health gate (exit 0/1): verifies manifest, DB artifact SHA-256, freshness (`--max-age-hours`), retention sanity.
+   - `scripts/backup_cron.sh` — backup + validate + external health-check ping (`HEALTHCHECK_PING_URL`, never hard-coded).
+   - `render.cron.yaml` — ops-only Render Blueprint for a daily backup cron job (does not touch the existing web service).
+   - Tests: 6 new `check_backups` tests → 14 in `test_backup_tooling.py`.
+
+**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; migration `0037` applied cleanly; `manage.py test students` = **237 tests, all pass** (229 + 2 D-9 + 6 backup-ops tests); URL reverse smoke for `employee_list`/`employee_detail`/`voucher_list`/`student_promotion_history` OK; `scripts/backup_cron.sh` syntax OK and verified healthy (exit 0) + stale (exit 1) via a disposable drill.
+
+**Still open (owner access/approval, rule 7):** P0-8 live ops — attach a persistent disk / object storage for `P0B_BACKUP_ROOT` (cron filesystem is ephemeral), set `HEALTHCHECK_PING_URL`, confirm Postgres tooling, choose the cron plan + `DATABASE_URL`/`HEALTHCHECK_PING_URL` secrets. Config is ready but not run live.
+
+**Branch / remote status:** branch `arena/01a08254-school-management-system`; work staged for commit; PR #10 open (not merged — owner approval).

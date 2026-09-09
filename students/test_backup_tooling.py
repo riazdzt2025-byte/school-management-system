@@ -159,3 +159,76 @@ class SqliteSnapshotTests(SimpleTestCase):
             rows = check.execute("SELECT v FROM t ORDER BY v").fetchall()
             check.close()
             self.assertEqual(rows, [("alpha",), ("beta",)])
+
+
+class CheckBackupsCommandTests(SimpleTestCase):
+    """The `check_backups` failure-reporting hook (exit 0 healthy / non-zero else)."""
+
+    def _make_backup(self, root, date_str=None, db_bytes=b"real-db"):
+        if date_str is None:
+            import datetime
+            date_str = datetime.datetime.now(
+                datetime.timezone.utc
+            ).strftime("%Y%m%dT%H%M%SZ")
+        (root / f"backup-{date_str}").mkdir(parents=True)
+        folder = root / f"backup-{date_str}"
+        (folder / "db.sqlite3").write_bytes(db_bytes)
+        import hashlib
+        sha = hashlib.sha256(db_bytes).hexdigest()
+        import json
+        (folder / "manifest.json").write_text(json.dumps({
+            "engine": "sqlite", "db_file": "db.sqlite3", "db_sha256": sha,
+            "media_file": None, "media_file_count": 0, "credentials_included": False,
+        }))
+        return folder
+
+    def _run(self, *args):
+        from django.core.management import call_command
+        try:
+            call_command("check_backups", "--backup-root", str(args[0]),
+                         *args[1:], verbosity=0)
+            return 0  # healthy: no SystemExit raised
+        except SystemExit as exc:
+            return exc.code
+
+    def test_healthy_returns_0(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_backup(Path(tmp))
+            code = self._run(Path(tmp))
+            self.assertEqual(code, 0)
+
+    def test_stale_returns_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_backup(Path(tmp))
+            code = self._run(Path(tmp), "--max-age-hours", "0")
+            self.assertNotEqual(code, 0)
+
+    def test_corrupt_sha_returns_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = self._make_backup(Path(tmp), db_bytes=b"real-db")
+            # Corrupt the DB artifact after the manifest recorded its SHA.
+            (folder / "db.sqlite3").write_bytes(b"tampered")
+            code = self._run(Path(tmp))
+            self.assertNotEqual(code, 0)
+
+    def test_no_backup_root_returns_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "nothing"
+            empty.mkdir()
+            code = self._run(empty)
+            self.assertNotEqual(code, 0)
+
+    def test_fewer_than_want_keep_is_still_healthy(self):
+        # A single fresh backup does NOT trip `--want-keep` (ramp-up is normal).
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_backup(Path(tmp))
+            code = self._run(Path(tmp), "--want-keep", "7")
+            self.assertEqual(code, 0)
+
+    def test_more_than_want_keep_is_broken_retention(self):
+        # More retention folders than requested means pruning is not running.
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_backup(Path(tmp), db_bytes=b"b1")
+            self._make_backup(Path(tmp), date_str="20260102T000000Z", db_bytes=b"b2")
+            code = self._run(Path(tmp), "--want-keep", "1")
+            self.assertNotEqual(code, 0)

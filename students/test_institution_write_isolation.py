@@ -388,6 +388,36 @@ class InstitutionWriteIsolationTests(TestCase):
         self.student_b.refresh_from_db()
         self.assertEqual(self.student_b.admission_class, '6')
 
+    def test_new_batch_records_institution(self):
+        # D-9: a promotion run for a single class records the institution on
+        # the batch, so scoping no longer has to be derived for new batches.
+        self.login_as_clerk(department='Office')
+        response = self.client.post(reverse('student_promotion'), {
+            'from_class': '6', 'from_section': 'A', 'to_class': '7',
+            'to_section': 'A', 'session': '2026-2027',
+        })
+        self.assertEqual(response.status_code, 302)
+        batch = PromotionBatch.objects.order_by('-pk').first()
+        self.assertIsNotNone(batch.institution)
+        self.assertEqual(batch.institution, self.institution)
+
+    def test_rollback_promotion_batch_with_institution_other_404(self):
+        # D-9: a batch carrying a non-owned institution is refused, even though
+        # the column now stores it directly.
+        self.login_as_clerk(department='Office')
+        batch = PromotionBatch.objects.create(
+            session='2026-2027', from_class='6', from_section='A',
+            to_class='7', to_section='A', actor=self.clerk,
+            institution=self.other,
+        )
+        StudentPromotionHistory.objects.create(
+            batch=batch, student=self.student_b,
+            source_class='6', source_section='A', source_roll_no=1,
+            target_class='7', target_section='A',
+        )
+        response = self.client.post(reverse('rollback_student_promotion', args=[batch.pk]))
+        self.assertEqual(response.status_code, 404)
+
     def test_promotion_history_scoped_to_own_institution(self):
         self.login_as_clerk(department='Office')
         batch_a = PromotionBatch.objects.create(

@@ -1,6 +1,6 @@
 # Backup & Restore Runbook
 
-_Last updated 2026-09-09 (P0-8 backup session)._
+_Last updated 2026-09-09 (P0-8 backup session; + ops readiness: `check_backups`, `backup_cron.sh`, `render.cron.yaml`)._
 
 This runbook describes how to back up and restore the School Management System
 across both supported database engines (SQLite, the local default, and
@@ -13,8 +13,10 @@ The tooling is two Django management commands plus thin cron-friendly wrappers:
 |---|---|
 | `manage.py backup_data` | Create a consistent DB + media snapshot, write a manifest, prune old backups. |
 | `manage.py restore_backup` | Restore a backup folder into the configured DB + media dir (destructive, needs `--yes`). |
+| `manage.py check_backups` | Backup health gate: verify newest backup (manifest, DB SHA, freshness, retention); **exit 0 = healthy, non-zero = problem** (for alerting). |
 | `scripts/backup.sh` | Wrapper around `backup_data` for cron; returns a usable exit code. |
 | `scripts/restore.sh` | Wrapper around `restore_backup`. |
+| `scripts/backup_cron.sh` | Backup + validate + external health-check ping; the recommended cron entrypoint. |
 
 > **Security rule:** the backup artifact and manifest **never contain
 > credentials**. For Postgres the dump is produced by `pg_dump`/`pg_restore`
@@ -98,10 +100,27 @@ is what a scheduler watches. Wrap in `scripts/backup.sh` and pipe to a log:
 A non-zero exit means the backup incomplete. The command also removes the
 half-written backup folder so a failed run can never be mistaken for a good one.
 
+`check_backups` complements `backup_data` as the **scheduler-facing health gate**:
+it re-opens the newest backup and verifies the manifest, the DB artifact SHA-256
+(good against a truncated/corrupt file), freshness (`--max-age-hours`, default
+48 — a scheduled backup that silently stopped producing new folders becomes stale),
+and retention sanity (more folders than `--keep` means pruning is not running).
+It exits **0 when healthy, non-zero on any problem**. A fresh install with fewer
+folders than `--keep` is normal and not an error.
+
+```bash
+# Cron-style wrapper that takes the backup, validates it, and pings a health check:
+P0B_BACKUP_ROOT=/mnt/backups HEALTHCHECK_PING_URL=https://hc-ping.com/<uuid> \
+  scripts/backup_cron.sh
+
+# Or wire `check_backups` alone to an uptime/heartbeat monitor:
+P0B_BACKUP_ROOT=/mnt/backups python manage.py check_backups --max-age-hours 48
+```
+
 **To alert:** point a scheduler (Render cron, Jenkins, GitHub Actions, Uptime
-Robot, etc.) at the exit status / log tail. No notification is configured in this
-repository, and wiring an e-mail/Slack alert for production is a decision for the
-owner (see §8).
+Robot, Healthchecks.io, etc.) at the exit status / log tail. `scripts/backup_cron.sh`
+pings an external health check on success/failure when `HEALTHCHECK_PING_URL` is
+set (never hard-coded). See §8 for the ready-to-apply Render cron config.
 
 ## 5. Restoring
 
@@ -172,23 +191,38 @@ restored uploaded file is byte-identical (`sha256sum` matches).
 
 ## 8. Production scheduling / external storage — needs owner access & approval
 
-The tooling here is ready to use; the **scheduling and off-box storage are not
-configured**, because they need production-level access and decisions this
-session should not assume (rule 7):
+The tooling here is ready to use, and the **ops config is now prepared**; only the
+**live scheduling and off-box storage are not wired**, because they need
+production-level access and decisions this session should not assume (rule 7).
 
-- **Render** (the live host is `school-management-system-27mn.onrender.com`):
-  add a **Cron Job**/external scheduler that runs `scripts/backup.sh` on the
-  service or a dedicated runner; set `P0B_BACKUP_ROOT` to a **persistent disk**.
+**Ready-to-apply (in-repo, but not live):**
+
+- `manage.py check_backups` — backup health gate (exit 0/1; see §4).
+- `scripts/backup_cron.sh` — backup + validate + external health-check ping.
+- `render.cron.yaml` — ops-only **Render Blueprint** for a daily Cron Job that runs
+  `scripts/backup_cron.sh`. It defines the cron job only (it does **not**
+  recreate the existing web service).
+
+Owner actions still required (apply via Render dashboard / Blueprint):
+
+- **Cron job filesystem is EPHEMERAL.** A backup written to a local path is wiped
+  after each run, so `P0B_BACKUP_ROOT` **must** point at a persistent location:
+  a **Render persistent disk**, or **upload after backup to object storage**
+  (R2 / S3 / a server you control). Render does not attach a running service's disk
+  to a cron job, so a disk-only approach needs a disk-mounted service plus an
+  off-box copy. This is an **owner decision**.
 - **Persistent disk:** the default Render filesystem is ephemeral. A backup
   written to it is lost on redeploy. Store backups on a persistent disk or
   upload them to object storage (S3/R2/Render Disks) — an **owner decision**.
   The same disk should host `MEDIA_ROOT` (set `MEDIA_ROOT=/data/media`) so
   uploaded student photos also survive redeploys (D-7).
-- **Notification:** no live e-mail/Slack alert is configured; decide how a
-  non-zero exit is surfaced.
+- **Notification:** create a health check (e.g. Healthchecks.io) and set
+  `HEALTHCHECK_PING_URL` (never hard-coded); `backup_cron.sh` pings `<url>` on
+  success and `<url>/fail` on failure.
 - **Postgres:** production likely uses `DATABASE_URL` → Postgres. Confirm
   `pg_dump`/`pg_restore` exist in the runtime, and that `PGPASSWORD`/`DATABASE_URL`
   are set in the environment (never in the repo).
+- **Plan/billing:** cron jobs have **no free tier**; they run on a paid plan.
 
 Do **not** treat the local test restore as completing/validating any scheduled
 production backup.

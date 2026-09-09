@@ -319,6 +319,14 @@ class PromotionBatch(models.Model):
     from_section = models.CharField(max_length=5, blank=True)
     to_class = models.CharField(max_length=10)
     to_section = models.CharField(max_length=5, blank=True)
+    # Per-institution promotion scope (D-9). A promotion run is for a single
+    # institution (each batch is created from one class/section of one school),
+    # so the batch carries the institution it promoted. Nullable so legacy
+    # (pre-column) batches remain readable by admin; hidden from scoped clerks.
+    institution = models.ForeignKey(
+        Institution, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='promotion_batches',
+    )
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='promotion_batches')
     created_at = models.DateTimeField(auto_now_add=True)
     rolled_back_at = models.DateTimeField(null=True, blank=True)

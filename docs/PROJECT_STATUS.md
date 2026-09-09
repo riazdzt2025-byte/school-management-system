@@ -3,7 +3,7 @@
 _Last updated: 2026-09-09 (write isolation session `arena/01a08254-school-management-system`)_
 _Base commit: `384f57b` (read/export isolation, pushed) on branch `arena/01a08254-school-management-system`_
 
-**Bengali TL;DR (এই সেশন — write isolation):** read-scope-এর পর এবার **write-side** institution isolation প্রয়োগ করা হয়েছে। SCoped clerk এখন অন্য institution-এর student/exam/employee/receipt/salary/application-এর pk-ভিত্তিক edit/delete/approve করতে পারে না (404), আর form POST-এ অন্য institution-এর ID দিলে সেটা server-এ reject হয় — শুধু UI dropdown filter নয়। Bulk write (bulk delete/update/restore/purge/auto-register), Excel student import, promotion (query-only scope), rollback ও history-ও scoped। নতুন `students/test_institution_write_isolation.py`-তে ২৬টা দুই-institution write-isolation test যোগ হয়েছে। মোট **২০৬ test pass** (180 + 26)। Voucher (no institution FK, D-3) ও PromotionBatch-এর institution column-এর কথা আগের মতোই deferred। SSC Registration / SSC Result Summary **অপরিবর্তিত — restore করা হয়নি**।
+**Bengali TL;DR (সর্বশেষ — write isolation + voucher + promotion + ops):** write-side institution isolation এই সেশনে সম্পূর্ণ। SCoped clerk অন্য institution-এর student/exam/employee/receipt/salary/application-এর pk-ভিত্তিক edit/delete/approve করতে পারে না (404); form POST-এ অন্য institution-এর ID server-এ reject হয়। P1-1/D-3 **voucher isolation** (Voucher.institution যোগ, migration 0036) এবং D-9 **PromotionBatch.institution** (migration 0037) সম্পন্ন — rollback/scope/history-তে institution column। P0-10 **dead-code cleanup** (duplicate employees route, orphan ও shadowed templates, admin branding placeholder) মুছে ফেলা হয়েছে। P0-8 **backup/restore tooling + ops readiness** (check_backups command + backup_cron.sh + render.cron.yaml) প্রস্তুত; live Render scheduling/Storage/alert owner-এর হাতে। মোট **237 test pass** (students suite) — কেবল SSC Registration / SSC Result Summary **অপরিবর্তিত — restore করা হয়নি**।
 
 ---
 
@@ -12,8 +12,9 @@ _Base commit: `384f57b` (read/export isolation, pushed) on branch `arena/01a0825
 | Check | Result |
 |---|---|
 | `python manage.py makemigrations --check` | **Clean** — models and migrations in sync |
-| `python manage.py test students` | **159 tests, all pass** (Django 5.2.17, Python 3.11.2) |
+| `python manage.py test students` | **237 tests, all pass** (see §13.3) |
 | `manage.py check` | 0 issues |
+| `manage.py test students.test_backup_tooling` | **14 tests, all pass** (includes `check_backups` command tests) |
 | SSC removal regression (`RetiredBoardFeatureTests`) | Pass — old URLs unroutable, models/content types absent, no SSC text on student pages |
 | Template ↔ URL cross-check (every `{% url %}` in every template) | Found 2 dangling names: `tc_print`, `id_card_print` (see §4 BUG-1) |
 | View ↔ template cross-check (every `render()` target exists) | Clean |
@@ -47,18 +48,18 @@ Legend: **Implemented** = works end-to-end with tests · **Partial** = core work
 | 13 | Seat plan + signature sheet | **Implemented** | Indoor/outdoor rooms, capacity validation, per-room view, signature sheet, clear. Gap: exam pk unscoped (SEC-3). |
 | 14 | Employees / HR | **Partial** | CRUD, status change + history, detail page. Tests: `EmployeeDetailPageTests`. **Gap: `employee_list?institution=` overrides the session institution** (SEC-2); `employee_detail` unscoped by pk (SEC-3). |
 | 15 | Accounts — money receipts | **Implemented** | CRUD + institution-scoped list. Gap: `receipt_no` is hand-typed with a unique constraint (auto-numbering exists only in the admission payment path, P1-3); no server-side amount validation. |
-| 16 | Accounts — vouchers | **Partial** | CRUD works. **`Voucher` has no `institution` field** — the finance dashboard's `voucher_qs.filter()` is a no-op, i.e. every scoped user sees **all** institutions' vouchers (decision D-3, task P1-1 needs a migration). |
+| 16 | Accounts — vouchers | **Implemented** | P1-1/D-3: `Voucher.institution` nullable FK added (migration `0036`); admin-visible, scoped clerk sees only own institutions; legacy NULL vouchers hidden from clerk (deny-by-default), visible to admin/staff. `VoucherForm` scoped + `clean_institution`; list/dashboard scoped; pk-level 404 across institutions. 6 voucher tests. |
 | 17 | Accounts — salary sheets | **Implemented** | CRUD + institution-scoped list + unique employee/month. |
-| 18 | Finance dashboard | **Partial** | Receipts/salaries scoped; **vouchers unscoped (see 16)**. |
+| 18 | Finance dashboard | **Implemented** | Receipts/salaries scoped; **vouchers now scoped** via `_scope_by_allowed_institutions`. |
 | 19 | Attendance (bulk student + employee, report, summary) | **Implemented** | Tests: `AttendanceTests`. **Gap: no entry in the sidebar navigation** — the module is only reachable by direct URL or from bulk-mark redirects (P1-4). When the session institution is missing, bulk marking lists students of **all** institutions (edge of SEC-L1). |
-| 20 | Promotion + rollback + history | **Partial** | Batch + per-student history + rollback + audit, tested (`PromotionAndAuditTests`, `ArchiveIntegrityTests`). **Gap: the promotion query has no institution filter — it promotes class N of *every* institution** (SEC-4); `PromotionBatch` has no institution column; history lists all institutions. |
+| 20 | Promotion + rollback + history | **Implemented (D-9)** | `PromotionBatch.institution` nullable FK added (migration `0037`); a single-institution run records `batch.institution`; scoped rollback 404s on a non-owned batch; legacy NULL batches scoped via the derived student filter; history shows an Institution column + stays scoped. 3 new promotion-isolation tests. Batch creation still scoped by `?institution=` for the promotion form. |
 | 21 | Subject assignments (SubjectRequirement) + curriculum auto-fill | **Implemented** | Mandatory/Optional/Conditional + religion conditionals; built-in Bangladesh curriculum data; idempotent auto-fill; JSON endpoint (login-gated). Tests: `AdmissionSubjectScopeTests`, `ReligionPaperTests`, `SubjectAssignmentsConditionalNoteTests`. Gap: list/mark-evaluation screens accept `?institution=` for any institution (global `Subjects` group — D-6). |
 | 22 | Mark evaluation settings (SubjectMarkSetting) | **Implemented** | Per exam type, parts validation, active flag. Tests: `MarkEvaluationActiveSubjectTests`. |
 | 23 | Audit log | **Implemented** | `AuditLog` + `record_audit` on archive/restore/purge/promotion/rollback/exam ops/applications/attendance. Not institution-scoped (any `view_auditlog` user sees all institutions' logs). |
 | 24 | Permissions & department groups | **Implemented (drift found)** | `ensure_default_groups()` runs on `post_migrate` (single source: `students/permissions.py`). **Drift: the manual `setup_groups` command still grants `delete_exam` to the Exam group, which `permissions.py` does not** — running the command after a migrate re-adds the permission (PERM-1). The Accounts group holds `Exam` add/change + `ExamMark` add/change/delete — unusual, needs confirmation (D-6). |
 | 25 | SSC Registration / SSC Result Summary | **Intentionally removed** | Migration `0035` drops tables + content types (irreversible). **No dangling references found** in code, URLs, templates or nav — only historical migrations (0008/0032) and curriculum-data naming remain, which is correct. Regression tests: `RetiredBoardFeatureTests`. **Do not restore** (session rule 4). |
-| 26 | Django admin | **Implemented** | All models registered; branded header set in `urls.py` overrides the placeholder in `admin.py` (`"...... High School Administration"` — cosmetic leftover). |
-| 27 | Management commands (7) | **Implemented** | `setup_groups`, `grant_institution_access`, `seed_subjects`, `seed_subject_requirements`, `clean_student_groups` (dry-run by default), `merge_duplicate_subjects` (dry-run by default). |
+| 26 | Django admin | **Implemented** | All models registered. Branding (`site_header`/`site_title`/`index_title`) is set in ``school_system/urls.py``; the duplicate placeholder in ``students/admin.py`` was **removed** (P0-10, dead code). |
+| 27 | Management commands (9) | **Implemented** | ``setup_groups``, ``grant_institution_access``, ``seed_subjects``, ``seed_subject_requirements``, ``clean_student_groups`` (dry-run by default), ``merge_duplicate_subjects`` (dry-run by default), ``backup_data``, ``restore_backup``, ``check_backups`` (backup health gate, exit 0/1 for alerting). |
 | 28 | Legacy `StudentSubject` model | **Legacy** | Only surfaced through the admin inline and `merge_duplicate_subjects`. The web workflow uses `SubjectRequirement` + `StudentSubjectChoice` + `ExamMark`. Feeds the wrong data into the student-detail Subjects tab (P1-5). |
 | 29 | Documentation | **Partial** | `README.md` roadmap is stale (§3). `DEPLOY_NOTES.md`, `GROUP_RULE_DEPLOY_NOTES.md`, `RESULT_PUBLISHING_GUIDE.md` are current. `.github/agents/school-system-maintainer.agent.md` still describes "SSC registrations" (stale). `docs/` did not exist before this session — the three files in this folder were created by it. `.elastic-copilot/memory/*` holds stale auto-generated notes from 2026-08-28 (not a real handoff; pre-dates migrations 0012–0035). |
 | 30 | CI / automated checks | **Missing** | No `.github/workflows`. Tests only run manually. (P2-1) |
@@ -439,3 +440,78 @@ possible from this sandbox).
 - `manage.py check` — 0 issues; `makemigrations --check` — clean.
 - `manage.py test students` — **229 tests, all pass** (was 223; +6 voucher tests).
 - Migration `0036` applied cleanly; **additive nullable column** (no data loss).
+
+---
+
+## 13. D-9 promotion isolation + P0-10 dead-code cleanup + P0-8 ops readiness — 2026-09-09
+
+**Scope:** complete D-9 (PromotionBatch institution isolation), P0-10 (dead-code
+cleanup), and prepare P0-8 ops (scheduling/alerting config, no live Render change).
+SSC not restored; no production data change.
+
+### 13.1 D-9 · `PromotionBatch.institution` (migration `0037`)
+
+- Added a nullable `institution` FK (`SET_NULL`, related_name `promotion_batches`)
+  to `PromotionBatch` — additive, low risk (migration `0037`).
+- On a single-institution promotion run, `batch.institution` is recorded; on a
+  multi-institution run it stays NULL (the batch spans institutions).
+- `rollback_student_promotion` now checks `batch.institution_id`: a scoped clerk
+  rolling back a batch owned by another institution gets 404. Legacy NULL batches
+  (created before `0037`) are still scoped via the derived student filter, so old
+  rows remain correctly isolated.
+- `student_promotion_history` selects `institution` and shows it in a new
+  `Institution` column; the list stays scoped to the clerk's institutions.
+- Tests: 3 additions to `test_institution_write_isolation.py`
+  (`test_new_batch_records_institution`, `test_rollback_promotion_batch_with_institution_other_404`,
+  `test_promotion_history_scoped_to_own_institution`) → **34 tests** in that file.
+
+### 13.2 P0-10 · dead-code cleanup (no behavior change)
+
+- Removed the duplicate `employees/` → `employee_list` URL block; the single
+  authoritative `employee_list` route (and the other employee routes) remain at
+  the top block; kept `employees/<int:pk>/` → `employee_detail` (only defined there).
+- Deleted orphan templates: `students/templates/students/student_list_filter.html`,
+  `school_system/templates/students/admission.html`.
+- Deleted the shadowed stale `students/templates/students/student_detail.html`.
+  The project-dir copy (`school_system/templates/students/student_detail.html`) is
+  the one Django resolves (verified via `get_template(...).origin.name`); the app
+  copy referenced the non-existent `id_card_print` URL and was unreachable.
+- Removed the dead admin-branding placeholder (`site_header`/`site_title`/
+  `index_title`) in `students/admin.py` — all three are set in
+  `school_system/urls.py`.
+- No duplicate consecutive `@login_required`/`@permission_required` decorators
+  exist in `students/views.py` (scanned — 0), so none were removed.
+
+### 13.3 Verification
+
+- `manage.py check` — 0 issues; `makemigrations --check` — clean.
+- `manage.py test students` — **237 tests, all pass** (229 + 2 D-9 tests + 6 ops tests; P0-10
+  adds none, template cleanup covered by existing URL/template cross-checks).
+- URL reverse smoke: `employee_list`, `employee_detail`, `voucher_list`,
+  `student_promotion_history` all resolve.
+- Migration `0037` applied cleanly (additive nullable column).
+
+### 13.4 P0-8 · ops readiness (config + runbook; live wiring is the owner's)
+
+Added ready-to-apply (but not live) pieces — no Render change made, no credential
+stored:
+
+- `manage.py check_backups` — backup health gate: verifies the newest backup's
+  manifest, DB artifact SHA-256, freshness (`--max-age-hours`, default 48), and
+  retention sanity; **exits 0 when healthy, non-zero on any problem** so any
+  scheduler/uptime/alert hook can watch it.
+- `scripts/backup_cron.sh` — cron wrapper: runs `backup_data --keep N`, then
+  `check_backups`, and pings an external health check (`HEALTHCHECK_PING_URL`)
+  on success (`<url>`) / failure (`<url>/fail`).
+- `render.cron.yaml` — ops-only Render Blueprint for the daily backup cron job.
+  It deliberately does **not** redefine the existing web service.
+- 6 new tests in `test_backup_tooling.py` for `check_backups` (healthy / stale /
+  corrupt / no-root / retention-under-threshold-still-healthy /
+  retention-over-threshold-broken) → **14 tests** in that file.
+
+**Still requires owner access/approval (rule 7), unchanged from §10.4:**
+attaching/re-using a persistent disk or object storage for `P0B_BACKUP_ROOT`,
+setting `HEALTHCHECK_PING_URL` + creating the health check, confirming the
+production engine (Postgres tooling), and choosing the cron plan/`DATABASE_URL`
+secrets. A cron job's filesystem is ephemeral, so `P0B_BACKUP_ROOT` **must** point
+at a persistent location.

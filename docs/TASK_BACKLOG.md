@@ -172,7 +172,7 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | D-6 | Confirm intended permission sets: (a) Exam group — should it include `delete_exam` (setup_groups says yes, permissions.py says no)? (b) Accounts group — should it keep `Exam` add/change and `ExamMark` add/change/delete? | P0-11 |
 | D-7 | Student photos: Render persistent disk (cheap) or object storage (durable)? | P1-11 |
 | D-8 | Production database: stay on SQLite (on a persistent disk) or switch to Postgres (P1-10, README roadmap)? | P1-10, P0-7 |
-| D-9 | Promotion scoping: minimal query-level fix (no migration) now, or add an `institution` column to `PromotionBatch` (small migration) in the same change? | P0-4 |
+| D-9 | Promotion scoping: minimal query-level fix (no migration) now, or add an `institution` column to `PromotionBatch` (small migration) in the same change? | **Resolved** — added the column (migration `0037`); query-level fallback retained for legacy NULL batches. → P0-4 complete |
 | D-10 | Legacy `StudentSubject` data: keep admin-only forever, migrate it into the current models, or drop it? | P1-5 / P2-7 |
 
 ---
@@ -295,3 +295,20 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | D-9 | `PromotionBatch.institution` column | Already query-scoped; column optional, needs a further migration |
 | P0-10 | Dead-code cleanup | Separate scope |
 | P0-8 (ops) | Render backup scheduling / off-box storage / alert wiring | Owner + access, not yet configured |
+
+## Update — 2026-09-09 · D-9 + P0-10 + P0-8 ops readiness (this session)
+
+### Completed
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| D-9 | `PromotionBatch.institution` column | **Done** | Nullable FK added (migration `0037`); single-institution runs record `batch.institution`; scoped rollback 404s on a non-owned batch; legacy NULL batches scoped via the derived student filter; history selects+shows institution. 3 new promotion tests → 34 in `test_institution_write_isolation.py`. |
+| P0-4 (column) | Promotion institution-scoping (SEC-4) — with the `PromotionBatch` column | **Done** | Batch-level scoping now backed by the column; query-derived fallback retained for legacy NULL batches. |
+| P0-10 | Dead-code cleanup (no behavior change) | **Done** | Removed duplicate `employees/`→`employee_list` route (kept `employee_detail`); deleted orphan `student_list_filter.html` + `school_system/templates/students/admission.html`; deleted shadowed `students/templates/students/student_detail.html` (project-dir copy is the resolved one); removed dead admin-branding placeholder in `admin.py` (`urls.py` owns it). No duplicate decorators found in `views.py` (0) — none removed. |
+| P0-8 (ops, config) | Backup scheduling / alerting config + health gate | **Done (config)** | `manage.py check_backups` (exit 0/1 for alerting; verifies manifest, DB SHA-256, freshness, retention sanity); `scripts/backup_cron.sh` (backup + validate + Healthchecks ping); `render.cron.yaml` (ops-only Render Blueprint for the daily cron). 6 new `check_backups` tests → 14 in `test_backup_tooling.py`. |
+
+### Still open (needs owner access / approval — rule 7)
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P0-8 (ops, live) | Attach persistent disk / object storage for `P0B_BACKUP_ROOT`; set `HEALTHCHECK_PING_URL`; confirm Postgres tooling; choose cron plan/secrets | Owner + Render access; cron filesystem is ephemeral so a persistent destination is required. Config is ready but not run live. |

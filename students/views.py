@@ -3691,9 +3691,21 @@ def student_promotion(request):
                 students = [student for student in students if student.section.lower() == data['from_section'].lower()]
             count = len(students)
             if count:
+                # A promotion run moves a single class/section, so all promoted
+                # students belong to one institution. Record it on the batch
+                # (D-9) so scoping no longer has to be derived from the rows;
+                # if an admin deliberately promotes students across institutions
+                # (unusual), leave the batch institution NULL (staff-only).
+                batch_institution_ids = {student.institution_id for student in students}
+                batch_institution = (
+                    Institution.objects.filter(pk__in=batch_institution_ids).first()
+                    if len(batch_institution_ids) == 1
+                    else None
+                )
                 batch = PromotionBatch.objects.create(
                     session=data['session'], from_class=data['from_class'], from_section=data['from_section'],
                     to_class=data['to_class'], to_section=data['to_section'], actor=request.user,
+                    institution=batch_institution,
                 )
                 histories = []
                 for student in students:
@@ -3726,16 +3738,21 @@ def rollback_student_promotion(request, pk):
     with transaction.atomic():
         batch = get_object_or_404(PromotionBatch.objects.select_for_update(), pk=pk)
         # A scoped clerk may only roll back a batch that lies entirely within
-        # their institutions. The batch has no institution column (SEC-4), so
-        # the set of institutions is derived from its students.
+        # their institutions. Since D-9 a batch carries its institution; for a
+        # legacy NULL batch (created before the column) the set is still derived
+        # from its students, so old rows stay safely denied by default.
         if _institutionally_scoped(request.user):
             allowed = _scoped_institution_ids(request.user) or set()
-            batch_institutions = set(
-                StudentPromotionHistory.objects.filter(batch=batch)
-                .values_list('student__institution_id', flat=True)
-            )
-            if not batch_institutions or not batch_institutions.issubset(allowed):
-                raise Http404
+            if batch.institution_id is not None:
+                if batch.institution_id not in allowed:
+                    raise Http404
+            else:
+                batch_institutions = set(
+                    StudentPromotionHistory.objects.filter(batch=batch)
+                    .values_list('student__institution_id', flat=True)
+                )
+                if not batch_institutions or not batch_institutions.issubset(allowed):
+                    raise Http404
         if batch.rolled_back_at:
             messages.error(request, 'This promotion batch has already been rolled back.')
             return redirect('student_promotion_history')
@@ -3763,8 +3780,11 @@ def rollback_student_promotion(request, pk):
 @permission_required('students.view_promotionbatch', raise_exception=True)
 @_require_department('Office')
 def student_promotion_history(request):
-    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor').all().order_by('-created_at')
-    # A scoped clerk sees only batches that touch their own institutions.
+    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor', 'institution').all().order_by('-created_at')
+    # A scoped clerk sees only batches that touch their own institutions. The
+    # filter is derived from each batch's students, which stays correct for both
+    # new batches (which also carry a `institution` column, D-9) and legacy
+    # NULL-institution batches.
     if _institutionally_scoped(request.user):
         allowed = _scoped_institution_ids(request.user) or set()
         if not allowed:
