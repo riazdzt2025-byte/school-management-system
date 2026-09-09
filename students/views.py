@@ -1,7 +1,8 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
-from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
+from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse, Http404
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q
 from django.urls import reverse
@@ -121,6 +122,149 @@ def _is_admin(user):
     return user.is_superuser or user.is_staff
 
 
+def _institutionally_scoped(user):
+    """True when a non-admin user is bound by InstitutionAccess rows.
+
+    A user with no active access row is treated as unrestricted: in production
+    such a user cannot log in at all (login requires an access row or admin),
+    and code paths that grant model permissions directly (used heavily by the
+    test suite) keep their historic fallback behaviour.
+    """
+    if _is_admin(user):
+        return False
+    return InstitutionAccess.objects.filter(user=user, is_active=True).exists()
+
+
+def _scoped_institution_ids(user):
+    """Institution ids the user is allowed to read, or ``None`` if unrestricted.
+
+    Admin/staff and any user with no active access row are unrestricted
+    (``None``). A clerk holding one or more active ``InstitutionAccess`` rows is
+    bounded to the set of institutions in those rows.
+    """
+    if not _institutionally_scoped(user):
+        return None
+    return set(
+        InstitutionAccess.objects.filter(user=user, is_active=True)
+        .values_list('institution_id', flat=True)
+    )
+
+
+def _user_can_access_institution(request, institution):
+    """Whether the current user may read an object belonging to ``institution``.
+
+    admin/staff (and users with no access row) can read everything. A scoped
+    clerk may only reach institutions they have an active access row for. Objects
+    with no institution at all are hidden from a scoped clerk — they have no
+    institution to belong to, so the safest answer is to 404.
+    """
+    if _is_admin(request.user) or not _institutionally_scoped(request.user):
+        return True
+    if institution is None:
+        return False
+    allowed_ids = _scoped_institution_ids(request.user) or set()
+    return institution.pk in allowed_ids
+
+
+def _get_scoped_object_or_404(request, model, pk, institution_getter):
+    """Fetch an object by pk, 404ing when a scoped user has no institution access.
+
+    ``institution_getter(obj)`` returns the ``Institution`` the object belongs
+    to (through any relation, e.g. ``lambda c: c.student.institution``).
+    Admin/staff are unrestricted. This keeps object-level (pk) URL guessing from
+    leaking another institution's rows while leaving legitimate single-institution
+    usage and the cross-institution admin untouched.
+    """
+    obj = get_object_or_404(model, pk=pk)
+    if not _user_can_access_institution(request, institution_getter(obj)):
+        raise Http404
+    return obj
+
+
+def _resolve_requested_institution(request, requested_id):
+    """The institution a list/export should filter to.
+
+    - ``?institution=<id>`` is honoured only when the user is admin/staff OR the
+      requested institution is one of the user's active access rows (so a clerk
+      holding access to A and B may switch between them, but never to C).
+    - Otherwise the session-selected institution is used (which may be ``None``
+      for an admin — meaning "all institutions").
+    """
+    session_institution = _selected_institution_for_request(request)
+    if not requested_id:
+        return session_institution
+    try:
+        candidate = Institution.objects.get(pk=requested_id)
+    except Institution.DoesNotExist:
+        return session_institution
+    allowed_ids = _scoped_institution_ids(request.user)
+    if allowed_ids is None or candidate.pk in allowed_ids:
+        return candidate
+    return session_institution
+
+
+def _scope_by_allowed_institutions(request, qs, field_name='institution'):
+    """Bound a queryset to the institutions the user may read.
+
+    Used as the safe fallback in list/export views when the user is a scoped
+    clerk whose session has no institution selected — that direction is the
+    unsafe one (it would fall back to "all institutions"), so it is restricted
+    to the user's allowed set instead. Admin/staff (and users with no access
+    row) pass through unchanged.
+    """
+    if _is_admin(request.user) or not _institutionally_scoped(request.user):
+        return qs
+    allowed_ids = _scoped_institution_ids(request.user) or set()
+    if not allowed_ids:
+        return qs.none()
+    return qs.filter(**{f'{field_name}__in': allowed_ids})
+
+
+def _scope_institution_qs(request, qs, institution, field_name='institution'):
+    """Scope a queryset to an institution when one is resolved, else to the
+    user's allowed set (the safe fallback for a scoped clerk)."""
+    if institution is not None:
+        return qs.filter(**{field_name: institution})
+    return _scope_by_allowed_institutions(request, qs, field_name)
+
+
+def _scope_write_queryset(request, base_qs, pks, field_name='institution'):
+    """Restrict a write operation to institutions the user may access.
+
+    ``base_qs`` is the already-filtered queryset the operation may touch (e.g.
+    ``Student.objects.filter(is_archived=False)``). Returns ``(in_scope_qs,
+    rejected)``: ``in_scope_qs`` is the submitted pks within the user's allowed
+    institutions; ``rejected`` is True when at least one submitted pk already
+    exists but belongs to an institution the user cannot access — the caller
+    should refuse the *whole* operation (cross-institution rejection), never
+    silently touch the out-of-scope row."""
+    qs = base_qs.filter(pk__in=pks)
+    if _is_admin(request.user) or not _institutionally_scoped(request.user):
+        return qs, False
+    allowed_ids = _scoped_institution_ids(request.user) or set()
+    if not allowed_ids:
+        return qs.none(), False
+    rejected = qs.exclude(**{f'{field_name}__in': allowed_ids}).exists()
+    in_scope = qs.filter(**{f'{field_name}__in': allowed_ids})
+    return in_scope, rejected
+
+
+def _visible_institutions(request):
+    """Institutions a user may see in a filter/selector (admin unrestricted)."""
+    if _is_admin(request.user) or not _institutionally_scoped(request.user):
+        return Institution.objects.all().order_by('name')
+    allowed_ids = _scoped_institution_ids(request.user) or set()
+    return Institution.objects.filter(pk__in=allowed_ids).order_by('name')
+
+
+def _institution_ids_outside(allowed_ids):
+    """Every institution id *not* in ``allowed_ids`` (used to exclude lines that
+    touch a batch spanning more than the user's institutions)."""
+    return list(
+        Institution.objects.exclude(pk__in=allowed_ids).values_list('pk', flat=True)
+    )
+
+
 def _selected_institution_for_request(request):
     if _is_admin(request.user):
         return None
@@ -208,9 +352,16 @@ def _scope_students_to_user(request, qs):
 
 def _filter_by_selected_institution(request, qs, field_name='institution'):
     institution = _selected_institution_for_request(request)
-    if institution is None:
+    if institution is not None:
+        return qs.filter(**{field_name: institution})
+    # A scoped clerk with no session institution must never fall back to "all
+    # institutions" (SEC-L1) — bound the queryset to their allowed set instead.
+    if _is_admin(request.user) or not _institutionally_scoped(request.user):
         return qs
-    return qs.filter(**{field_name: institution})
+    allowed_ids = _scoped_institution_ids(request.user) or set()
+    if not allowed_ids:
+        return qs.none()
+    return qs.filter(**{f'{field_name}__in': allowed_ids})
 
 
 def _require_department(required_dept):
@@ -245,6 +396,18 @@ def institution_login(request):
     institutions = list(Institution.objects.order_by('name'))
     departments = [label for label, _ in InstitutionAccess.DEPARTMENT_CHOICES]
     if request.method == 'POST':
+        # P2-2: lock out after too many failed attempts from one IP.
+        if _login_fail_count(request) >= LOGIN_MAX_ATTEMPTS:
+            messages.error(
+                request,
+                'Too many failed login attempts. Please wait 15 minutes and try again.',
+            )
+            return render(request, 'students/login.html', {
+                'institutions': institutions,
+                'departments': departments,
+                'default_institution_id': institutions[0].id if institutions else '',
+            })
+
         username = (request.POST.get('username') or '').strip()
         password = request.POST.get('password') or ''
         institution_id = request.POST.get('institution_id')
@@ -263,12 +426,14 @@ def institution_login(request):
             ).select_related('institution').first()
 
         if user is not None and (user.is_superuser or user.is_staff or access is not None):
+            _login_fail_reset(request)
             login(request, user)
             sync_user_department_permissions(user)
             request.session['selected_institution_id'] = str(institution_id) if institution_id else ''
             request.session['selected_department'] = department or 'Office'
             return redirect('dashboard')
 
+        _login_fail_increment(request)
         messages.error(request, 'Invalid username, password, or institution access.')
 
     return render(request, 'students/login.html', {
@@ -287,10 +452,12 @@ def dashboard(request):
     students_qs = Student.objects.filter(status='ACTIVE', is_archived=False)
     if institution is not None:
         students_qs = students_qs.filter(institution=institution)
+    else:
+        students_qs = _scope_by_allowed_institutions(request, students_qs)
 
     total_students = students_qs.count()
     total_subjects = Subject.objects.count()
-    total_institutions = Institution.objects.count()
+    total_institutions = _visible_institutions(request).count()
     classes = students_qs.values_list('admission_class', flat=True).distinct().order_by('admission_class')
     sessions = students_qs.values_list('admission_year', flat=True).distinct().order_by('-admission_year')
     return render(request, 'students/dashboard.html', {
@@ -403,7 +570,7 @@ def download_admission_sheet(request):
 @permission_required('students.add_admissionapplication', raise_exception=True)
 @_require_department('Office')
 def create_admission_application(request):
-    form = AdmissionApplicationForm(request.POST or None)
+    form = AdmissionApplicationForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
         application = form.save()
         messages.success(request, f'Application {application.application_number} submitted.')
@@ -412,27 +579,53 @@ def create_admission_application(request):
 
 
 def public_admission_apply(request):
-    form = AdmissionApplicationForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        application = form.save()
-        return render(request, 'students/public_admission_success.html', {
-            'application': application,
-        })
+    # P1-9: rate-limit the unauthenticated public form per IP (5 submissions /
+    # 10 min) so it can't be scripted into a spam/bulk-submit vector. The form
+    # stays open to real applicants; only an abusive burst is throttled.
+    if request.method == 'POST':
+        if _rate_limit_exceeded(request, 'public_admission', limit=5, window_seconds=600):
+            messages.error(
+                request,
+                'Too many submissions from this address. Please wait a few minutes and try again.',
+            )
+            return render(request, 'students/public_admission_form.html', {
+                'form': AdmissionApplicationForm(),
+                'rate_limited': True,
+            })
+        form = AdmissionApplicationForm(request.POST or None)
+        if form.is_valid():
+            application = form.save()
+            return render(request, 'students/public_admission_success.html', {
+                'application': application,
+            })
+        return render(request, 'students/public_admission_form.html', {'form': form})
+    form = AdmissionApplicationForm()
     return render(request, 'students/public_admission_form.html', {'form': form})
 
 
 @login_required
 @permission_required('students.view_admissionapplication', raise_exception=True)
 def admission_application_detail(request, pk):
-    application = get_object_or_404(AdmissionApplication.objects.select_related('institution', 'enrolled_student'), pk=pk)
+    application = _get_scoped_object_or_404(
+        request, AdmissionApplication.objects.select_related('institution', 'enrolled_student'), pk,
+        lambda a: a.institution,
+    )
+    # P1-2: pre-fill the payment amount from the class-wise fee schedule when one
+    # is configured; otherwise leave the current (possibly empty) value.
+    fee = _matching_fee(application)
     payment_form = AdmissionPaymentForm(instance=application)
+    if fee is not None and not application.payment_amount:
+        payment_form.initial['payment_amount'] = fee.amount
     return render(request, 'students/admission_application_detail.html', {
         'application': application, 'payment_form': payment_form,
+        'fee': fee,
     })
 
 
 def _application_transition(request, pk, action):
-    application = get_object_or_404(AdmissionApplication, pk=pk)
+    application = _get_scoped_object_or_404(
+        request, AdmissionApplication, pk, lambda a: a.institution,
+    )
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     now = timezone.now()
@@ -497,6 +690,70 @@ def _new_receipt_number():
     return f"ADM-{date.today():%Y}-{uuid4().hex[:10].upper()}"
 
 
+def _matching_fee(application):
+    """The Fee row configured for this application's institution/class, if any."""
+    from .models import Fee
+    return Fee.objects.filter(
+        institution=application.institution,
+        admission_class=application.requested_class,
+    ).order_by('purpose').first()
+
+
+# ---------------- rate limiting (P1-9 public admission, P2-2 login) ----------------
+# A lightweight per-IP counter backed by the Django cache (no new dependency,
+# works on LocMem and Redis alike). It is a throttle, not a hard identity store:
+# behind NAT a whole office shares one IP, so the limiter is deliberately
+# generous and intended to blunt spam/brute-force, not to be a per-user quota.
+
+def _client_ip(request):
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '')
+
+
+def _rate_limit_exceeded(request, scope, limit, window_seconds):
+    """True when this IP has already recorded `limit` requests in the window."""
+    ck = f'rl:{scope}:{_client_ip(request)}'
+    count = cache.get(ck, 0)
+    if count >= limit:
+        return True
+    cache.set(ck, count + 1, window_seconds)
+    return False
+
+
+def _login_fail_count(request):
+    return cache.get(f'loginfail:{_client_ip(request)}', 0)
+
+
+def _login_fail_increment(request):
+    ck = f'loginfail:{_client_ip(request)}'
+    cache.set(ck, _login_fail_count(request) + 1, LOGIN_LOCKOUT_SECONDS)
+
+
+def _login_fail_reset(request):
+    cache.delete(f'loginfail:{_client_ip(request)}')
+
+
+# 5 failed attempts -> 15 minute lockout (P2-2).
+LOGIN_LOCKOUT_SECONDS = 15 * 60
+LOGIN_MAX_ATTEMPTS = 5
+
+
+def _new_money_receipt_number():
+    """Collision-safe unique receipt number for manual money receipts (P1-3).
+
+    Mirrors the admission path (ADM-...) with a distinct RC- prefix so manual
+    receipts are never confused with admission receipts. Retries on the small
+    chance a UUID collides.
+    """
+    for _ in range(50):
+        candidate = f"RC-{date.today():%Y}-{uuid4().hex[:10].upper()}"
+        if not MoneyReceipt.objects.filter(receipt_no=candidate).exists():
+            return candidate
+    raise IntegrityError('Could not generate a unique money receipt number.')
+
+
 @login_required
 @permission_required('students.change_admissionapplication', raise_exception=True)
 @_require_department('Accounts')
@@ -504,8 +761,9 @@ def accounts_approve_payment(request, pk):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     with transaction.atomic():
-        application = get_object_or_404(
-            AdmissionApplication.objects.select_for_update(), pk=pk
+        application = _get_scoped_object_or_404(
+            request, AdmissionApplication.objects.select_for_update(), pk,
+            lambda a: a.institution,
         )
         if application.status != 'ACCOUNT_PENDING':
             messages.error(request, 'Payment approval is not valid for this application.')
@@ -514,6 +772,15 @@ def accounts_approve_payment(request, pk):
         if not form.is_valid():
             messages.error(request, 'Please provide valid payment details.')
             return redirect('admission_application_detail', pk=pk)
+        # P1-2: warn when the entered amount differs from the class fee schedule
+        # (a configured fee is a guideline/confirmation, not a hard cap).
+        fee = _matching_fee(application)
+        if fee is not None and form.cleaned_data.get('payment_amount') != fee.amount:
+            messages.warning(
+                request,
+                f'Entered amount differs from the fee schedule for this class '
+                f'({fee.amount:,.2f} per {fee.purpose}).'
+            )
         if not SectionCapacity.has_room(
             application.institution, application.requested_class, application.requested_section
         ):
@@ -577,19 +844,14 @@ def accounts_approve_payment(request, pk):
 
 @login_required
 def class_section_summary(request):
-    institutions = Institution.objects.all().order_by('name')
+    institutions = _visible_institutions(request)
     institution_id = request.GET.get('institution')
-    institution = _selected_institution_for_request(request)
-    if not institution_id and institution:
-        institution_id = institution.pk
+    institution = _resolve_requested_institution(request, institution_id)
 
     # Archived (soft-deleted) students are out of every active count, the same
     # way they are out of the Student List.
     students_qs = Student.objects.filter(is_archived=False)
-    students_qs = _filter_by_selected_institution(request, students_qs)
-    if institution_id:
-        institution = get_object_or_404(Institution, pk=institution_id)
-        students_qs = students_qs.filter(institution=institution)
+    students_qs = _scope_institution_qs(request, students_qs, institution)
 
     summary = defaultdict(lambda: {'total': 0, 'male': 0, 'female': 0, 'other': 0})
 
@@ -629,6 +891,8 @@ def attendance_report(request):
     records = AttendanceRecord.objects.select_related('student', 'employee', 'institution').order_by('-date', '-created_at')
     if institution is not None:
         records = records.filter(institution=institution)
+    else:
+        records = _scope_by_allowed_institutions(request, records)
     return render(request, 'students/attendance_report.html', {
         'records': records,
         'institution': institution,
@@ -679,6 +943,8 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
             students = students.filter(section=section)
         if institution:
             students = students.filter(institution=institution)
+        else:
+            students = _scope_by_allowed_institutions(request, students)
         students = students.order_by('name')
         
         if request.method == 'POST':
@@ -723,6 +989,8 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
         employees = Employee.objects.filter(status='ACTIVE')
         if institution:
             employees = employees.filter(institution=institution)
+        else:
+            employees = _scope_by_allowed_institutions(request, employees)
         employees = employees.order_by('name')
         
         if request.method == 'POST':
@@ -798,6 +1066,8 @@ def attendance_summary(request):
     records = AttendanceRecord.objects.filter(date__range=[start_date, end_date])
     if institution:
         records = records.filter(institution=institution)
+    else:
+        records = _scope_by_allowed_institutions(request, records)
     
     # Student attendance summary
     student_summary = {}
@@ -858,17 +1128,13 @@ def attendance_summary(request):
 
 @login_required
 def employee_list(request):
-    institutions = Institution.objects.all().order_by('name')
+    institutions = _visible_institutions(request)
     institution_id = request.GET.get('institution')
     status = request.GET.get('status')
-    institution = _selected_institution_for_request(request)
+    institution = _resolve_requested_institution(request, institution_id)
 
     employees = Employee.objects.all().order_by('name')
-    if institution_id:
-        institution = get_object_or_404(Institution, pk=institution_id)
-        employees = employees.filter(institution=institution)
-    elif institution is not None:
-        employees = employees.filter(institution=institution)
+    employees = _scope_institution_qs(request, employees, institution)
     if status:
         employees = employees.filter(status=status)
 
@@ -883,7 +1149,9 @@ def employee_list(request):
 
 @login_required
 def employee_detail(request, pk):
-    employee = get_object_or_404(Employee, pk=pk)
+    employee = _get_scoped_object_or_404(
+        request, Employee, pk, lambda e: e.institution
+    )
     
     # Get status history
     status_logs = employee.status_logs.all()
@@ -923,6 +1191,7 @@ def student_by_id(request, student_id):
     """Open a student's profile from the printed Student ID, not the database pk."""
     student_id = (student_id or '').strip()
     qs = _scope_students_to_user(request, Student.objects.all())
+    qs = _scope_by_allowed_institutions(request, qs)
     student = qs.filter(student_id__iexact=student_id).first()
     if student is None:
         messages.error(request, f'No student found with ID "{student_id}".')
@@ -932,7 +1201,7 @@ def student_by_id(request, student_id):
 
 @login_required
 def student_list(request):
-    institutions = Institution.objects.all().order_by('name')
+    institutions = _visible_institutions(request)
     institutions_data = {
         str(inst.id): [c.strip() for c in inst.classes.split(',') if c.strip()]
         for inst in institutions
@@ -945,25 +1214,23 @@ def student_list(request):
     institution_id = request.GET.get('institution')
     department = request.GET.get('department') or request.session.get('selected_department') or 'Office'
 
-    if institution_id:
-        institution = get_object_or_404(Institution, pk=institution_id)
-    else:
-        institution = _selected_institution_for_request(request)
+    # A scoped clerk may not switch to an institution they hold no access for;
+    # only their active institutions (or, for admin/staff, freely) are honoured.
+    institution = _resolve_requested_institution(request, institution_id)
 
     # An exact Student ID jumps straight to the profile — including archived
     # rows, which is how you find the "missing" 133rd student after an archive.
     if search_q:
-        exact_matches = list(
-            _scope_students_to_user(
-                request, Student.objects.filter(student_id__iexact=search_q)
-            )[:2]
+        exact_qs = _scope_students_to_user(
+            request, Student.objects.filter(student_id__iexact=search_q)
         )
+        exact_qs = _scope_institution_qs(request, exact_qs, institution)
+        exact_matches = list(exact_qs[:2])
         if len(exact_matches) == 1:
             return redirect('student_detail', pk=exact_matches[0].pk)
 
     qs = Student.objects.filter(is_archived=False)
-    if institution is not None:
-        qs = qs.filter(institution=institution)
+    qs = _scope_institution_qs(request, qs, institution)
     qs = _scope_students_to_user(request, qs)
 
     if request.GET.get('all') != '1':
@@ -1022,19 +1289,18 @@ def download_student_list(request):
         messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
         return redirect('student_list')
 
-    institution = _selected_institution_for_request(request)
     admission_class = request.GET.get('admission_class')
     section = request.GET.get('section')
     group = request.GET.get('group')
     search_q = (request.GET.get('q') or '').strip()
     institution_id = request.GET.get('institution')
 
+    # Same access rule as the Student List page: a scoped clerk may only export
+    # an institution they hold access for (or, for admin/staff, any).
+    institution = _resolve_requested_institution(request, institution_id)
+
     qs = Student.objects.select_related('institution').filter(is_archived=False)
-    if institution is not None:
-        qs = qs.filter(institution=institution)
-    elif institution_id:
-        institution = get_object_or_404(Institution, pk=institution_id)
-        qs = qs.filter(institution=institution)
+    qs = _scope_institution_qs(request, qs, institution)
     qs = _scope_students_to_user(request, qs)
 
     if request.GET.get('all') != '1':
@@ -1095,7 +1361,13 @@ def bulk_delete_students(request):
             messages.error(request, "No students were selected.")
             return redirect('student_list')
 
-        students = list(Student.objects.filter(pk__in=student_ids, is_archived=False))
+        students_qs, rejected = _scope_write_queryset(
+            request, Student.objects.filter(is_archived=False), student_ids,
+        )
+        if rejected:
+            messages.error(request, "One or more of the selected students belong to an institution you cannot access.")
+            return redirect('student_list')
+        students = list(students_qs)
         archived_count = 0
         for student in students:
             student.pre_archive_status = student.status
@@ -1139,7 +1411,12 @@ def bulk_update_students(request):
         elif not new_class and not new_section and not new_group:
             messages.error(request, "Please provide a new Class, Section, or Group to update.")
         else:
-            qs = Student.objects.filter(pk__in=student_ids, is_archived=False)
+            qs, rejected = _scope_write_queryset(
+                request, Student.objects.filter(is_archived=False), student_ids,
+            )
+            if rejected:
+                messages.error(request, "One or more of the selected students belong to an institution you cannot access.")
+                return redirect('student_list')
             update_fields = {}
             if new_class:
                 update_fields['admission_class'] = new_class
@@ -1210,7 +1487,13 @@ def auto_register_students(request):
         messages.error(request, "No students were selected.")
         return redirect('student_list')
 
-    students = Student.objects.filter(pk__in=student_ids, is_archived=False).select_related('institution')
+    students, rejected = _scope_write_queryset(
+        request, Student.objects.filter(is_archived=False), student_ids,
+    )
+    students = students.select_related('institution')
+    if rejected:
+        messages.error(request, "One or more of the selected students belong to an institution you cannot access.")
+        return redirect('student_list')
     students_updated = 0
     subjects_added = 0
     for student in students:
@@ -1264,8 +1547,17 @@ def bulk_update_select(request):
     section = request.POST.get('section', '')
 
     institution = Institution.objects.filter(pk=institution_id).first() if institution_id else None
+    if institution is not None and not _user_can_access_institution(request, institution):
+        messages.error(request, 'Access denied to that institution.')
+        return redirect('student_list')
     classes = [c.strip() for c in institution.classes.split(',') if c.strip()] if institution else []
-    students = Student.objects.filter(pk__in=student_ids, is_archived=False)
+    students_qs, rejected = _scope_write_queryset(
+        request, Student.objects.filter(is_archived=False), student_ids,
+    )
+    if rejected:
+        messages.error(request, "One or more of the selected students belong to an institution you cannot access.")
+        return redirect('student_list')
+    students = students_qs
 
     return render(request, 'students/bulk_update_students.html', {
         'students': students,
@@ -1281,11 +1573,47 @@ def bulk_update_select(request):
 
 @login_required
 def student_detail(request, pk):
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     
-    # Get subjects
-    subjects = student.subjects.select_related('subject')
-    
+    # Get subjects — the "Subjects & Curriculum" tab (P1-5) now shows the
+    # *current* assignments derived from SubjectRequirement (get_applicable_subjects)
+    # plus the student's chosen optional subjects, instead of the legacy
+    # StudentSubject M2M rows. Legacy data is admin-only.
+    applicable = get_applicable_subjects(
+        student.institution, student.admission_class,
+        group=student.group, religion=student.religion,
+    )
+    chosen_requirement_ids = set(
+        StudentSubjectChoice.objects.filter(student=student)
+        .values_list('requirement_id', flat=True)
+    )
+    curriculum_subjects = []
+    for item in applicable['mandatory'] + applicable['conditional']:
+        curriculum_subjects.append({
+            'name': item['name'], 'code': item['code'],
+            'curriculum': 'Mandatory', 'status': 'Auto',
+        })
+    for key, group in applicable['optional_groups'].items():
+        for item in group:
+            chosen = item['requirement_id'] in chosen_requirement_ids
+            curriculum_subjects.append({
+                'name': item['name'], 'code': item['code'],
+                'curriculum': 'Optional',
+                'status': 'Chosen' if chosen else 'Not chosen',
+            })
+    if not applicable['mandatory'] and not applicable['conditional'] \
+            and not applicable['optional_groups']:
+        # No curriculum configured for this class/section — fall back to the
+        # subject rows the student is actually enrolled in via the legacy
+        # model so the tab is never empty/misleading.
+        curriculum_subjects = [
+            {'name': s.subject.name, 'code': s.subject.code,
+             'curriculum': s.curriculum or '', 'status': 'Discontinued' if s.is_discontinued else 'Active'}
+            for s in student.subjects.select_related('subject')
+        ]
+
     # Get transfer certificate
     transfer_certificate = getattr(student, 'transfer_certificate', None)
     
@@ -1314,7 +1642,8 @@ def student_detail(request, pk):
     
     return render(request, 'students/student_detail.html', {
         'student': student,
-        'subjects': subjects,
+        'subjects': curriculum_subjects,
+        'curriculum_subjects': curriculum_subjects,
         'transfer_certificate': transfer_certificate,
         'attendance_records': attendance_records_display,
         'attendance_rate': attendance_rate,
@@ -1325,7 +1654,9 @@ def student_detail(request, pk):
 @login_required
 @permission_required('students.add_transfercertificate', raise_exception=True)
 def issue_tc(request, pk):
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     existing_tc = getattr(student, 'transfer_certificate', None)
     if existing_tc:
         messages.info(request, "This student's TC has already been issued.")
@@ -1353,7 +1684,9 @@ def issue_tc(request, pk):
 
 @login_required
 def view_tc(request, pk):
-    transfer_certificate = get_object_or_404(TransferCertificate, pk=pk)
+    transfer_certificate = _get_scoped_object_or_404(
+        request, TransferCertificate, pk, lambda tc: tc.student.institution
+    )
     return render(request, 'students/tc_print.html', {
         'tc': transfer_certificate,
         'student': transfer_certificate.student,
@@ -1364,7 +1697,9 @@ def view_tc(request, pk):
 @login_required
 @permission_required('students.add_certificate', raise_exception=True)
 def issue_certificate(request, pk):
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     if request.method == 'POST':
         form = CertificateForm(request.POST)
         if form.is_valid():
@@ -1384,7 +1719,9 @@ def issue_certificate(request, pk):
 
 @login_required
 def view_certificate(request, pk):
-    certificate = get_object_or_404(Certificate, pk=pk)
+    certificate = _get_scoped_object_or_404(
+        request, Certificate, pk, lambda c: c.student.institution
+    )
     return render(request, 'students/certificate_print.html', {
         'cert': certificate,
         'student': certificate.student,
@@ -1393,7 +1730,9 @@ def view_certificate(request, pk):
 
 @login_required
 def certificate_list(request, pk):
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     certificates = student.certificates.all().order_by('-issue_date', '-pk')
     return render(request, 'students/certificate_list.html', {
         'student': student,
@@ -1405,7 +1744,7 @@ def certificate_list(request, pk):
 @permission_required('students.add_student', raise_exception=True)
 def add_student(request):
     if request.method == 'POST':
-        form = StudentForm(request.POST, request.FILES)
+        form = StudentForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             try:
                 student = form.save(commit=False)
@@ -1437,7 +1776,9 @@ def add_student(request):
 @login_required
 @permission_required('students.change_student', raise_exception=True)
 def edit_student(request, pk):
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     if student.is_archived:
         messages.error(
             request,
@@ -1445,10 +1786,15 @@ def edit_student(request, pk):
         )
         return redirect('archived_students')
     if request.method == 'POST':
-        form = StudentForm(request.POST, request.FILES, instance=student)
+        form = StudentForm(request.POST, request.FILES, instance=student, user=request.user)
         if form.is_valid():
             form.save()
             save_student_subject_choices(student, request.POST.getlist('requirement_ids'))
+            # P2-4: audit the field-level change so a staff edit is traceable.
+            record_audit(
+                request.user, 'student_updated', student,
+                details={'changed_fields': sorted(form.changed_data)},
+            )
             messages.success(request, "Student information updated.")
             url = reverse('student_list')
             if student.institution_id:
@@ -1457,7 +1803,7 @@ def edit_student(request, pk):
         else:
             messages.error(request, "There are errors in the form — please check the fields below.")
     else:
-        form = StudentForm(instance=student)
+        form = StudentForm(instance=student, user=request.user)
     chosen_requirement_ids = list(
         StudentSubjectChoice.objects.filter(student=student).values_list('requirement_id', flat=True)
     )
@@ -1469,7 +1815,9 @@ def edit_student(request, pk):
 @login_required
 @permission_required('students.delete_student', raise_exception=True)
 def delete_student(request, pk):
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     if request.method == 'POST':
         student.pre_archive_status = student.status
         student.is_archived = True
@@ -1491,16 +1839,12 @@ def delete_student(request, pk):
 @permission_required('students.view_student', raise_exception=True)
 def archived_students(request):
     """List archived (soft-deleted) students with an option to restore them."""
-    institutions = Institution.objects.all().order_by('name')
-    institution = _selected_institution_for_request(request)
+    institutions = _visible_institutions(request)
     institution_id = request.GET.get('institution')
+    institution = _resolve_requested_institution(request, institution_id)
 
     qs = Student.objects.filter(is_archived=True).select_related('institution', 'archived_by')
-    if institution is not None:
-        qs = qs.filter(institution=institution)
-    elif institution_id:
-        institution = get_object_or_404(Institution, pk=institution_id)
-        qs = qs.filter(institution=institution)
+    qs = _scope_institution_qs(request, qs, institution)
     qs = _scope_students_to_user(request, qs)
 
     students = list(qs.order_by('-archived_at'))
@@ -1522,7 +1866,10 @@ def restore_student(request, pk):
     Uses the delete permission on purpose: restoring is the exact inverse of
     archiving, so the two must be granted together — otherwise someone can
     undo an archive they were never allowed to make."""
-    student = get_object_or_404(Student, pk=pk, is_archived=True)
+    student = _get_scoped_object_or_404(
+        request, Student.objects.filter(is_archived=True), pk,
+        lambda s: s.institution,
+    )
     student.is_archived = False
     student.status = student.pre_archive_status or 'ACTIVE'
     student.pre_archive_status = ''
@@ -1550,7 +1897,13 @@ def bulk_restore_students(request):
         messages.error(request, "No students were selected.")
         return redirect('archived_students')
 
-    students = list(Student.objects.filter(pk__in=student_ids, is_archived=True))
+    students_qs, rejected = _scope_write_queryset(
+        request, Student.objects.filter(is_archived=True), student_ids,
+    )
+    if rejected:
+        messages.error(request, "One or more of the selected students belong to an institution you cannot access.")
+        return redirect('archived_students')
+    students = list(students_qs)
     restored_count = 0
     for student in students:
         student.is_archived = False
@@ -1599,7 +1952,10 @@ def _purge_archived_student(user, student):
 @require_POST
 def purge_archived_student(request, pk):
     """Permanently remove a wrong/duplicate row from the archive."""
-    student = get_object_or_404(Student, pk=pk, is_archived=True)
+    student = _get_scoped_object_or_404(
+        request, Student.objects.filter(is_archived=True), pk,
+        lambda s: s.institution,
+    )
     name = student.name
     student_id = student.student_id
     institution_id = student.institution_id
@@ -1620,7 +1976,13 @@ def bulk_purge_archived_students(request):
         messages.error(request, 'No students were selected.')
         return redirect('archived_students')
 
-    students = list(Student.objects.filter(pk__in=student_ids, is_archived=True))
+    students_qs, rejected = _scope_write_queryset(
+        request, Student.objects.filter(is_archived=True), student_ids,
+    )
+    if rejected:
+        messages.error(request, "One or more of the selected students belong to an institution you cannot access.")
+        return redirect('archived_students')
+    students = list(students_qs)
     purged = 0
     for student in students:
         _purge_archived_student(request.user, student)
@@ -1635,7 +1997,9 @@ def bulk_purge_archived_students(request):
 @login_required
 @permission_required('students.change_student', raise_exception=True)
 def discontinue_student(request, pk):
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     if student.status == 'DISCONTINUED':
         messages.info(request, "This student is already marked as discontinued.")
         return redirect('student_detail', pk=student.pk)
@@ -1657,7 +2021,9 @@ def discontinue_student(request, pk):
 
 @login_required
 def student_id_card(request, pk):
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     initials = ''.join([part[0].upper() for part in student.name.split() if part])[:2]
     return render(request, 'students/id_card_print.html', {
         'student': student,
@@ -1669,7 +2035,9 @@ def student_id_card(request, pk):
 def student_exams(request, pk):
     """Popup-free page listing every exam relevant to this student, with
     links through to that exam's test result and (once published) marksheet."""
-    student = get_object_or_404(Student, pk=pk)
+    student = _get_scoped_object_or_404(
+        request, Student, pk, lambda s: s.institution
+    )
     exams = Exam.objects.filter(
         institution=student.institution,
         admission_class=student.admission_class,
@@ -1694,10 +2062,13 @@ def save_student_subject_choices(student, requirement_ids):
     """Replace a student's SubjectRequirement selections (mandatory, conditional,
     and chosen optional subjects) with the given requirement ids. Ids that don't
     belong to the student's institution/class are silently ignored."""
+    # Zero-padding tolerant (P1-8): a student stored as '09' must still match
+    # requirements stored as '9' (and vice-versa), so picks aren't silently
+    # dropped. `class_filter_variants` is imported at the top of this module.
     valid_ids = SubjectRequirement.objects.filter(
         pk__in=requirement_ids,
         institution=student.institution,
-        admission_class=str(student.admission_class),
+        admission_class__in=class_filter_variants(student.admission_class),
     ).values_list('pk', flat=True)
     StudentSubjectChoice.objects.filter(student=student).exclude(requirement_id__in=valid_ids).delete()
     existing_ids = set(StudentSubjectChoice.objects.filter(student=student).values_list('requirement_id', flat=True))
@@ -1800,7 +2171,7 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
 def start_entering_marks(request):
-    institutions = Institution.objects.all().order_by('name')
+    institutions = _visible_institutions(request)
 
     if request.method == 'POST':
         institution_id = request.POST.get('institution')
@@ -1815,6 +2186,9 @@ def start_entering_marks(request):
             return redirect('start_entering_marks')
 
         institution = get_object_or_404(Institution, pk=institution_id)
+        if not _user_can_access_institution(request, institution):
+            messages.error(request, 'Access denied to that institution.')
+            return redirect('start_entering_marks')
         subject = get_object_or_404(Subject, pk=subject_id)
 
         exam_name = auto_exam_name(exam_type, session)
@@ -1836,14 +2210,16 @@ def start_entering_marks(request):
         'exam_type_choices': Exam.EXAM_TYPE_CHOICES,
         'group_choices': Student.GROUP_CHOICES,
         'grouped_classes_json': json.dumps(GROUPED_CLASS_LABELS),
-        'institutions_data_json': _institutions_data_json(),
+        'institutions_data_json': _institutions_data_json(request),
     })
     
 @login_required
 @permission_required('students.change_subject', raise_exception=True)
 def mark_evaluation_settings(request):
-    institutions = Institution.objects.all().order_by('name')
-    institution_id = request.GET.get('institution') or request.POST.get('institution') or ''
+    institutions = _visible_institutions(request)
+    requested_institution_id = request.GET.get('institution') or request.POST.get('institution') or ''
+    institution = _resolve_requested_institution(request, requested_institution_id)
+    institution_id = str(institution.pk) if institution is not None else ''
     admission_class = request.GET.get('admission_class') or request.POST.get('admission_class') or ''
     exam_type = request.GET.get('exam_type') or request.POST.get('exam_type') or ''
 
@@ -1979,7 +2355,7 @@ def mark_evaluation_settings(request):
         'selected_class': admission_class,
         'selected_exam_type': exam_type,
         'subjects_with_settings': subjects_with_settings,
-        'institutions_data_json': _institutions_data_json(),
+        'institutions_data_json': _institutions_data_json(request),
     })
 
 def _subject_requirement_list_redirect(request):
@@ -2000,13 +2376,19 @@ def subject_requirement_list(request):
     Mandatory/Optional/Conditional."""
     requirements = SubjectRequirement.objects.select_related('institution', 'subject').all()
 
-    institution_id = request.GET.get('institution', '')
+    requested_institution_id = request.GET.get('institution', '')
+    institution = _resolve_requested_institution(request, requested_institution_id)
+    institution_id = str(institution.pk) if institution is not None else ''
     admission_class = request.GET.get('admission_class', '')
     group = request.GET.get('group', '')
     query = request.GET.get('q', '').strip()
 
     if institution_id:
         requirements = requirements.filter(institution_id=institution_id)
+    else:
+        # A scoped clerk without an institution selection must not see the whole
+        # curriculum map — bound to their allowed institutions (admin sees all).
+        requirements = _scope_by_allowed_institutions(request, requirements)
     if admission_class:
         # '9' and '09' are the same class — filter on every spelling so the
         # list never looks empty just because the rows were typed differently.
@@ -2046,7 +2428,7 @@ def subject_requirement_list(request):
                 'group_label': exam.get_group_display() or dict(Student.GROUP_CHOICES).get(group, ''),
             })
 
-    institutions = Institution.objects.all().order_by('name')
+    institutions = _visible_institutions(request)
     institutions_data = {
         str(inst.id): [c.strip() for c in inst.classes.split(',') if c.strip()]
         for inst in institutions
@@ -2084,6 +2466,9 @@ def auto_populate_subject_requirements(request):
         return redirect('subject_requirement_list')
 
     institution = get_object_or_404(Institution, pk=institution_id)
+    if not _user_can_access_institution(request, institution):
+        messages.error(request, 'Access denied to that institution.')
+        return redirect('subject_requirement_list')
     created = apply_curriculum(institution, admission_class, group)
 
     if created is None:
@@ -2108,7 +2493,7 @@ def auto_populate_subject_requirements(request):
 def add_subject_requirement(request):
     next_qs = request.GET.get('next', '')
     if request.method == 'POST':
-        form = SubjectRequirementForm(request.POST)
+        form = SubjectRequirementForm(request.POST, user=request.user)
         if form.is_valid():
             try:
                 form.save()
@@ -2131,10 +2516,12 @@ def add_subject_requirement(request):
 @login_required
 @permission_required('students.change_subjectrequirement', raise_exception=True)
 def edit_subject_requirement(request, pk):
-    requirement = get_object_or_404(SubjectRequirement, pk=pk)
+    requirement = _get_scoped_object_or_404(
+        request, SubjectRequirement, pk, lambda r: r.institution,
+    )
     next_qs = request.GET.get('next', '')
     if request.method == 'POST':
-        form = SubjectRequirementForm(request.POST, instance=requirement)
+        form = SubjectRequirementForm(request.POST, instance=requirement, user=request.user)
         if form.is_valid():
             try:
                 form.save()
@@ -2146,7 +2533,7 @@ def edit_subject_requirement(request, pk):
             messages.error(request, "There are errors in the form — please check the fields below.")
         next_qs = request.POST.get('next', next_qs)
     else:
-        form = SubjectRequirementForm(instance=requirement)
+        form = SubjectRequirementForm(instance=requirement, user=request.user)
     return render(request, 'students/add_subject_requirement.html', {
         'form': form, 'requirement': requirement, 'next_qs': next_qs,
     })
@@ -2155,7 +2542,9 @@ def edit_subject_requirement(request, pk):
 @login_required
 @permission_required('students.delete_subjectrequirement', raise_exception=True)
 def delete_subject_requirement(request, pk):
-    requirement = get_object_or_404(SubjectRequirement, pk=pk)
+    requirement = _get_scoped_object_or_404(
+        request, SubjectRequirement, pk, lambda r: r.institution,
+    )
     next_qs = request.GET.get('next', request.POST.get('next', ''))
     if request.method == 'POST':
         requirement.delete()
@@ -2172,7 +2561,9 @@ def delete_subject_requirement(request, pk):
 def quick_update_requirement_type(request, pk):
     """Change just the Mandatory/Optional/Conditional dropdown from the list
     page, without opening the full edit form."""
-    requirement = get_object_or_404(SubjectRequirement, pk=pk)
+    requirement = _get_scoped_object_or_404(
+        request, SubjectRequirement, pk, lambda r: r.institution,
+    )
     new_type = request.POST.get('requirement_type')
     valid_types = dict(SubjectRequirement.REQUIREMENT_TYPE_CHOICES)
     if new_type in valid_types:
@@ -2195,7 +2586,11 @@ def subject_requirements_json(request):
     if not institution_id or not admission_class:
         return JsonResponse({'mandatory': [], 'conditional': [], 'optional_groups': {}})
 
-    institution = get_object_or_404(Institution, pk=institution_id)
+    # A scoped clerk never sees another institution's subject assignments, even
+    # by editing /subject_requirements_json?institution=<B> directly.
+    institution = _resolve_requested_institution(request, institution_id)
+    if institution is None:
+        return JsonResponse({'mandatory': [], 'conditional': [], 'optional_groups': {}})
     if request.GET.get('assigned_only'):
         from types import SimpleNamespace
         exam_like = SimpleNamespace(
@@ -2298,6 +2693,16 @@ def import_students(request):
                                 f"Row {row_num}: institution '{institution_name}' not found — skipped."
                             )
                             continue
+                        # Cross-institution write guard (write-side isolation):
+                        # a scoped clerk must never load rows into an
+                        # institution they hold no access for, even by typing
+                        # another school's name into the sheet.
+                        if not _user_can_access_institution(request, institution):
+                            error_rows.append(
+                                f"Row {row_num}: access denied to institution "
+                                f"'{institution_name}' — skipped."
+                            )
+                            continue
 
                     gender_code = gender_map.get(str(gender_raw).strip().lower(), '') if gender_raw else ''
                     group_code = parse_group_label(group_raw)
@@ -2323,6 +2728,22 @@ def import_students(request):
                             group_filled_count += 1
                         else:
                             skipped_count += 1
+                        continue
+
+                    # Honour the section seat limit (P1-7), same as the Add
+                    # Student form. An over-capacity row is skipped, not created,
+                    # so a bulk import can never push a class/section past its
+                    # configured capacity. A missing SectionCapacity row means
+                    # "no limit" (has_room returns True).
+                    if not SectionCapacity.has_room(
+                        institution, str(admission_class).strip(),
+                        str(section).strip() if section else '',
+                    ):
+                        error_rows.append(
+                            f"Row {row_num}: class/section {admission_class}"
+                            f"{('-' + str(section).strip()) if section else ''} is full "
+                            f"(capacity reached) — skipped."
+                        )
                         continue
 
                     Student.objects.create(
@@ -2406,35 +2827,40 @@ def exam_list(request):
     return render(request, 'students/exam_list.html', {'exams': exams})
 
 
-def _institutions_data_json():
+def _institutions_data_json(request=None):
     """Institution ID -> list of that Institution's classes (from Office >
     Students' Institution.classes field — same source Student form uses),
-    as JSON for add_exam.html to repopulate the Class dropdown on change."""
+    as JSON for add_exam.html to repopulate the Class dropdown on change.
+
+    When a request is supplied and the user is a scoped clerk, only the
+    institutions they may read are listed, so a selector never offers (and
+    therefore never leaks) another institution's class list."""
+    institutions = _visible_institutions(request) if request is not None else Institution.objects.all()
     return json.dumps({
         str(inst.id): [c.strip() for c in inst.classes.split(',') if c.strip()]
-        for inst in Institution.objects.all()
+        for inst in institutions
     })
 
 
 @login_required
 @permission_required('students.add_exam', raise_exception=True)
 def add_exam(request):
-    form = ExamForm(request.POST or None)
+    form = ExamForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Exam created.')
         return redirect('exam_list')
     return render(request, 'students/add_exam.html', {
         'form': form,
-        'institutions_data_json': _institutions_data_json(),
+        'institutions_data_json': _institutions_data_json(request),
     })
 
 
 @login_required
 @permission_required('students.change_exam', raise_exception=True)
 def edit_exam(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
-    form = ExamForm(request.POST or None, instance=exam)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    form = ExamForm(request.POST or None, instance=exam, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Exam updated.')
@@ -2442,7 +2868,7 @@ def edit_exam(request, pk):
     return render(request, 'students/add_exam.html', {
         'form': form,
         'exam': exam,
-        'institutions_data_json': _institutions_data_json(),
+        'institutions_data_json': _institutions_data_json(request),
     })
 
 
@@ -2477,7 +2903,7 @@ def delete_exam(request, pk):
 @permission_required('students.change_exam', raise_exception=True)
 @require_POST
 def toggle_publish_exam(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     previous_status = exam.is_published
     exam.is_published = not exam.is_published
     exam.save(update_fields=['is_published'])
@@ -2492,7 +2918,7 @@ def toggle_publish_exam(request, pk):
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
 def select_marks_subject(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
 
     # Exams created without a group can be narrowed down here instead.
     group_choices = get_exam_group_choices(exam)
@@ -2558,7 +2984,7 @@ def import_exam_marks(request, pk):
     Physics teacher uploads Physics (Roll, ID, Name, CQ, MCQ, PT); Bangla
     teacher uploads Bangla. The file is never a workbook of every subject.
     """
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     group_choices, selected_group = _exam_group_selection(request, exam)
     students = list(get_exam_students(exam, group=selected_group or None))
     subjects, is_filtered = get_exam_subjects_for_students(
@@ -2662,7 +3088,7 @@ def download_marks_import_template(request, pk):
     Columns are Roll, ID, Name, then CQ / MCQ / PT / WT for whatever this
     exam type actually uses. Blank cells stay absent on import.
     """
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     group_choices, selected_group = _exam_group_selection(request, exam)
     students = list(get_exam_students(exam, group=selected_group or None))
     subjects, is_filtered = get_exam_subjects_for_students(
@@ -2712,7 +3138,7 @@ def enter_marks(request, pk, subject_pk):
     as 0, which is what makes an absent subject show up as a dash on the result
     sheet instead of a fail.
     """
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     subject = get_object_or_404(Subject, pk=subject_pk)
 
     # Exams created without a group can be narrowed down here too, so the
@@ -2902,7 +3328,7 @@ def enter_marks(request, pk, subject_pk):
 
 @login_required
 def result_sheet(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
@@ -2947,7 +3373,7 @@ def result_sheet(request, pk):
 
 @login_required
 def result_summary(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
@@ -2969,7 +3395,7 @@ def result_summary(request, pk):
 
 @login_required
 def top_10(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
@@ -2978,19 +3404,23 @@ def top_10(request, pk):
     return render(request, 'students/top10.html', {'exam': exam, 'results': [r for r in results if r['position']][:10]})
 
 
-def _exam_result(exam, student_pk):
-    student = get_object_or_404(Student, pk=student_pk)
+def _exam_result(request, exam, student_pk):
+    # A result row only exists for a student of the exam's own class/institution;
+    # requesting someone else's pk must not leak another institution's profile.
+    student = _get_scoped_object_or_404(
+        request, Student, student_pk, lambda s: s.institution,
+    )
     _, results = build_exam_results(exam)
     return student, next((r for r in results if r['student'].pk == student.pk), None)
 
 
 @login_required
 def student_result_detail(request, pk, student_pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    student, result = _exam_result(exam, student_pk)
+    student, result = _exam_result(request, exam, student_pk)
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)
@@ -2999,11 +3429,11 @@ def student_result_detail(request, pk, student_pk):
 
 @login_required
 def result_card(request, pk, student_pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    student, result = _exam_result(exam, student_pk)
+    student, result = _exam_result(request, exam, student_pk)
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)
@@ -3014,7 +3444,7 @@ def result_card(request, pk, student_pk):
 
 @login_required
 def seat_plan_list(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     seats = SeatPlan.objects.filter(exam=exam).select_related('student')
     rooms = {}
     for seat in seats:
@@ -3031,7 +3461,7 @@ def seat_plan_list(request, pk):
 @login_required
 @permission_required('students.add_seatplan', raise_exception=True)
 def generate_seat_plan(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     students = list(get_exam_students(exam))
     form = GenerateSeatPlanForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
@@ -3091,7 +3521,7 @@ def generate_seat_plan(request, pk):
 
 @login_required
 def view_seat_plan_room(request, pk, room_name):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
@@ -3103,7 +3533,7 @@ def view_seat_plan_room(request, pk, room_name):
 
 @login_required
 def signature_sheet(request, pk, room_name):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
@@ -3116,7 +3546,7 @@ def signature_sheet(request, pk, room_name):
 @login_required
 @permission_required('students.delete_seatplan', raise_exception=True)
 def clear_seat_plan(request, pk):
-    exam = get_object_or_404(Exam, pk=pk)
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if request.method == 'POST':
         SeatPlan.objects.filter(exam=exam).delete()
         messages.success(request, 'Seat plan cleared.')
@@ -3128,7 +3558,7 @@ def clear_seat_plan(request, pk):
 @login_required
 @permission_required('students.add_employee', raise_exception=True)
 def add_employee(request):
-    form = EmployeeForm(request.POST or None)
+    form = EmployeeForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Employee added.')
@@ -3139,10 +3569,17 @@ def add_employee(request):
 @login_required
 @permission_required('students.change_employee', raise_exception=True)
 def edit_employee(request, pk):
-    employee = get_object_or_404(Employee, pk=pk)
-    form = EmployeeForm(request.POST or None, instance=employee)
+    employee = _get_scoped_object_or_404(
+        request, Employee, pk, lambda e: e.institution
+    )
+    form = EmployeeForm(request.POST or None, instance=employee, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
+        # P2-4: audit the field-level change so a staff edit is traceable.
+        record_audit(
+            request.user, 'employee_updated', employee,
+            details={'changed_fields': sorted(form.changed_data)},
+        )
         messages.success(request, 'Employee updated.')
         return redirect('employee_list')
     return render(request, 'students/add_employee.html', {'form': form, 'employee': employee})
@@ -3151,7 +3588,9 @@ def edit_employee(request, pk):
 @login_required
 @permission_required('students.delete_employee', raise_exception=True)
 def delete_employee(request, pk):
-    employee = get_object_or_404(Employee, pk=pk)
+    employee = _get_scoped_object_or_404(
+        request, Employee, pk, lambda e: e.institution
+    )
     if request.method == 'POST':
         employee.delete()
         messages.success(request, 'Employee deleted.')
@@ -3162,7 +3601,9 @@ def delete_employee(request, pk):
 @login_required
 @permission_required('students.change_employee', raise_exception=True)
 def change_employee_status(request, pk):
-    employee = get_object_or_404(Employee, pk=pk)
+    employee = _get_scoped_object_or_404(
+        request, Employee, pk, lambda e: e.institution
+    )
     form = EmployeeStatusChangeForm(request.POST or None, initial={'new_status': employee.status})
     if request.method == 'POST' and form.is_valid():
         new_status = form.cleaned_data['new_status']
@@ -3188,7 +3629,9 @@ def change_employee_status(request, pk):
 
 @login_required
 def employee_status_history(request, pk):
-    employee = get_object_or_404(Employee, pk=pk)
+    employee = _get_scoped_object_or_404(
+        request, Employee, pk, lambda e: e.institution
+    )
     logs = employee.status_logs.select_related('changed_by').all()
     return render(request, 'students/employee_status_history.html', {'employee': employee, 'logs': logs})
 
@@ -3205,11 +3648,15 @@ def money_receipt_list(request):
 @login_required
 @permission_required('students.add_moneyreceipt', raise_exception=True)
 def add_money_receipt(request):
-    form = MoneyReceiptForm(request.POST or None)
+    form = MoneyReceiptForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
-        receipt = form.save(commit=False)
-        receipt.created_by = request.user
-        receipt.save()
+        with transaction.atomic():
+            receipt = form.save(commit=False)
+            receipt.created_by = request.user
+            # receipt_no is auto-generated (P1-3) and not editable in the form.
+            if not receipt.receipt_no:
+                receipt.receipt_no = _new_money_receipt_number()
+            receipt.save()
         messages.success(request, 'Money receipt saved.')
         return redirect('money_receipt_list')
     return render(request, 'students/add_money_receipt.html', {'form': form})
@@ -3218,8 +3665,10 @@ def add_money_receipt(request):
 @login_required
 @permission_required('students.change_moneyreceipt', raise_exception=True)
 def edit_money_receipt(request, pk):
-    receipt = get_object_or_404(MoneyReceipt, pk=pk)
-    form = MoneyReceiptForm(request.POST or None, instance=receipt)
+    receipt = _get_scoped_object_or_404(
+        request, MoneyReceipt, pk, lambda r: r.student.institution,
+    )
+    form = MoneyReceiptForm(request.POST or None, instance=receipt, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Money receipt updated.')
@@ -3230,7 +3679,9 @@ def edit_money_receipt(request, pk):
 @login_required
 @permission_required('students.delete_moneyreceipt', raise_exception=True)
 def delete_money_receipt(request, pk):
-    receipt = get_object_or_404(MoneyReceipt, pk=pk)
+    receipt = _get_scoped_object_or_404(
+        request, MoneyReceipt, pk, lambda r: r.student.institution,
+    )
     if request.method == 'POST':
         receipt.delete()
         messages.success(request, 'Money receipt deleted.')
@@ -3240,14 +3691,23 @@ def delete_money_receipt(request, pk):
 
 @login_required
 def voucher_list(request):
-    vouchers = Voucher.objects.select_related('created_by').all()
+    vouchers = Voucher.objects.select_related('institution', 'created_by').all()
+    # Per-institution isolation (D-3/P1-1): a scoped clerk sees only vouchers of
+    # their own institutions; NULL-institution (legacy) vouchers are hidden from
+    # a scoped clerk but visible to admin/staff.
+    if _institutionally_scoped(request.user):
+        allowed_ids = _scoped_institution_ids(request.user) or set()
+        if not allowed_ids:
+            vouchers = vouchers.none()
+        else:
+            vouchers = vouchers.filter(institution_id__in=allowed_ids)
     return render(request, 'students/voucher_list.html', {'vouchers': vouchers})
 
 
 @login_required
 @permission_required('students.add_voucher', raise_exception=True)
 def add_voucher(request):
-    form = VoucherForm(request.POST or None)
+    form = VoucherForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
         voucher = form.save(commit=False)
         voucher.created_by = request.user
@@ -3260,8 +3720,10 @@ def add_voucher(request):
 @login_required
 @permission_required('students.change_voucher', raise_exception=True)
 def edit_voucher(request, pk):
-    voucher = get_object_or_404(Voucher, pk=pk)
-    form = VoucherForm(request.POST or None, instance=voucher)
+    voucher = _get_scoped_object_or_404(
+        request, Voucher, pk, lambda v: v.institution,
+    )
+    form = VoucherForm(request.POST or None, instance=voucher, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Voucher updated.')
@@ -3272,7 +3734,9 @@ def edit_voucher(request, pk):
 @login_required
 @permission_required('students.delete_voucher', raise_exception=True)
 def delete_voucher(request, pk):
-    voucher = get_object_or_404(Voucher, pk=pk)
+    voucher = _get_scoped_object_or_404(
+        request, Voucher, pk, lambda v: v.institution,
+    )
     if request.method == 'POST':
         voucher.delete()
         messages.success(request, 'Voucher deleted.')
@@ -3290,7 +3754,7 @@ def salary_sheet_list(request):
 @login_required
 @permission_required('students.add_salarysheet', raise_exception=True)
 def add_salary_sheet(request):
-    form = SalarySheetForm(request.POST or None)
+    form = SalarySheetForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
         salary = form.save(commit=False)
         salary.created_by = request.user
@@ -3307,8 +3771,10 @@ def add_salary_sheet(request):
 @login_required
 @permission_required('students.change_salarysheet', raise_exception=True)
 def edit_salary_sheet(request, pk):
-    salary = get_object_or_404(SalarySheet, pk=pk)
-    form = SalarySheetForm(request.POST or None, instance=salary)
+    salary = _get_scoped_object_or_404(
+        request, SalarySheet, pk, lambda s: s.employee.institution,
+    )
+    form = SalarySheetForm(request.POST or None, instance=salary, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
         messages.success(request, 'Salary sheet updated.')
@@ -3319,7 +3785,9 @@ def edit_salary_sheet(request, pk):
 @login_required
 @permission_required('students.delete_salarysheet', raise_exception=True)
 def delete_salary_sheet(request, pk):
-    salary = get_object_or_404(SalarySheet, pk=pk)
+    salary = _get_scoped_object_or_404(
+        request, SalarySheet, pk, lambda s: s.employee.institution,
+    )
     if request.method == 'POST':
         salary.delete()
         messages.success(request, 'Salary sheet deleted.')
@@ -3331,12 +3799,22 @@ def delete_salary_sheet(request, pk):
 def finance_dashboard(request):
     institution = _selected_institution_for_request(request)
     receipts_qs = MoneyReceipt.objects.select_related('student')
-    voucher_qs = Voucher.objects.all()
+    voucher_qs = Voucher.objects.select_related('institution').all()
     salary_qs = SalarySheet.objects.select_related('employee')
     if institution is not None:
         receipts_qs = receipts_qs.filter(student__institution=institution)
-        voucher_qs = voucher_qs.filter()
+        voucher_qs = voucher_qs.filter(institution=institution)
         salary_qs = salary_qs.filter(employee__institution=institution)
+    else:
+        # A scoped clerk with no session institution must not see the whole
+        # ledger — bound receipts/vouchers/salaries to their allowed
+        # institutions. Vouchers now carry an institution FK (D-3/P1-1), so
+        # they are narrowed the same way as receipts/salaries; NULL-institution
+        # (legacy) vouchers are hidden from a scoped clerk but visible to
+        # admin/staff.
+        receipts_qs = _scope_by_allowed_institutions(request, receipts_qs, 'student__institution')
+        voucher_qs = _scope_by_allowed_institutions(request, voucher_qs, 'institution')
+        salary_qs = _scope_by_allowed_institutions(request, salary_qs, 'employee__institution')
 
     total_collection = receipts_qs.aggregate(total=Sum('amount'))['total'] or 0
     total_voucher_paid = voucher_qs.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
@@ -3346,6 +3824,8 @@ def finance_dashboard(request):
     pending_applications = AdmissionApplication.objects.filter(status='ACCOUNT_PENDING').select_related('institution')
     if institution is not None:
         pending_applications = pending_applications.filter(institution=institution)
+    else:
+        pending_applications = _scope_by_allowed_institutions(request, pending_applications)
     pending_applications = pending_applications[:10]
     return render(request, 'students/finance_dashboard.html', {
         'finance_cards': [
@@ -3374,18 +3854,35 @@ def student_promotion(request):
         data = {key: value.strip() for key, value in form.cleaned_data.items()}
         with transaction.atomic():
             # An archived (soft-deleted) student must not be carried into the
-            # next class along with the batch.
+            # next class along with the batch. A scoped clerk promotes only
+            # their own institutions; admin/unrestricted keeps the historic
+            # all-institution behaviour (SEC-4).
             students = list(
-                Student.objects.select_for_update()
-                .filter(admission_class=data['from_class'], is_archived=False)
+                _scope_by_allowed_institutions(
+                    request,
+                    Student.objects.select_for_update()
+                    .filter(admission_class=data['from_class'], is_archived=False),
+                )
             )
             if data['from_section']:
                 students = [student for student in students if student.section.lower() == data['from_section'].lower()]
             count = len(students)
             if count:
+                # A promotion run moves a single class/section, so all promoted
+                # students belong to one institution. Record it on the batch
+                # (D-9) so scoping no longer has to be derived from the rows;
+                # if an admin deliberately promotes students across institutions
+                # (unusual), leave the batch institution NULL (staff-only).
+                batch_institution_ids = {student.institution_id for student in students}
+                batch_institution = (
+                    Institution.objects.filter(pk__in=batch_institution_ids).first()
+                    if len(batch_institution_ids) == 1
+                    else None
+                )
                 batch = PromotionBatch.objects.create(
                     session=data['session'], from_class=data['from_class'], from_section=data['from_section'],
                     to_class=data['to_class'], to_section=data['to_section'], actor=request.user,
+                    institution=batch_institution,
                 )
                 histories = []
                 for student in students:
@@ -3417,6 +3914,22 @@ def student_promotion(request):
 def rollback_student_promotion(request, pk):
     with transaction.atomic():
         batch = get_object_or_404(PromotionBatch.objects.select_for_update(), pk=pk)
+        # A scoped clerk may only roll back a batch that lies entirely within
+        # their institutions. Since D-9 a batch carries its institution; for a
+        # legacy NULL batch (created before the column) the set is still derived
+        # from its students, so old rows stay safely denied by default.
+        if _institutionally_scoped(request.user):
+            allowed = _scoped_institution_ids(request.user) or set()
+            if batch.institution_id is not None:
+                if batch.institution_id not in allowed:
+                    raise Http404
+            else:
+                batch_institutions = set(
+                    StudentPromotionHistory.objects.filter(batch=batch)
+                    .values_list('student__institution_id', flat=True)
+                )
+                if not batch_institutions or not batch_institutions.issubset(allowed):
+                    raise Http404
         if batch.rolled_back_at:
             messages.error(request, 'This promotion batch has already been rolled back.')
             return redirect('student_promotion_history')
@@ -3444,7 +3957,21 @@ def rollback_student_promotion(request, pk):
 @permission_required('students.view_promotionbatch', raise_exception=True)
 @_require_department('Office')
 def student_promotion_history(request):
-    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor').all().order_by('-created_at')
+    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor', 'institution').all().order_by('-created_at')
+    # A scoped clerk sees only batches that touch their own institutions. The
+    # filter is derived from each batch's students, which stays correct for both
+    # new batches (which also carry a `institution` column, D-9) and legacy
+    # NULL-institution batches.
+    if _institutionally_scoped(request.user):
+        allowed = _scoped_institution_ids(request.user) or set()
+        if not allowed:
+            batches = batches.none()
+        else:
+            batches = batches.filter(
+                student_history__student__institution_id__in=allowed,
+            ).exclude(
+                student_history__student__institution_id__in=_institution_ids_outside(allowed),
+            ).distinct()
     return render(request, 'students/student_promotion_history.html', {'batches': batches})
 
 

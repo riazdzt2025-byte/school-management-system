@@ -1,0 +1,64 @@
+name: Django tests
+
+on:
+  push:
+    branches: [ main, arena/** ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # SQLite (the local default) — no external DB.
+          - name: sqlite
+            python-version: "3.12"
+          # Postgres (P1-10) — run the suite against a real Postgres so the
+          # conditional unique constraints and everything else are proven on
+          # the engine production is expected to use.
+          - name: postgres
+            python-version: "3.12"
+            postgres: true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sms_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DJANGO_SETTINGS_MODULE: school_system.settings
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Migrations in sync (no missing migrations)
+        run: python manage.py makemigrations --check
+
+      - name: Run test suite (${{ matrix.name }})
+        run: |
+          # P1-10: point at the real Postgres service only for the postgres job;
+          # the sqlite job keeps the local default (no DATABASE_URL).
+          if [ "${{ matrix.postgres }}" = "true" ]; then
+            export DATABASE_URL="postgres://postgres:postgres@localhost:5432/sms_test"
+          fi
+          python manage.py test students --verbosity 1

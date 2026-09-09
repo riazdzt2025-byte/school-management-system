@@ -55,6 +55,10 @@
 
     {% if application.status == 'ACCOUNT_PENDING' %}
     <div class="action-form">
+        {% if fee %}
+        <p class="small text-muted">Fee schedule for Class {{ application.requested_class }}:
+            <strong>{{ fee.amount|floatformat:2 }}</strong> ({{ fee.purpose }}).</p>
+        {% endif %}
         <form method="post" action="{% url 'accounts_approve_payment' application.pk %}" class="d-flex flex-column gap-2 w-100">
             {% csrf_token %}
             {{ payment_form.as_p }}

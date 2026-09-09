@@ -1,13 +1,12 @@
 from django.contrib import admin
-admin.site.site_header = "...... High School Administration"
-admin.site.site_title = "...... High School"
-admin.site.index_title = "School Management System"
+# Admin branding (site_header/site_title/index_title) is set in
+# school_system/urls.py; the placeholder values previously here were dead code.
 from .models import (
     Student, Subject, StudentSubject, Institution, InstitutionAccess, TransferCertificate, Certificate,
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog,
-    SubjectRequirement, StudentSubjectChoice, SectionCapacity,
+    SubjectRequirement, StudentSubjectChoice, SectionCapacity, Fee,
 )
 
 
@@ -42,6 +41,7 @@ admin.site.register(EmployeeStatusLog)
 admin.site.register(MoneyReceipt)
 admin.site.register(Voucher)
 admin.site.register(SalarySheet)
+admin.site.register(Fee)
 admin.site.register(AdmissionApplication)
 admin.site.register(PromotionBatch)
 admin.site.register(StudentPromotionHistory)

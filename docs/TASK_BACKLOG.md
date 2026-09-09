@@ -172,7 +172,7 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | D-6 | Confirm intended permission sets: (a) Exam group — should it include `delete_exam` (setup_groups says yes, permissions.py says no)? (b) Accounts group — should it keep `Exam` add/change and `ExamMark` add/change/delete? | P0-11 |
 | D-7 | Student photos: Render persistent disk (cheap) or object storage (durable)? | P1-11 |
 | D-8 | Production database: stay on SQLite (on a persistent disk) or switch to Postgres (P1-10, README roadmap)? | P1-10, P0-7 |
-| D-9 | Promotion scoping: minimal query-level fix (no migration) now, or add an `institution` column to `PromotionBatch` (small migration) in the same change? | P0-4 |
+| D-9 | Promotion scoping: minimal query-level fix (no migration) now, or add an `institution` column to `PromotionBatch` (small migration) in the same change? | **Resolved** — added the column (migration `0037`); query-level fallback retained for legacy NULL batches. → P0-4 complete |
 | D-10 | Legacy `StudentSubject` data: keep admin-only forever, migrate it into the current models, or drop it? | P1-5 / P2-7 |
 
 ---
@@ -202,3 +202,155 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | P0-9 | Documentation refresh | Needs P0-1…P0-8 done first for accurate roadmap |
 | P0-10 | Dead-code cleanup | Safe; can do independently |
 | P0-11 | Permission single source (`setup_groups` vs `permissions.py`) | Needs D-6 confirmation |
+
+---
+
+## Update — 2026-09-08 · Read / Export isolation session (this session)
+
+### Completed in this session (no feature change, no migration)
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P0-2 | List-level `?institution=` override (SEC-1, SEC-2) | **Done** | `student_list`, `employee_list`, `download_student_list`, `archived_students`, `class_section_summary` now resolve the GET param via `_resolve_requested_institution` (only allowed institutions honoured; scoped clerk falls back to session). |
+| P0-3 (read half) | Object-level pk isolation — *read/export/print/JSON* views (SEC-3) | **Done (read side)** | `_get_scoped_object_or_404` applied to student/employee detail & history, TC/certificate views, all result views, seat-plan views, exam edit/publish, marks entry/import/template, admission_application_detail. *Write* endpoints (employee/student edit/delete, `_application_transition`, promotion) intentionally left for a write-scope pass (see below). |
+| P0-6 (partial) | Isolation regression tests | **Done** | `students/test_institution_isolation.py` — 16 two-institution tests (list/export, pk 404s, JSON endpoint, session-less fallback, A↔B switch, cross-institution admin). |
+
+### Still open (this specific scope ended)
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P0-3 (write half) | pk-level *write* isolation (`edit_student`, `delete_student`, `discontinue_student`, `edit_employee`, `delete_employee`, `change_employee_status`, money/voucher/salary edit+delete, `_application_transition`, `restore_*`/`purge_*`, `toggle_publish_exam` save, `enter_marks` POST) | Write-scope, not read/export; deferred to keep this session's rule-2 scope |
+| P0-4 | Promotion institution-scoping (SEC-4) | Needs D-9 (query-only vs. `PromotionBatch` model column) |
+| P1-1 | Voucher institution isolation (SEC-5) | Needs D-3 + a migration (no institution FK) |
+| P0-1 | BUG-1 (`tc_print` NoReverseMatch → 500) | Different scope; a student-detail-with-TC page still 500s |
+| P0-5 | Server-side money validation | Not addressed here |
+| P0-11 | Permission single source (PERM-1) | Needs D-6 |
+
+---
+
+## Update — 2026-09-09 · Write isolation session (this session)
+
+### Completed in this session (no migration, no data change)
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P0-3 (write half) | pk-level *write* isolation — `edit_student`, `delete_student`, `discontinue_student`, `restore_student`, `purge_archived_student`, `edit_employee`, `delete_employee`, `change_employee_status`, `edit_money_receipt`, `delete_money_receipt`, `edit_salary_sheet`, `delete_salary_sheet`, `edit_subject_requirement`, `delete_subject_requirement`, `quick_update_requirement_type` | **Done** | All switched to `_get_scoped_object_or_404`; cross-institution pk → 404. |
+| P0-3 (forms) | Create/edit form server-side institution rejection | **Done** | `StudentForm`, `AdmissionApplicationForm`, `ExamForm`, `EmployeeForm`, `SubjectRequirementForm` scope `institution` queryset + `clean_institution`; `MoneyReceiptForm`/`SalarySheetForm` scope `student`/`employee` + `clean_student`/`clean_employee`. |
+| P0-3 (bulk) | Bulk write scoping + rejection | **Done** | `_scope_write_queryset` on `bulk_delete_students`, `bulk_update_students`, `bulk_update_select`, `bulk_restore_students`, `bulk_purge_archived_students`, `auto_register_students`. Whole op refused when any pk is out of scope. |
+| P0-3 (approve) | `_application_transition` / `accounts_approve_payment` cross-institution guard | **Done** | `_get_scoped_object_or_404` on the application (select_for_update on payment approval). |
+| P0-3 (import) | `import_students` cross-institution guard | **Done** | A spreadsheet row naming an out-of-scope institution is skipped. |
+| P0-4 (query-only) | Promotion institution-scoping (SEC-4) | **Done (query-only)** | `student_promotion` scopes students; `rollback_student_promotion` 404s for an out-of-scope batch; `student_promotion_history` filters batches. `PromotionBatch` model column still deferred (D-9). |
+| P0-6 (partial) | Write isolation regression tests | **Done** | `students/test_institution_write_isolation.py` — 26 two-institution tests (cross-institution POST rejection, pk-404 edit/delete, bulk delete, Excel import row, approve 404, subject-requirement 404, promotion scope, rollback 404, promotion-history filter, cross-institution admin). |
+
+### Still open
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P1-1 | Voucher institution isolation (SEC-5) — `add_voucher`/`edit_voucher`/`delete_voucher`/`voucher_list` | `Voucher` has **no** `institution` FK; needs D-3 + a migration. Not invented this session. |
+| D-9 | `PromotionBatch` institution column | Promotion scoping is currently **query-derived** (no column); adding a column needs owner approval. |
+| P0-1 | BUG-1 (`tc_print` NoReverseMatch → 500) | Different scope; a student-detail-with-TC page still 500s |
+| P0-5 | Server-side money validation | Not addressed here |
+| P0-11 | Permission single source (PERM-1) | Needs D-6 |
+
+---
+
+## Update — 2026-09-09 · Backup & restore (P0-8) session (this session)
+
+### Completed
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P0-8 | Backup/restore tooling + runbook + disposable drill | **Done** | `manage.py backup_data` / `manage.py restore_backup` / `scripts/backup.sh` / `scripts/restore.sh`. SQLite + Postgres engine detection; consistent SQLite online-backup snapshot + `pg_dump`/`pg_restore` for Postgres; media `.tar.gz`; credential-free `manifest.json`; retention prune (`--keep`); failed-backup folder cleanup; runbook `docs/BACKUP_AND_RESTORE.md`; hard "backup before deploy" rule in `DEPLOY_NOTES.md`; `students/test_backup_tooling.py` (8 tests). Disposable restore drill verified (SHA, `migrate --check`, record counts, media byte-identical, app boots). |
+
+### Still open (production ops — need owner access/approval, not part of P0-8)
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P0-8 (ops) | Render scheduling, off-box storage (S3/R2/disk), backup-failure notification wiring | Needs owner + access + decisions (runbook §8) |
+| P0-1 | BUG-1 (`tc_print` NoReverseMatch → 500) | Small template-only fix; separate scope |
+| P0-5 | Server-side money validation (`MinValue(0)`) | Not addressed here |
+| P0-10 | Dead-code cleanup | Not addressed here |
+| P0-11 | Permission single source (PERM-1) | Needs D-6 |
+| P1-1 | Voucher institution isolation (SEC-5) | `Voucher` has **no** `institution` FK; needs D-3 + migration |
+| D-9 | `PromotionBatch` institution column | Promotion scoping currently query-derived |
+
+---
+
+## Update — 2026-09-09 · P0-1 / P0-5 / P0-11 (this session)
+
+### Completed
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P0-1 | BUG-1 — student-detail 500 when a student has a Transfer Certificate | **Done** | `school_system/templates/students/student_detail.html` Print TC now links to `view_tc`; card shows real fields (`tc_number`, `issue_date`, `issued_by`, `reason`); removed `tc_print`/`get_status_display`/`issued_date`. Test: `StudentDetailPageTests.test_student_detail_with_transfer_certificate_does_not_500`. |
+| P0-5 | Server-side money validation (SEC-7) | **Done** | `AdmissionPaymentForm.payment_amount`, `MoneyReceiptForm.amount`, `VoucherForm.amount`, `SalarySheetForm.amount` now `MinValueValidator(0)` + `MaxValueValidator(99999999.99)`. Tests: `students/test_money_validation.py` (8 tests). |
+| P0-11 | Single source of truth for group permissions (PERM-1) | **Done** | `setup_groups.py` delegates to `ensure_default_groups()` (permissions.py is the only map). Verified `manage.py setup_groups` produces exactly the permissions.py map; Exam group no longer diverges on `delete_exam`. |
+| P1-1 | Voucher institution isolation (SEC-5) — owner chose **per-institution** (D-3) | **Done** | `Voucher.institution` nullable FK added (migration `0036`); `VoucherForm` includes scoped `institution` + `clean_institution`; `voucher_list` scoped; `add/edit/delete_voucher` use `_get_scoped_object_or_404`; `finance_dashboard` vouchers scoped; legacy NULL vouchers hidden from clerks / visible to admins. Tests: 6 voucher tests. |
+| D-7 | Media storage strategy — owner chose **Render persistent disk** | **Done (guidance)** | `MEDIA_ROOT` now configurable via env var; documented in `.env.example` + backup runbook. The actual Render disk attach/mount is an owner action. |
+
+### Still open
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| D-9 | `PromotionBatch.institution` column | Already query-scoped; column optional, needs a further migration |
+| P0-10 | Dead-code cleanup | Separate scope |
+| P0-8 (ops) | Render backup scheduling / off-box storage / alert wiring | Owner + access, not yet configured |
+
+## Update — 2026-09-09 · D-9 + P0-10 + P0-8 ops readiness (this session)
+
+### Completed
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| D-9 | `PromotionBatch.institution` column | **Done** | Nullable FK added (migration `0037`); single-institution runs record `batch.institution`; scoped rollback 404s on a non-owned batch; legacy NULL batches scoped via the derived student filter; history selects+shows institution. 3 new promotion tests → 34 in `test_institution_write_isolation.py`. |
+| P0-4 (column) | Promotion institution-scoping (SEC-4) — with the `PromotionBatch` column | **Done** | Batch-level scoping now backed by the column; query-derived fallback retained for legacy NULL batches. |
+| P0-10 | Dead-code cleanup (no behavior change) | **Done** | Removed duplicate `employees/`→`employee_list` route (kept `employee_detail`); deleted orphan `student_list_filter.html` + `school_system/templates/students/admission.html`; deleted shadowed `students/templates/students/student_detail.html` (project-dir copy is the resolved one); removed dead admin-branding placeholder in `admin.py` (`urls.py` owns it). No duplicate decorators found in `views.py` (0) — none removed. |
+| P0-8 (ops, config) | Backup scheduling / alerting config + health gate | **Done (config)** | `manage.py check_backups` (exit 0/1 for alerting; verifies manifest, DB SHA-256, freshness, retention sanity); `scripts/backup_cron.sh` (backup + validate + Healthchecks ping); `render.cron.yaml` (ops-only Render Blueprint for the daily cron). 6 new `check_backups` tests → 14 in `test_backup_tooling.py`. |
+
+### Still open (needs owner access / approval — rule 7)
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P0-8 (ops, live) | Attach persistent disk / object storage for `P0B_BACKUP_ROOT`; set `HEALTHCHECK_PING_URL`; confirm Postgres tooling; choose cron plan/secrets | Owner + Render access; cron filesystem is ephemeral so a persistent destination is required. Config is ready but not run live. |
+
+## Update — 2026-09-09 · P1 backlog + P2 + ops readiness completion (owner approval)
+
+### Completed
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P1-2 | Class-wise fee schedule & payment rules (D-4 → introduce schedule + validate/warn) | **Done** | `Fee` model (migration `0038`); admin registration; payment detail pre-fills from the fee; approval warns on mismatch; no-fee flow unchanged. `test_fee_schedule.py` (3). |
+| P1-3 | Auto receipt numbers for manual money receipts | **Done** | `receipt_no` auto-generated (`RC-<year>-<code>`) + excluded from form; create generates, edit preserves. `test_auto_receipts.py` (3). |
+| P1-4 | Navigation: Attendance + Promotion entries | **Done** | Sidebar Attendance group + Promotion link, permission-gated. `test_navigation.py` (5). |
+| P1-5 | Student detail Subjects tab shows current assignments (D-10 → keep legacy admin-only, show current) | **Done** | Uses `get_applicable_subjects` + chosen optionals; legacy `StudentSubject` no longer renders (D-10 resolution: keep legacy data, stop rendering it). `test_curriculum_tab.py` (2). |
+| P1-6 | Exam form class choices beyond 1–12 | **Done** | `ExamForm` class choices derived from institution classes; Shishu/diploma classes validate. `test_exam_class_choices.py`. |
+| P1-7 | Excel import honours `SectionCapacity` | **Done** | Over-capacity rows skipped (same rule as Add Student). `test_import_capacity.py` (2). |
+| P1-8 | Zero-padding tolerance in `save_student_subject_choices` | **Done** | uses `class_filter_variants`. `test_exam_class_choices.py`. |
+| P1-9 | Public admission form protection (D-5 → rate limit) | **Done** | Per-IP throttle (5 POSTs/10 min), Django-cache counter, banner on throttle. `test_rate_limiting.py`. |
+| P1-10 | PostgreSQL for production | **Partial (CI proof; live switch = owner)** | CI Postgres matrix job runs the full suite against `postgres:16`. The production `DATABASE_URL` switch remains a staged deploy with backup+rollback (runbook §9). |
+| P2-1 | CI: GitHub Actions | **Done** | `.github/workflows/tests.yml` (check + makemigrations + full suite; sqlite + postgres). |
+| P2-2 | Login rate limiting / lockout | **Done** | 5 fails → 15-min lockout, reset on success. `test_rate_limiting.py`. |
+| P2-4 | Audit entries for `edit_student` / `edit_employee` | **Done** | `record_audit` with `changed_fields`. `test_edit_audit.py` (2). |
+| P2-5 | Refresh/delete `.elastic-copilot/memory` | **Done (delete)** | Removed stale 2026-08-28 auto-notes that predate migrations 0012–0035. |
+| P2-6 | Dashboard quick links | **Done** | Quick actions card, permission-gated, hidden when no perms. `test_navigation.py`. |
+
+### Still open (owner / destructive / very large — safe limit, rule 10)
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P0-7 | Production verification checklist | **Docs done** (`docs/PRODUCTION_CHECKLIST.md`); running each item on the live service = owner. |
+| P0-8 (live) | Render scheduling / off-box storage / alert wiring | Owner + Render access; config ready (`render.cron.yaml`, `backup_cron.sh`, `check_backups`). |
+| P1-10 (live) | Switch production DB to Postgres | Staged data migration + backup + rollback (owner, own session). |
+| P2-3 | i18n / Bengali UI | Large separate effort; deferred. |
+| P2-7 | Drop legacy `StudentSubject` model | Destructive data migration + backup + approval; already non-rendering (P1-5). |
+| D-6 | Confirm permission-set intent (Accounts holds `Exam`/`ExamMark` perms; Exam group lacks `delete_exam`) | Live-permission policy decision — not changed. |
+
+### Business decisions resolved this session
+
+| ID | Decision | Resolution |
+|---|---|---|
+| D-4 | Fee entry vs class-wise schedule | Introduced a class-wise `Fee` schedule (pre-fill + mismatch warning), keeps free-form as fallback/guideline. |
+| D-5 | Public admission protection | Implemented per-IP rate limiting (no new dependency, no captcha). |
+| D-9 | Promotion scoping column | Added `PromotionBatch.institution` (migration `0037`); legacy NULL batches stay query-derived. |
+| D-10 | Legacy `StudentSubject` | Keep the data admin-only; stop rendering it in the web workflow (P1-5). Destructive drop deferred (P2-7). |
+| D-6 | Permission sets | Left unchanged — a live-permission policy decision; P0-11 already makes permissions.py the single source. Owner to confirm. |
