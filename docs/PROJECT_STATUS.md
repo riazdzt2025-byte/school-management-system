@@ -1,9 +1,9 @@
 # Project Status — School Management System
 
-_Last updated: 2026-09-08 (read/export isolation session `arena/01a08254-school-management-system`)_
-_Base commit: `10258cbb6c3b6a33551dff6ad7b6db6091af35c1` (on `main`; session branch `arena/01a08254-school-management-system`)_
+_Last updated: 2026-09-09 (write isolation session `arena/01a08254-school-management-system`)_
+_Base commit: `384f57b` (read/export isolation, pushed) on branch `arena/01a08254-school-management-system`_
 
-**Bengali TL;DR (এই সেশন — read/export isolation):** multi-institution read isolation-এর মূল ফাঁকগুলো বন্ধ করা হয়েছে—`?institution=` GET param আর pk-ভিত্তিক detail/result/seat-plan/TC/certificate view-গুলো এখন scoped clerk-এর জন্য শুধু নিজের institution-এ সীমিত; admin/staff (cross-institution) আগের মতোই সব দেখে। নতুন `students/test_institution_isolation.py`-তে ১৬টা দুই-institution isolation test যোগ হয়েছে। মোট **১৮০ test pass** (Django 5.2.17 / Python 3.11.2), migrations synced। FIFTH সম্পূর্ণ list/export/detail/json scope এখন enforced। বাকি: promotion (SEC-4), Voucher/no-institution (SEC-5), এবং write-transition পথ — শুধু schema/সিদ্ধান্ত-নির্ভর, এই সেশনে ইচ্ছাকৃতভাবে রাখা হয়নি (নিচে §8)। SSC Registration / SSC Result Summary **অপরিবর্তিত — restore করা হয়নি**।
+**Bengali TL;DR (এই সেশন — write isolation):** read-scope-এর পর এবার **write-side** institution isolation প্রয়োগ করা হয়েছে। SCoped clerk এখন অন্য institution-এর student/exam/employee/receipt/salary/application-এর pk-ভিত্তিক edit/delete/approve করতে পারে না (404), আর form POST-এ অন্য institution-এর ID দিলে সেটা server-এ reject হয় — শুধু UI dropdown filter নয়। Bulk write (bulk delete/update/restore/purge/auto-register), Excel student import, promotion (query-only scope), rollback ও history-ও scoped। নতুন `students/test_institution_write_isolation.py`-তে ২৬টা দুই-institution write-isolation test যোগ হয়েছে। মোট **২০৬ test pass** (180 + 26)। Voucher (no institution FK, D-3) ও PromotionBatch-এর institution column-এর কথা আগের মতোই deferred। SSC Registration / SSC Result Summary **অপরিবর্তিত — restore করা হয়নি**।
 
 ---
 
@@ -221,4 +221,57 @@ JSON/selector endpoints: `subject_requirements_json` now resolves institution vi
 
 - `manage.py check` — 0 issues.
 - `manage.py test students` — **180 tests, all pass** (previously 164; +16 isolation tests).
+- No migration, no data change. SSC untouched.
+
+---
+
+## 9. Multi-institution WRITE isolation — 2026-09-09 (this session)
+
+**Scope (session rule 2):** enforce institution scope **on the server** for create / edit / delete / approve / bulk update / import / promotion / related-object selection. No migration, no data change, no feature addition. SSC Registration / SSC Result Summary NOT restored. General exams & curriculum intact.
+
+### 9.1 What changed (`students/forms.py`)
+
+- New helpers `_allowed_institution_ids(user)` (returns `None` for superuser/staff/unauthenticated or users with no active `InstitutionAccess` row; else the set of active institution ids) and `_user_allowed_institution(user, institution)`.
+- Form-level institution validation:
+  - `StudentForm`, `AdmissionApplicationForm`, `ExamForm`, `EmployeeForm`, `SubjectRequirementForm` pop `user`, scope the `institution` queryset to the allowed set for a scoped clerk, and add `clean_institution` that raises `"Select an institution you have access to."` when a hand-crafted POST posts an out-of-scope institution.
+  - `MoneyReceiptForm` scopes `student` by `institution_id__in` and adds `clean_student` (rejects another institution's student).
+  - `SalarySheetForm` scopes `employee` by `institution_id__in` and adds `clean_employee` (rejects another institution's employee).
+
+### 9.2 What changed (`students/views.py`)
+
+- New helper `_scope_write_queryset(request, base_qs, pks, field_name='institution')` → `(in_scope_qs, rejected)`. The caller refuses the whole operation when `rejected` is True (a submitted pk belongs to an institution the user cannot access). Also added `_institution_ids_outside(allowed_ids)` for the promotion-history filter.
+- Single-object write views switched to `_get_scoped_object_or_404` with their institution lambda:
+  - `_application_transition` (office approve/reject/handoff), `accounts_approve_payment` (select_for_update),
+  - `edit_student`, `delete_student`, `restore_student`, `purge_archived_student`, `discontinue_student`,
+  - `edit_employee`, `delete_employee`, `change_employee_status`,
+  - `edit_money_receipt`, `delete_money_receipt`, `edit_salary_sheet`, `delete_salary_sheet`,
+  - `edit_subject_requirement`, `delete_subject_requirement`, `quick_update_requirement_type`.
+  - (Marks/seat-plan/import exam views were already scoped in the read session.)
+- Bulk write scoping + rejection (`_scope_write_queryset`): `bulk_delete_students`, `bulk_update_students`, `bulk_update_select`, `bulk_restore_students`, `bulk_purge_archived_students`, `auto_register_students`.
+- Create/edit forms pass `user=request.user`: `create_admission_application`, `add_student`, `edit_student`, `add_employee`, `edit_employee`, `add_money_receipt`, `edit_money_receipt`, `add_salary_sheet`, `edit_salary_sheet`, `add_subject_requirement`, `edit_subject_requirement`, `add_exam`, `edit_exam`.
+- Promotion (SEC-4, **query-only** — the `PromotionBatch` model still has no institution column):
+  - `student_promotion` now scopes the promoted students via `_scope_by_allowed_institutions` (a scoped clerk promotes only their own institutions).
+  - `rollback_student_promotion` derives the batch's institution set from its student history and 404s unless it lies entirely within the clerk's allowed institutions.
+  - `student_promotion_history` filters batches to those touching only the clerk's institutions.
+- `import_students` now rejects a spreadsheet row that names an institution outside the clerk's allowed set.
+
+### 9.3 Intentionally NOT covered (needs a schema/decision — see TASK_BACKLOG)
+
+| ID | Remaining | Why |
+|---|---|---|
+| SEC-5 | `Voucher` has no `institution` FK → `add_voucher`/`edit_voucher`/`delete_voucher`/`voucher_list`/finance-dashboard vouchers stay global | Requires a migration (D-3 decision) — not made this session |
+| D-9 | `PromotionBatch` has no institution column; promotion scoping is query-derived | Column added only with owner approval; currently query-only is enforced |
+
+### 9.4 Template bug fixed (pre-existing, blocked money-receipt writes)
+
+`students/templates/students/add_money_receipt.html` contained **two concatenated templates** (an employee status-history block followed by the money-receipt block), so rendering `add_money_receipt` threw `TemplateSyntaxError: 'block' tag with name 'title' appears more than once`. The accidental status-history block was removed, leaving a single money-receipt template. No behavior change to employee status history (it uses `employee_status_history.html`).
+
+### 9.5 Tests added
+
+`students/test_institution_write_isolation.py` — 26 two-institution write-isolation tests: cross-institution POST rejection for add student/employee/exam/receipt/salary/subject-requirement, pk-404 edit/delete for other institutions, bulk-delete rejection, Excel import row rejection, office/accounts approve 404, subject-requirement 404s, promotion only touching own institutions, rollback 404 for an out-of-scope batch, promotion-history filtering, and the deliberate cross-institution admin who retains full write access.
+
+### 9.6 Verification
+
+- `manage.py check` — 0 issues.
+- `manage.py test students` — **206 tests, all pass** (previously 180; +26 write-isolation tests).
 - No migration, no data change. SSC untouched.

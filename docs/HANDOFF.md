@@ -226,3 +226,35 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 1. Confirm D-1…D-10 with the owner (esp. D-3 voucher, D-9 promotion, D-6 permissions, D-2 multi-institution switch).
 2. P0-1 (BUG-1 `tc_print` 500), P0-3 write half, P0-4 (promotion, after D-9), P0-5 (money validation), P0-6 (remaining regression tests), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code), P0-11 (permission source, after D-6).
 3. P1-1 voucher isolation (after D-3).
+
+---
+
+## Session update — 2026-09-09 · Write isolation session (`arena/01a08254-school-management-system`, continuation)
+
+**Previous state:** the read/export isolation session (commit `384f57b`, pushed) added read-scope helpers and scoped all list/export/detail/json views. This session completes the **write** half.
+
+**What this session did (scope only — write-side institution isolation, no migration, no data change):**
+
+1. Verified prior findings against live code; baseline after read-scope = **180 tests pass**. `.venv` = Django 5.2.17 / Python 3.11.2.
+2. Forms (`students/forms.py`): added `_allowed_institution_ids(user)` + `_user_allowed_institution(user, institution)` and institution validation to `StudentForm`, `AdmissionApplicationForm`, `ExamForm`, `EmployeeForm`, `SubjectRequirementForm` (scope `institution` queryset + `clean_institution`) and `MoneyReceiptForm` (scope `student` + `clean_student`) / `SalarySheetForm` (scope `employee` + `clean_employee`).
+3. Views (`students/views.py`): added `_scope_write_queryset(request, base_qs, pks, field_name)` → `(in_scope_qs, rejected)` and `_institution_ids_outside(allowed_ids)`. Switched many single-object write views to `_get_scoped_object_or_404` (application transition, payment approval, student/employee/money-receipt/salary/subject-requirement edit+delete, restore/purge/discontinue/status). Bulk ops (`bulk_delete_students`, `bulk_update_students`, `bulk_update_select`, `bulk_restore_students`, `bulk_purge_archived_students`, `auto_register_students`) now reject when any submitted pk is out of scope. Create/edit forms pass `user=request.user`. `import_students` skips rows naming an out-of-scope institution. Promotion (SEC-4) scoped **by query** (students, rollback batch derivation, history filter). `delete_exam` is admin-only so no clerk path exists.
+4. Fixed a pre-existing template bug: `add_money_receipt.html` contained two concatenated templates (extraneous employee status-history block), which crashed `add_money_receipt` with a `block title` TemplateSyntaxError. Removed the accidental block.
+5. Added `students/test_institution_write_isolation.py` — 26 two-institution write tests.
+
+**Verified:** `manage.py check` = 0 issues; `manage.py test students` = **206 tests, all pass** (was 180 + 26). No migration, no data change. SSC untouched.
+
+**Intentionally NOT done (deferred, needs decision / schema change):**
+
+- `Voucher` write isolation (`add_voucher`/`edit_voucher`/`delete_voucher`) — no institution FK (D-3 + migration).
+- `PromotionBatch` institution column — promotion scoping is query-derived only (D-9); not invented without approval.
+
+**Branch / remote status:**
+
+- Branch: `arena/01a08254-school-management-system` (base `main` @ `10258cb`, read-scope commit `384f57b` already pushed).
+- Write-isolation changes committed/pushed separately in this session.
+
+**Next session recommendations:**
+
+1. Confirm D-1…D-10 with the owner (esp. D-3 voucher, D-9 promotion).
+2. P0-1 (BUG-1 `tc_print` 500), P0-5 (money validation `MinValue(0)`), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code), P0-11 (permission source, after D-6).
+3. P1-1 voucher isolation (after D-3); optional D-9 promotion column.

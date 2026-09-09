@@ -225,3 +225,29 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | P0-1 | BUG-1 (`tc_print` NoReverseMatch → 500) | Different scope; a student-detail-with-TC page still 500s |
 | P0-5 | Server-side money validation | Not addressed here |
 | P0-11 | Permission single source (PERM-1) | Needs D-6 |
+
+---
+
+## Update — 2026-09-09 · Write isolation session (this session)
+
+### Completed in this session (no migration, no data change)
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P0-3 (write half) | pk-level *write* isolation — `edit_student`, `delete_student`, `discontinue_student`, `restore_student`, `purge_archived_student`, `edit_employee`, `delete_employee`, `change_employee_status`, `edit_money_receipt`, `delete_money_receipt`, `edit_salary_sheet`, `delete_salary_sheet`, `edit_subject_requirement`, `delete_subject_requirement`, `quick_update_requirement_type` | **Done** | All switched to `_get_scoped_object_or_404`; cross-institution pk → 404. |
+| P0-3 (forms) | Create/edit form server-side institution rejection | **Done** | `StudentForm`, `AdmissionApplicationForm`, `ExamForm`, `EmployeeForm`, `SubjectRequirementForm` scope `institution` queryset + `clean_institution`; `MoneyReceiptForm`/`SalarySheetForm` scope `student`/`employee` + `clean_student`/`clean_employee`. |
+| P0-3 (bulk) | Bulk write scoping + rejection | **Done** | `_scope_write_queryset` on `bulk_delete_students`, `bulk_update_students`, `bulk_update_select`, `bulk_restore_students`, `bulk_purge_archived_students`, `auto_register_students`. Whole op refused when any pk is out of scope. |
+| P0-3 (approve) | `_application_transition` / `accounts_approve_payment` cross-institution guard | **Done** | `_get_scoped_object_or_404` on the application (select_for_update on payment approval). |
+| P0-3 (import) | `import_students` cross-institution guard | **Done** | A spreadsheet row naming an out-of-scope institution is skipped. |
+| P0-4 (query-only) | Promotion institution-scoping (SEC-4) | **Done (query-only)** | `student_promotion` scopes students; `rollback_student_promotion` 404s for an out-of-scope batch; `student_promotion_history` filters batches. `PromotionBatch` model column still deferred (D-9). |
+| P0-6 (partial) | Write isolation regression tests | **Done** | `students/test_institution_write_isolation.py` — 26 two-institution tests (cross-institution POST rejection, pk-404 edit/delete, bulk delete, Excel import row, approve 404, subject-requirement 404, promotion scope, rollback 404, promotion-history filter, cross-institution admin). |
+
+### Still open
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P1-1 | Voucher institution isolation (SEC-5) — `add_voucher`/`edit_voucher`/`delete_voucher`/`voucher_list` | `Voucher` has **no** `institution` FK; needs D-3 + a migration. Not invented this session. |
+| D-9 | `PromotionBatch` institution column | Promotion scoping is currently **query-derived** (no column); adding a column needs owner approval. |
+| P0-1 | BUG-1 (`tc_print` NoReverseMatch → 500) | Different scope; a student-detail-with-TC page still 500s |
+| P0-5 | Server-side money validation | Not addressed here |
+| P0-11 | Permission single source (PERM-1) | Needs D-6 |

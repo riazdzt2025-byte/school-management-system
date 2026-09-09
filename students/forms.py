@@ -3,12 +3,38 @@ import re
 from django import forms
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
-    Institution,
+    Institution, InstitutionAccess,
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
     AdmissionApplication, SectionCapacity,
     RELIGION_CHOICES, student_religion,
 )
+
+
+def _allowed_institution_ids(user):
+    """Institution ids a non-admin user may write, or ``None`` if unrestricted.
+
+    Mirrors the read-scope rule in ``views``: admin/staff, and users with no
+    active ``InstitutionAccess`` row (the test-suite fallback), are unrestricted
+    (``None``). A clerk holding one or more active rows is bounded to those
+    institutions. Passing ``None`` (e.g. the unauthenticated public admission
+    form) is unrestricted too.
+    """
+    if user is None or user.is_superuser or user.is_staff:
+        return None
+    ids = set(
+        InstitutionAccess.objects.filter(user=user, is_active=True)
+        .values_list('institution_id', flat=True)
+    )
+    return ids or None
+
+
+def _user_allowed_institution(user, institution):
+    """True when a user may write to ``institution`` (unrestricted for None)."""
+    allowed_ids = _allowed_institution_ids(user)
+    if allowed_ids is None:
+        return True
+    return institution is not None and institution.pk in allowed_ids
 
 
 def _setup_religion_field(form, field):
@@ -52,7 +78,13 @@ class StudentForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['institution'].queryset = Institution.objects.filter(
+                pk__in=self.allowed_institution_ids
+            )
         self.fields['admission_class'].label = 'Class'
         self.fields['section'].label = 'Section'
         _setup_religion_field(self, self.fields['religion'])
@@ -62,6 +94,19 @@ class StudentForm(forms.ModelForm):
         elif self.data.get('admission_class'):
             admission_class = str(self.data.get('admission_class'))
         self.apply_group_rules(admission_class)
+
+    def clean_institution(self):
+        """Reject an institution the user has no write access to, even when the
+        dropdown was bypassed in a hand-crafted POST."""
+        institution = self.cleaned_data.get('institution')
+        if institution is None:
+            return institution
+        if self.allowed_institution_ids is not None:
+            if institution.pk not in self.allowed_institution_ids:
+                raise forms.ValidationError(
+                    'Select an institution you have access to.'
+                )
+        return institution
 
     def clean_religion(self):
         """Always store one of the two dropdown values, even when the POST was
@@ -173,10 +218,27 @@ class AdmissionApplicationForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['institution'].queryset = Institution.objects.filter(
+                pk__in=self.allowed_institution_ids
+            )
         for field in self.fields.values():
             field.widget.attrs.setdefault('class', 'form-control')
         _setup_religion_field(self, self.fields['religion'])
+
+    def clean_institution(self):
+        institution = self.cleaned_data.get('institution')
+        if institution is None:
+            return institution
+        if self.allowed_institution_ids is not None:
+            if institution.pk not in self.allowed_institution_ids:
+                raise forms.ValidationError(
+                    'Select an institution you have access to.'
+                )
+        return institution
 
     def clean_religion(self):
         """Always store one of the two dropdown values (Islam by default)."""
@@ -262,9 +324,26 @@ class SubjectRequirementForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['institution'].queryset = Institution.objects.filter(
+                pk__in=self.allowed_institution_ids
+            )
         self.fields['subject'].required = False
         self.fields['subject'].empty_label = "-- Choose existing, or add a new subject below --"
+
+    def clean_institution(self):
+        institution = self.cleaned_data.get('institution')
+        if institution is None:
+            return institution
+        if self.allowed_institution_ids is not None:
+            if institution.pk not in self.allowed_institution_ids:
+                raise forms.ValidationError(
+                    'Select an institution you have access to.'
+                )
+        return institution
 
     def clean(self):
         cleaned = super().clean()
@@ -410,6 +489,26 @@ class ExamForm(forms.ModelForm):
             'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2026-2027'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['institution'].queryset = Institution.objects.filter(
+                pk__in=self.allowed_institution_ids
+            )
+
+    def clean_institution(self):
+        institution = self.cleaned_data.get('institution')
+        if institution is None:
+            return institution
+        if self.allowed_institution_ids is not None:
+            if institution.pk not in self.allowed_institution_ids:
+                raise forms.ValidationError(
+                    'Select an institution you have access to.'
+                )
+        return institution
+
     def save(self, commit=True):
         exam = super().save(commit=False)
         exam.name = auto_exam_name(exam.exam_type, exam.session)
@@ -452,6 +551,26 @@ class EmployeeForm(forms.ModelForm):
             'join_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
         })
 
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['institution'].queryset = Institution.objects.filter(
+                pk__in=self.allowed_institution_ids
+            )
+
+    def clean_institution(self):
+        institution = self.cleaned_data.get('institution')
+        if institution is None:
+            return institution
+        if self.allowed_institution_ids is not None:
+            if institution.pk not in self.allowed_institution_ids:
+                raise forms.ValidationError(
+                    'Select an institution you have access to.'
+                )
+        return institution
+
 
 class EmployeeStatusChangeForm(forms.Form):
     new_status = forms.ChoiceField(choices=Employee.STATUS_CHOICES, widget=forms.Select(attrs={'class': 'form-select'}))
@@ -463,6 +582,26 @@ class MoneyReceiptForm(forms.ModelForm):
         model = MoneyReceipt
         fields = ['student', 'receipt_no', 'purpose', 'amount', 'date']
         widgets = {'student': forms.Select(attrs={'class': 'form-select'}), 'receipt_no': forms.TextInput(attrs={'class': 'form-control'}), 'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})}
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['student'].queryset = Student.objects.filter(
+                institution_id__in=self.allowed_institution_ids
+            )
+
+    def clean_student(self):
+        student = self.cleaned_data.get('student')
+        if student is None:
+            return student
+        if self.allowed_institution_ids is not None:
+            if student.institution_id not in self.allowed_institution_ids:
+                raise forms.ValidationError(
+                    'Select a student from an institution you have access to.'
+                )
+        return student
 
 
 class VoucherForm(forms.ModelForm):
@@ -477,6 +616,26 @@ class SalarySheetForm(forms.ModelForm):
         model = SalarySheet
         fields = ['employee', 'month', 'amount', 'date', 'status']
         widgets = {'employee': forms.Select(attrs={'class': 'form-select'}), 'month': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['employee'].queryset = Employee.objects.filter(
+                institution_id__in=self.allowed_institution_ids
+            )
+
+    def clean_employee(self):
+        employee = self.cleaned_data.get('employee')
+        if employee is None:
+            return employee
+        if self.allowed_institution_ids is not None:
+            if employee.institution_id not in self.allowed_institution_ids:
+                raise forms.ValidationError(
+                    'Select an employee from an institution you have access to.'
+                )
+        return employee
 
 
 class StudentPromotionForm(forms.Form):
