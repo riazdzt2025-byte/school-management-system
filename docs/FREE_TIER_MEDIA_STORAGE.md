@@ -116,8 +116,11 @@ disk). Keys are identical, so `copy_media_to_storage` in reverse is just a
 ## 7. Verification performed
 
 `manage.py check` → 0 issues (W010 is `--deploy`-only by design);
-`makemigrations --check` → clean; `students/test_media_storage.py` → 33 tests
-covering the backend decision, the URL rules, the refusal on incomplete config,
-both checks, and the copy command's idempotence. The three tests that construct a
-real `S3Storage` are skipped when `django-storages`/`boto3` are absent — CI and
-the Render build install both, so they run there.
+`makemigrations --check` → clean (nothing to migrate); `manage.py test students` →
+**293 pass**, of which `students/test_media_storage.py` contributes 33 (13 on the
+backend decision and URL rules, 8 on the two checks, 6 on the copy command, 2 on
+its file iterator, 4 on the real `S3Storage` wiring).
+
+Those last 4 skip when `django-storages`/`boto3` are absent — CI and the Render
+build install both from `requirements.txt`, so they run there (and they passed on
+Python 3.12 / Django 6.1 in CI, which is the pinned combination).
