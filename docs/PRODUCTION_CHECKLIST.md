@@ -30,12 +30,19 @@ dashboard items need Render access._
 | Battery of conditional unique constraints | CI Postgres job (`.github/workflows/tests.yml`) | ✅ on PR |
 | Fresh backup taken | `python manage.py backup_data` | ✅ before destructive ops |
 
-## 3. Media / uploads (D-7)
+## 3. Media / uploads (D-7 / P1-11)
+
+Free tier has no persistent disk, so object storage is the route; the disk rows
+apply only if the service is on a paid plan. Setup: `docs/FREE_TIER_MEDIA_STORAGE.md`.
 
 | Check | How | Status |
 |---|---|---|
-| `MEDIA_ROOT` points at a persistent disk | env `MEDIA_ROOT=/data/media` | 🔧 |
-| Persistent disk attached + mounted at that path | Render dashboard | 🔧 |
+| Media backend is durable (S3/R2) **or** on a persistent disk | env `USE_S3=True` + `AWS_STORAGE_BUCKET_NAME` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (endpoint for R2/B2), **or** `MEDIA_ROOT=/data/media` | 🔧 |
+| Config is complete (missing keys abort the boot, they do not fall back) | `python manage.py check` → no `students.E011` | ✅ command |
+| Uploads are not landing in the app tree | `python manage.py check --deploy` → no `students.W010` | ✅ command |
+| Photos already on disk were copied into the bucket | `python manage.py copy_media_to_storage --dry-run` then without it | ✅ command |
+| Student photos are not world-readable unless intended | no `AWS_S3_PUBLIC_BASE_URL` → signed URLs | ⚠️ owner decision |
+| Persistent disk attached + mounted at that path (paid plans only) | Render dashboard | 🔧 |
 | A test upload survives a redeploy | upload a photo → redeploy → photo still loads | 🔧 (manual) |
 
 ## 4. Institution isolation / permissions
@@ -59,10 +66,17 @@ dashboard items need Render access._
 | Check | How | Status |
 |---|---|---|
 | Scheduled backup runs | Render cron running `scripts/backup_cron.sh` | 🔧 owner |
-| `P0B_BACKUP_ROOT` is persistent (ephemeral is lost) | env → disk / object storage | 🔧 owner |
+| Backup persisted **off-cron** | A cron job has **no persistent disk** (it is ephemeral). Copy the backup to **object storage** (R2/S3) or run the backup from a **background worker** that has a disk. `P0B_BACKUP_ROOT` alone on a cron is **not** durable. | 🔧 owner |
 | `check_backups` exits 0 when healthy | `python manage.py check_backups` | ✅ |
 | Failure alert wired | `HEALTHCHECK_PING_URL` set + health check created | 🔧 owner |
 | Restore practised on a disposable DB | `manage.py restore_backup --yes --verify` | ✅ runbook §6 |
+
+> **Correction (important):** Render **cron jobs cannot attach a persistent disk**.
+> A disk is available on a paid **web service / private service / background
+> worker** only, and a service's disk is not reachable from another service. So a
+> cron-run `backup_data` writing to a local `P0B_BACKUP_ROOT` is lost after the
+> run — you must upload the backup to object storage (or run the backup from a
+> background worker). See `docs/OWNER_RENDER_OPS_TUTORIAL.md` step 2.
 
 ## 7. Before a destructive deploy (hard rule)
 

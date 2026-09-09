@@ -16,6 +16,11 @@ class StudentsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
 
     def ready(self):
+        # Registers the deployment checks in students/checks.py (media storage
+        # durability). Imported here rather than at module scope so it runs once,
+        # after the app registry is populated.
+        from . import checks  # noqa: F401
+
         # Run after migrations instead of at import time: querying the database
         # from ready() crashes on a fresh/unmigrated database (e.g. the very
         # first `manage.py migrate`).

@@ -1,6 +1,6 @@
 # Backup & Restore Runbook
 
-_Last updated 2026-09-09 (P0-8 backup session; + ops readiness: `check_backups`, `backup_cron.sh`, `render.cron.yaml`)._
+_Last updated 2026-09-09 (P0-8 backup session; + ops readiness: `check_backups`, `backup_cron.sh`, `render.cron.yaml`; owner tutorial `docs/OWNER_RENDER_OPS_TUTORIAL.md`)._
 
 This runbook describes how to back up and restore the School Management System
 across both supported database engines (SQLite, the local default, and
@@ -203,22 +203,20 @@ production-level access and decisions this session should not assume (rule 7).
   `scripts/backup_cron.sh`. It defines the cron job only (it does **not**
   recreate the existing web service).
 
-Owner actions still required (apply via Render dashboard / Blueprint):
+Owner actions still required — **follow `docs/OWNER_RENDER_OPS_TUTORIAL.md`
+step-by-step** (apply via Render dashboard / Blueprint):
 
-- **Cron job filesystem is EPHEMERAL.** A backup written to a local path is wiped
-  after each run, so `P0B_BACKUP_ROOT` **must** point at a persistent location:
-  a **Render persistent disk**, or **upload after backup to object storage**
-  (R2 / S3 / a server you control). Render does not attach a running service's disk
-  to a cron job, so a disk-only approach needs a disk-mounted service plus an
-  off-box copy. This is an **owner decision**.
-- **Persistent disk:** the default Render filesystem is ephemeral. A backup
-  written to it is lost on redeploy. Store backups on a persistent disk or
-  upload them to object storage (S3/R2/Render Disks) — an **owner decision**.
-  The same disk should host `MEDIA_ROOT` (set `MEDIA_ROOT=/data/media`) so
-  uploaded student photos also survive redeploys (D-7).
+- **A cron job has NO persistent disk and can't read another service's disk.** A
+  backup written to a local `P0B_BACKUP_ROOT` on a cron is **ephemeral — wiped
+  after the run**. To keep a backup you MUST **upload it to object storage**
+  (R2 / S3) after `backup_data`, or run the backup from a **background worker**
+  that has a disk. This is the single most important point (see the tutorial Step 2).
+- **Persistent disk** is for the **web service only** (photos): mount `/data`,
+  set `MEDIA_ROOT=/data/media` so uploaded photos survive redeploys (D-7).
 - **Notification:** create a health check (e.g. Healthchecks.io) and set
   `HEALTHCHECK_PING_URL` (never hard-coded); `backup_cron.sh` pings `<url>` on
-  success and `<url>/fail` on failure.
+  success and `<url>/fail` on failure. A non-zero exit also fires Render's own
+  failure notification.
 - **Postgres:** production likely uses `DATABASE_URL` → Postgres. Confirm
   `pg_dump`/`pg_restore` exist in the runtime, and that `PGPASSWORD`/`DATABASE_URL`
   are set in the environment (never in the repo).

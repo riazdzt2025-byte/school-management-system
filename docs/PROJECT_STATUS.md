@@ -546,9 +546,13 @@ level (one new table). The live Render ops steps still need owner account access
 
 ### 14.2 Deliberately NOT done (owner / destructive / very large — safe limit, rule 10)
 
-- **P0-7 / P0-8 live Render ops** — `docs/PRODUCTION_CHECKLIST.md` is ready; the
-  persistent-disk / object-storage / health-check-alert / scheduled cron wiring
-  need Render account access (owner only). No secret/API token is ever requested.
+- **P0-7 / P0-8 live Render ops** — `docs/PRODUCTION_CHECKLIST.md` +
+  `docs/OWNER_RENDER_OPS_TUTORIAL.md` are ready; the object-storage /
+  health-check-alert / scheduled-cron wiring need Render account access (owner only).
+  **Correction:** a Render **cron job has no persistent disk** (and can't read
+  another service's disk), so backups must be uploaded to object storage (R2/S3)
+  or run from a disk-backed worker — `P0B_BACKUP_ROOT` on a cron alone is ephemeral.
+  No secret/API token is ever requested.
 - **P1-10 production switch** — the code already reads `DATABASE_URL`; switching
   the live DB is a deployment + staged data migration requiring a backup + rollback
   plan (runbook §9). CI now proves Postgres compatibility.
@@ -566,3 +570,29 @@ level (one new table). The live Render ops steps still need owner account access
 - `manage.py check` — 0 issues; `makemigrations --check` — clean.
 - **`manage.py test students` — 260 tests, all pass** (was 229 before this stretch).
 - Migration `0038` (new `Fee` table) applied cleanly; additive, no data loss.
+
+## 15. P1-11 free-tier media storage (object storage for uploads) — 2026-09-09
+
+**Why:** Render's free tier rebuilds the container on every deploy, so
+`BASE_DIR/media` is wiped and student photos disappear while their rows survive.
+A persistent disk cannot be attached to a free instance, so the fix had to be
+S3-compatible object storage. This closed the work that was left unpushed in the
+previous session (commit `c469ec5`, lost with that sandbox).
+
+| Piece | What | Tests |
+|---|---|---|
+| `school_system/settings.py` | `media_storage_config()` / `media_public_url()` pure helpers; `USE_S3` selects `storages.backends.s3.S3Storage`; private bucket by default (signed `photo.url`), `AWS_S3_PUBLIC_BASE_URL` for a public bucket/CDN; incomplete config raises at boot | `test_media_storage.py` (21 config/URL/check tests) |
+| `students/management/commands/copy_media_to_storage.py` | Idempotent one-way copy of existing `MEDIA_ROOT` files into the bucket, `--dry-run`, refuses to run when media is local | `test_media_storage.py` (6 command + 2 helper tests); 4 wiring tests need `django-storages` + `boto3` |
+| `students/checks.py` | `E011` error when `USE_S3` is on without `django-storages`/`boto3`; `W010` deploy-only warning when production media still sits in the app tree | registry-placement test included |
+| `students/management/commands/backup_data.py` | Prints that an empty `media.tar.gz` is expected once media is off-box, so it is not mistaken for a failed backup | existing backup tests still pass |
+| `requirements.txt` | `django-storages==1.14.6`, `boto3==1.43.90` | CI installs them, so the S3-backend tests run there |
+| Docs | `docs/FREE_TIER_MEDIA_STORAGE.md` (setup, verification, rollback), `PRODUCTION_CHECKLIST.md` §3, `TASK_BACKLOG.md` P1-11/D-7 | n/a |
+
+**Still the owner's (rule 7):** create the bucket + token, set the six env vars on
+Render, run `copy_media_to_storage`, then prove it live (upload → redeploy →
+photo still loads). No credentials were requested or stored anywhere in the repo.
+
+**Verified:** `manage.py check` → 0 issues; `check --deploy` with `DEBUG=False` and
+local media → `students.W010` present, absent with `USE_S3`; `makemigrations --check`
+→ clean (no migration in this change); `manage.py test students` → **293 tests**
+(was 260).
