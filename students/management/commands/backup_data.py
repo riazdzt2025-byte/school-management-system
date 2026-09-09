@@ -108,15 +108,23 @@ class Command(BaseCommand):
             raise CommandError("Unsupported database engine; aborting backup.")
 
         media_dir = options["media_dir"] if options["media_dir"] else None
+        from django.conf import settings as dj_settings
         # Fall back to MEDIA_ROOT (from settings) when no override is given.
         if media_dir is None:
-            from django.conf import settings as dj_settings
             media_dir = str(dj_settings.MEDIA_ROOT)
         media_file = "media.tar.gz"
         media_present, media_count = bak.archive_media(media_dir, backup_dir / media_file)
         self.stdout.write(
             f"  Media archive:  {media_file} ({media_count} file(s))"
         )
+        if getattr(dj_settings, "MEDIA_IS_REMOTE", False) and not media_present:
+            # USE_S3 moved uploads into a bucket, so the local media tree is
+            # legitimately empty. Say so, otherwise a 0-file archive reads like
+            # a broken backup and someone goes hunting for a bug.
+            self.stdout.write(
+                "  Note: media lives in object storage (USE_S3), not on this disk — "
+                "the bucket (with versioning) is the copy of record for uploads."
+            )
 
         bak.write_manifest(
             backup_dir / "manifest.json",

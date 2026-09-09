@@ -17,4 +17,8 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # Only map /media/ when uploads actually land on this disk. With media in
+    # object storage (USE_S3) MEDIA_URL is an absolute bucket/CDN URL, and
+    # pointing static() at it would just shadow a path that serves nothing.
+    if not getattr(settings, 'MEDIA_IS_REMOTE', False):
+        urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -143,10 +143,17 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 - **Tests:** run the full suite with `DATABASE_URL` pointed at a local Postgres.
 - **Migration risk:** medium — a real data migration; requires the P0-8 backup, a staging copy, and a rollback plan. Do it as its own session.
 
-### P1-11 · Media storage strategy (student photos)
-- **Depends on:** D-7 · Either attach a Render persistent disk (document the mount) or move to object storage (S3-compatible, `django-storages`).
-- **Tests:** upload → redeploy → image still present (manual on Render).
-- **Risk:** medium for the S3 route (new dependency + env config); low for the persistent-disk route.
+### P1-11 · Media storage strategy (student photos) — code side DONE
+- **Depends on:** D-7 · Both routes are now available, and the S3-compatible one is
+  what the free tier can actually use (a Render persistent disk is paid-only):
+  `USE_S3` + `AWS_*` env selects `django-storages`, `manage.py copy_media_to_storage`
+  moves the photos already on disk, and `check --deploy` warns if media would still
+  land in the app tree. Guide: `docs/FREE_TIER_MEDIA_STORAGE.md`.
+- **Remaining (owner, rule 7):** create the bucket + API token, set the six env vars,
+  run the copy, then prove it — upload → redeploy → image still present.
+- **Tests:** `students/test_media_storage.py` (33). The live upload→redeploy check stays manual.
+- **Risk:** low. Additive: no migration, no URL change, no behaviour change while
+  `USE_S3` is unset; half-configured buckets fail loudly at boot instead of quietly.
 
 ## P2 — Optional
 
@@ -170,7 +177,7 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | D-4 | Admission/fee amounts: keep free-form entry, or introduce a class-wise fee schedule (P1-2) that validates payment approval? | P1-2 scope; P0-5 (≥0 validation) proceeds either way |
 | D-5 | Keep the unauthenticated public admission form? If yes, which protection (rate limit / captcha / confirm email)? | P1-9 |
 | D-6 | Confirm intended permission sets: (a) Exam group — should it include `delete_exam` (setup_groups says yes, permissions.py says no)? (b) Accounts group — should it keep `Exam` add/change and `ExamMark` add/change/delete? | P0-11 |
-| D-7 | Student photos: Render persistent disk (cheap) or object storage (durable)? | P1-11 |
+| D-7 | Student photos: Render persistent disk (cheap) or object storage (durable)? | **Object storage wired** (`USE_S3`, P1-11). A persistent disk stays available as the alternative; only one of the two is needed |
 | D-8 | Production database: stay on SQLite (on a persistent disk) or switch to Postgres (P1-10, README roadmap)? | P1-10, P0-7 |
 | D-9 | Promotion scoping: minimal query-level fix (no migration) now, or add an `institution` column to `PromotionBatch` (small migration) in the same change? | **Resolved** — added the column (migration `0037`); query-level fallback retained for legacy NULL batches. → P0-4 complete |
 | D-10 | Legacy `StudentSubject` data: keep admin-only forever, migrate it into the current models, or drop it? | P1-5 / P2-7 |
@@ -194,7 +201,7 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | ID | Task | Blocker / dependency |
 |---|---|---|
 | P0-7 | Production checklist (live Render) | Needs live access + owner confirmation; rule 7 (no live change without approval) |
-| P1-11 | Media storage strategy (persistent disk / S3) | Needs D-7 business decision |
+| P1-11 | Media storage strategy (persistent disk / S3) | Code done; needs the owner to create the bucket + set `USE_S3`/`AWS_*` on Render and re-check after a redeploy |
 | P0-1 | BUG-1 fix (`tc_print` URL) | Needs next session; not part of audit scope |
 | P0-2…P0-5 | Isolation + validation fixes | Need D-1…D-9 decisions first |
 | P0-6 | Isolation regression tests | Depends on P0-2…P0-5 |

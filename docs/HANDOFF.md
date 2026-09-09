@@ -390,3 +390,41 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 **Deliberately left for the owner (safe limit, rule 10):** P0-7 live run, P0-8 live Render ops (backup schedule/off-box storage/alert), P1-10 production DB switch (staged migration + backup + rollback), P2-3 i18n (large), P2-7 destructive `StudentSubject` drop, and D-6 permission-set confirmation. No secret/API token requested.
 
 **Branch / remote status:** branch `arena/01a08254-school-management-system`; all commits pushed; PR #10 (open, not merged — owner approval).
+
+## Session update — 2026-09-09 · P1-11 free-tier media storage (pushed same session)
+
+**Context:** the previous session's media-storage work existed only as local commit
+`c469ec5`; that sandbox closed before it was pushed and the objects were gone
+(`git cat-file -t c469ec5` → not a valid object, nothing on any `refs/heads/*` or
+`refs/pull/*/head`). It was reimplemented here from the backlog + settings notes,
+and this time every commit is pushed as it lands.
+
+**What this session did:**
+
+- `USE_S3` object-storage route for media (`django-storages` + S3-compatible
+  bucket), opt-in via env so local dev/preview behaviour is byte-for-byte the old
+  behaviour; static files stay on whitenoise.
+- Private-by-default: student photos are PII, so no public-read ACL is implied —
+  `photo.url` is a signed URL unless `AWS_S3_PUBLIC_BASE_URL` is deliberately set.
+- Incomplete bucket config raises `ImproperlyConfigured` at boot rather than
+  falling back to the disk that gets wiped (that fallback *is* the bug).
+- `manage.py copy_media_to_storage` to move photos that are already on the
+  ephemeral disk (idempotent, `--dry-run` first).
+- `students/checks.py`: `E011` (missing `storages`/`boto3`) on every `check`,
+  `W010` (media inside the app tree) under `check --deploy` only, so CI/dev stay
+  quiet. `backup_data` now explains an empty media archive when media is remote.
+- Docs: `docs/FREE_TIER_MEDIA_STORAGE.md`; `PRODUCTION_CHECKLIST.md` §3 and
+  `TASK_BACKLOG.md` P1-11 / D-7 updated to the object-storage route.
+
+**Verified:** `check` clean, `makemigrations --check` clean, `manage.py test
+students` = 293 pass (4 of them need `django-storages`/`boto3`; they skip in an
+environment without them, and CI installs both). Local runs used a venv on Python
+3.11/Django 5.2 because this sandbox cannot install the pinned Django 6.1 (needs
+3.12) — Render and CI build on 3.12/6.1.
+
+**Owner still to do (rule 7):** create bucket + API token, set `USE_S3` and the
+five `AWS_*` vars in Render, run `copy_media_to_storage`, then the one manual test
+that proves it: upload a photo → redeploy → photo still loads.
+
+**Branch / remote status:** branch `arena/01a084de-school-management-system`,
+pushed to origin; **PR #11** opened for owner review (not merged).
