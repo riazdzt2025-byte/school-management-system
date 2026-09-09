@@ -364,3 +364,29 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 **Still open (owner access/approval, rule 7):** P0-8 live ops — attach a persistent disk / object storage for `P0B_BACKUP_ROOT` (cron filesystem is ephemeral), set `HEALTHCHECK_PING_URL`, confirm Postgres tooling, choose the cron plan + `DATABASE_URL`/`HEALTHCHECK_PING_URL` secrets. Config is ready but not run live.
 
 **Branch / remote status:** branch `arena/01a08254-school-management-system`; work staged for commit; PR #10 open (not merged — owner approval).
+
+## Session update — 2026-09-09 · P1 backlog + P2 + ops readiness completion (owner approval)
+
+**Previous state:** commits through D-9 + P0-10 + P0-8 ops (`0324457`), then P1-3/4/6/8 (`aea0a04`), P1-5/7 + P2-4/6 (`25cfe5f`), P1-9 + P2-2 (`1444215`), P1-2 + P2-1 (`d894fa4`), P1-10 CI (`c9c1538`). Owner said "complete everything, don't leave any tasks — approval given."
+
+**What this session did (all additive / form-template level, one new table):**
+
+- **P1-2** `Fee` model + migration `0038`; admin registration; payment detail pre-fills amount, approval warns on mismatch; no-fee flow unchanged. `test_fee_schedule.py`.
+- **P1-3** auto `MoneyReceipt.receipt_no` (`RC-<year>-<code>`, collision-safe), excluded from form. `test_auto_receipts.py`.
+- **P1-4** sidebar Attendance group + Promotion link, permission-gated. `test_navigation.py`.
+- **P1-5** student-detail Subjects tab shows current `SubjectRequirement`-derived assignments; legacy `StudentSubject` no longer renders (D-10 resolution: keep data admin-only). `test_curriculum_tab.py`.
+- **P1-6** `ExamForm` class choices from institution classes (Shishu/diploma validate). `test_exam_class_choices.py`.
+- **P1-7** Excel import skips over-capacity rows (SectionCapacity). `test_import_capacity.py`.
+- **P1-8** `save_student_subject_choices` zero-padding tolerant. `test_exam_class_choices.py`.
+- **P1-9** public admission per-IP rate limit; **P2-2** login lockout (Django-cache counter, no new dependency). `test_rate_limiting.py`.
+- **P2-4** `edit_student`/`edit_employee` audit with `changed_fields`. `test_edit_audit.py`.
+- **P2-6** dashboard "Quick actions" card (permission-gated). `test_navigation.py`.
+- **P2-1** `.github/workflows/tests.yml` (check + makemigrations --check + full suite). **P1-10** CI Postgres matrix job.
+- **P2-5** removed stale `.elastic-copilot/memory/*`.
+- **P0-7** `docs/PRODUCTION_CHECKLIST.md` created.
+
+**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; migration `0038` applied; **`manage.py test students` = 260 tests, all pass** (was 229).
+
+**Deliberately left for the owner (safe limit, rule 10):** P0-7 live run, P0-8 live Render ops (backup schedule/off-box storage/alert), P1-10 production DB switch (staged migration + backup + rollback), P2-3 i18n (large), P2-7 destructive `StudentSubject` drop, and D-6 permission-set confirmation. No secret/API token requested.
+
+**Branch / remote status:** branch `arena/01a08254-school-management-system`; all commits pushed; PR #10 (open, not merged — owner approval).

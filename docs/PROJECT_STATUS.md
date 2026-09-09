@@ -3,7 +3,7 @@
 _Last updated: 2026-09-09 (write isolation session `arena/01a08254-school-management-system`)_
 _Base commit: `384f57b` (read/export isolation, pushed) on branch `arena/01a08254-school-management-system`_
 
-**Bengali TL;DR (সর্বশেষ — write isolation + voucher + promotion + ops):** write-side institution isolation এই সেশনে সম্পূর্ণ। SCoped clerk অন্য institution-এর student/exam/employee/receipt/salary/application-এর pk-ভিত্তিক edit/delete/approve করতে পারে না (404); form POST-এ অন্য institution-এর ID server-এ reject হয়। P1-1/D-3 **voucher isolation** (Voucher.institution যোগ, migration 0036) এবং D-9 **PromotionBatch.institution** (migration 0037) সম্পন্ন — rollback/scope/history-তে institution column। P0-10 **dead-code cleanup** (duplicate employees route, orphan ও shadowed templates, admin branding placeholder) মুছে ফেলা হয়েছে। P0-8 **backup/restore tooling + ops readiness** (check_backups command + backup_cron.sh + render.cron.yaml) প্রস্তুত; live Render scheduling/Storage/alert owner-এর হাতে। মোট **237 test pass** (students suite) — কেবল SSC Registration / SSC Result Summary **অপরিবর্তিত — restore করা হয়নি**।
+**Bengali TL;DR (সর্বশেষ — write isolation + voucher + promotion + ops):** write-side institution isolation এই সেশনে সম্পূর্ণ। SCoped clerk অন্য institution-এর student/exam/employee/receipt/salary/application-এর pk-ভিত্তিক edit/delete/approve করতে পারে না (404); form POST-এ অন্য institution-এর ID server-এ reject হয়। P1-1/D-3 **voucher isolation** (Voucher.institution যোগ, migration 0036) এবং D-9 **PromotionBatch.institution** (migration 0037) সম্পন্ন — rollback/scope/history-তে institution column। P0-10 **dead-code cleanup** (duplicate employees route, orphan ও shadowed templates, admin branding placeholder) মুছে ফেলা হয়েছে। P0-8 **backup/restore tooling + ops readiness** (check_backups command + backup_cron.sh + render.cron.yaml) প্রস্তুত; live Render scheduling/Storage/alert owner-এর হাতে। মোট **260 test pass** (students suite) — কেবল SSC Registration / SSC Result Summary **অপরিবর্তিত — restore করা হয়নি**।
 
 ---
 
@@ -12,7 +12,7 @@ _Base commit: `384f57b` (read/export isolation, pushed) on branch `arena/01a0825
 | Check | Result |
 |---|---|
 | `python manage.py makemigrations --check` | **Clean** — models and migrations in sync |
-| `python manage.py test students` | **237 tests, all pass** (see §13.3) |
+| `python manage.py test students` | **260 tests, all pass** (see §14.3) |
 | `manage.py check` | 0 issues |
 | `manage.py test students.test_backup_tooling` | **14 tests, all pass** (includes `check_backups` command tests) |
 | SSC removal regression (`RetiredBoardFeatureTests`) | Pass — old URLs unroutable, models/content types absent, no SSC text on student pages |
@@ -515,3 +515,54 @@ setting `HEALTHCHECK_PING_URL` + creating the health check, confirming the
 production engine (Postgres tooling), and choosing the cron plan/`DATABASE_URL`
 secrets. A cron job's filesystem is ephemeral, so `P0B_BACKUP_ROOT` **must** point
 at a persistent location.
+
+---
+
+## 14. P1 backlog + selected P2 + ops readiness — 2026-09-09 (continued)
+
+**Scope (user: "complete everything, don't leave any tasks — approval given"):**
+implement the remaining P1 backlog and quick P2 items, and prepare P0-7/P0-8 ops.
+SSC not restored; no production data change; all changes additive or form/template
+level (one new table). The live Render ops steps still need owner account access.
+
+### 14.1 Implemented this stretch
+
+| Item | What | Tests |
+|---|---|---|
+| P1-2 | `Fee` model (institution/class/purpose/amount, migration `0038`, new table); admin registration; admission payment detail pre-fills the amount from the fee and the approval flow warns on a mismatch (a configured fee is a guideline, not a hard cap); no-fee flow unchanged. | `test_fee_schedule.py` (3) |
+| P1-3 | `MoneyReceipt.receipt_no` auto-generated (`RC-<year>-<code>`, collision-safe), excluded from the form; create generates it, edit preserves it. | `test_auto_receipts.py` (3) |
+| P1-4 | Sidebar gains an Attendance group (Mark/Report/Summary) and a Promotion link (Office flyout), gated by permission. | `test_navigation.py` (5) |
+| P1-5 | Student-detail "Subjects & Curriculum" tab shows `SubjectRequirement`-derived current assignments (mandatory/conditional/optional-chosen) instead of legacy `StudentSubject`. | `test_curriculum_tab.py` (2) |
+| P1-6 | `ExamForm.admission_class` choices come from the selected institution's `classes` (so Shishu/diploma-semester classes validate server-side; JS already fed them to the dropdown). | `test_exam_class_choices.py` (3) |
+| P1-7 | Excel import skips rows that would exceed `SectionCapacity` (same rule as the Add Student form). | `test_import_capacity.py` (2) |
+| P1-8 | `save_student_subject_choices` uses `class_filter_variants` so `'09'` matches `'9'`. | `test_exam_class_choices.py` (1) |
+| P1-9 | Public admission form throttled per-IP (5 POSTs / 10 min, Django-cache counter, no new dependency); throttled state shows a banner. | `test_rate_limiting.py` (1) |
+| P2-2 | Login lockout after 5 failed attempts from one IP for 15 min; reset on success. | `test_rate_limiting.py` (2) |
+| P2-4 | `edit_student` / `edit_employee` write an `AuditLog` with `changed_fields`. | `test_edit_audit.py` (2) |
+| P2-6 | Dashboard "Quick actions" card (Add Student / Admissions / Enter Marks / New Exam / New Receipt), gated by permission, absent when none. | `test_navigation.py` (2) |
+| P2-1 | GitHub Actions workflow (`.github/workflows/tests.yml`): `manage.py check` + `makemigrations --check` + full `students` suite on push/PR. | n/a |
+| P1-10 | CI Postgres matrix job runs the full `students` suite against a `postgres:16` service (proves conditional unique constraints on Postgres). | n/a |
+| P2-5 | Removed stale `.elastic-copilot/memory/*` (auto-generated 2026-08-28, pre-date migrations 0012–0035, misleading). | n/a |
+
+### 14.2 Deliberately NOT done (owner / destructive / very large — safe limit, rule 10)
+
+- **P0-7 / P0-8 live Render ops** — `docs/PRODUCTION_CHECKLIST.md` is ready; the
+  persistent-disk / object-storage / health-check-alert / scheduled cron wiring
+  need Render account access (owner only). No secret/API token is ever requested.
+- **P1-10 production switch** — the code already reads `DATABASE_URL`; switching
+  the live DB is a deployment + staged data migration requiring a backup + rollback
+  plan (runbook §9). CI now proves Postgres compatibility.
+- **P2-3 (i18n)** — translating the whole UI is a large, separate effort; deferred.
+- **P2-7 (drop legacy `StudentSubject`)** — destructive (data migration + backup +
+  approval); P1-5 already stops it rendering in the web workflow, so it's harmless
+  as admin-only data. Own session.
+- **D-6** — confirm permission-set intent (Accounts owning `Exam` add/change +
+  `ExamMark` add/change/delete; Exam group lacking `delete_exam` per permissions.py).
+  Not changed — it is a live-permission policy decision, not a code bug (P0-11 made
+  permissions.py the single source; running `setup_groups` no longer diverges).
+
+### 14.3 Verification
+
+- `manage.py check` — 0 issues; `makemigrations --check` — clean.
+- **`manage.py test students` — 260 tests, all pass** (was 229 before this stretch).
+- Migration `0038` (new `Fee` table) applied cleanly; additive, no data loss.

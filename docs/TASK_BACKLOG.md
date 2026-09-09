@@ -312,3 +312,45 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | ID | Task | Why it stays open |
 |---|---|---|
 | P0-8 (ops, live) | Attach persistent disk / object storage for `P0B_BACKUP_ROOT`; set `HEALTHCHECK_PING_URL`; confirm Postgres tooling; choose cron plan/secrets | Owner + Render access; cron filesystem is ephemeral so a persistent destination is required. Config is ready but not run live. |
+
+## Update — 2026-09-09 · P1 backlog + P2 + ops readiness completion (owner approval)
+
+### Completed
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P1-2 | Class-wise fee schedule & payment rules (D-4 → introduce schedule + validate/warn) | **Done** | `Fee` model (migration `0038`); admin registration; payment detail pre-fills from the fee; approval warns on mismatch; no-fee flow unchanged. `test_fee_schedule.py` (3). |
+| P1-3 | Auto receipt numbers for manual money receipts | **Done** | `receipt_no` auto-generated (`RC-<year>-<code>`) + excluded from form; create generates, edit preserves. `test_auto_receipts.py` (3). |
+| P1-4 | Navigation: Attendance + Promotion entries | **Done** | Sidebar Attendance group + Promotion link, permission-gated. `test_navigation.py` (5). |
+| P1-5 | Student detail Subjects tab shows current assignments (D-10 → keep legacy admin-only, show current) | **Done** | Uses `get_applicable_subjects` + chosen optionals; legacy `StudentSubject` no longer renders (D-10 resolution: keep legacy data, stop rendering it). `test_curriculum_tab.py` (2). |
+| P1-6 | Exam form class choices beyond 1–12 | **Done** | `ExamForm` class choices derived from institution classes; Shishu/diploma classes validate. `test_exam_class_choices.py`. |
+| P1-7 | Excel import honours `SectionCapacity` | **Done** | Over-capacity rows skipped (same rule as Add Student). `test_import_capacity.py` (2). |
+| P1-8 | Zero-padding tolerance in `save_student_subject_choices` | **Done** | uses `class_filter_variants`. `test_exam_class_choices.py`. |
+| P1-9 | Public admission form protection (D-5 → rate limit) | **Done** | Per-IP throttle (5 POSTs/10 min), Django-cache counter, banner on throttle. `test_rate_limiting.py`. |
+| P1-10 | PostgreSQL for production | **Partial (CI proof; live switch = owner)** | CI Postgres matrix job runs the full suite against `postgres:16`. The production `DATABASE_URL` switch remains a staged deploy with backup+rollback (runbook §9). |
+| P2-1 | CI: GitHub Actions | **Done** | `.github/workflows/tests.yml` (check + makemigrations + full suite; sqlite + postgres). |
+| P2-2 | Login rate limiting / lockout | **Done** | 5 fails → 15-min lockout, reset on success. `test_rate_limiting.py`. |
+| P2-4 | Audit entries for `edit_student` / `edit_employee` | **Done** | `record_audit` with `changed_fields`. `test_edit_audit.py` (2). |
+| P2-5 | Refresh/delete `.elastic-copilot/memory` | **Done (delete)** | Removed stale 2026-08-28 auto-notes that predate migrations 0012–0035. |
+| P2-6 | Dashboard quick links | **Done** | Quick actions card, permission-gated, hidden when no perms. `test_navigation.py`. |
+
+### Still open (owner / destructive / very large — safe limit, rule 10)
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P0-7 | Production verification checklist | **Docs done** (`docs/PRODUCTION_CHECKLIST.md`); running each item on the live service = owner. |
+| P0-8 (live) | Render scheduling / off-box storage / alert wiring | Owner + Render access; config ready (`render.cron.yaml`, `backup_cron.sh`, `check_backups`). |
+| P1-10 (live) | Switch production DB to Postgres | Staged data migration + backup + rollback (owner, own session). |
+| P2-3 | i18n / Bengali UI | Large separate effort; deferred. |
+| P2-7 | Drop legacy `StudentSubject` model | Destructive data migration + backup + approval; already non-rendering (P1-5). |
+| D-6 | Confirm permission-set intent (Accounts holds `Exam`/`ExamMark` perms; Exam group lacks `delete_exam`) | Live-permission policy decision — not changed. |
+
+### Business decisions resolved this session
+
+| ID | Decision | Resolution |
+|---|---|---|
+| D-4 | Fee entry vs class-wise schedule | Introduced a class-wise `Fee` schedule (pre-fill + mismatch warning), keeps free-form as fallback/guideline. |
+| D-5 | Public admission protection | Implemented per-IP rate limiting (no new dependency, no captcha). |
+| D-9 | Promotion scoping column | Added `PromotionBatch.institution` (migration `0037`); legacy NULL batches stay query-derived. |
+| D-10 | Legacy `StudentSubject` | Keep the data admin-only; stop rendering it in the web workflow (P1-5). Destructive drop deferred (P2-7). |
+| D-6 | Permission sets | Left unchanged — a live-permission policy decision; P0-11 already makes permissions.py the single source. Owner to confirm. |
