@@ -910,3 +910,33 @@ class SalarySheet(models.Model):
 
     def __str__(self):
         return f"{self.employee.name} - {self.month} - {self.amount} ({self.get_status_display()})"
+
+
+class Fee(models.Model):
+    """Class-wise fee schedule (P1-2).
+
+    One row = the fee amount for a specific Institution + Class + purpose
+    (e.g. 'Admission Fee', 'Monthly Tuition'). Used to pre-fill and sanity-check
+    the amount in the admission payment approval flow. If no row exists for a
+    class, the flow behaves exactly as before (free-form amount).
+    """
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='fees')
+    admission_class = models.CharField(max_length=10)
+    purpose = models.CharField(max_length=100, default='Admission Fee')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='fees_created',
+    )
+
+    class Meta:
+        ordering = ['institution', 'admission_class', 'purpose']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['institution', 'admission_class', 'purpose'],
+                name='unique_fee_institution_class_purpose',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.institution} / Class {self.admission_class} / {self.purpose} — {self.amount}"

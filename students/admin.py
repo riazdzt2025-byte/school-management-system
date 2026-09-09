@@ -6,7 +6,7 @@ from .models import (
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog,
-    SubjectRequirement, StudentSubjectChoice, SectionCapacity,
+    SubjectRequirement, StudentSubjectChoice, SectionCapacity, Fee,
 )
 
 
@@ -41,6 +41,7 @@ admin.site.register(EmployeeStatusLog)
 admin.site.register(MoneyReceipt)
 admin.site.register(Voucher)
 admin.site.register(SalarySheet)
+admin.site.register(Fee)
 admin.site.register(AdmissionApplication)
 admin.site.register(PromotionBatch)
 admin.site.register(StudentPromotionHistory)

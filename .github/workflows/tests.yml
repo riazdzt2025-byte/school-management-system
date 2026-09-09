@@ -1,0 +1,40 @@
+name: Django tests
+
+on:
+  push:
+    branches: [ main, arena/** ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  # SQLite (the local default) is used by tests; no external DB needed.
+  DJANGO_SETTINGS_MODULE: school_system.settings
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Migrations in sync (no missing migrations)
+        run: python manage.py makemigrations --check
+
+      - name: Run test suite
+        run: python manage.py test students --verbosity 1

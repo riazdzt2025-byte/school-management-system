@@ -610,9 +610,15 @@ def admission_application_detail(request, pk):
         request, AdmissionApplication.objects.select_related('institution', 'enrolled_student'), pk,
         lambda a: a.institution,
     )
+    # P1-2: pre-fill the payment amount from the class-wise fee schedule when one
+    # is configured; otherwise leave the current (possibly empty) value.
+    fee = _matching_fee(application)
     payment_form = AdmissionPaymentForm(instance=application)
+    if fee is not None and not application.payment_amount:
+        payment_form.initial['payment_amount'] = fee.amount
     return render(request, 'students/admission_application_detail.html', {
         'application': application, 'payment_form': payment_form,
+        'fee': fee,
     })
 
 
@@ -682,6 +688,15 @@ def accounts_admission_queue(request):
 
 def _new_receipt_number():
     return f"ADM-{date.today():%Y}-{uuid4().hex[:10].upper()}"
+
+
+def _matching_fee(application):
+    """The Fee row configured for this application's institution/class, if any."""
+    from .models import Fee
+    return Fee.objects.filter(
+        institution=application.institution,
+        admission_class=application.requested_class,
+    ).order_by('purpose').first()
 
 
 # ---------------- rate limiting (P1-9 public admission, P2-2 login) ----------------
@@ -757,6 +772,15 @@ def accounts_approve_payment(request, pk):
         if not form.is_valid():
             messages.error(request, 'Please provide valid payment details.')
             return redirect('admission_application_detail', pk=pk)
+        # P1-2: warn when the entered amount differs from the class fee schedule
+        # (a configured fee is a guideline/confirmation, not a hard cap).
+        fee = _matching_fee(application)
+        if fee is not None and form.cleaned_data.get('payment_amount') != fee.amount:
+            messages.warning(
+                request,
+                f'Entered amount differs from the fee schedule for this class '
+                f'({fee.amount:,.2f} per {fee.purpose}).'
+            )
         if not SectionCapacity.has_room(
             application.institution, application.requested_class, application.requested_section
         ):
