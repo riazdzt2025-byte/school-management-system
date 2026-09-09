@@ -284,3 +284,28 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 **Branch / remote status:** branch `arena/01a08254-school-management-system`; changes committed/pushed in this session.
 
 **Next session recommendations:** P0-1 (BUG-1 `tc_print` 500), P0-5 (money validation), P0-10 (dead code), P0-11 (permission source, after D-6), P1-1 voucher isolation (after D-3), then production backup ops (P0-8 ops) once owner approves + provides access.
+
+---
+
+## Session update — 2026-09-09 · P0-1 / P0-5 / P0-11 (arena/01a08254-school-management-system, continuation)
+
+**Previous state:** backup/restore (P0-8) done, commit `35effe8`. This session does P0-1, P0-5, P0-11.
+
+**What this session did (scope only — no migration, no data change):**
+
+1. **P0-1 (BUG-1):** the rendered `school_system/templates/students/student_detail.html` referenced the missing `tc_print` URL + non-existent `TransferCertificate` fields (`get_status_display`, `issued_date`) → 500 whenever a student had a TC. Fixed template-only: Print links to `view_tc`; card shows `tc_number`/`issue_date`/`issued_by`/`reason`. Added test.
+2. **P0-5 (SEC-7):** server-side bounds on all four money fields (`payment_amount`, `MoneyReceipt.amount`, `Voucher.amount`, `SalarySheet.amount`) — `MinValueValidator(0)` + `MaxValueValidator(99999999.99)`. Added `students/test_money_validation.py` (8 tests).
+3. **P0-11 (PERM-1):** `setup_groups.py` now delegates to `ensure_default_groups()` (permissions.py = single source). Verified `manage.py setup_groups` matches permissions.py; `delete_exam` stays admin-only in the view so no clerk path changes.
+
+**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; `manage.py test students` = **223 tests, all pass** (was 214 + 9). No migration, no data change. SSC untouched.
+
+**Intentionally NOT done (need owner decision / infra — pending):**
+
+- **D-3 / P1-1 (Voucher institution column + scoping):** requires a schema migration AND a business decision (per-institution vs school-wide). Not invented without approval.
+- **D-7 (media storage):** persistent disk vs S3 — owner/infra decision, not a code change.
+- **D-9 (PromotionBatch column):** already query-scoped; adding a column is optional + needs migration.
+- **P0-10 (dead-code cleanup):** separate scope, not requested this turn.
+
+**Branch / remote status:** branch `arena/01a08254-school-management-system`; changes committed/pushed this session.
+
+**Next session recommendations:** get owner decision on **D-3 (voucher per-institution vs school-wide)** then implement P1-1; confirm **D-7 (media storage)**; and **P0-10 (dead-code cleanup)** if approved.

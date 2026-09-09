@@ -345,3 +345,61 @@ paths / symlink members, manifest never contains credentials, retention prunes t
 - `manage.py check` — 0 issues; `makemigrations --check` — no changes.
 - `manage.py test students` — **214 tests, all pass** (was 206; +8 backup tests).
 - No migration, no data change. SSC untouched.
+
+---
+
+## 11. P0-1 / P0-5 / P0-11 — 2026-09-09 (this session)
+
+**Scope (session rule 2):** only P0-1 (TC 500 crash), P0-5 (server-side money
+validation), and P0-11 (single source of truth for group permissions). No
+migration, no data change. SSC not restored.
+
+### 11.1 P0-1 · student-detail 500 when a student has a Transfer Certificate
+
+`school_system/templates/students/student_detail.html` (the rendered copy, via
+`DIRS`) linked the non-existent URL name `tc_print` and referenced fields that
+do not exist on `TransferCertificate` (`get_status_display`, `issued_date`).
+`{% url %}` raised `NoReverseMatch` whenever a student had a TC → whole page 500.
+
+Fix (template-only): the Print button now links to the existing `view_tc` URL
+(which renders `tc_print.html` and has its own Print button); the card shows the
+real fields `tc_number`, `issue_date`, `issued_by`, `reason`. The dead
+`students/templates/students/student_detail.html` copy is untouched here (P0-10,
+separate scope).
+
+### 11.2 P0-5 · server-side money validation
+
+All four money fields (`AdmissionPaymentForm.payment_amount`,
+`MoneyReceiptForm.amount`, `VoucherForm.amount`, `SalarySheetForm.amount`) now
+apply `MinValueValidator(0)` + `MaxValueValidator(99999999.99)` (matches
+`max_digits=10, decimal_places=2`) on the **server**, so a hand-crafted POST
+cannot store a negative/absurd amount. HTML `min="0"` added for consistency.
+
+### 11.3 P0-11 · single source of truth for group permissions
+
+`setup_groups.py` carried its own permission map that diverged from
+`permissions.py` (Exam group had `delete_exam` here but not there). The command
+now delegates to `ensure_default_groups()` (the `post_migrate` source). Verified
+`setup_groups` produces exactly the `permissions.py` map. `delete_exam` remains
+admin-only in the view, so removing it from the Exam group changes no clerk path.
+
+### 11.4 Tests added
+
+- `students/tests.py` `StudentDetailPageTests.test_student_detail_with_transfer_certificate_does_not_500`.
+- `students/test_money_validation.py` — 8 tests (negative/oversize rejected,
+  valid positive/zero accepted, per form).
+
+### 11.5 Verification
+
+- `manage.py check` — 0 issues; `makemigrations --check` — no changes.
+- `manage.py test students` — **223 tests, all pass** (was 214; +9 tests).
+- No migration, no data change. SSC untouched.
+
+### 11.6 Still open (decision/infra-bound)
+
+| ID | Remaining | Why |
+|---|---|---|
+| D-3 / P1-1 | `Voucher` institution column + scoping | Needs a schema migration + a business decision (per-institution vs school-wide) — owner input required |
+| D-7 | Media storage strategy (persistent disk vs S3) | Owner/infra decision |
+| D-9 | `PromotionBatch.institution` column | Already query-scoped; column optional, needs migration |
+| P0-10 | Dead-code cleanup | Separate scope, not requested this turn |

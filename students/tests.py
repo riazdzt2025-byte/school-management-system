@@ -17,6 +17,7 @@ except ModuleNotFoundError:
 from .models import (
 	AdmissionApplication, AuditLog, AttendanceRecord, Employee, EmployeeStatusLog, Exam, ExamMark, Institution, InstitutionAccess,
 	MoneyReceipt, PromotionBatch, Student, StudentSubjectChoice, Subject,
+	TransferCertificate,
 )
 from .forms import ExamForm, StudentForm, auto_exam_name
 from .permissions import ensure_default_groups
@@ -563,6 +564,23 @@ class StudentDetailPageTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertContains(response, 'Exam Results')
 		self.assertContains(response, 'Math')
+
+	def test_student_detail_with_transfer_certificate_does_not_500(self):
+		"""A student with an issued TC must render the detail page (BUG-1).
+
+		Before the fix the template linked the non-existent ``tc_print`` URL, so
+		``{% url %}`` raised NoReverseMatch and the whole page 500'd. The card
+		now links to ``view_tc`` (which renders the print template) and drops the
+		non-existent ``get_status_display``/``issued_date`` references.
+		"""
+		TransferCertificate.objects.create(
+			student=self.student, tc_number='TC-2099-001', reason='Family relocation'
+		)
+		response = self.client.get(reverse('student_detail', args=[self.student.pk]))
+		self.assertEqual(response.status_code, 200)
+		self.assertContains(response, 'Transfer Certificate Issued')
+		self.assertContains(response, 'TC-2099-001')
+		self.assertNotContains(response, 'NoReverseMatch')
 
 
 class EmployeeDetailPageTests(TestCase):

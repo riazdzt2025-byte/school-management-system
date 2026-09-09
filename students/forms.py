@@ -1,6 +1,8 @@
 import re
+from decimal import Decimal
 
 from django import forms
+from django.core.validators import MaxValueValidator, MinValueValidator
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
     Institution, InstitutionAccess,
@@ -9,6 +11,19 @@ from .models import (
     AdmissionApplication, SectionCapacity,
     RELIGION_CHOICES, student_religion,
 )
+
+# Largest value that fits the money columns (max_digits=10, decimal_places=2).
+_MONEY_MAX = Decimal('99999999.99')
+
+
+def _money_field_validators():
+    """Server-side bounds for every money field (SEC-7).
+
+    The HTML ``min="0"``/``max`` attributes are client-side only, so a
+    hand-crafted POST could store a negative or absurd amount. These validators
+    reject anything outside 0 .. 99999999.99 on the server.
+    """
+    return [MinValueValidator(Decimal('0')), MaxValueValidator(_MONEY_MAX)]
 
 
 def _allowed_institution_ids(user):
@@ -270,6 +285,10 @@ class AdmissionPaymentForm(forms.ModelForm):
             'payment_purpose': forms.TextInput(attrs={'class': 'form-control'}),
             'account_remarks': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['payment_amount'].validators += _money_field_validators()
 
 
 class SubjectForm(forms.ModelForm):
@@ -581,11 +600,12 @@ class MoneyReceiptForm(forms.ModelForm):
     class Meta:
         model = MoneyReceipt
         fields = ['student', 'receipt_no', 'purpose', 'amount', 'date']
-        widgets = {'student': forms.Select(attrs={'class': 'form-select'}), 'receipt_no': forms.TextInput(attrs={'class': 'form-control'}), 'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})}
+        widgets = {'student': forms.Select(attrs={'class': 'form-select'}), 'receipt_no': forms.TextInput(attrs={'class': 'form-control'}), 'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})}
 
     def __init__(self, *args, **kwargs):
         user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+        self.fields['amount'].validators += _money_field_validators()
         self.allowed_institution_ids = _allowed_institution_ids(user)
         if self.allowed_institution_ids is not None:
             self.fields['student'].queryset = Student.objects.filter(
@@ -608,18 +628,23 @@ class VoucherForm(forms.ModelForm):
     class Meta:
         model = Voucher
         fields = ['purpose', 'amount', 'date', 'status']
-        widgets = {'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
+        widgets = {'purpose': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['amount'].validators += _money_field_validators()
 
 
 class SalarySheetForm(forms.ModelForm):
     class Meta:
         model = SalarySheet
         fields = ['employee', 'month', 'amount', 'date', 'status']
-        widgets = {'employee': forms.Select(attrs={'class': 'form-select'}), 'month': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
+        widgets = {'employee': forms.Select(attrs={'class': 'form-select'}), 'month': forms.TextInput(attrs={'class': 'form-control'}), 'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}), 'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}), 'status': forms.Select(attrs={'class': 'form-select'})}
 
     def __init__(self, *args, **kwargs):
         user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+        self.fields['amount'].validators += _money_field_validators()
         self.allowed_institution_ids = _allowed_institution_ids(user)
         if self.allowed_institution_ids is not None:
             self.fields['employee'].queryset = Employee.objects.filter(
