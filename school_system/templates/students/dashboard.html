@@ -123,4 +123,29 @@
             </div>
         </div>
     </div>
+
+    {% if perms.students.add_student or perms.students.view_admissionapplication or perms.students.add_exammark or perms.students.add_exam or perms.students.add_moneyreceipt %}
+    <div class="table-card mt-4">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Quick actions</h2>
+            <div class="d-flex flex-wrap gap-2">
+                {% if perms.students.add_student %}
+                    <a href="{% url 'add_student' %}" class="btn btn-navy"><i class="bi bi-person-plus-fill me-1"></i>Add Student</a>
+                {% endif %}
+                {% if perms.students.view_admissionapplication %}
+                    <a href="{% url 'admission_application_list' %}" class="btn btn-navy"><i class="bi bi-folder2-open me-1"></i>Admissions</a>
+                {% endif %}
+                {% if perms.students.add_exammark %}
+                    <a href="{% url 'start_entering_marks' %}" class="btn btn-navy"><i class="bi bi-pencil-fill me-1"></i>Enter Marks</a>
+                {% endif %}
+                {% if perms.students.add_exam %}
+                    <a href="{% url 'add_exam' %}" class="btn btn-navy"><i class="bi bi-journal-plus me-1"></i>New Exam</a>
+                {% endif %}
+                {% if perms.students.add_moneyreceipt %}
+                    <a href="{% url 'add_money_receipt' %}" class="btn btn-navy"><i class="bi bi-receipt me-1"></i>New Receipt</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
 {% endblock %}

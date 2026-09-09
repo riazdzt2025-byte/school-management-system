@@ -51,3 +51,23 @@ class SidebarNavigationTests(TestCase):
         self.assertIn(reverse('student_promotion'), body)
         self.assertNotIn('Attendance', body)
         self.assertNotIn(reverse('attendance_report'), body)
+
+    def test_dashboard_quick_links_for_authorised_user(self):
+        # P2-6: authorised user sees the quick-action links on the dashboard.
+        self._grant(['add_student', 'view_admissionapplication',
+                     'add_exammark', 'add_exam', 'add_moneyreceipt'])
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        for name in ['add_student', 'admission_application_list',
+                     'start_entering_marks', 'add_exam', 'add_money_receipt']:
+            self.assertIn(f'href="{reverse(name)}"', body, name)
+
+    def test_dashboard_quick_links_hidden_without_perms(self):
+        # A bare user sees no quick links (check the exact href anchor).
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+        body = response.content.decode()
+        self.assertNotIn(f'href="{reverse("add_student")}"', body)
+        self.assertNotIn('Quick actions', body)

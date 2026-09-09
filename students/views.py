@@ -1482,9 +1482,43 @@ def student_detail(request, pk):
         request, Student, pk, lambda s: s.institution
     )
     
-    # Get subjects
-    subjects = student.subjects.select_related('subject')
-    
+    # Get subjects — the "Subjects & Curriculum" tab (P1-5) now shows the
+    # *current* assignments derived from SubjectRequirement (get_applicable_subjects)
+    # plus the student's chosen optional subjects, instead of the legacy
+    # StudentSubject M2M rows. Legacy data is admin-only.
+    applicable = get_applicable_subjects(
+        student.institution, student.admission_class,
+        group=student.group, religion=student.religion,
+    )
+    chosen_requirement_ids = set(
+        StudentSubjectChoice.objects.filter(student=student)
+        .values_list('requirement_id', flat=True)
+    )
+    curriculum_subjects = []
+    for item in applicable['mandatory'] + applicable['conditional']:
+        curriculum_subjects.append({
+            'name': item['name'], 'code': item['code'],
+            'curriculum': 'Mandatory', 'status': 'Auto',
+        })
+    for key, group in applicable['optional_groups'].items():
+        for item in group:
+            chosen = item['requirement_id'] in chosen_requirement_ids
+            curriculum_subjects.append({
+                'name': item['name'], 'code': item['code'],
+                'curriculum': 'Optional',
+                'status': 'Chosen' if chosen else 'Not chosen',
+            })
+    if not applicable['mandatory'] and not applicable['conditional'] \
+            and not applicable['optional_groups']:
+        # No curriculum configured for this class/section — fall back to the
+        # subject rows the student is actually enrolled in via the legacy
+        # model so the tab is never empty/misleading.
+        curriculum_subjects = [
+            {'name': s.subject.name, 'code': s.subject.code,
+             'curriculum': s.curriculum or '', 'status': 'Discontinued' if s.is_discontinued else 'Active'}
+            for s in student.subjects.select_related('subject')
+        ]
+
     # Get transfer certificate
     transfer_certificate = getattr(student, 'transfer_certificate', None)
     
@@ -1513,7 +1547,8 @@ def student_detail(request, pk):
     
     return render(request, 'students/student_detail.html', {
         'student': student,
-        'subjects': subjects,
+        'subjects': curriculum_subjects,
+        'curriculum_subjects': curriculum_subjects,
         'transfer_certificate': transfer_certificate,
         'attendance_records': attendance_records_display,
         'attendance_rate': attendance_rate,
@@ -1660,6 +1695,11 @@ def edit_student(request, pk):
         if form.is_valid():
             form.save()
             save_student_subject_choices(student, request.POST.getlist('requirement_ids'))
+            # P2-4: audit the field-level change so a staff edit is traceable.
+            record_audit(
+                request.user, 'student_updated', student,
+                details={'changed_fields': sorted(form.changed_data)},
+            )
             messages.success(request, "Student information updated.")
             url = reverse('student_list')
             if student.institution_id:
@@ -2595,6 +2635,22 @@ def import_students(request):
                             skipped_count += 1
                         continue
 
+                    # Honour the section seat limit (P1-7), same as the Add
+                    # Student form. An over-capacity row is skipped, not created,
+                    # so a bulk import can never push a class/section past its
+                    # configured capacity. A missing SectionCapacity row means
+                    # "no limit" (has_room returns True).
+                    if not SectionCapacity.has_room(
+                        institution, str(admission_class).strip(),
+                        str(section).strip() if section else '',
+                    ):
+                        error_rows.append(
+                            f"Row {row_num}: class/section {admission_class}"
+                            f"{('-' + str(section).strip()) if section else ''} is full "
+                            f"(capacity reached) — skipped."
+                        )
+                        continue
+
                     Student.objects.create(
                         institution=institution,
                         name=str(name).strip(),
@@ -3424,6 +3480,11 @@ def edit_employee(request, pk):
     form = EmployeeForm(request.POST or None, instance=employee, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
+        # P2-4: audit the field-level change so a staff edit is traceable.
+        record_audit(
+            request.user, 'employee_updated', employee,
+            details={'changed_fields': sorted(form.changed_data)},
+        )
         messages.success(request, 'Employee updated.')
         return redirect('employee_list')
     return render(request, 'students/add_employee.html', {'form': form, 'employee': employee})

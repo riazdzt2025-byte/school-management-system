@@ -93,16 +93,20 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for s in subjects %}
+                    {% for s in curriculum_subjects %}
                     <tr>
-                        <td>{{ s.subject.name }}</td>
-                        <td>{{ s.subject.code }}</td>
+                        <td>{{ s.name }}</td>
+                        <td>{{ s.code }}</td>
                         <td>{{ s.curriculum }}</td>
                         <td>
-                            {% if s.is_discontinued %}
+                            {% if s.status == 'Chosen' %}
+                                <span class="badge bg-success">Chosen</span>
+                            {% elif s.status == 'Not chosen' %}
+                                <span class="badge bg-warning text-dark">Not chosen</span>
+                            {% elif s.status == 'Discontinued' %}
                                 <span class="badge bg-danger">Discontinued</span>
                             {% else %}
-                                <span class="badge bg-success">Active</span>
+                                <span class="badge bg-secondary">Auto</span>
                             {% endif %}
                         </td>
                     </tr>
