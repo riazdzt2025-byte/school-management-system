@@ -143,15 +143,22 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 - **Tests:** run the full suite with `DATABASE_URL` pointed at a local Postgres.
 - **Migration risk:** medium — a real data migration; requires the P0-8 backup, a staging copy, and a rollback plan. Do it as its own session.
 
-### P1-11 · Media storage strategy (student photos) — code side DONE
+### P1-11 · Media storage strategy (student photos) — **MERGED** (PR #11, `84e12d8`)
 - **Depends on:** D-7 · Both routes are now available, and the S3-compatible one is
   what the free tier can actually use (a Render persistent disk is paid-only):
   `USE_S3` + `AWS_*` env selects `django-storages`, `manage.py copy_media_to_storage`
   moves the photos already on disk, and `check --deploy` warns if media would still
   land in the app tree. Guide: `docs/FREE_TIER_MEDIA_STORAGE.md`.
-- **Remaining (owner, rule 7):** create the bucket + API token, set the six env vars,
-  run the copy, then prove it — upload → redeploy → image still present.
-- **Tests:** `students/test_media_storage.py` (33). The live upload→redeploy check stays manual.
+- **Remaining (owner only):** create the R2/S3 bucket + API token and set the six env
+  vars in Render (`USE_S3` + five `AWS_*`), plus `check --deploy` in the Build command.
+  The optional `copy_media_to_storage` run depends on whether anything is left on the
+  disk — see `docs/FREE_TIER_MEDIA_STORAGE.md` §3 step 4 for the free-tier routes
+  (no shell on a Free instance).
+- **Owner waived the live proof** (2026-09-09): upload → redeploy → image still
+  present is **not** required to close this. It stays in the runbook as the only test
+  that exercises production, so until it is run the durability claim is proven by code
+  + tests only, not by observation on the live service.
+- **Tests:** `students/test_media_storage.py` (33); `manage.py test students` = 293.
 - **Risk:** low. Additive: no migration, no URL change, no behaviour change while
   `USE_S3` is unset; half-configured buckets fail loudly at boot instead of quietly.
 
@@ -201,7 +208,7 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | ID | Task | Blocker / dependency |
 |---|---|---|
 | P0-7 | Production checklist (live Render) | Needs live access + owner confirmation; rule 7 (no live change without approval) |
-| P1-11 | Media storage strategy (persistent disk / S3) | Code done; needs the owner to create the bucket + set `USE_S3`/`AWS_*` on Render and re-check after a redeploy |
+| P1-11 | Media storage strategy (persistent disk / S3) | **Merged.** Only the Render bucket + `USE_S3`/`AWS_*` env wiring is left, which needs the owner's dashboard access |
 | P0-1 | BUG-1 fix (`tc_print` URL) | Needs next session; not part of audit scope |
 | P0-2…P0-5 | Isolation + validation fixes | Need D-1…D-9 decisions first |
 | P0-6 | Isolation regression tests | Depends on P0-2…P0-5 |

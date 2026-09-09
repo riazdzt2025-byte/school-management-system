@@ -571,7 +571,7 @@ level (one new table). The live Render ops steps still need owner account access
 - **`manage.py test students` — 260 tests, all pass** (was 229 before this stretch).
 - Migration `0038` (new `Fee` table) applied cleanly; additive, no data loss.
 
-## 15. P1-11 free-tier media storage (object storage for uploads) — 2026-09-09
+## 15. P1-11 free-tier media storage (object storage for uploads) — 2026-09-09 · **merged (`84e12d8`, PR #11)**
 
 **Why:** Render's free tier rebuilds the container on every deploy, so
 `BASE_DIR/media` is wiped and student photos disappear while their rows survive.
@@ -588,9 +588,11 @@ previous session (commit `c469ec5`, lost with that sandbox).
 | `requirements.txt` | `django-storages==1.14.6`, `boto3==1.43.90` | CI installs them, so the S3-backend tests run there |
 | Docs | `docs/FREE_TIER_MEDIA_STORAGE.md` (setup, verification, rollback), `PRODUCTION_CHECKLIST.md` §3, `TASK_BACKLOG.md` P1-11/D-7 | n/a |
 
-**Still the owner's (rule 7):** create the bucket + token, set the six env vars on
-Render, run `copy_media_to_storage`, then prove it live (upload → redeploy →
-photo still loads). No credentials were requested or stored anywhere in the repo.
+**Still the owner's (dashboard access only):** create the bucket + token and set the
+six env vars on Render; `copy_media_to_storage` if anything is left on the disk (a Free
+service has no shell — see §3 step 4 routes). The live upload → redeploy proof was
+**waived by the owner**, so durability is proven by tests + CI, not by observation.
+No credentials were requested or stored anywhere in the repo.
 
 **Verified:** `manage.py check` → 0 issues; `check --deploy` with `DEBUG=False` and
 local media → `students.W010` present, absent with `USE_S3`; `makemigrations --check`
