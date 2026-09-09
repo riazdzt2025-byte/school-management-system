@@ -258,3 +258,29 @@ DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --de
 1. Confirm D-1…D-10 with the owner (esp. D-3 voucher, D-9 promotion).
 2. P0-1 (BUG-1 `tc_print` 500), P0-5 (money validation `MinValue(0)`), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code), P0-11 (permission source, after D-6).
 3. P1-1 voucher isolation (after D-3); optional D-9 promotion column.
+
+---
+
+## Session update — 2026-09-09 · Backup & restore (P0-8) session (`arena/01a08254-school-management-system`, continuation)
+
+**Previous state:** write isolation completed (commit `854470f`, pushed). This session implements **P0-8**.
+
+**What this session did (scope only — backup/restore tooling, no migration, no data change, no production ops):**
+
+1. Verified current environment: DB is `dj_database_url`-driven (SQLite default, Postgres via `DATABASE_URL`); `MEDIA_ROOT = BASE_DIR/media` (FileSystemStorage); no existing backup tooling. `.venv` = Django 5.2.17 / Python 3.11.2.
+2. Added backup tooling:
+   - `students/backup_utils.py` — engine detection (sqlite/postgres), consistent SQLite online-backup snapshot, `pg_dump` wiring via `PG*` env (never argv), media `.tar.gz` (regular files only, symlinks skipped), credential-free `manifest.json`, safe (cross-version) tar extraction, retention prune, backup-folder resolution.
+   - `students/management/commands/backup_data.py` — `manage.py backup_data [--keep N] [--media-dir] [--backup-root]`; deletes the half-written folder on failure so a failed run can't look like a good backup.
+   - `students/management/commands/restore_backup.py` — `manage.py restore_backup --backup <folder> [--media-dir] [--yes] [--verify] [--verify-only]`; restores into the configured DB + media dir; verify = DB SHA + `migrate --check` + sentinel record counts + every `ImageField`/`FileField` reference resolves.
+   - `scripts/backup.sh` / `scripts/restore.sh` — cron-friendly wrappers (invoke via `.venv/bin/python`, return proper exit codes).
+3. Added `docs/BACKUP_AND_RESTORE.md` runbook + a hard "Backup before you deploy" section in `DEPLOY_NOTES.md`; `.gitignore` now excludes `backups/` and `.restore-drill/`.
+4. Ran a **disposable restore drill** entirely in `/tmp`: seeded a throwaway SQLite DB (institutions fixture + user + student with an uploaded photo), `backup_data`, then `restore_backup --yes --verify` into a separate disposable DB + media dir. Verified SHA-256 OK, `migrate --check` OK, record counts matched (Institutions 6 / Users 1 / Students 1), media references OK, restored photo byte-identical, app boots (page 200).
+5. Added `students/test_backup_tooling.py` (8 tests).
+
+**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; `manage.py test students` = **214 tests, all pass** (was 206 + 8). No migration, no data change. SSC untouched.
+
+**Intentionally NOT done (needs owner approval/access — runbook §8):** production backup scheduling (Render cron), off-box storage (S3/R2/Render disk), backup-failure notification wiring, confirming production runs Postgres + that `pg_dump`/`pg_restore` exist. A test restore is NOT a live backup.
+
+**Branch / remote status:** branch `arena/01a08254-school-management-system`; changes committed/pushed in this session.
+
+**Next session recommendations:** P0-1 (BUG-1 `tc_print` 500), P0-5 (money validation), P0-10 (dead code), P0-11 (permission source, after D-6), P1-1 voucher isolation (after D-3), then production backup ops (P0-8 ops) once owner approves + provides access.

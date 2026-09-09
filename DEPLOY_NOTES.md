@@ -75,6 +75,25 @@ If a class has no `SubjectRequirement` rows configured, every subject is shown
 (with a notice on the page) so marks entry is never blocked. Configure subject
 assignments per class/group to get the filtered behaviour.
 
+## Backup before you deploy (hard rule)
+
+`migration 0035` is irreversible and the cleanup commands (`merge_duplicate_subjects
+--apply`, `clean_student_groups --apply`, purge endpoints) destroy data on purpose.
+**No destructive migration or command runs without a fresh backup.**
+
+```bash
+# From the repo root (creates backups/backup-<timestamp>/ in ./backups or
+# $P0B_BACKUP_ROOT). See docs/BACKUP_AND_RESTORE.md.
+.venv/bin/python manage.py backup_data
+# or, cron-friendly with non-zero-exit failure reporting:
+scripts/backup.sh
+```
+
+Confirm the newest `backups/backup-*` folder contains a `manifest.json`, and that
+restoring it into a **disposable** target passes `--verify` (see
+`docs/BACKUP_AND_RESTORE.md` §6). Only a backup taken from the production
+database counts as the live backup — a test restore does not.
+
 ## Remove retired SSC registration and board-result features
 
 Migration `0035_remove_ssc_registration_and_board_result` permanently drops the

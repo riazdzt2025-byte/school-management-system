@@ -275,3 +275,73 @@ JSON/selector endpoints: `subject_requirements_json` now resolves institution vi
 - `manage.py check` — 0 issues.
 - `manage.py test students` — **206 tests, all pass** (previously 180; +26 write-isolation tests).
 - No migration, no data change. SSC untouched.
+
+---
+
+## 10. Backup & restore runbook (P0-8) — 2026-09-09 (this session)
+
+**Scope (session rule 2):** only P0-8 — safe backup/restore tooling, retention
+guidance, failure reporting, and a **disposable** restore drill. No migration, no
+data change, no production scheduling/external-storage config (that needs owner
+access/approval). SSC not restored.
+
+### 10.1 What was added
+
+- **Tooling** (`students/backup_utils.py`, two management commands, two wrappers):
+  - `manage.py backup_data` — creates a consistent DB snapshot (SQLite online
+    backup, or `pg_dump` custom-format for Postgres), a `.tar.gz` of `MEDIA_ROOT`,
+    and a `manifest.json` (engine, artifact names, SHA-256, media count; **never
+    credentials**). Prunes old backups (`--keep`, default 7). On failure the
+    half-written folder is deleted so it can't be mistaken for a good backup.
+  - `manage.py restore_backup` — restores a backup folder into the configured DB
+    + media dir (requires `--yes`); `--verify` runs post-restore integrity checks
+    (DB SHA, `migrate --check`, sentinel record counts, and that every
+    `ImageField`/`FileField` reference resolves to a file on disk).
+  - `scripts/backup.sh` / `scripts/restore.sh` — cron-friendly wrappers that
+    invoke via the venv interpreter and return a usable exit code.
+- **Cross-version-safe tar extraction** (couldn't use Python 3.12's
+  `extractall(filter=...)` — the runtime is 3.11): manual member validation that
+  rejects absolute paths, `..` traversal, and symlinks/hardlinks.
+- **Credential safety:** Postgres `pg_dump`/`pg_restore` are driven via the `PG*`
+  env vars (not argv), and the manifest contains no password/DSN.
+- **Runbook:** `docs/BACKUP_AND_RESTORE.md` (what/where/how to back up,
+  retention, failure reporting, restore, disposable drill, and the explicit note
+  that a test restore is **not** a live backup).
+- **Hard rule added** to `DEPLOY_NOTES.md`: no destructive migration/command
+  runs without a fresh backup.
+- `.gitignore`: `backups/` and `.restore-drill/`.
+
+### 10.2 Restore drill (disposable only — done and verified)
+
+Ran entirely in `/tmp` (never the repo DB/media): seeded a throwaway SQLite DB
+(institutions fixture + 1 user + 1 student with an uploaded photo), ran
+`backup_data`, then `restore_backup --yes --verify` into a separate disposable DB
++ media dir. Verified:
+
+- `DB artifact SHA-256 OK`, `migrate --check OK`.
+- Sentinel record counts matched the source (Institutions 6 / Users 1 / Students 1).
+- `Media references OK (1 file reference(s) found)`; the restored photo was
+  byte-identical (`sha256sum` matched the source).
+- The app boots against the restored DB (`manage.py check` clean, a page renders
+  HTTP 200).
+
+### 10.3 Tests added
+
+`students/test_backup_tooling.py` — 8 tests: media archive round-trip preserves
+bytes, archive skips symlinks, safe extraction rejects path traversal / absolute
+paths / symlink members, manifest never contains credentials, retention prunes to
+`--keep`, and the SQLite snapshot is consistent.
+
+### 10.4 Intentionally NOT done (needs approval / access — see §8 of the runbook)
+
+- Production **scheduling** (Render cron) — needs owner + a persistent disk.
+- Off-box **external storage** (S3/R2/Render Disk) — owner decision.
+- **Notification** wiring for backup failures — owner decision.
+- Confirming production runs Postgres and that `pg_dump`/`pg_restore` exist in
+  the runtime.
+
+### 10.5 Verification
+
+- `manage.py check` — 0 issues; `makemigrations --check` — no changes.
+- `manage.py test students` — **214 tests, all pass** (was 206; +8 backup tests).
+- No migration, no data change. SSC untouched.

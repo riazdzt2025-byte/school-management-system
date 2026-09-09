@@ -17,6 +17,11 @@ temp_*.txt
 test_*.txt
 .venv/
 
+# Backup / restore artifacts and disposable restore-drill scratch
+# (contain PII + full DB copies — never commit)
+backups/
+.restore-drill/
+
 # Stale editor/backup copies
 *.bak
 

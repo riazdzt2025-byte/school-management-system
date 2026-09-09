@@ -251,3 +251,25 @@ _Status: OPEN unless marked. Every task lists its dependencies, acceptance crite
 | P0-1 | BUG-1 (`tc_print` NoReverseMatch → 500) | Different scope; a student-detail-with-TC page still 500s |
 | P0-5 | Server-side money validation | Not addressed here |
 | P0-11 | Permission single source (PERM-1) | Needs D-6 |
+
+---
+
+## Update — 2026-09-09 · Backup & restore (P0-8) session (this session)
+
+### Completed
+
+| ID | Task | Status | Evidence |
+|---|---|---|---|
+| P0-8 | Backup/restore tooling + runbook + disposable drill | **Done** | `manage.py backup_data` / `manage.py restore_backup` / `scripts/backup.sh` / `scripts/restore.sh`. SQLite + Postgres engine detection; consistent SQLite online-backup snapshot + `pg_dump`/`pg_restore` for Postgres; media `.tar.gz`; credential-free `manifest.json`; retention prune (`--keep`); failed-backup folder cleanup; runbook `docs/BACKUP_AND_RESTORE.md`; hard "backup before deploy" rule in `DEPLOY_NOTES.md`; `students/test_backup_tooling.py` (8 tests). Disposable restore drill verified (SHA, `migrate --check`, record counts, media byte-identical, app boots). |
+
+### Still open (production ops — need owner access/approval, not part of P0-8)
+
+| ID | Task | Why it stays open |
+|---|---|---|
+| P0-8 (ops) | Render scheduling, off-box storage (S3/R2/disk), backup-failure notification wiring | Needs owner + access + decisions (runbook §8) |
+| P0-1 | BUG-1 (`tc_print` NoReverseMatch → 500) | Small template-only fix; separate scope |
+| P0-5 | Server-side money validation (`MinValue(0)`) | Not addressed here |
+| P0-10 | Dead-code cleanup | Not addressed here |
+| P0-11 | Permission single source (PERM-1) | Needs D-6 |
+| P1-1 | Voucher institution isolation (SEC-5) | `Voucher` has **no** `institution` FK; needs D-3 + migration |
+| D-9 | `PromotionBatch` institution column | Promotion scoping currently query-derived |
