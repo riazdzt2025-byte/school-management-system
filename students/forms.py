@@ -10,6 +10,7 @@ from .models import (
     Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
     AdmissionApplication, SectionCapacity,
     RELIGION_CHOICES, student_religion,
+    normalize_guardian_contact, validate_guardian_contact,
 )
 
 # Largest value that fits the money columns (max_digits=10, decimal_places=2).
@@ -71,10 +72,14 @@ def _setup_religion_field(form, field):
 class StudentForm(forms.ModelForm):
     class Meta:
         model = Student
-        exclude = ['form_no', 'student_id']
+        # contact_no is the legacy free-text contact column: nothing edits it
+        # any more. guardian_contact_no is the single primary contact number,
+        # so it is the only contact input on the form.
+        exclude = ['form_no', 'student_id', 'contact_no']
         labels = {
             'admission_class': 'Class',
             'section': 'Section',
+            'guardian_contact_no': 'Guardian Contact Number',
         }
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
@@ -86,8 +91,10 @@ class StudentForm(forms.ModelForm):
             'gender': forms.Select(attrs={'class': 'form-select'}),
             'religion': forms.Select(attrs={'class': 'form-select'}),
             'father_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'contact_no': forms.TextInput(attrs={'class': 'form-control'}),
-            'guardian_contact_no': forms.TextInput(attrs={'class': 'form-control'}),
+            'guardian_contact_no': forms.TextInput(attrs={
+                'class': 'form-control', 'inputmode': 'tel',
+                'placeholder': 'e.g. 01812345678',
+            }),
             'group': forms.Select(attrs={'class': 'form-select'}),
             'photo': forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
         }
@@ -127,6 +134,15 @@ class StudentForm(forms.ModelForm):
         """Always store one of the two dropdown values, even when the POST was
         hand-crafted with something else."""
         return student_religion(self.cleaned_data.get('religion'))
+
+    def clean_guardian_contact_no(self):
+        """The guardian contact number is the single primary contact. Normalise
+        it (trim, Bangla digits -> ASCII) and reject anything that is not a
+        plausible phone number; the leading zero is kept because the value is
+        stored as text."""
+        value = normalize_guardian_contact(self.cleaned_data.get('guardian_contact_no'))
+        validate_guardian_contact(value)
+        return value
 
     def apply_group_rules(self, admission_class):
         """Groups belong to class 9 and above only. Below that the field is
@@ -213,12 +229,18 @@ class StudentForm(forms.ModelForm):
 class AdmissionApplicationForm(forms.ModelForm):
     class Meta:
         model = AdmissionApplication
+        # applicant_contact_no is the legacy applicant contact column: nothing
+        # collects it any more. guardian_contact_no is the single primary
+        # contact number the office uses to reach the family.
         fields = [
             'institution', 'applicant_name', 'date_of_birth', 'gender', 'religion',
-            'applicant_contact_no', 'applicant_address', 'guardian_name',
+            'applicant_address', 'guardian_name',
             'guardian_relation', 'guardian_contact_no', 'guardian_address',
             'requested_class', 'requested_group', 'requested_section', 'session',
         ]
+        labels = {
+            'guardian_contact_no': 'Guardian Contact Number',
+        }
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
             'date_of_birth': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
@@ -258,6 +280,15 @@ class AdmissionApplicationForm(forms.ModelForm):
     def clean_religion(self):
         """Always store one of the two dropdown values (Islam by default)."""
         return student_religion(self.cleaned_data.get('religion'))
+
+    def clean_guardian_contact_no(self):
+        """The guardian contact number is the single primary contact for the
+        application. Normalise it (trim, Bangla digits -> ASCII) and reject
+        anything that is not a plausible phone number; the leading zero is
+        kept because the value is stored as text."""
+        value = normalize_guardian_contact(self.cleaned_data.get('guardian_contact_no'))
+        validate_guardian_contact(value)
+        return value
 
     def clean(self):
         cleaned_data = super().clean()
