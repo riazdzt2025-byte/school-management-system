@@ -22,6 +22,13 @@
         <a href="{% url 'download_import_template' %}" class="btn btn-sm btn-success ms-3">⬇️ Template Download</a>
     </div>
 
+    <div class="alert alert-light border small">
+        <strong>Guardian Contact Number (অভিভাবকের যোগাযোগ নম্বর)</strong> is the one contact column and is
+        required — type the number with its leading 0 (e.g. 01812345678). Sheets from the old template, which had a
+        separate "Contact No" column, still import: when the guardian column is blank, the old
+        "Contact No" value is used as the guardian contact.
+    </div>
+
     <form method="POST" enctype="multipart/form-data">
         {% csrf_token %}
         {{ form.as_p }}

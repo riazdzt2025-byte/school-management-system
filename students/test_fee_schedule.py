@@ -24,7 +24,7 @@ class FeeScheduleTests(TestCase):
         )
         self.application = AdmissionApplication.objects.create(
             institution=self.institution, applicant_name='App One',
-            applicant_contact_no='01800000000', guardian_name='Guard One',
+            guardian_name='Guard One',
             guardian_contact_no='01900000000', requested_class='6',
             session='2026-2027', status='ACCOUNT_PENDING',
         )

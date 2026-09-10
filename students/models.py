@@ -1,4 +1,7 @@
+import re
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from uuid import uuid4
@@ -55,6 +58,72 @@ def student_religion(value):
     'Islam' for everyone else — the school has no Christian/Buddhist students,
     and a blank or unrecognised legacy value means the default, Islam."""
     return 'Hindu' if parse_religion_label(value) == 'Hindu' else 'Islam'
+
+
+# ---- Guardian contact number ---------------------------------------------
+# One primary contact number per student / admission application:
+# "Guardian Contact Number / অভিভাবকের যোগাযোগ নম্বর". The number is always
+# stored as a plain string (never a number) so a Bangladeshi mobile's leading
+# zero — 01812345678 — survives; it would be the first thing a numeric column
+# throws away.
+#
+# The former Student.contact_no and AdmissionApplication.applicant_contact_no
+# columns were removed (migration 0040); any value that differed from the
+# guardian number was archived to AuditLog first, so nothing was silently
+# lost.
+#
+# Accepted format: an optional leading '+', then 6–20 characters of digits,
+# spaces, dashes and parentheses (e.g. 01812345678, +880 1812-345678,
+# 01812 345678). Anything else — letters, blank-with-junk — is rejected by
+# validate_guardian_contact() at the form / import layer.
+GUARDIAN_CONTACT_RE = r'^\+?\d[\d\s\-()]{5,19}$'
+
+# Bangla digits typed into the public form are converted to ASCII before
+# validation and storage, so '০১৮১২৩৪৫৬৭৮' is saved as '01812345678'.
+_BANGLA_DIGIT_TABLE = str.maketrans('০১২৩৪৫৬৭৮৯', '0123456789')
+
+
+def normalize_guardian_contact(value):
+    """Normalise a guardian contact number to its stored string form.
+
+    * ``None`` / blank -> ``''``.
+    * Bangla digits (০-৯) are translated to ASCII digits.
+    * Surrounding whitespace is stripped; the rest is kept exactly as
+      typed so the leading zero survives.
+    * A value that arrives as an Excel *numeric* cell (``int``/``float``,
+      e.g. ``1812345678``) is converted to a digit string — Excel itself
+      drops the leading zero of 01812345678 in a numeric cell — and a
+      10-digit number starting with 1 gets the leading zero restored.
+      Typed text is never modified this way.
+    """
+    if value is None:
+        return ''
+    if isinstance(value, bool):
+        return ''
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and not value.is_integer():
+            return str(value).strip()
+        text = str(int(value))
+        if len(text) == 10 and text.startswith('1'):
+            # A numeric spreadsheet cell dropped the leading zero of a
+            # Bangladeshi mobile (01812345678 stored as 1812345678).
+            text = '0' + text
+        return text
+    return str(value).strip().translate(_BANGLA_DIGIT_TABLE)
+
+
+def validate_guardian_contact(value):
+    """Reject a non-blank guardian contact that is not a plausible phone
+    number. A blank value is left to the field's own blank/required rule."""
+    if not value:
+        return
+    if not re.match(GUARDIAN_CONTACT_RE, value):
+        raise ValidationError(
+            'Enter a valid contact number (6-20 characters; digits with an '
+            'optional leading +, spaces, dashes and parentheses allowed), '
+            'e.g. 01812345678.',
+            code='invalid_guardian_contact',
+        )
 
 
 def normalize_class_label(value):
@@ -159,8 +228,14 @@ class Student(models.Model):
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True)
     religion = models.CharField(max_length=50, blank=True)
     father_name = models.CharField(max_length=100, blank=True)
-    contact_no = models.CharField(max_length=20, blank=True)
-    guardian_contact_no = models.CharField(max_length=20, blank=True)
+    # The single primary contact number for a student — required since the
+    # unification of every contact column into this one field (the legacy
+    # Student.contact_no column was removed in migration 0040).
+    guardian_contact_no = models.CharField(
+        max_length=20,
+        help_text="Guardian's primary contact number, e.g. 01812345678. "
+                  'Stored as text so the leading zero is kept.',
+    )
     group = models.CharField(max_length=3, choices=GROUP_CHOICES, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -391,11 +466,16 @@ class AdmissionApplication(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=1, choices=Student.GENDER_CHOICES, blank=True)
     religion = models.CharField(max_length=50, blank=True)
-    applicant_contact_no = models.CharField(max_length=20)
     applicant_address = models.TextField(blank=True)
     guardian_name = models.CharField(max_length=100)
     guardian_relation = models.CharField(max_length=50, blank=True)
-    guardian_contact_no = models.CharField(max_length=20)
+    # The single primary contact number for an application (the legacy
+    # applicant_contact_no column was removed in migration 0040).
+    guardian_contact_no = models.CharField(
+        max_length=20,
+        help_text="Guardian's primary contact number, e.g. 01812345678. "
+                  'Stored as text so the leading zero is kept.',
+    )
     guardian_address = models.TextField(blank=True)
     requested_class = models.CharField(max_length=10)
     requested_group = models.CharField(max_length=3, choices=Student.GROUP_CHOICES, blank=True)

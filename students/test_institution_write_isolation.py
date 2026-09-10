@@ -106,13 +106,11 @@ class InstitutionWriteIsolationTests(TestCase):
         )
 
         self.app_a = AdmissionApplication.objects.create(
-            institution=self.institution, applicant_name='App A', applicant_contact_no='01800000000',
-            guardian_name='Guard A', guardian_contact_no='01900000000',
+            institution=self.institution, applicant_name='App A', guardian_name='Guard A', guardian_contact_no='01900000000',
             requested_class='6', session='2026-2027',
         )
         self.app_b = AdmissionApplication.objects.create(
-            institution=self.other, applicant_name='App B', applicant_contact_no='01800000001',
-            guardian_name='Guard B', guardian_contact_no='01900000001',
+            institution=self.other, applicant_name='App B', guardian_name='Guard B', guardian_contact_no='01900000001',
             requested_class='6', session='2026-2027',
         )
 
@@ -511,7 +509,7 @@ class InstitutionWriteIsolationTests(TestCase):
             'institution': self.other.pk,
             'name': 'Admin Student', 'admission_class': '6', 'section': 'A',
             'admission_year': 2026, 'roll_no': 10, 'gender': 'M', 'religion': 'Islam',
-            'group': '', 'status': 'ACTIVE',
+            'guardian_contact_no': '01812345678', 'group': '', 'status': 'ACTIVE',
         })
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Student.objects.count(), before + 1)

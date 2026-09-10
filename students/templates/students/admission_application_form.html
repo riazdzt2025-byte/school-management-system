@@ -112,11 +112,6 @@
                     {% for error in form.religion.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="id_applicant_contact_no">Contact No. <span class="required-star">*</span></label>
-                    {{ form.applicant_contact_no }}
-                    {% for error in form.applicant_contact_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
-                </div>
-                <div class="col-md-6">
                     <label class="form-label" for="id_applicant_address">Address</label>
                     {{ form.applicant_address }}
                     {% for error in form.applicant_address.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
@@ -136,8 +131,9 @@
                     {% for error in form.guardian_relation.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label" for="id_guardian_contact_no">Guardian Contact No. <span class="required-star">*</span></label>
+                    <label class="form-label" for="id_guardian_contact_no">Guardian Contact Number <span class="required-star">*</span> <span class="text-muted small">(অভিভাবকের যোগাযোগ নম্বর)</span></label>
                     {{ form.guardian_contact_no }}
+                    <div class="form-text small">The one number the school contacts — keep the leading 0, e.g. 01812345678.</div>
                     {% for error in form.guardian_contact_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                 </div>
                 <div class="col-md-6">

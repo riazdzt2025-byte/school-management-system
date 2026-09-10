@@ -33,6 +33,7 @@ class EditAuditTests(TestCase):
             'institution': self.institution.pk, 'name': 'Renamed One',
             'admission_class': '6', 'section': 'A', 'admission_year': 2026,
             'roll_no': 1, 'gender': 'M', 'religion': 'Islam', 'status': 'ACTIVE',
+            'guardian_contact_no': '01812345678',
         })
         self.assertEqual(response.status_code, 302)
         log = AuditLog.objects.filter(action='student_updated').last()

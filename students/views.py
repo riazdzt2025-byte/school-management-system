@@ -3,6 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse, Http404
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q
 from django.urls import reverse
@@ -17,6 +18,7 @@ from .models import (
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
     StudentSubjectChoice, SectionCapacity,
     MARK_PARTS, GROUPED_CLASS_LABELS,
+    normalize_guardian_contact, validate_guardian_contact,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -301,7 +303,8 @@ def apply_student_text_search(qs, q):
         | Q(name__icontains=q)
         | Q(father_name__icontains=q)
         | Q(form_no__icontains=q)
-        | Q(contact_no__icontains=q)
+        # The guardian contact number is the single primary contact.
+        | Q(guardian_contact_no__icontains=q)
     )
     if q.isdigit():
         filters |= Q(roll_no=int(q))
@@ -514,7 +517,7 @@ def download_admission_sheet(request):
 
     headers = [
         "Application No.", "Applicant Name", "Date of Birth", "Gender", "Religion",
-        "Contact No", "Address", "Guardian Name", "Relation", "Guardian Contact No",
+        "Address", "Guardian Name", "Relation", "Guardian Contact Number",
         "Guardian Address", "Class", "Group", "Section", "Session", "Status",
         "Payment Amount", "Payment Date", "Enrolled Student ID", "Submitted At",
     ]
@@ -538,7 +541,6 @@ def download_admission_sheet(request):
                 application.date_of_birth.isoformat() if application.date_of_birth else "",
                 application.get_gender_display() if application.gender else "",
                 application.religion,
-                application.applicant_contact_no,
                 application.applicant_address,
                 application.guardian_name,
                 application.guardian_relation,
@@ -802,7 +804,7 @@ def accounts_approve_payment(request, pk):
             admission_class=application.requested_class, section=application.requested_section,
             group=application.requested_group,
             gender=application.gender, religion=application.religion,
-            father_name=application.guardian_name, contact_no=application.applicant_contact_no,
+            father_name=application.guardian_name,
             guardian_contact_no=application.guardian_contact_no,
             admission_year=int(application.session[:4]) if application.session[:4].isdigit() else None,
         )
@@ -1316,7 +1318,7 @@ def download_student_list(request):
 
     headers = [
         "Student ID", "Name", "Class", "Section", "Roll No", "Gender", "Religion",
-        "Father's Name", "Contact No", "Guardian Contact No", "Group",
+        "Father's Name", "Guardian Contact Number", "Group",
         "Admission Year", "Status",
     ]
     wb = openpyxl.Workbook()
@@ -1333,7 +1335,6 @@ def download_student_list(request):
             student.get_gender_display() if student.gender else "",
             student.religion,
             student.father_name,
-            student.contact_no,
             student.guardian_contact_no,
             student.get_group_display() if student.group else "",
             student.admission_year,
@@ -2647,6 +2648,74 @@ def admission_dropdown_options(request):
 
 # ---------------- Excel Import ----------------
 
+# Header-name -> import-key mapping for the student sheet. The template
+# originally carried two contact columns ("Contact No" for the student plus
+# "Guardian Contact No"); it now carries the single canonical
+# "Guardian Contact Number" column. Both layouts (and minor label variants
+# of them) are accepted, so a file downloaded from an old template still
+# imports without edits.
+_STUDENT_IMPORT_COLUMNS = {
+    'institution': ('institution',),
+    'name': ('name', 'student name', 'applicant name'),
+    'admission_class': ('admission class', 'class'),
+    'section': ('section',),
+    'admission_year': ('admission year', 'year'),
+    'roll_no': ('roll no', 'roll'),
+    'gender': ('gender',),
+    'religion': ('religion',),
+    'father_name': ("father's name", 'father name', 'fathers name', 'father'),
+    'guardian_contact': ('guardian contact number', 'guardian contact no',
+                         'guardian contact', "guardian's contact number"),
+    'legacy_contact': ('contact no', 'contact number', 'contact',
+                       "student's contact no", 'student contact no'),
+    'group': ('group',),
+}
+
+# Fixed column order of the legacy template (two contact columns), used only
+# when the header row itself is not recognisable.
+_LEGACY_IMPORT_POSITIONS = {
+    'institution': 0, 'name': 1, 'admission_class': 2, 'section': 3,
+    'admission_year': 4, 'roll_no': 5, 'gender': 6, 'religion': 7,
+    'father_name': 8, 'legacy_contact': 9, 'guardian_contact': 10, 'group': 11,
+}
+
+
+def _normalize_import_header(value):
+    """Lower-case, collapse whitespace and drop the trailing period, so
+    'Guardian Contact No.' and 'guardian contact no' compare equal."""
+    return ' '.join(str(value or '').strip().lower().rstrip('.').split())
+
+
+def _student_import_column_map(header_row):
+    """Column index for each import key, read from the sheet's header row.
+
+    Returns ``None`` when the header row does not name at least the Name and
+    Class columns — the caller then falls back to the fixed legacy column
+    order, which every old template sheet matched.
+    """
+    if not header_row:
+        return None
+    normalized = [_normalize_import_header(cell) for cell in header_row]
+    column_map = {}
+    for key, names in _STUDENT_IMPORT_COLUMNS.items():
+        for name in names:
+            if name in normalized:
+                column_map[key] = normalized.index(name)
+                break
+    if 'name' not in column_map or 'admission_class' not in column_map:
+        return None
+    return column_map
+
+
+def _import_cell(row, key, column_map):
+    """The value of ``key``'s column in ``row``, for either sheet layout."""
+    positions = column_map or _LEGACY_IMPORT_POSITIONS
+    index = positions.get(key)
+    if index is None or index >= len(row):
+        return None
+    return row[index]
+
+
 @login_required
 @permission_required('students.add_student', raise_exception=True)
 def import_students(request):
@@ -2664,7 +2733,15 @@ def import_students(request):
             success_count = 0
             skipped_count = 0
             group_filled_count = 0
+            contact_filled_count = 0
             error_rows = []
+
+            # Map columns by their header names so both the new single-contact
+            # template and the old two-contact template import cleanly.
+            header_row = next(
+                sheet.iter_rows(min_row=1, max_row=1, values_only=True), None
+            )
+            column_map = _student_import_column_map(header_row)
 
             gender_map = {'male': 'M', 'm': 'M',
                         'female': 'F', 'f': 'F',
@@ -2674,10 +2751,46 @@ def import_students(request):
                 if not row or all(cell in (None, '') for cell in row):
                     continue
                 try:
-                    row_data = (list(row) + [None] * 12)[:12]
-                    (institution_name, name, admission_class, section, admission_year,
-                    roll_no, gender_raw, religion, father_name, contact_no,
-                    guardian_contact_no, group_raw) = row_data
+                    institution_name = _import_cell(row, 'institution', column_map)
+                    name = _import_cell(row, 'name', column_map)
+                    admission_class = _import_cell(row, 'admission_class', column_map)
+                    section = _import_cell(row, 'section', column_map)
+                    admission_year = _import_cell(row, 'admission_year', column_map)
+                    roll_no = _import_cell(row, 'roll_no', column_map)
+                    gender_raw = _import_cell(row, 'gender', column_map)
+                    religion = _import_cell(row, 'religion', column_map)
+                    father_name = _import_cell(row, 'father_name', column_map)
+                    group_raw = _import_cell(row, 'group', column_map)
+
+                    # One primary contact per student: the Guardian Contact
+                    # Number column (required). Sheets from the old template
+                    # may carry the number only in the legacy "Contact No"
+                    # column — use it when the guardian column is blank so no
+                    # old file loses its number.
+                    guardian_contact_no = normalize_guardian_contact(
+                        _import_cell(row, 'guardian_contact', column_map)
+                    )
+                    if not guardian_contact_no:
+                        guardian_contact_no = normalize_guardian_contact(
+                            _import_cell(row, 'legacy_contact', column_map)
+                        )
+                    if not guardian_contact_no:
+                        error_rows.append(
+                            f"Row {row_num}: guardian contact number is missing "
+                            "(the Guardian Contact Number column, or the old "
+                            "'Contact No' column) — skipped."
+                        )
+                        continue
+                    try:
+                        validate_guardian_contact(guardian_contact_no)
+                    except ValidationError:
+                        error_rows.append(
+                            f"Row {row_num}: invalid guardian contact number "
+                            f"'{guardian_contact_no}' — enter 6-20 digits (a leading + "
+                            "and spaces, dashes or parentheses are allowed), e.g. "
+                            "01812345678 — skipped."
+                        )
+                        continue
 
                     if not name or not admission_class:
                         error_rows.append(f"Row {row_num}: name or class is empty — skipped.")
@@ -2722,10 +2835,20 @@ def import_students(request):
                         admission_year=admission_year_int,
                     ).first()
                     if existing:
+                        # Re-running a file must not create a duplicate, but
+                        # it can still fill in what an earlier run left blank:
+                        # the group and the guardian contact number.
+                        filled = []
                         if group_code and not existing.group:
                             existing.group = group_code
-                            existing.save(update_fields=['group'])
+                            filled.append('group')
                             group_filled_count += 1
+                        if guardian_contact_no and not existing.guardian_contact_no:
+                            existing.guardian_contact_no = guardian_contact_no
+                            filled.append('guardian_contact_no')
+                            contact_filled_count += 1
+                        if filled:
+                            existing.save(update_fields=filled)
                         else:
                             skipped_count += 1
                         continue
@@ -2759,8 +2882,9 @@ def import_students(request):
                         # Islam like every other screen.
                         religion=student_religion(religion),
                         father_name=str(father_name).strip() if father_name else '',
-                        contact_no=str(contact_no).strip() if contact_no else '',
-                        guardian_contact_no=str(guardian_contact_no).strip() if guardian_contact_no else '',
+                        # The single primary contact, kept as text so the
+                        # leading zero of e.g. 01812345678 survives.
+                        guardian_contact_no=guardian_contact_no,
                         group=group_code,
                         created_by=request.user,
                     )
@@ -2768,12 +2892,17 @@ def import_students(request):
                 except Exception as e:
                     error_rows.append(f"Row {row_num}: {type(e).__name__}: {e}")
 
-            if success_count or skipped_count or group_filled_count:
-                messages.success(
-                    request,
+            if success_count or skipped_count or group_filled_count or contact_filled_count:
+                message = (
                     f"{success_count} student(s) added, {skipped_count} already present (skipped), "
-                    f"{group_filled_count} existing student(s) got their group filled in.",
+                    f"{group_filled_count} existing student(s) got their group filled in."
                 )
+                if contact_filled_count:
+                    message += (
+                        f" {contact_filled_count} existing student(s) got their "
+                        "guardian contact number filled in."
+                    )
+                messages.success(request, message)
             if error_rows:
                 messages.warning(
                     request,
@@ -2795,15 +2924,22 @@ def download_import_template(request):
     headers = [
         "Institution", "Name", "Admission Class", "Section",
         "Admission Year", "Roll No", "Gender", "Religion",
-        "Father's Name", "Contact No", "Guardian Contact No", "Group",
+        "Father's Name", "Guardian Contact Number", "Group",
     ]
     sheet.append(headers)
 
-    sheet.append([
+    # The contact example is written as text (and the column below is
+    # pre-formatted as text) so Excel keeps the leading zero of
+    # 01812345678 instead of turning it into the number 1812345678.
+    example_row = [
         "Principal Kazi Faruky School", "Example Name", "6", "A",
-        2026, 1, "Male", "Islam", "Father's Name", "01700000000",
-        "01800000000", "Non-Group",
-    ])
+        2026, 1, "Male", "Islam", "Father's Name", "01812345678",
+        "Non-Group",
+    ]
+    sheet.append(example_row)
+    contact_column = headers.index("Guardian Contact Number") + 1
+    for row_idx in range(1, 201):
+        sheet.cell(row=row_idx, column=contact_column).number_format = '@'
 
     for col in sheet.columns:
         max_length = max(len(str(cell.value)) for cell in col if cell.value)
