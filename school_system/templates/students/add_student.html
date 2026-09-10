@@ -205,7 +205,7 @@
             <div class="section-title"><span class="section-icon"><i class="bi bi-telephone-fill"></i></span>Contact</div>
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label" for="id_guardian_contact_no">Guardian Contact Number <span class="text-muted small">(অভিভাবকের যোগাযোগ নম্বর)</span></label>
+                    <label class="form-label" for="id_guardian_contact_no">Guardian Contact Number <span class="required-star">*</span> <span class="text-muted small">(অভিভাবকের যোগাযোগ নম্বর)</span></label>
                     {{ form.guardian_contact_no }}
                     <div class="form-text small">The one number the school contacts — keep the leading 0, e.g. 01812345678.</div>
                     {% for error in form.guardian_contact_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}

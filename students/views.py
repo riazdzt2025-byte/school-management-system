@@ -303,11 +303,8 @@ def apply_student_text_search(qs, q):
         | Q(name__icontains=q)
         | Q(father_name__icontains=q)
         | Q(form_no__icontains=q)
-        # The guardian contact number is the single primary contact; the
-        # legacy contact_no is still searched so a number that only exists in
-        # an old row keeps finding its student until the data is merged.
+        # The guardian contact number is the single primary contact.
         | Q(guardian_contact_no__icontains=q)
-        | Q(contact_no__icontains=q)
     )
     if q.isdigit():
         filters |= Q(roll_no=int(q))
@@ -2766,10 +2763,10 @@ def import_students(request):
                     group_raw = _import_cell(row, 'group', column_map)
 
                     # One primary contact per student: the Guardian Contact
-                    # Number column. Sheets from the old template may carry
-                    # the number only in the legacy "Contact No" column — use
-                    # it when the guardian column is blank so no old file
-                    # loses its number.
+                    # Number column (required). Sheets from the old template
+                    # may carry the number only in the legacy "Contact No"
+                    # column — use it when the guardian column is blank so no
+                    # old file loses its number.
                     guardian_contact_no = normalize_guardian_contact(
                         _import_cell(row, 'guardian_contact', column_map)
                     )
@@ -2777,6 +2774,13 @@ def import_students(request):
                         guardian_contact_no = normalize_guardian_contact(
                             _import_cell(row, 'legacy_contact', column_map)
                         )
+                    if not guardian_contact_no:
+                        error_rows.append(
+                            f"Row {row_num}: guardian contact number is missing "
+                            "(the Guardian Contact Number column, or the old "
+                            "'Contact No' column) — skipped."
+                        )
+                        continue
                     try:
                         validate_guardian_contact(guardian_contact_no)
                     except ValidationError:

@@ -72,10 +72,10 @@ def _setup_religion_field(form, field):
 class StudentForm(forms.ModelForm):
     class Meta:
         model = Student
-        # contact_no is the legacy free-text contact column: nothing edits it
-        # any more. guardian_contact_no is the single primary contact number,
-        # so it is the only contact input on the form.
-        exclude = ['form_no', 'student_id', 'contact_no']
+        # The single primary contact is guardian_contact_no (required); the
+        # legacy contact_no column was removed in migration 0040, so there is
+        # exactly one contact input on this form.
+        exclude = ['form_no', 'student_id']
         labels = {
             'admission_class': 'Class',
             'section': 'Section',
@@ -229,9 +229,9 @@ class StudentForm(forms.ModelForm):
 class AdmissionApplicationForm(forms.ModelForm):
     class Meta:
         model = AdmissionApplication
-        # applicant_contact_no is the legacy applicant contact column: nothing
-        # collects it any more. guardian_contact_no is the single primary
-        # contact number the office uses to reach the family.
+        # The single primary contact the office uses to reach the family is
+        # guardian_contact_no; the legacy applicant_contact_no column was
+        # removed in migration 0040.
         fields = [
             'institution', 'applicant_name', 'date_of_birth', 'gender', 'religion',
             'applicant_address', 'guardian_name',

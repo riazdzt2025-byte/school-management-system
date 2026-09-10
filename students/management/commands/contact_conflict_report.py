@@ -2,14 +2,17 @@
 of the contact number into the single "Guardian Contact Number /
 অভিভাবকের যোগাযোগ নম্বর" column.
 
-Run it BEFORE migrating to 0039 (it then also shows how many rows the safe
-backfill will fill) and AFTER migrating (to see what still needs a human
-decision). It never writes anything.
+On a database that still has the legacy columns (migrations up to 0039) it
+lists rows where the two columns disagree and how many blank guardian
+numbers the safe backfill would fill. After migration 0040 removed the
+legacy columns, it says so and points at the AuditLog entries that archived
+the dropped values. It never writes anything.
 
 Usage:
     python manage.py contact_conflict_report
     python manage.py contact_conflict_report --limit 20
 """
+from django.core.exceptions import FieldDoesNotExist
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 
@@ -28,6 +31,17 @@ class Command(BaseCommand):
             '--limit', type=int, default=50,
             help='Maximum number of conflicting rows to list per model (default 50).',
         )
+
+    def _legacy_columns_present(self):
+        """The legacy columns were dropped in migration 0040; against a
+        database that has already applied it there is nothing to compare."""
+        for model, field in ((Student, 'contact_no'),
+                             (AdmissionApplication, 'applicant_contact_no')):
+            try:
+                model._meta.get_field(field)
+            except FieldDoesNotExist:
+                return False
+        return True
 
     def _guardian_empty(self):
         return Q(guardian_contact_no='') | Q(guardian_contact_no__isnull=True)
@@ -84,6 +98,17 @@ class Command(BaseCommand):
         return out
 
     def handle(self, *args, **options):
+        if not self._legacy_columns_present():
+            self.stdout.write(
+                'The legacy contact columns (Student.contact_no and '
+                'AdmissionApplication.applicant_contact_no) were already '
+                'removed by migration students.0040 — there is nothing to '
+                'compare.\n'
+                'Any legacy number that differed from its guardian contact '
+                "number was archived first: look for AuditLog entries with "
+                "action 'legacy_contact_dropped'."
+            )
+            return
         limit = options['limit']
         lines = self._report_model(
             'Students (Student.contact_no vs Student.guardian_contact_no)',

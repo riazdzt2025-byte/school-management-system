@@ -124,7 +124,7 @@ class StudentArchiveSafetyTests(TestCase):
 		)
 		application = AdmissionApplication.objects.create(
 			institution=self.institution, applicant_name='Archived Student',
-			applicant_contact_no='01800000000', guardian_name='Guardian',
+			guardian_name='Guardian',
 			guardian_contact_no='01900000000', requested_class='6',
 			requested_section='A', session='2026-2027', status='ENROLLED',
 			enrolled_student=self.student,
@@ -697,7 +697,7 @@ class AdmissionApplicationWorkflowTests(TestCase):
 		self.client.force_login(self.user)
 		self.application = AdmissionApplication.objects.create(
 			institution=self.institution, applicant_name='Applicant One',
-			applicant_contact_no='01800000000', guardian_name='Guardian One',
+			guardian_name='Guardian One',
 			guardian_contact_no='01900000000', requested_class='6',
 			requested_section='A', session='2026-2027',
 		)
@@ -726,7 +726,7 @@ class AdmissionApplicationWorkflowTests(TestCase):
 		self.application.save(update_fields=['status'])
 		other = AdmissionApplication.objects.create(
 			institution=self.institution, applicant_name='Applicant Two',
-			applicant_contact_no='01800000001', guardian_name='Guardian Two',
+			guardian_name='Guardian Two',
 			guardian_contact_no='01900000001', requested_class='7', session='2026-2027',
 			status='ACCOUNT_PENDING',
 		)
@@ -787,7 +787,7 @@ class DepartmentAccessControlTests(TestCase):
 		InstitutionAccess.objects.create(user=self.office_user, institution=inst1, department='Office')
 		
 		app1 = AdmissionApplication.objects.create(
-			institution=inst1, applicant_name='App1', applicant_contact_no='01800000000',
+			institution=inst1, applicant_name='App1',
 			guardian_name='Guard1', guardian_contact_no='01900000000', requested_class='6', session='2026-2027'
 		)
 		
@@ -1327,6 +1327,7 @@ class GroupOnlyFromClass9Tests(TestCase):
 			'roll_no': 1,
 			'gender': 'M',
 			'religion': 'Islam',
+			'guardian_contact_no': '01812345678',
 			'status': 'ACTIVE',
 			'group': 'SCI',
 		}
@@ -1433,11 +1434,11 @@ class GroupOnlyFromClass9Tests(TestCase):
 		])
 		sheet.append([
 			self.institution.name, 'Import Six', '6', 'A', 2026, 11,
-			'Male', 'Islam', 'Father', '', '', 'Science',
+			'Male', 'Islam', 'Father', '', '01812345678', 'Science',
 		])
 		sheet.append([
 			self.institution.name, 'Import Nine', '9', 'A', 2026, 12,
-			'Female', 'Islam', 'Father', '', '', 'Humanities',
+			'Female', 'Islam', 'Father', '', '01812345678', 'Humanities',
 		])
 		buffer = BytesIO()
 		book.save(buffer)
@@ -1812,7 +1813,7 @@ class StudentImportLabelTests(TestCase):
 
 	def _row(self, name, roll, group, year=2026, cls='9'):
 		return [self.institution.name, name, cls, 'A', year, roll,
-		        'Male', 'Islam', 'Father', '', '', group]
+		        'Male', 'Islam', 'Father', '', '01812345678', group]
 
 	def test_hand_written_group_labels_are_mapped(self):
 		response = self._upload([
@@ -2373,6 +2374,7 @@ class ReligionFormFieldTests(TestCase):
 			'section': 'A',
 			'admission_year': '2026',
 			'religion': 'Hindu',
+			'guardian_contact_no': '01812345678',
 			'status': 'ACTIVE',
 		})
 		student = Student.objects.get(name='New Kid')

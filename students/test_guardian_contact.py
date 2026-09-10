@@ -2,32 +2,35 @@
 
 One primary contact per student / admission application:
 "Guardian Contact Number / অভিভাবকের যোগাযোগ নম্বর" (Student.guardian_contact_no
-and AdmissionApplication.guardian_contact_no).
+and AdmissionApplication.guardian_contact_no — required on both).
 
 Covers:
 * normalisation — leading zero kept, Bangla digits, numeric Excel cells;
 * validation — blank/invalid numbers, supported formats;
-* the forms and pages carrying exactly one contact input;
+* the forms and pages carrying exactly one (required) contact input;
 * the Excel import (new single-column template + legacy two-column
   template) and the exports;
 * the enrolment hand-off (application -> student);
-* the safe backfill migration and the dry-run conflict report.
+* migration 0040 — backfill of blank guardian numbers, AuditLog archive of
+  differing legacy numbers, and the column drop — tested end to end
+  against the real migration chain;
+* the conflict report's behaviour once the legacy columns are gone.
 """
-import importlib.util
-import pathlib
 from datetime import date
 from io import BytesIO, StringIO
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from django.test import TestCase
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 
 from .forms import AdmissionApplicationForm, StudentForm
 from .models import (
-    AdmissionApplication, Institution, Student,
+    AdmissionApplication, AuditLog, Institution, Student,
     normalize_guardian_contact, validate_guardian_contact,
 )
 
@@ -125,7 +128,6 @@ class StudentFormContactTests(TestCase):
         student = form.save()
         student.refresh_from_db()
         self.assertEqual(student.guardian_contact_no, '01812345678')
-        self.assertEqual(student.contact_no, '')
 
     def test_bangla_digits_are_normalised_on_save(self):
         form = StudentForm(self._form_data(guardian_contact_no='০১৮১২৩৪৫৬৭৮'),
@@ -133,10 +135,12 @@ class StudentFormContactTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertEqual(form.save().guardian_contact_no, '01812345678')
 
-    def test_blank_guardian_contact_is_allowed(self):
+    def test_blank_guardian_contact_is_rejected(self):
+        # The guardian contact number is the single primary contact — a
+        # student cannot be saved without one.
         form = StudentForm(self._form_data(guardian_contact_no=''), user=self.user)
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertEqual(form.save().guardian_contact_no, '')
+        self.assertFalse(form.is_valid())
+        self.assertIn('guardian_contact_no', form.errors)
 
     def test_invalid_guardian_contact_is_rejected(self):
         form = StudentForm(self._form_data(guardian_contact_no='not-a-phone'),
@@ -144,21 +148,9 @@ class StudentFormContactTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('guardian_contact_no', form.errors)
 
-    def test_editing_does_not_touch_the_legacy_column(self):
-        # A legacy row still carries its old contact_no value; saving the
-        # edit form must not clear or copy it (the backfill migration and
-        # the conflict report own that job).
-        student = Student.objects.create(
-            institution=self.institution, student_id='L001', name='Legacy Kid',
-            admission_class='6', section='A', admission_year=2026,
-            contact_no='01700000000', guardian_contact_no='01900000000',
-        )
-        form = StudentForm(self._form_data(), instance=student, user=self.user)
-        self.assertTrue(form.is_valid(), form.errors)
-        form.save()
-        student.refresh_from_db()
-        self.assertEqual(student.contact_no, '01700000000')
-        self.assertEqual(student.guardian_contact_no, '01812345678')
+    def test_form_field_is_required(self):
+        form = StudentForm(user=self.user)
+        self.assertTrue(form.fields['guardian_contact_no'].required)
 
     def test_add_student_page_has_one_contact_input(self):
         self.client.force_login(self.user)
@@ -223,7 +215,6 @@ class AdmissionFormContactTests(TestCase):
         application = form.save()
         application.refresh_from_db()
         self.assertEqual(application.guardian_contact_no, '01812345678')
-        self.assertEqual(application.applicant_contact_no, '')
 
     def test_guardian_contact_is_required(self):
         form = AdmissionApplicationForm(self._form_data(guardian_contact_no=''))
@@ -302,7 +293,6 @@ class StudentImportContactTests(TestCase):
         self.assertEqual(response.status_code, 200)
         student = Student.objects.get(name='New Template Kid')
         self.assertEqual(student.guardian_contact_no, '01812345678')
-        self.assertEqual(student.contact_no, '')
 
     def test_legacy_template_still_imports(self):
         # A sheet downloaded from the old template has both contact columns;
@@ -351,29 +341,36 @@ class StudentImportContactTests(TestCase):
         messages = [str(m) for m in response.context['messages']]
         self.assertTrue(any('invalid guardian contact number' in m for m in messages))
 
-    def test_blank_contact_is_allowed_on_import(self):
-        response = self._upload(self._new_template_headers(), [[
-            self.institution.name, 'No Phone Kid', '6', 'A', 2026, 7,
-            'Male', 'Islam', 'Father', '', '',
-        ]])
+    def test_missing_contact_skips_the_row_with_an_error(self):
+        # The guardian contact number is required — a row without one (in
+        # neither the guardian nor the legacy column) is skipped.
+        response = self._upload(self._new_template_headers(), [
+            [self.institution.name, 'No Phone Kid', '6', 'A', 2026, 7,
+             'Male', 'Islam', 'Father', '', ''],
+            [self.institution.name, 'Good Phone Kid', '6', 'A', 2026, 8,
+             'Male', 'Islam', 'Father', '01812345678', ''],
+        ])
         self.assertEqual(response.status_code, 200)
-        student = Student.objects.get(name='No Phone Kid')
-        self.assertEqual(student.guardian_contact_no, '')
+        self.assertFalse(Student.objects.filter(name='No Phone Kid').exists())
+        student = Student.objects.get(name='Good Phone Kid')
+        self.assertEqual(student.guardian_contact_no, '01812345678')
+        messages = [str(m) for m in response.context['messages']]
+        self.assertTrue(any('guardian contact number is missing' in m for m in messages))
 
     def test_re_import_backfills_a_missing_guardian_contact(self):
-        # First file had no contact; the re-run carries it and must fill the
-        # existing student in (same treatment the group column gets).
-        self._upload(self._new_template_headers(), [[
-            self.institution.name, 'Backfill Kid', '6', 'A', 2026, 8,
-            'Male', 'Islam', 'Father', '', '',
-        ]])
-        student = Student.objects.get(name='Backfill Kid')
-        self.assertEqual(student.guardian_contact_no, '')
+        # A student created before the contact became required can still
+        # have a blank guardian number. Re-importing a row that matches them
+        # and carries the number fills it in (never overwrites one).
+        Student.objects.create(
+            institution=self.institution, student_id='RB001', name='Backfill Kid',
+            admission_class='6', section='A', admission_year=2026, roll_no=8,
+            guardian_contact_no='',
+        )
         response = self._upload(self._new_template_headers(), [[
             self.institution.name, 'Backfill Kid', '6', 'A', 2026, 8,
             'Male', 'Islam', 'Father', '01812345678', '',
         ]])
-        student.refresh_from_db()
+        student = Student.objects.get(name='Backfill Kid')
         self.assertEqual(student.guardian_contact_no, '01812345678')
         messages = [str(m) for m in response.context['messages']]
         self.assertTrue(
@@ -434,7 +431,7 @@ class ContactExportTests(TestCase):
         )
         self.application = AdmissionApplication.objects.create(
             institution=self.institution, applicant_name='Export Applicant',
-            applicant_contact_no='01700000000', guardian_name='Export Guardian',
+            guardian_name='Export Guardian',
             guardian_contact_no='01812345678', requested_class='6',
             requested_section='A', session='2026-2027',
         )
@@ -475,7 +472,7 @@ class EnrolmentContactTests(TestCase):
         self.client.force_login(self.user)
         self.application = AdmissionApplication.objects.create(
             institution=self.institution, applicant_name='Enrolment Kid',
-            applicant_contact_no='01700000000', guardian_name='Enrolment Guardian',
+            guardian_name='Enrolment Guardian',
             guardian_contact_no='01812345678', requested_class='6',
             requested_section='A', session='2026-2027',
             status='ACCOUNT_PENDING', payment_amount=1500,
@@ -492,7 +489,6 @@ class EnrolmentContactTests(TestCase):
         self.application.refresh_from_db()
         student = self.application.enrolled_student
         self.assertEqual(student.guardian_contact_no, '01812345678')
-        self.assertEqual(student.contact_no, '')
 
 
 class GuardianContactSearchTests(TestCase):
@@ -517,154 +513,104 @@ class GuardianContactSearchTests(TestCase):
         response = self.client.get(reverse('student_list'), {'q': '01812345678'})
         self.assertContains(response, 'Search Kid')
 
-    def test_search_still_finds_a_legacy_only_number(self):
-        # Pre-migration rows can hold the number only in the legacy column.
-        Student.objects.create(
-            institution=self.institution, student_id='SE002', name='Legacy Search Kid',
-            admission_class='6', section='A', admission_year=2026,
-            contact_no='01700000000',
-        )
-        response = self.client.get(reverse('student_list'), {'q': '01700000000'})
-        self.assertContains(response, 'Legacy Search Kid')
 
+class LegacyContactDropMigrationTests(TransactionTestCase):
+    """Migration 0040 finishes the unification, tested end to end against
+    the real migration chain: it backfills blank guardian numbers from the
+    legacy column, archives every legacy number that differs from the
+    guardian number to AuditLog, and only then drops the legacy columns."""
 
-class BackfillMigrationTests(TestCase):
-    """Migration 0039 copies the legacy contact into guardian_contact_no
-    only where the guardian number is blank — never over one."""
+    def _migrate(self, target):
+        executor = MigrationExecutor(connection)
+        executor.migrate([('students', target)])
+        return executor
 
-    def _load_migration(self):
-        path = (pathlib.Path(__file__).parent / 'migrations'
-                / '0039_unify_guardian_contact.py')
-        spec = importlib.util.spec_from_file_location(
-            'unify_guardian_contact_migration', path,
-        )
-        migration = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(migration)
-        return migration
+    def test_drop_backfills_archives_and_removes_the_columns(self):
+        # Roll the schema back to the last state where the legacy columns
+        # exist (0039 applied) and seed data with the historical models.
+        executor = self._migrate('0039_unify_guardian_contact')
+        state = executor.loader.project_state(
+            [('students', '0039_unify_guardian_contact')])
+        OldInstitution = state.apps.get_model('students', 'Institution')
+        OldStudent = state.apps.get_model('students', 'Student')
+        OldApplication = state.apps.get_model('students', 'AdmissionApplication')
 
-    def setUp(self):
-        self.institution = Institution.objects.create(
-            name='Backfill School', classes=INSTITUTION_CLASSES,
-        )
-
-    class _AppsShim:
-        """Stands in for the migration's historical app registry."""
-
-        @staticmethod
-        def get_model(app_label, model_name):
-            return {'Student': Student,
-                    'AdmissionApplication': AdmissionApplication}[model_name]
-
-    def test_blank_guardian_gets_the_legacy_number(self):
-        Student.objects.create(
-            institution=self.institution, student_id='B001', name='Backfill Me',
-            admission_class='6', section='A', admission_year=2026,
-            contact_no='01700000000', guardian_contact_no='',
-        )
-        self._load_migration().backfill_guardian_contact_from_legacy(
-            self._AppsShim, None)
-        student = Student.objects.get(student_id='B001')
-        self.assertEqual(student.guardian_contact_no, '01700000000')
-        self.assertEqual(student.contact_no, '01700000000')
-
-    def test_existing_guardian_number_is_never_overwritten(self):
-        Student.objects.create(
-            institution=self.institution, student_id='B002', name='Conflict Me',
+        institution = OldInstitution.objects.create(
+            name='Drop Migration School', classes='6,9')
+        conflict = OldStudent.objects.create(
+            institution=institution, student_id='X001', name='Conflict Kid',
             admission_class='6', section='A', admission_year=2026,
             contact_no='01700000000', guardian_contact_no='01900000000',
         )
-        self._load_migration().backfill_guardian_contact_from_legacy(
-            self._AppsShim, None)
-        student = Student.objects.get(student_id='B002')
-        self.assertEqual(student.guardian_contact_no, '01900000000')
-        self.assertEqual(student.contact_no, '01700000000')
-
-    def test_both_blank_stays_blank(self):
-        Student.objects.create(
-            institution=self.institution, student_id='B003', name='Nothing Me',
+        legacy_only = OldStudent.objects.create(
+            institution=institution, student_id='X002', name='Legacy Only Kid',
             admission_class='6', section='A', admission_year=2026,
+            contact_no='01711111111', guardian_contact_no='',
         )
-        self._load_migration().backfill_guardian_contact_from_legacy(
-            self._AppsShim, None)
-        student = Student.objects.get(student_id='B003')
-        self.assertEqual(student.guardian_contact_no, '')
-
-    def test_application_blank_guardian_gets_the_applicant_number(self):
-        AdmissionApplication.objects.create(
-            institution=self.institution, applicant_name='Backfill App',
-            applicant_contact_no='01800000000', guardian_name='Guardian',
-            guardian_contact_no='', requested_class='6', session='2026-2027',
-        )
-        self._load_migration().backfill_guardian_contact_from_legacy(
-            self._AppsShim, None)
-        application = AdmissionApplication.objects.get(applicant_name='Backfill App')
-        self.assertEqual(application.guardian_contact_no, '01800000000')
-
-    def test_application_conflict_is_never_overwritten(self):
-        AdmissionApplication.objects.create(
-            institution=self.institution, applicant_name='Conflict App',
-            applicant_contact_no='01800000000', guardian_name='Guardian',
-            guardian_contact_no='01900000000', requested_class='6',
-            session='2026-2027',
-        )
-        self._load_migration().backfill_guardian_contact_from_legacy(
-            self._AppsShim, None)
-        application = AdmissionApplication.objects.get(applicant_name='Conflict App')
-        self.assertEqual(application.guardian_contact_no, '01900000000')
-
-
-class ConflictReportCommandTests(TestCase):
-    """contact_conflict_report is a dry run: it reports, it never writes."""
-
-    def setUp(self):
-        self.institution = Institution.objects.create(
-            name='Conflict Report School', classes=INSTITUTION_CLASSES,
-        )
-        Student.objects.create(
-            institution=self.institution, student_id='C001',
-            name='Conflict Kid', admission_class='6', section='A',
-            admission_year=2026,
-            contact_no='01700000000', guardian_contact_no='01900000000',
-        )
-        Student.objects.create(
-            institution=self.institution, student_id='C002',
-            name='Backfill Kid', admission_class='6', section='A',
-            admission_year=2026,
-            contact_no='01700000000', guardian_contact_no='',
-        )
-        AdmissionApplication.objects.create(
-            institution=self.institution, applicant_name='Conflict App',
-            applicant_contact_no='01800000000', guardian_name='Guardian',
-            guardian_contact_no='01900000000', requested_class='6',
-            session='2026-2027',
-        )
-
-    def test_report_lists_conflicts_and_backfill_counts_without_writing(self):
-        out = StringIO()
-        call_command('contact_conflict_report', stdout=out)
-        report = out.getvalue()
-
-        self.assertIn('C001', report)
-        self.assertIn('Conflict Kid', report)
-        self.assertIn('Conflict App', report)
-        self.assertIn('CONFLICT: 1 row(s)', report)
-        self.assertIn('BACKFILL: 1 row(s)', report)
-
-        # Dry run: nothing changed.
-        student = Student.objects.get(student_id='C001')
-        self.assertEqual(student.guardian_contact_no, '01900000000')
-        backfill = Student.objects.get(student_id='C002')
-        self.assertEqual(backfill.guardian_contact_no, '')
-
-    def test_matching_numbers_are_not_reported_as_conflicts(self):
-        Student.objects.create(
-            institution=self.institution, student_id='C003',
-            name='Matching Kid', admission_class='6', section='A',
-            admission_year=2026,
+        OldStudent.objects.create(
+            institution=institution, student_id='X003', name='Same Number Kid',
+            admission_class='6', section='A', admission_year=2026,
             contact_no='01812345678', guardian_contact_no='01812345678',
         )
+        OldApplication.objects.create(
+            institution=institution, applicant_name='Conflict App',
+            applicant_contact_no='01800000000', guardian_name='Guardian',
+            guardian_contact_no='01900000000', requested_class='6',
+            session='2026-2027',
+        )
+
+        try:
+            # Forward through 0040 (archive + drop) and 0041 (required).
+            self._migrate('0041_student_guardian_contact_required')
+
+            # The blank guardian number was backfilled from the legacy
+            # column; the conflicting guardian number was NOT overwritten.
+            self.assertEqual(
+                Student.objects.get(pk=legacy_only.pk).guardian_contact_no,
+                '01711111111')
+            self.assertEqual(
+                Student.objects.get(pk=conflict.pk).guardian_contact_no,
+                '01900000000')
+
+            # The legacy columns are gone from the model and the form.
+            with self.assertRaises(FieldDoesNotExist):
+                Student._meta.get_field('contact_no')
+            with self.assertRaises(FieldDoesNotExist):
+                AdmissionApplication._meta.get_field('applicant_contact_no')
+
+            # The differing legacy numbers were archived to AuditLog before
+            # the columns dropped; matching numbers were not (they live on
+            # in the guardian column).
+            student_archive = AuditLog.objects.get(
+                action='legacy_contact_dropped', model_name='Student')
+            archived = {
+                row['identifier']: row for row in student_archive.details['dropped_rows']
+            }
+            self.assertIn('X001', archived)
+            self.assertEqual(archived['X001']['legacy_contact'], '01700000000')
+            self.assertEqual(archived['X001']['guardian_contact'], '01900000000')
+            self.assertNotIn('X002', archived)  # backfilled, not dropped
+            self.assertNotIn('X003', archived)  # same number: nothing lost
+            app_archive = AuditLog.objects.get(
+                action='legacy_contact_dropped', model_name='AdmissionApplication')
+            self.assertEqual(
+                app_archive.details['dropped_rows'][0]['legacy_contact'],
+                '01800000000')
+        finally:
+            # Never leave the schema rolled back for the rest of the suite.
+            try:
+                self._migrate('0041_student_guardian_contact_required')
+            except Exception:
+                pass
+
+
+class ConflictReportAfterDropTests(TestCase):
+    """Once migration 0040 has removed the legacy columns, the conflict
+    report explains that and points at the archived AuditLog entries."""
+
+    def test_report_points_at_the_audit_log(self):
         out = StringIO()
         call_command('contact_conflict_report', stdout=out)
         report = out.getvalue()
-        self.assertNotIn('Matching Kid', report.split('Admission applications')[0])
-        self.assertIn('same number in both columns', report)
+        self.assertIn('already', report)
+        self.assertIn('legacy_contact_dropped', report)

@@ -67,6 +67,11 @@ def student_religion(value):
 # zero — 01812345678 — survives; it would be the first thing a numeric column
 # throws away.
 #
+# The former Student.contact_no and AdmissionApplication.applicant_contact_no
+# columns were removed (migration 0040); any value that differed from the
+# guardian number was archived to AuditLog first, so nothing was silently
+# lost.
+#
 # Accepted format: an optional leading '+', then 6–20 characters of digits,
 # spaces, dashes and parentheses (e.g. 01812345678, +880 1812-345678,
 # 01812 345678). Anything else — letters, blank-with-junk — is rejected by
@@ -223,16 +228,11 @@ class Student(models.Model):
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, blank=True)
     religion = models.CharField(max_length=50, blank=True)
     father_name = models.CharField(max_length=100, blank=True)
-    # Legacy free-text contact kept only so old rows are not silently lost.
-    # Nothing collects it any more — the single primary contact is
-    # guardian_contact_no (see the "Guardian contact number" section above).
-    contact_no = models.CharField(
-        max_length=20, blank=True,
-        help_text='Legacy column — no longer collected. Kept until old '
-                  'data is merged into guardian_contact_no.',
-    )
+    # The single primary contact number for a student — required since the
+    # unification of every contact column into this one field (the legacy
+    # Student.contact_no column was removed in migration 0040).
     guardian_contact_no = models.CharField(
-        max_length=20, blank=True,
+        max_length=20,
         help_text="Guardian's primary contact number, e.g. 01812345678. "
                   'Stored as text so the leading zero is kept.',
     )
@@ -466,17 +466,11 @@ class AdmissionApplication(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=1, choices=Student.GENDER_CHOICES, blank=True)
     religion = models.CharField(max_length=50, blank=True)
-    # Legacy applicant contact kept only so old applications are not silently
-    # lost. Nothing collects it any more — the single primary contact for an
-    # application is guardian_contact_no.
-    applicant_contact_no = models.CharField(
-        max_length=20, blank=True,
-        help_text='Legacy column — no longer collected. Kept until old '
-                  'data is merged into guardian_contact_no.',
-    )
     applicant_address = models.TextField(blank=True)
     guardian_name = models.CharField(max_length=100)
     guardian_relation = models.CharField(max_length=50, blank=True)
+    # The single primary contact number for an application (the legacy
+    # applicant_contact_no column was removed in migration 0040).
     guardian_contact_no = models.CharField(
         max_length=20,
         help_text="Guardian's primary contact number, e.g. 01812345678. "
