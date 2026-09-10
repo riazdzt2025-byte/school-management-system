@@ -287,7 +287,7 @@
     <div class="result-toolbar d-print-none">
         <div class="toolbar-title"><i class="bi bi-file-earmark-bar-graph me-1"></i> Official academic result register</div>
         <div class="toolbar-actions">
-            <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Summary</a>
+            <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Published Result</a>
             <a href="{{ subject_assignments_url }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-journal-check me-1"></i> Subject Assignments</a>
             <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
             <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>

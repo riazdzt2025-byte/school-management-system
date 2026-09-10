@@ -1,6 +1,6 @@
 {% extends 'students/base.html' %}
 
-{% block title %}Result Summary - {{ block.super }}{% endblock %}
+{% block title %}Published Result - {{ block.super }}{% endblock %}
 
 {% block extra_style %}
     .result-summary-page .summary-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -25,7 +25,7 @@
 <div class="result-summary-page">
     <div class="page-header">
         <div>
-            <h1>Result Summary</h1>
+            <h1>Published Result</h1>
             <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} - {{ result_group_label }}{% endif %} - Session {{ exam.session }}</div>
         </div>
     </div>

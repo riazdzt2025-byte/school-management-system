@@ -90,6 +90,11 @@ urlpatterns = [
     path('exams/<int:pk>/top-10/', views.top_10, name='top_10'),
     path('exams/<int:pk>/result/<int:student_pk>/', views.student_result_detail, name='student_result_detail'),
     path('exams/<int:pk>/result-card/<int:student_pk>/', views.result_card, name='result_card'),
+    path('result-analysis/subject-fail/', views.result_analysis_subject_fail, name='result_analysis_subject_fail'),
+    path('result-analysis/multi-term/', views.result_analysis_multi_term, name='result_analysis_multi_term'),
+    path('result-analysis/merit-slides/', views.result_analysis_merit_slides, name='result_analysis_merit_slides'),
+    path('result-analysis/result-cards/', views.result_analysis_result_cards, name='result_analysis_result_cards'),
+    path('result-analysis/section-arrangement/', views.section_arrangement, name='section_arrangement'),
 path('reports/class-section-summary/', views.class_section_summary, name='class_section_summary'),
     # Subject Assignment URLs (the old standalone "Subjects" master-list
     # page was removed — new subjects are created inline from the Assign
