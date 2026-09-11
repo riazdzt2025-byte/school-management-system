@@ -1,0 +1,9 @@
+{% extends 'students/base.html' %}
+{% block title %}Subject Fail List - {{ block.super }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Subject Fail List</h1><div class="subtitle">Failed candidates grouped by subject</div></div>{% if exam %}<button onclick="print()" class="btn btn-outline-navy d-print-none">Print</button>{% endif %}</div>
+{% include 'students/_result_analysis_selector.html' %}
+{% if exam %}
+<div class="mb-3"><strong>{{ exam.institution.name }}</strong> — {{ exam.name }}, Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</div>
+{% for group in subjects_with_fails %}<div class="table-card mb-4"><div class="p-3 border-bottom"><h5 class="mb-0">{{ group.subject.code }} — {{ group.subject.name }} <span class="badge bg-danger">{{ group.count }}</span></h5></div><div class="table-responsive"><table class="table table-striped mb-0"><thead><tr><th>Roll</th><th>Student ID</th><th>Name</th><th>Section</th><th>Marks</th><th>Grade</th><th>Failed parts</th></tr></thead><tbody>{% for row in group.rows %}<tr><td>{{ row.student.roll_no|default:'-' }}</td><td>{{ row.student.student_id }}</td><td>{{ row.student.name }}</td><td>{{ row.student.section|default:'-' }}</td><td>{% if row.absent %}Absent{% else %}{{ row.obtained }}/{{ row.full }}{% endif %}</td><td>{{ row.grade }}</td><td>{{ row.failed_parts|join:', '|default:'-' }}</td></tr>{% endfor %}</tbody></table></div></div>{% empty %}<div class="alert alert-success">No subject failures found.</div>{% endfor %}
+{% endif %}{% endblock %}

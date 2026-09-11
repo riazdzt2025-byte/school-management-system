@@ -1,0 +1,20 @@
+<form method="get" class="table-card p-3 mb-3 d-print-none">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Institution</label>
+            <select class="form-select" name="institution">
+                <option value="">All accessible institutions</option>
+                {% for institution in institutions %}<option value="{{ institution.pk }}" {% if selected_institution == institution.pk|stringformat:'s' %}selected{% endif %}>{{ institution.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2"><label class="form-label fw-semibold">Class</label><input class="form-control" name="admission_class" value="{{ selected_class }}" placeholder="e.g. 9"></div>
+        <div class="col-md-5">
+            <label class="form-label fw-semibold">Published exam</label>
+            <select class="form-select" name="exam" required>
+                <option value="">Select exam</option>
+                {% for item in exams %}<option value="{{ item.pk }}" {% if exam.pk == item.pk %}selected{% endif %}>{{ item.institution.name }} — {{ item.name }} — Class {{ item.admission_class }}{% if item.section %}/{{ item.section }}{% endif %}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2"><button class="btn btn-navy w-100">Show</button></div>
+    </div>
+</form>

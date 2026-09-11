@@ -129,8 +129,10 @@ SSC_GROUPS = {
         ('MATH', 'MANDATORY', '', ''),
         ('PHY', 'MANDATORY', '', ''),
         ('CHEM', 'MANDATORY', '', ''),
+        # SSC Science: Higher Mathematics is a core paper; Biology remains
+        # selectable. The separate HSC table below intentionally stays as-is.
         ('BIO', 'OPTIONAL', 'sci_4th', ''),
-        ('HMATH', 'OPTIONAL', 'sci_4th', ''),
+        ('HMATH', 'MANDATORY', '', ''),
     ],
     'BUS': [
         ('MATH', 'MANDATORY', '', ''),

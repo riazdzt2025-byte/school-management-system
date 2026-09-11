@@ -752,3 +752,70 @@ def build_exam_results(exam, group=None):
         result['position'] = ranked[index - 1]['position'] if index and key == previous_key else index + 1
         previous_key = key
     return columns, ranked + [result for result in results if result['position'] is None]
+
+
+def failed_subject_rows(exam, group=None):
+    """Return one row for every failed applicable subject in an exam.
+
+    The function uses :func:`build_exam_results`, so optional/religion papers,
+    part-pass rules and institution/class scope are identical to published
+    result sheets. Completely missing mandatory papers count as failures;
+    optional papers a student did not choose do not.
+    """
+    _columns, results = build_exam_results(exam, group=group)
+    rows = []
+    for result in results:
+        for subject_result in result['subject_results']:
+            if subject_result.get('not_applicable'):
+                continue
+            if subject_result.get('passed'):
+                continue
+            subject = subject_result.get('paper') or subject_result.get('subject')
+            rows.append({
+                'exam': exam,
+                'student': result['student'],
+                'subject': subject,
+                'obtained': subject_result.get('obtained'),
+                'full': subject_result.get('full'),
+                'grade': subject_result.get('grade'),
+                'absent': subject_result.get('absent', False),
+                'failed_parts': subject_result.get('failed_parts', []),
+                'result': subject_result,
+            })
+    return sorted(rows, key=lambda row: (
+        getattr(row['subject'], 'code', ''),
+        row['student'].roll_no is None,
+        row['student'].roll_no or 0,
+        row['student'].name.lower(),
+    ))
+
+
+def section_arrangement_rows(exam, group=None):
+    """Rank all candidates for merit-based section arrangement.
+
+    Fewer failed subjects always comes first; ties are decided by higher total
+    marks, then the existing roll and name for deterministic previews.  This
+    ranking intentionally does not use or alter ``roll_no``.
+    """
+    _columns, results = build_exam_results(exam, group=group)
+    rows = []
+    for result in results:
+        failed_count = sum(
+            1 for subject_result in result['subject_results']
+            if not subject_result.get('not_applicable')
+            and not subject_result.get('passed')
+        )
+        row = dict(result)
+        row.update({
+            'failed_subject_count': failed_count,
+            'current_section': result['student'].section,
+            'proposed_section': result['student'].section,
+        })
+        rows.append(row)
+    return sorted(rows, key=lambda row: (
+        row['failed_subject_count'],
+        -row['total_obtained'],
+        row['student'].roll_no is None,
+        row['student'].roll_no or 0,
+        row['student'].name.lower(),
+    ))

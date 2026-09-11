@@ -219,6 +219,19 @@
         </div>
     </div>
 
+    {% if can_result_analysis %}
+    <div class="nav-group">
+        <div class="group-label"><span><i class="bi bi-graph-up"></i><span class="nav-text">Result Analysis</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="flyout">
+            <a href="{% url 'result_analysis_subject_fail' %}"><i class="bi bi-exclamation-triangle"></i> Subject Fail List</a>
+            <a href="{% url 'result_analysis_multi_term' %}"><i class="bi bi-layout-three-columns"></i> Multi-term Results</a>
+            <a href="{% url 'result_analysis_merit_slides' %}"><i class="bi bi-easel"></i> Merit Slides</a>
+            <a href="{% url 'result_analysis_result_cards' %}"><i class="bi bi-card-list"></i> Result Cards (Class)</a>
+            <a href="{% url 'section_arrangement' %}"><i class="bi bi-diagram-3"></i> Section Arrangement</a>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="nav-group">
         <div class="group-label"><span><i class="bi bi-cash-coin"></i><span class="nav-text">Accounts</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">

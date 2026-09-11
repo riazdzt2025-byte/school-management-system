@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse, Http404
 from django.core.cache import cache
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q
 from django.urls import reverse
@@ -51,6 +51,8 @@ from .result_utils import (
     religion_paper_for,
     religion_subject_map,
     unassigned_mark_subjects,
+    failed_subject_rows,
+    section_arrangement_rows,
 )
 
 
@@ -4123,3 +4125,266 @@ def audit_log_list(request):
 def audit_log_detail(request, pk):
     log = get_object_or_404(AuditLog.objects.select_related('actor'), pk=pk)
     return render(request, 'students/audit_log_detail.html', {'log': log})
+
+# ---------------- Result Analysis ----------------
+
+def _require_result_analysis_department(request):
+    """Result analysis belongs to Office and Exam, never Accounts-only users."""
+    if _is_admin(request.user):
+        return
+    active = InstitutionAccess.objects.filter(user=request.user, is_active=True)
+    if active.exists():
+        if not active.filter(department__in=['Office', 'Exam']).exists():
+            raise PermissionDenied
+        return
+    if not request.user.groups.filter(name__in=['Office', 'Admission', 'Exam']).exists():
+        # Keep the historic direct-permission fallback used by installations
+        # created before InstitutionAccess, but do not admit Accounts members.
+        if request.user.groups.filter(name='Accounts').exists():
+            raise PermissionDenied
+        if not (request.user.has_perm('students.view_student') or
+                request.user.has_perm('students.add_exammark')):
+            raise PermissionDenied
+
+
+def _analysis_institutions(request):
+    """Institutions where this user belongs to Office or Exam specifically.
+
+    A person may be Office in school A and Accounts in school B. The generic
+    institution scoping intentionally includes both, but Result Analysis must
+    only expose A in that case.
+    """
+    if _is_admin(request.user):
+        return Institution.objects.all().order_by('name')
+    accesses = InstitutionAccess.objects.filter(
+        user=request.user, is_active=True, department__in=['Office', 'Exam'],
+    )
+    if accesses.exists():
+        return Institution.objects.filter(
+            pk__in=accesses.values_list('institution_id', flat=True)
+        ).order_by('name')
+    # Legacy group/direct-permission users have no InstitutionAccess rows and
+    # retain the existing unrestricted fallback.
+    return Institution.objects.all().order_by('name')
+
+
+def _analysis_exam_queryset(request, published_only=True):
+    exams = Exam.objects.select_related('institution').filter(
+        institution__in=_analysis_institutions(request)
+    ).order_by('-session', 'admission_class', 'section', 'name')
+    if published_only:
+        exams = exams.filter(is_published=True)
+    institution_id = request.GET.get('institution') or request.POST.get('institution')
+    admission_class = (request.GET.get('admission_class') or request.POST.get('admission_class') or '').strip()
+    if institution_id:
+        try:
+            institution = _analysis_institutions(request).get(pk=int(institution_id))
+        except (ValueError, TypeError, Institution.DoesNotExist):
+            raise Http404
+        exams = exams.filter(institution=institution)
+    if admission_class:
+        exams = exams.filter(admission_class__in=class_filter_variants(admission_class))
+    return exams
+
+
+def _selected_analysis_exam(request, queryset):
+    raw = request.GET.get('exam') or request.POST.get('exam')
+    if not raw:
+        return None
+    try:
+        return queryset.get(pk=int(raw))
+    except (ValueError, TypeError, Exam.DoesNotExist):
+        raise Http404
+
+
+def _analysis_base_context(request, exams):
+    return {
+        'institutions': _analysis_institutions(request),
+        'exams': exams,
+        'selected_institution': request.GET.get('institution', ''),
+        'selected_class': request.GET.get('admission_class', ''),
+    }
+
+
+@login_required
+def result_analysis_subject_fail(request):
+    _require_result_analysis_department(request)
+    exams = _analysis_exam_queryset(request)
+    exam = _selected_analysis_exam(request, exams)
+    rows = failed_subject_rows(exam, request.GET.get('group') or None) if exam else []
+    by_subject = []
+    for row in rows:
+        bucket = next((item for item in by_subject if item['subject'].pk == row['subject'].pk), None)
+        if bucket is None:
+            bucket = {'subject': row['subject'], 'rows': [], 'count': 0}
+            by_subject.append(bucket)
+        bucket['rows'].append(row)
+        bucket['count'] += 1
+    context = _analysis_base_context(request, exams)
+    context.update({'exam': exam, 'rows': rows, 'subjects_with_fails': by_subject})
+    return render(request, 'students/result_analysis_subject_fail.html', context)
+
+
+@login_required
+def result_analysis_multi_term(request):
+    _require_result_analysis_department(request)
+    exams = _analysis_exam_queryset(request)
+    raw_ids = request.GET.getlist('exams') or request.GET.getlist('exam')
+    selected = []
+    if raw_ids:
+        if not 2 <= len(raw_ids) <= 6:
+            messages.error(request, 'Select between 2 and 6 exams.')
+        else:
+            try:
+                selected = list(exams.filter(pk__in=[int(value) for value in raw_ids]))
+            except (TypeError, ValueError):
+                raise Http404
+            order = {int(value): i for i, value in enumerate(raw_ids)}
+            selected.sort(key=lambda exam: order[exam.pk])
+            if len(selected) != len(set(raw_ids)):
+                raise Http404
+            scopes = {(e.institution_id, str(e.admission_class).lstrip('0') or '0') for e in selected}
+            if len(scopes) != 1:
+                selected = []
+                messages.error(request, 'Selected exams must belong to the same institution and class.')
+    result_maps = []
+    students = {}
+    for exam in selected:
+        _columns, results = build_exam_results(exam)
+        result_map = {row['student'].pk: row for row in results}
+        result_maps.append(result_map)
+        students.update({row['student'].pk: row['student'] for row in results})
+    rows = []
+    for student in sorted(students.values(), key=lambda s: (s.roll_no is None, s.roll_no or 0, s.name.lower())):
+        rows.append({'student': student, 'results': [mapping.get(student.pk) for mapping in result_maps]})
+    context = _analysis_base_context(request, exams)
+    context.update({'selected_exams': selected, 'selected_exam_ids': [e.pk for e in selected], 'rows': rows})
+    return render(request, 'students/result_analysis_multi_term.html', context)
+
+
+@login_required
+def result_analysis_merit_slides(request):
+    _require_result_analysis_department(request)
+    exams = _analysis_exam_queryset(request)
+    exam = _selected_analysis_exam(request, exams)
+    top_three = []
+    if exam:
+        _columns, results = build_exam_results(exam, request.GET.get('group') or None)
+        top_three = [row for row in results if row['position'] and row['position'] <= 3][:3]
+    context = _analysis_base_context(request, exams)
+    context.update({'exam': exam, 'top_three': top_three})
+    return render(request, 'students/result_analysis_merit_slides.html', context)
+
+
+@login_required
+def result_analysis_result_cards(request):
+    _require_result_analysis_department(request)
+    exams = _analysis_exam_queryset(request)
+    exam = _selected_analysis_exam(request, exams)
+    results = []
+    if exam:
+        _columns, results = build_exam_results(exam, request.GET.get('group') or None)
+        results = [row for row in results if row['has_marks']]
+    context = _analysis_base_context(request, exams)
+    context.update({'exam': exam, 'results': results})
+    return render(request, 'students/result_analysis_result_cards.html', context)
+
+
+def _arrangement_sections(exam, rows, raw_sections=''):
+    sections = [value.strip() for value in raw_sections.split(',') if value.strip()]
+    if not sections:
+        sections = sorted({row['student'].section for row in rows if row['student'].section})
+    if not sections:
+        sections = ['A']
+    return sections
+
+
+def _apply_arrangement_preview(exam, rows, sections):
+    """Assign ranked rows to section slots without saving anything."""
+    cohort_ids = [row['student'].pk for row in rows]
+    slots = []
+    warnings = []
+    for section in sections:
+        limit = SectionCapacity.get_limit(exam.institution, exam.admission_class, section)
+        if limit is None:
+            slots.append([section, None])
+            continue
+        occupied = Student.objects.filter(
+            institution=exam.institution,
+            admission_class__in=class_filter_variants(exam.admission_class),
+            section=section, status='ACTIVE', is_archived=False,
+        ).exclude(pk__in=cohort_ids).count()
+        room = max(limit - occupied, 0)
+        slots.append([section, room])
+        if room == 0:
+            warnings.append(f'Section {section} has no available seats (capacity {limit}).')
+    slot_index = 0
+    unplaced = 0
+    for row in rows:
+        while slot_index < len(slots) and slots[slot_index][1] == 0:
+            slot_index += 1
+        if slot_index >= len(slots):
+            row['proposed_section'] = row['current_section']
+            row['capacity_blocked'] = True
+            unplaced += 1
+            continue
+        row['proposed_section'] = slots[slot_index][0]
+        if slots[slot_index][1] is not None:
+            slots[slot_index][1] -= 1
+    if unplaced:
+        warnings.append(
+            f'{unplaced} student(s) could not be moved because configured SectionCapacity limits are full.'
+        )
+    return warnings
+
+
+@login_required
+def section_arrangement(request):
+    _require_result_analysis_department(request)
+    exams = _analysis_exam_queryset(request)
+    exam = _selected_analysis_exam(request, exams)
+    rows = section_arrangement_rows(exam, request.GET.get('group') or request.POST.get('group') or None) if exam else []
+    raw_sections = request.GET.get('sections') or request.POST.get('sections') or ''
+    sections = _arrangement_sections(exam, rows, raw_sections) if exam else []
+    capacity_warnings = _apply_arrangement_preview(exam, rows, sections) if exam else []
+
+    if request.method == 'POST':
+        if not request.user.has_perm('students.change_student'):
+            raise PermissionDenied
+        if request.POST.get('action') != 'confirm':
+            messages.error(request, 'Preview the arrangement before confirming it.')
+        elif not exam:
+            messages.error(request, 'Select an exam first.')
+        elif capacity_warnings:
+            messages.error(request, 'Arrangement was not saved because a section capacity would be exceeded.')
+        else:
+            changes = []
+            with transaction.atomic():
+                # Lock and update only the section. roll_no is deliberately
+                # absent from update_fields and from every assignment here.
+                locked = {s.pk: s for s in Student.objects.select_for_update().filter(
+                    pk__in=[row['student'].pk for row in rows], institution=exam.institution
+                )}
+                for row in rows:
+                    student = locked[row['student'].pk]
+                    old_section = student.section
+                    new_section = row['proposed_section']
+                    if old_section != new_section:
+                        student.section = new_section
+                        student.save(update_fields=['section'])
+                        changes.append({'student_id': student.pk, 'from': old_section, 'to': new_section})
+                record_audit(
+                    request.user, 'section_arrangement_confirmed', exam,
+                    snapshot={'exam_id': exam.pk, 'sections': sections, 'student_count': len(rows)},
+                    details={'changes': changes, 'roll_numbers_changed': False},
+                )
+            messages.success(request, f'Section arrangement saved for {len(changes)} student(s). Roll numbers were unchanged.')
+            query = f'?exam={exam.pk}&sections={",".join(sections)}'
+            return redirect(reverse('section_arrangement') + query)
+
+    context = _analysis_base_context(request, exams)
+    context.update({
+        'exam': exam, 'rows': rows, 'sections': sections,
+        'sections_csv': ','.join(sections), 'capacity_warnings': capacity_warnings,
+    })
+    return render(request, 'students/section_arrangement.html', context)
