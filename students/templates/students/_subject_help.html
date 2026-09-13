@@ -1,0 +1,27 @@
+{% comment %}
+Shared "why is this list empty, and what do I do about it" block.
+
+Expects a `subject_help` dict from views.subject_help_context():
+reason / message / action_label / action_url / contact_department.
+The action link is only present when the user holds the permission the target
+page enforces; otherwise the block names the department to ask, so nobody is
+sent to a 403.
+
+NOTE: this must stay a {% templatetag %}-free `{% comment %}` block — Django's
+inline `{# #}` form is single-line only, and a multi-line one is emitted as
+literal page text.
+{% endcomment %}
+{% if subject_help.reason %}
+<div class="alert alert-warning">
+    <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> No subject to work with here</div>
+    <div class="mb-2">{{ subject_help.message }}</div>
+    {% if subject_help.action_url %}
+        <a href="{{ subject_help.action_url }}" class="btn btn-sm btn-navy">{{ subject_help.action_label }}</a>
+    {% elif subject_help.contact_department %}
+        <div class="small text-muted">
+            You do not have permission to change this — please ask the
+            <strong>{{ subject_help.contact_department }}</strong> department.
+        </div>
+    {% endif %}
+</div>
+{% endif %}

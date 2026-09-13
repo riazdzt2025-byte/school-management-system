@@ -1084,6 +1084,12 @@ class ExamScopeConsistencyTests(TestCase):
 		self.assertEqual(get_subject_marks(self.exam, self.physics).full_marks, 50)
 
 	def test_result_sheet_excludes_other_group_subjects_and_warns(self):
+		# Physics is the column under test, so it has to hold a mark: a subject
+		# with no mark at all in this exam is not a column any more.
+		ExamMark.objects.create(
+			exam=self.exam, student=self.science_student, subject=self.physics,
+			marks_obtained=88,
+		)
 		ExamMark.objects.create(
 			exam=self.exam, student=self.science_student, subject=self.accounting,
 			marks_obtained=80,
@@ -1261,8 +1267,19 @@ class AbsentSubjectRulesTests(TestCase):
 			institution=self.institution, student_id='A002', name='Totally Absent',
 			admission_class='9', section='A', roll_no=2, admission_year=2026,
 		)
+		# A third student who did sit Higher Math. A subject the exam holds no
+		# mark for at all is not a column (see marked_subject_ids_for_exam), so
+		# without one mark somewhere in Math the column this class tests would
+		# never be built.
+		self.math_sitter = Student.objects.create(
+			institution=self.institution, student_id='A003', name='Math Only',
+			admission_class='9', section='A', roll_no=3, admission_year=2026,
+		)
 		ExamMark.objects.create(
 			exam=self.exam, student=self.partial, subject=self.physics, marks_obtained=95,
+		)
+		ExamMark.objects.create(
+			exam=self.exam, student=self.math_sitter, subject=self.math, marks_obtained=64,
 		)
 
 	def test_unentered_subject_is_graded_f_and_makes_the_result_fail(self):
@@ -2004,6 +2021,12 @@ class ReligionPaperTests(TestCase):
 
 	def test_the_two_papers_print_as_one_religion_column(self):
 		from .result_utils import ReligionColumn
+		# Marks for both papers: a subject with no mark at all in this exam is
+		# not a column, so the merged Religion column would never be built.
+		self._marks(self.muslim, self.bangla, 80)
+		self._marks(self.muslim, self.islam, 75)
+		self._marks(self.hindu_kid, self.bangla, 82)
+		self._marks(self.hindu_kid, self.hindu, 71)
 		columns, _results = self._built()
 		religion_columns = [column for column in columns if isinstance(column, ReligionColumn)]
 		self.assertEqual(len(religion_columns), 1)
@@ -2111,6 +2134,11 @@ class ReligionPaperTests(TestCase):
 		self.assertEqual(result['total_full'], 200)
 
 	def test_result_sheet_shows_rel_code_and_legend(self):
+		# Same as above: the REL column only exists once the papers hold marks.
+		self._marks(self.muslim, self.bangla, 80)
+		self._marks(self.muslim, self.islam, 75)
+		self._marks(self.hindu_kid, self.bangla, 82)
+		self._marks(self.hindu_kid, self.hindu, 71)
 		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
 		self.assertEqual(response.status_code, 200)
 		content = response.content.decode()

@@ -376,13 +376,30 @@ class SubjectRequirementForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+        self.user = user
         self.allowed_institution_ids = _allowed_institution_ids(user)
         if self.allowed_institution_ids is not None:
             self.fields['institution'].queryset = Institution.objects.filter(
                 pk__in=self.allowed_institution_ids
             )
-        self.fields['subject'].required = False
-        self.fields['subject'].empty_label = "-- Choose existing, or add a new subject below --"
+        # Creating a subject is a write to the Subject master, so the inline
+        # "add a new subject" fields are only offered to a user who actually
+        # holds students.add_subject. Without it the form is a plain assignment
+        # form and the user is told which department creates subjects.
+        self.can_add_subject = bool(
+            user is not None
+            and not getattr(user, 'is_anonymous', True)
+            and user.has_perm('students.add_subject')
+        )
+        if self.can_add_subject:
+            self.fields['subject'].required = False
+            self.fields['subject'].empty_label = "-- Choose existing, or add a new subject below --"
+        else:
+            for name in ('new_subject_code', 'new_subject_name',
+                         'new_subject_full_marks', 'new_subject_category'):
+                self.fields.pop(name, None)
+            self.fields['subject'].required = True
+            self.fields['subject'].empty_label = "-- Choose a subject --"
 
     def clean_institution(self):
         institution = self.cleaned_data.get('institution')
@@ -398,25 +415,45 @@ class SubjectRequirementForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         subject = cleaned.get('subject')
-        code = cleaned.get('new_subject_code', '').strip()
-        name = cleaned.get('new_subject_name', '').strip()
+        code = (cleaned.get('new_subject_code') or '').strip()
+        name = (cleaned.get('new_subject_name') or '').strip()
 
         if not subject and not (code and name):
+            if self.can_add_subject:
+                raise forms.ValidationError(
+                    "Choose an existing subject, or fill in both a code and name to add a new one."
+                )
             raise forms.ValidationError(
-                "Choose an existing subject, or fill in both a code and name to add a new one."
+                "Choose the subject to assign. New subjects are created by a user with"
+                " subject-management rights (Office or Subjects department) — ask them"
+                " to add it first, then assign it here."
             )
         if not subject and code and Subject.objects.filter(code__iexact=code).exists():
             self.add_error('new_subject_code', "A subject with this code already exists — pick it from the dropdown instead.")
+        if not subject and name and Subject.objects.filter(name__iexact=name).exists():
+            # A second "Bangla" under a different code would show up twice in
+            # marks entry and on the result sheet, and nobody can tell which
+            # column is which afterwards.
+            existing = Subject.objects.filter(name__iexact=name).first()
+            self.add_error(
+                'new_subject_name',
+                f'"{existing.name}" already exists as code {existing.code} — pick it from'
+                ' the dropdown instead of creating a second subject with the same name.',
+            )
         return cleaned
 
     def save(self, commit=True):
         instance = super().save(commit=False)
         if not instance.subject_id and self.cleaned_data.get('new_subject_code'):
+            actor = self.user
             instance.subject = Subject.objects.create(
                 code=self.cleaned_data['new_subject_code'].strip(),
                 name=self.cleaned_data['new_subject_name'].strip(),
                 full_marks=self.cleaned_data.get('new_subject_full_marks') or 100,
                 category=self.cleaned_data.get('new_subject_category') or 'OTHER',
+                # Keep the audit trail: Subject.created_by already exists and
+                # was silently left empty for every inline-created subject.
+                created_by=actor if getattr(actor, 'is_authenticated', False) else None,
             )
         if commit:
             instance.save()

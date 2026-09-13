@@ -65,6 +65,8 @@
             </select>
         </div>
 
+        <div class="col-12" id="subjects-help" style="display:none;"></div>
+
         <div class="col-12">
             <button class="btn btn-navy">Start Entering Marks</button>
         </div>
@@ -80,7 +82,32 @@
     var groupSelect = document.getElementById('id_group');
     var examTypeSelect = document.getElementById('id_exam_type');
     var subjectSelect = document.getElementById('id_subject');
+    var subjectsHelp = document.getElementById('subjects-help');
     var groupClasses = ['9', '10', '11', '12'];
+
+    // An empty subject list has three different causes; say which one it is and
+    // link to the screen that fixes it, instead of leaving a dead dropdown.
+    // Links are only offered when this user holds the matching permission.
+    var canAssign = {% if perms.students.add_subjectrequirement %}true{% else %}false{% endif %};
+    var canEvaluate = {% if perms.students.change_subject %}true{% else %}false{% endif %};
+
+    function showSubjectsHelp(instId, cls) {
+        var lines = ['<div class="alert alert-warning mb-0 small">',
+            '<div class="fw-semibold mb-1">No subject is available for this class yet.</div>',
+            '<div class="mb-2">A subject only reaches marks entry once it is (1) assigned to this',
+            'Institution + Class (+ Group), (2) switched on in Mark Evaluation for this exam type, and',
+            '(3) taken by at least one student in the class &mdash; optional subjects need the',
+            'student&rsquo;s own subject choice recorded at admission.</div><ul class="mb-0">'];
+        lines.push('<li>' + (canAssign
+            ? '<a href="{% url "subject_requirement_list" %}?institution=' + encodeURIComponent(instId) + '&admission_class=' + encodeURIComponent(cls) + '">Assign the subject for this class</a>'
+            : 'Assign the subject for this class &mdash; ask the <strong>Office</strong> department') + '</li>');
+        lines.push('<li>' + (canEvaluate
+            ? '<a href="{% url "mark_evaluation_settings" %}?institution=' + encodeURIComponent(instId) + '&admission_class=' + encodeURIComponent(cls) + '&exam_type=' + encodeURIComponent(examTypeSelect.value || '') + '">Set the marks distribution / switch the subject on</a>'
+            : 'Set the marks distribution &mdash; ask the <strong>Exam</strong> department') + '</li>');
+        lines.push('</ul></div>');
+        subjectsHelp.innerHTML = lines.join('');
+        subjectsHelp.style.display = '';
+    }
 
     function toggleGroupField() {
         var show = groupClasses.indexOf(classSelect.value) !== -1;
@@ -111,6 +138,7 @@
         var cls = classSelect.value;
         if (!instId || !cls) {
             subjectSelect.innerHTML = '<option value="">-- Select class first --</option>';
+            subjectsHelp.style.display = 'none';
             return;
         }
         subjectSelect.innerHTML = '<option value="">-- Loading... --</option>';
@@ -122,9 +150,11 @@
             var all = data.subjects || [];
             subjectSelect.innerHTML = '';
             if (!all.length) {
-                subjectSelect.innerHTML = '<option value="">-- No subjects assigned at admission --</option>';
+                subjectSelect.innerHTML = '<option value="">-- No subject available --</option>';
+                showSubjectsHelp(instId, cls);
                 return;
             }
+            subjectsHelp.style.display = 'none';
             var placeholder = document.createElement('option');
             placeholder.value = '';
             placeholder.textContent = '-- Select subject --';

@@ -45,6 +45,29 @@
         </div>
     </form>
 
+    {% if affected_exams %}
+    <div class="alert alert-warning">
+        <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> These published exams read this screen</div>
+        <div class="small mb-2">
+            Mark Evaluation is stored per Institution + Class + Exam Type, not per exam — so changing Full Marks,
+            the CQ/MCQ/Practical split, the pass % or the <strong>Count</strong> tick here also changes results that
+            are <strong>already published</strong>:
+        </div>
+        <ul class="small mb-2">
+            {% for exam in affected_exams %}
+            <li>
+                <a href="{% url 'result_sheet' exam.pk %}">{{ exam.name }}</a>
+                ({{ exam.get_exam_type_display }} · {{ exam.session }}{% if exam.group %} · {{ exam.get_group_display }}{% endif %})
+            </li>
+            {% endfor %}
+        </ul>
+        <div class="small text-muted">
+            To change the marks distribution for a <em>future</em> exam only, use a different exam type or wait until
+            the older exam is no longer needed — a setting saved here applies to every exam of this type in this class.
+        </div>
+    </div>
+    {% endif %}
+
     {% if subjects_with_settings %}
     <form method="post">
         <input type="hidden" name="institution" value="{{ selected_institution }}">
@@ -124,7 +147,25 @@
         <button class="btn btn-navy mt-3">Save All</button>
     </form>
     {% elif selected_institution and selected_class and selected_exam_type %}
-    <div class="text-muted">No subjects are assigned to this Institution + Class yet. Add them from "Subject Requirements" first.</div>
+    <div class="alert alert-warning">
+        <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> Nothing to configure yet</div>
+        <div class="mb-2">
+            {% if empty_message %}{{ empty_message }}{% else %}No subjects are assigned to this Institution + Class yet.{% endif %}
+        </div>
+        {% if empty_reason == 'not_assigned' %}
+            {% if can_assign %}
+                <a href="{{ assignments_url }}" class="btn btn-sm btn-navy">Go to Subject Assignments</a>
+            {% else %}
+                <div class="small text-muted">Subjects are assigned by the <strong>Office</strong> department — ask them to assign this class first.</div>
+            {% endif %}
+        {% elif empty_reason == 'no_student' %}
+            {% if can_change_students %}
+                <a href="{% url 'student_list' %}?institution={{ selected_institution }}&admission_class={{ selected_class }}" class="btn btn-sm btn-navy">Check the students of this class</a>
+            {% else %}
+                <div class="small text-muted">Student admissions and subject choices are handled by the <strong>Office</strong> department.</div>
+            {% endif %}
+        {% endif %}
+    </div>
     {% endif %}
 </div>
 
