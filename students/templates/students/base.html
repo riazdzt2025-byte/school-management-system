@@ -191,6 +191,7 @@
         <div class="flyout">
             <a href="{% url 'admission_application_list' %}"><i class="bi bi-file-earmark-person-fill"></i> Admission</a>
             <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
+            {% if perms.students.view_subjectrequirement %}<a href="{% url 'subject_requirement_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subject Assignments</a>{% endif %}
             <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
             <a href="{% url 'import_students' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Import Students</a>
             {% if user.is_staff %}<a href="{% url 'audit_log_list' %}"><i class="bi bi-clock-history"></i> Audit Log</a>{% endif %}

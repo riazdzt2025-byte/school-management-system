@@ -17,6 +17,7 @@ def _group_permission_map():
         Student,
         StudentPromotionHistory,
         Subject,
+        SubjectRequirement,
         TransferCertificate,
         Voucher,
         SalarySheet,
@@ -42,15 +43,29 @@ def _group_permission_map():
             (Certificate, ['add', 'change', 'delete']),
             (PromotionBatch, ['add', 'change', 'view']),
             (StudentPromotionHistory, ['add', 'view']),
+            # Subject Assignment (বিষয় নির্ধারণ) is an Office workflow: the
+            # list page is guarded by students.view_subjectrequirement and the
+            # add/edit/delete/auto-fill actions by the matching write perms,
+            # all scoped to the user's institutions in the views/forms.
+            (SubjectRequirement, ['add', 'change', 'delete', 'view']),
         ],
         'Subjects': [
             (Subject, ['add', 'change', 'delete']),
+            # Read access to the assignment list (it used to be login-only);
+            # Subjects users manage the subject master and may inspect where
+            # subjects are assigned. No write access to assignments.
+            (SubjectRequirement, ['view']),
         ],
         'Exam': [
             (Student, ['view']),
             (Exam, ['add', 'change']),
             (ExamMark, ['add', 'change', 'delete']),
             (SeatPlan, ['add', 'change', 'delete']),
+            # Read-only: the Enter Marks / Import / Result Sheet pages point
+            # at the Subject Assignments list when a class has no subjects
+            # yet ("Go to Subject Assignments"), so Exam keeps the read view
+            # and gains no write access.
+            (SubjectRequirement, ['view']),
         ],
         'HR': [
             (Employee, ['add', 'change', 'delete']),
@@ -64,6 +79,9 @@ def _group_permission_map():
             (SalarySheet, ['add', 'change', 'delete']),
             (Exam, ['add', 'change']),
             (ExamMark, ['add', 'change', 'delete']),
+            # Read-only: Accounts also enters marks, so its "Go to Subject
+            # Assignments" workflow links keep working.
+            (SubjectRequirement, ['view']),
         ],
         'Audit': [
             (AuditLog, ['view']),
