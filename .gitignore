@@ -16,6 +16,7 @@ temp*.json
 temp_*.txt
 test_*.txt
 .venv/
+venv/
 
 # Backup / restore artifacts and disposable restore-drill scratch
 # (contain PII + full DB copies — never commit)

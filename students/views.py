@@ -2373,10 +2373,17 @@ def _subject_requirement_list_redirect(request):
 
 
 @login_required
+@permission_required('students.view_subjectrequirement', raise_exception=True)
 def subject_requirement_list(request):
     """Popup-free page for assigning subjects (from the pre-loaded/custom
     Subject list) to a specific Institution + Class + Group, marking each
-    Mandatory/Optional/Conditional."""
+    Mandatory/Optional/Conditional.
+
+    Guarded by students.view_subjectrequirement (Office owns the workflow;
+    Exam/Accounts/Subjects keep a read-only view so the existing "Go to
+    Subject Assignments" links in the exam workflow keep working). Rows are
+    scoped to the user's institutions below, and the Edit/Delete/Assign
+    buttons in the template additionally require the write permissions."""
     requirements = SubjectRequirement.objects.select_related('institution', 'subject').all()
 
     requested_institution_id = request.GET.get('institution', '')
