@@ -72,6 +72,9 @@ A web-based Student Management System built with Python and Django, inspired by 
 
 - [`RESULT_PUBLISHING_GUIDE.md`](RESULT_PUBLISHING_GUIDE.md) — marks, CQ/MCQ/Practical/Weekly Test split,
   pass rules, publishing results, and the Excel import template.
+- [`docs/SUBJECT_WORKFLOW_BN.md`](docs/SUBJECT_WORKFLOW_BN.md) — বাংলায়: নতুন বিষয় কোথায় যোগ
+  ও assign করবেন, নম্বর বণ্টন কোথায় সেট করবেন, কোথা থেকে নম্বর দেবেন, কোথায় publish করবেন,
+  আর বিষয় না দেখালে কী কী পরীক্ষা করবেন।
 - [`DEPLOY_NOTES.md`](DEPLOY_NOTES.md) — what to check after a deploy to Render, including the
   duplicate-subject cleanup.
 

@@ -192,6 +192,7 @@
             <a href="{% url 'admission_application_list' %}"><i class="bi bi-file-earmark-person-fill"></i> Admission</a>
             <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
             {% if perms.students.view_subjectrequirement %}<a href="{% url 'subject_requirement_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subject Assignments</a>{% endif %}
+            {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>{% endif %}
             <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
             <a href="{% url 'import_students' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Import Students</a>
             {% if user.is_staff %}<a href="{% url 'audit_log_list' %}"><i class="bi bi-clock-history"></i> Audit Log</a>{% endif %}
@@ -214,9 +215,13 @@
     <div class="nav-group">
         <div class="group-label"><span><i class="bi bi-pencil-square"></i><span class="nav-text">Exam</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">
-            <a href="{% url 'start_entering_marks' %}"><i class="bi bi-pencil-fill"></i> Enter Marks</a>
+            {% comment %}
+            Each entry is guarded by the permission its own view enforces, so a
+            user never sees a link that only leads to a 403.
+            {% endcomment %}
+            {% if perms.students.add_exammark %}<a href="{% url 'start_entering_marks' %}"><i class="bi bi-pencil-fill"></i> Enter Marks</a>{% endif %}
             <a href="{% url 'exam_list' %}"><i class="bi bi-journal-check"></i> Exam List</a>
-            <a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>
+            {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>{% endif %}
         </div>
     </div>
 

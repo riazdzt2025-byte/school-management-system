@@ -14,15 +14,35 @@ Short version:
 ## 0. Once per class: subject assignments
 
 Marks entry and the result sheet both work off **Subject Assignments**
-(`Subject → Subject Assignments`), keyed by Institution + Class + Group.
+(`Office → Subject Assignments`), keyed by Institution + Class + Group.
 
 - A subject with a blank group (Bangla, English…) counts for every group.
 - A subject assigned to `SCI` never appears in a `BUS` exam, and vice versa.
+- There is **no Subjects master page** any more. A brand-new subject is created
+  on the *Assign Subject* form itself: leave the Subject dropdown empty and fill
+  in the code, name, full marks and category that appear below it. The code and
+  the name must both be unique across the whole system.
+- **Optional** subjects need one more step: each student's choice has to be
+  recorded (`Office → Students → Edit student`). Mandatory subjects and each
+  student's own religion paper are derived automatically and need no choice row.
 
-**Fallback:** if a class has no assignments at all, every subject is offered and
-the pages say so. Marks entry is never blocked, but the result sheet then cannot
-tell one group's subjects from another's — configure assignments for classes
-9–12 before publishing anything.
+**No fallback:** a class with no assignment rows offers **no subjects at all** —
+marks entry, the Excel import and the result sheet all refuse to guess, and each
+page now says *why* the list is empty (nothing assigned / switched off in Mark
+Evaluation / no student takes it) with a link to the screen that fixes it. There
+is deliberately no fallback to the whole Subject master list, because that is
+how one group's subjects used to leak into another group's exam.
+
+**A subject assigned today joins an already-published exam only once someone
+has a mark for it.** Assignments are read when a result is calculated, not
+stored on the exam — but a subject the exam holds no mark for at all is *not*
+a result column (see the pass rules), so merely assigning a subject can never
+rewrite an old result: the sheet names it in a notice instead. The moment the
+first mark is entered, the subject becomes a column on that exam's sheets, and
+from then on a student without a mark in it is graded F. The Subject
+Assignments list, the Assign Subject form and Mark Evaluation all list the
+published exams this would touch *before* you save. An **Optional** subject
+only counts for the students who actually chose it.
 
 ## 1. Mark Evaluation Settings (`Exam → Mark Evaluation`)
 
@@ -64,13 +84,32 @@ A part that is configured but left blank for a student **counts as a failed part
 That is the difference between "student did not sit the practical" and "we forgot to
 enter the practical": both are missing marks, and neither may be read as a pass.
 
-**A subject with no mark entered at all also fails** (the NCTB/SSC reading): the
-result sheet prints a dash for it, never a 0, but the subject is graded **F** and
-counted as 0 out of its Full Marks, so the student's result becomes **Fail with GPA
-0.00**. Not sitting a paper is not the same as scoring nothing on it — the dash keeps
-that visible on paper — but it is not an exemption either. To go back to leaving
-un-entered subjects out of the total entirely, set `EXAM_ABSENT_SUBJECT_FAILS=False`
-in the environment; nothing else about the dash/zero distinction changes.
+**A subject with no mark entered *for that student* fails them** (the NCTB/SSC
+reading): the result sheet prints a dash, never a 0, but the subject is graded
+**F** and counted as 0 out of its Full Marks, so the student's result becomes
+**Fail with GPA 0.00**. Not sitting a paper is not the same as scoring nothing
+on it — the dash keeps that visible on paper — but it is not an exemption
+either. This applies as soon as the subject holds a mark for *anyone* in the
+exam: 40 marks entered and one box empty means that one student did not sit it.
+
+**A subject the exam holds no mark for at all is not a column.** It is left out
+of the register, the totals and the GPA entirely, and the result sheet names it
+in a notice instead. Two reasons this matters:
+
+- Assignments are keyed to the *class*, not to the exam, and are read when a
+  result is calculated. Without this rule, a subject assigned to the class
+  **after** an exam was published arrived as a brand-new empty column and failed
+  every student in it — a published Pass 5.00 became Fail 0.00 just because
+  someone added a subject. The column appears as soon as the first mark is
+  entered.
+- It is also how an un-entered subject shows up: if a paper *was* examined and
+  nobody's marks are in yet, the register will be missing that column rather
+  than failing the whole class. **Read the notice** — it is the difference
+  between "not examined" and "not entered yet".
+
+To go back to leaving un-entered subjects out of the total for individual
+students as well, set `EXAM_ABSENT_SUBJECT_FAILS=False` in the environment;
+nothing else about the dash/zero distinction changes.
 
 The one exception is a student with **no marks in any subject**: they are listed as
 `No Marks`, left unranked and not counted as Fail — nobody sat the exam, nobody

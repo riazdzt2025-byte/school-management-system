@@ -48,6 +48,16 @@ def _group_permission_map():
             # add/edit/delete/auto-fill actions by the matching write perms,
             # all scoped to the user's institutions in the views/forms.
             (SubjectRequirement, ['add', 'change', 'delete', 'view']),
+            # The Assign Subject form creates a brand-new Subject inline ("or
+            # add a new subject below"), so the department that assigns
+            # subjects has to be able to create them — otherwise the workflow
+            # stops at a form field the user is not allowed to use.
+            # 'change' is what the Mark Evaluation page is guarded by
+            # (students.change_subject); without it the office that set the
+            # curriculum could not set Full Marks / CQ / MCQ / pass % for it.
+            # No 'delete': removing a Subject orphans the ExamMarks already
+            # entered against it, so that stays with the Subjects group.
+            (Subject, ['add', 'change']),
         ],
         'Subjects': [
             (Subject, ['add', 'change', 'delete']),
@@ -66,6 +76,12 @@ def _group_permission_map():
             # yet ("Go to Subject Assignments"), so Exam keeps the read view
             # and gains no write access.
             (SubjectRequirement, ['view']),
+            # Mark Evaluation (নম্বর বণ্টন) is per Institution + Class + Exam
+            # Type, i.e. exactly the exam department's job: it decides Full
+            # Marks / CQ / MCQ / Practical / pass % and which subjects count.
+            # The page is guarded by students.change_subject, so without this
+            # the sidebar link every Exam user sees led straight to a 403.
+            (Subject, ['change']),
         ],
         'HR': [
             (Employee, ['add', 'change', 'delete']),

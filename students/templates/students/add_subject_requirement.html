@@ -10,6 +10,33 @@
     </div>
 </div>
 
+{% if affected_exams %}
+<div class="alert alert-warning" style="max-width: 640px;">
+    <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> This class already has published results</div>
+    <div class="small mb-2">
+        Assignments are read when a result is calculated, so the subject you save here will also appear on these
+        <strong>already published</strong> exams &mdash; and with no marks entered it is graded F, failing the whole result:
+    </div>
+    <ul class="small mb-2">
+        {% for exam in affected_exams %}
+        <li><a href="{% url 'result_sheet' exam.pk %}">{{ exam.name }}</a> ({{ exam.get_exam_type_display }} · {{ exam.session }})</li>
+        {% endfor %}
+    </ul>
+    <div class="small text-muted">
+        Choose <strong>Optional</strong> as the Requirement Type if the subject should only apply to students who
+        actually take it &mdash; then it never fails a student who did not sit it.
+    </div>
+</div>
+{% endif %}
+
+{% if messages %}
+<div style="max-width: 640px;">
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <div class="table-card p-4" style="max-width: 640px;">
     <form method="POST" id="subject-requirement-form">
         {% csrf_token %}
@@ -38,6 +65,7 @@
             {{ form.subject.errors }}
         </div>
 
+        {% if form.new_subject_code %}
         <div id="new-subject-box" class="p-3 mb-3" style="background:#f8f9fb; border-radius:10px; display:none;">
             <div class="fw-semibold mb-2">New Subject Details</div>
             <div class="row g-2">
@@ -49,17 +77,31 @@
                 <div class="col-6">
                     <label class="form-label">Full Marks</label>
                     {{ form.new_subject_full_marks }}
+                    {{ form.new_subject_full_marks.errors }}
                 </div>
                 <div class="col-8">
                     <label class="form-label">Name</label>
                     {{ form.new_subject_name }}
+                    {{ form.new_subject_name.errors }}
                 </div>
                 <div class="col-4">
                     <label class="form-label">Category</label>
                     {{ form.new_subject_category }}
+                    {{ form.new_subject_category.errors }}
                 </div>
             </div>
+            <div class="form-text mt-2">
+                The code must be unique across the whole system, and so must the name — a second subject called
+                &ldquo;Bangla&rdquo; would show up as two indistinguishable columns later.
+            </div>
         </div>
+        {% else %}
+        <div class="alert alert-secondary small">
+            New subjects are created by a user with subject-management rights. Pick the subject from the list above
+            &mdash; if it is not there yet, ask the <strong>Office</strong> (or Subjects) department to add it, then
+            assign it here.
+        </div>
+        {% endif %}
 
         <div class="mb-3">
             <label class="form-label">Requirement Type</label>
@@ -92,6 +134,7 @@
     (function () {
         const subjectSelect = document.getElementById('{{ form.subject.id_for_label }}');
         const newSubjectBox = document.getElementById('new-subject-box');
+        if (!subjectSelect || !newSubjectBox) { return; }
 
         function syncVisibility() {
             if (!subjectSelect.value) {

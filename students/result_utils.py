@@ -152,6 +152,142 @@ def no_subjects_assigned_message(exam):
     )
 
 
+# ---- Why a marks/result page has no subject to offer ----------------------
+# An empty subject list has three different causes and three different fixes.
+# Showing "assign subjects" for all three sends the user to the wrong page:
+# the subjects may already be assigned and simply switched off in Mark
+# Evaluation, or assigned and active but not selected by any student.
+SUBJECTS_NOT_ASSIGNED = 'not_assigned'
+SUBJECTS_ALL_DISABLED = 'all_disabled'
+SUBJECTS_NO_STUDENT = 'no_student'
+
+
+def exam_type_label(exam):
+    """Human name of the exam type, tolerating the ``SimpleNamespace`` exam
+    look-alikes the marks/evaluation screens build (they carry ``exam_type``
+    but not Django's ``get_FOO_display`` helper)."""
+    display = getattr(exam, 'get_exam_type_display', None)
+    if callable(display):
+        try:
+            return display()
+        except Exception:
+            pass
+    from .models import Exam
+
+    raw = getattr(exam, 'exam_type', '') or ''
+    return dict(Exam.EXAM_TYPE_CHOICES).get(raw, raw or 'this exam type')
+
+
+def subject_availability_diagnosis(exam, students=None, group=None):
+    """Explain *why* this exam has no subject to enter marks for.
+
+    Returns ``(reason, message)`` where ``reason`` is one of
+    :data:`SUBJECTS_NOT_ASSIGNED` / :data:`SUBJECTS_ALL_DISABLED` /
+    :data:`SUBJECTS_NO_STUDENT`, and ``message`` is a sentence that names the
+    cause and the screen that fixes it. Views turn ``reason`` into the right
+    link (or, when the user has no permission for it, into the name of the
+    department that does).
+
+    ``students`` may be passed in to reuse a list the view already loaded.
+    The function never raises for a partial exam object — a missing
+    institution is reported as "nothing assigned", matching
+    :func:`get_exam_subjects`.
+    """
+    from .models import SubjectRequirement
+
+    if not getattr(exam, 'institution_id', None):
+        return SUBJECTS_NOT_ASSIGNED, no_subjects_assigned_message(exam)
+
+    class_variants = class_filter_variants(exam.admission_class)
+    effective_group = (group if group is not None else getattr(exam, 'group', '')) or ''
+    requirements = SubjectRequirement.objects.filter(
+        institution_id=exam.institution_id,
+        admission_class__in=class_variants,
+    )
+    if effective_group:
+        requirements = requirements.filter(Q(group='') | Q(group=effective_group))
+    requirement_rows = list(requirements.values('subject_id', 'requirement_type'))
+    if not requirement_rows:
+        return SUBJECTS_NOT_ASSIGNED, no_subjects_assigned_message(exam)
+
+    assigned_ids = list({row['subject_id'] for row in requirement_rows})
+    active_ids = set(active_exam_subject_ids(exam, assigned_ids))
+    if not active_ids:
+        return SUBJECTS_ALL_DISABLED, (
+            f"All {len(assigned_ids)} subject(s) assigned to Class {exam.admission_class}"
+            f" are switched off in Mark Evaluation for {exam_type_label(exam)}"
+            " — tick \"Count\" beside the subjects that should carry marks, then come back."
+        )
+
+    if students is None:
+        students = list(get_exam_students(exam, group=group))
+    if not students:
+        scope = f" Class {exam.admission_class}"
+        if effective_group:
+            scope += f" ({effective_group} group)"
+        return SUBJECTS_NO_STUDENT, (
+            f"No admitted student matches{scope}, so there is nobody to enter"
+            " marks for — admit the students first."
+        )
+
+    subjects, _is_filtered = get_exam_subjects(exam, group=group)
+    subjects = [subject for subject in subjects if subject.pk in active_ids]
+    student_subject_ids = get_student_subject_ids(
+        exam, students, subjects=subjects, group=group,
+    )
+    used_ids = set().union(*(ids for ids in student_subject_ids.values())) if students else set()
+    if used_ids:
+        # Subjects are available — the caller should not be showing an empty
+        # state at all.
+        return '', ''
+
+    # Assigned and active, but no student in this class/group takes any of
+    # them. With optional-only rows that means the office has not recorded a
+    # subject choice for these students yet; otherwise the group simply does
+    # not match.
+    optional_only = all(
+        row['requirement_type'] == 'OPTIONAL'
+        for row in requirement_rows if row['subject_id'] in active_ids
+    )
+    if optional_only:
+        return SUBJECTS_NO_STUDENT, (
+            f"Class {exam.admission_class} only has optional subjects assigned and no"
+            " student has picked one yet — record each student's subject choice"
+            " (Office → Students → Edit student) before entering marks."
+        )
+    return SUBJECTS_NO_STUDENT, (
+        f"The subjects assigned to Class {exam.admission_class} do not apply to any"
+        " student in this class/group — check the group on the assignment rows and"
+        " the students' own group."
+    )
+
+
+def published_exams_affected_by_assignment(institution_id, admission_class, group=''):
+    """Published exams for this institution + class (+ group) that already hold
+    marks.
+
+    Adding a subject to a class is read at result time, not written into the
+    exams, so a new row reaches results that were published earlier too. The
+    Subject Assignments page uses this to warn the office *before* the change
+    is saved, instead of letting a published Pass quietly turn into a Fail.
+    """
+    from .models import Exam, ExamMark
+
+    if not institution_id:
+        return []
+    exams = Exam.objects.filter(
+        institution_id=institution_id,
+        admission_class__in=class_filter_variants(admission_class),
+        is_published=True,
+    )
+    if group:
+        exams = exams.filter(Q(group=group) | Q(group=''))
+    marked_exam_ids = set(
+        ExamMark.objects.filter(exam__in=exams).values_list('exam_id', flat=True).distinct()
+    )
+    return [exam for exam in exams.order_by('-session', '-exam_date', '-id') if exam.pk in marked_exam_ids]
+
+
 def religion_subject_map(exam, subjects):
     """{subject_pk: religion} for the religion papers among ``subjects``.
 
@@ -584,12 +720,68 @@ def unassigned_mark_subjects(exam, subjects, group=None):
     return Subject.objects.none()
 
 
+def marked_subject_ids_for_exam(exam, students=None, group=None):
+    """Subject ids that hold at least one mark for a student of this exam.
+
+    A subject is part of an exam's result only once something has actually been
+    entered for it. Subject assignments are keyed to the class, not to the
+    exam, and are read at result time — so without this a subject assigned to
+    the class *after* an exam was published would arrive as a brand-new column
+    holding nothing, and (with EXAM_ABSENT_SUBJECT_FAILS on) fail every student
+    in it. The column appears as soon as the first mark is entered.
+
+    Deliberately scoped to the students of this exam: a mark left behind by a
+    student who has since moved class must not keep a subject alive.
+    """
+    from .models import ExamMark
+
+    if students is None:
+        students = list(get_exam_students(exam, group=group))
+    student_ids = [student.pk for student in students]
+    if not student_ids:
+        return set()
+    return set(
+        ExamMark.objects.filter(exam=exam, student_id__in=student_ids)
+        .values_list('subject_id', flat=True).distinct()
+    )
+
+
+def unmarked_assigned_subjects(exam, group=None):
+    """Assigned subjects this exam holds no mark for at all.
+
+    :func:`build_exam_results` leaves these out of the printed register, so the
+    result sheet can name them rather than silently printing a result with a
+    subject missing from it. Covers both readings of "no marks": a subject
+    assigned after the exam was published, and a subject whose marks the office
+    has not entered yet.
+    """
+    students = list(get_exam_students(exam, group=group))
+    assigned, _is_filtered = get_exam_subjects(exam, group=group)
+    if not assigned:
+        return []
+    student_subject_ids = get_student_subject_ids(
+        exam, students, subjects=assigned, group=group,
+    )
+    used_ids = set().union(*(ids for ids in student_subject_ids.values())) if students else set()
+    assigned = [subject for subject in assigned if subject.pk in used_ids]
+    marked = marked_subject_ids_for_exam(exam, students=students)
+    return [subject for subject in assigned if subject.pk not in marked]
+
+
 def build_exam_results(exam, group=None):
     """Compute every student's result for one exam.
 
     Returns (columns, results). The printed columns are the union of subjects
     assigned to at least one student during admission; only the subjects each
     student actually takes count towards that student's total and GPA.
+
+    A subject the exam holds **no mark for at all** is not a column (see
+    :func:`marked_subject_ids_for_exam`): assignments are keyed to the class and
+    read at result time, so a subject assigned after the exam was published must
+    not arrive as an empty column and fail everyone. Individual absence still
+    fails — a subject with marks for some students grades F for the ones with
+    none. :func:`unmarked_assigned_subjects` lists what was left out so the
+    result sheet can say so out loud.
 
     A result is only a Pass when the student passes every subject they sat
     individually; failing (or not sitting) one subject makes the whole result
@@ -607,6 +799,17 @@ def build_exam_results(exam, group=None):
 
     students = list(get_exam_students(exam, group=group))
     assigned, _is_filtered = get_exam_subjects(exam, group=group)
+
+    marks = {}
+    for mark in ExamMark.objects.filter(exam=exam).select_related('student', 'subject'):
+        marks.setdefault(mark.student_id, {})[mark.subject_id] = mark
+    # A subject nobody in this exam has a mark for is not a column: see
+    # marked_subject_ids_for_exam(). Without this, a subject assigned to the
+    # class after the exam was published arrives as an empty column and fails
+    # every student in it.
+    marked_ids = marked_subject_ids_for_exam(exam, students=students)
+    assigned = [subject for subject in assigned if subject.pk in marked_ids]
+
     student_subject_ids = get_student_subject_ids(
         exam, students, subjects=assigned, group=group,
     )
@@ -641,10 +844,6 @@ def build_exam_results(exam, group=None):
                 column_inserted = True
             continue
         columns.append(subject)
-
-    marks = {}
-    for mark in ExamMark.objects.filter(exam=exam).select_related('student', 'subject'):
-        marks.setdefault(mark.student_id, {})[mark.subject_id] = mark
 
     results = []
     for student in students:

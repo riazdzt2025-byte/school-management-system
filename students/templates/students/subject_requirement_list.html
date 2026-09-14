@@ -20,6 +20,70 @@
     <a href="{% url 'admission_application_list' %}" class="btn btn-sm btn-outline-secondary">← Admission</a>
 </div>
 
+{% comment %}
+The whole "new subject -> published result" path in one place, with each step
+linking to the screen that actually does it. Steps the user has no permission
+for are shown as owned by another department instead of as dead links.
+{% endcomment %}
+<div class="table-card p-3 mb-3 d-print-none">
+    <div class="fw-semibold mb-2"><i class="bi bi-signpost-split-fill me-1"></i> Getting a new subject onto a result sheet</div>
+    <ol class="small mb-0" style="padding-left: 1.2rem;">
+        <li class="mb-1">
+            <strong>Assign the subject here</strong> (Office → Subject Assignments): pick the Institution, Class and
+            Group, then either choose an existing subject or create a new one in the same form.
+            {% if not perms.students.add_subjectrequirement %}<span class="text-muted">— you can view this page but not change it; ask the <strong>Office</strong> department.</span>{% endif %}
+        </li>
+        <li class="mb-1">
+            <strong>Optional subjects only:</strong> record each student's choice
+            (Office → Students → Edit student). Mandatory and the student's own religion paper are added
+            automatically — no choice needed.
+        </li>
+        <li class="mb-1">
+            <strong>Set the marks distribution</strong>
+            {% if perms.students.change_subject %}
+            under <a href="{% url 'mark_evaluation_settings' %}{% if selected_institution_id %}?institution={{ selected_institution_id }}&admission_class={{ selected_class }}{% endif %}">Exam → Mark Evaluation</a>:
+            Full Marks, CQ / MCQ / Practical / Weekly Test, Pass % and the <em>Count</em> tick.
+            {% else %}
+            under <strong>Exam → Mark Evaluation</strong> — ask the <strong>Exam</strong> (or Office) department; you do not have permission to change it.
+            {% endif %}
+            Without a row here the subject's own defaults are used.
+        </li>
+        <li class="mb-1">
+            <strong>Enter the marks</strong>
+            {% if perms.students.add_exammark %}
+            from <a href="{% url 'start_entering_marks' %}">Exam → Enter Marks</a>, or import one subject's Excel
+            sheet from the exam's Import page.
+            {% else %}
+            from <strong>Exam → Enter Marks</strong> — ask the <strong>Exam</strong> (or Accounts) department.
+            {% endif %}
+        </li>
+        <li>
+            <strong>Check and publish</strong>: open the Result Sheet from the exam list, then Publish there. A result
+            page only opens for a published exam.
+        </li>
+    </ol>
+</div>
+
+{% if affected_exams %}
+<div class="alert alert-warning d-print-none">
+    <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> Published results for this class already exist</div>
+    <div class="small mb-2">
+        Subject assignments are read when a result is calculated, not stored on the exam. A subject assigned
+        <strong>now</strong> also appears on results that were published <strong>earlier</strong> — and a subject with
+        no marks entered is graded F, which fails the whole result:
+    </div>
+    <ul class="small mb-2">
+        {% for exam in affected_exams %}
+        <li><a href="{% url 'result_sheet' exam.pk %}">{{ exam.name }}</a> ({{ exam.get_exam_type_display }} · {{ exam.session }}{% if exam.group %} · {{ exam.get_group_display }}{% endif %})</li>
+        {% endfor %}
+    </ul>
+    <div class="small text-muted">
+        Assign an <strong>Optional</strong> subject instead if it should not reach those older results — optional
+        subjects only count for the students who actually chose them, so nobody is failed for a paper they never sat.
+    </div>
+</div>
+{% endif %}
+
 <form method="GET" class="row g-2 mb-3" id="subject-req-filter-form">
     <div class="col-auto" style="min-width: 220px;">
         <select name="institution" id="sr-institution" class="form-select">

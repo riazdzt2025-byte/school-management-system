@@ -348,11 +348,55 @@
 
         {% if no_subjects %}
         <div class="empty-result">
-            <h3>No subjects assigned</h3>
-            <p class="mb-3">{{ no_subjects_message }}</p>
-            <a href="{{ subject_assignments_url }}" class="btn btn-navy btn-sm">Go to Subject Assignments</a>
+            <h3>No subjects to print</h3>
+            {% include 'students/_subject_help.html' %}
         </div>
         {% else %}
+
+        {% if unmarked_subjects %}
+        <div class="result-notice d-print-none">
+            <i class="bi bi-info-circle-fill"></i>
+            <div>
+                These assigned subjects hold <strong>no marks at all</strong> for this exam, so they are
+                <strong>not columns</strong> in this register:
+                {% for subject in unmarked_subjects %}<span class="badge bg-secondary">{{ subject.name }}</span>{% endfor %}
+                <div class="small mt-1">
+                    A subject only joins the result once the first mark is entered. If this subject
+                    <em>was</em> examined, enter its marks under
+                    {% if perms.students.add_exammark %}
+                    <a href="{% url 'select_marks_subject' exam.pk %}">Enter Marks</a>
+                    {% else %}
+                    Enter Marks (ask the <strong>Exam</strong> department &mdash; you do not have permission)
+                    {% endif %}
+                    and it will appear here. If it was assigned to the class only after this exam was
+                    published, nothing needs doing &mdash; leaving it out is what keeps this published
+                    result unchanged.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if missing_mark_subjects %}
+        <div class="result-notice d-print-none">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <div>
+                <strong>Some students have no mark</strong> in:
+                {% for row in missing_mark_subjects %}
+                    <span class="badge bg-warning text-dark">{{ row.subject }} &mdash; {{ row.count }} student(s)</span>
+                {% endfor %}
+                <div class="small mt-1">
+                    This exam is <strong>published</strong>, and a student with no mark in an examined subject is
+                    graded F, which fails their whole result. Enter the missing marks under
+                    {% if perms.students.add_exammark %}
+                    <a href="{% url 'select_marks_subject' exam.pk %}">Enter Marks</a>
+                    {% else %}
+                    Enter Marks (ask the <strong>Exam</strong> department &mdash; you do not have permission)
+                    {% endif %}
+                    before treating this register as final.
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         {% if ignored_subjects %}
         <div class="result-notice">

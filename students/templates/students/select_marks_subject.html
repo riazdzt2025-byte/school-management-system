@@ -33,13 +33,14 @@
     {% endif %}
 
     {% if no_subjects %}
-    <div class="alert alert-warning">
-        {{ no_subjects_message }}
-        <a href="{{ subject_assignments_url }}" class="alert-link">Go to Subject Assignments</a>.
-    </div>
+    {% include 'students/_subject_help.html' %}
     {% else %}
     <p class="text-muted small mb-2">
         Showing subjects assigned during admission to at least one student in Class {{ exam.admission_class }}{% if exam.group %} &ndash; {{ exam.get_group_display }} group{% elif selected_group %} &ndash; {{ selected_group_label }} group{% else %} (all groups){% endif %}.
+        {% if perms.students.change_subject %}
+        Full marks, the CQ/MCQ/Practical split and the pass mark come from
+        <a href="{% url 'mark_evaluation_settings' %}?institution={{ exam.institution_id }}&admission_class={{ exam.admission_class }}&exam_type={{ exam.exam_type }}">Mark Evaluation</a>.
+        {% endif %}
     </p>
 
     <form method="post">

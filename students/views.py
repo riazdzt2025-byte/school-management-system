@@ -39,6 +39,9 @@ from decimal import Decimal, InvalidOperation
 from datetime import date
 from uuid import uuid4
 from .result_utils import (
+    SUBJECTS_ALL_DISABLED,
+    SUBJECTS_NOT_ASSIGNED,
+    SUBJECTS_NO_STUDENT,
     build_exam_results,
     class_filter_variants,
     get_exam_group_choices,
@@ -48,8 +51,11 @@ from .result_utils import (
     get_student_subject_ids,
     get_subject_marks,
     no_subjects_assigned_message,
+    published_exams_affected_by_assignment,
+    unmarked_assigned_subjects,
     religion_paper_for,
     religion_subject_map,
+    subject_availability_diagnosis,
     unassigned_mark_subjects,
     failed_subject_rows,
     section_arrangement_rows,
@@ -70,6 +76,75 @@ def subject_assignments_url(exam, group=''):
     if effective_group:
         url += f"&group={effective_group}"
     return url
+
+
+def mark_evaluation_url(exam, group=''):
+    """Mark Evaluation page pre-filtered to this exam's institution, class and
+    exam type — the page that switches a subject back on when Mark Evaluation
+    is why the subject list came up empty."""
+    url = (
+        f"{reverse('mark_evaluation_settings')}?institution={exam.institution_id}"
+        f"&admission_class={exam.admission_class}"
+    )
+    exam_type = getattr(exam, 'exam_type', '') or ''
+    if exam_type:
+        url += f"&exam_type={exam_type}"
+    return url
+
+
+def subject_help_context(request, exam, group=''):
+    """The "why is this empty, and what do I do about it" block.
+
+    Marks entry, the Excel import and the result sheet all used to print one
+    generic "no subjects are assigned" line, which sent users to the Subject
+    Assignments page even when the subjects were already assigned and the real
+    problem was elsewhere (everything switched off in Mark Evaluation, or no
+    student in the class/group takes them). This returns the actual reason
+    plus one action for it.
+
+    The action is only offered when the user holds the permission its target
+    page enforces — an Exam clerk is not shown a link that would 403, and is
+    told which department to ask instead.
+    """
+    reason, message = subject_availability_diagnosis(exam, group=group or None)
+    if not reason:
+        return {'reason': '', 'message': '', 'action_label': '', 'action_url': '',
+                'contact_department': ''}
+
+    # reason -> (permission the fix page needs, link, button label, department
+    # that owns it when this user cannot use the link).
+    fixes = {
+        SUBJECTS_NOT_ASSIGNED: (
+            'students.add_subjectrequirement',
+            subject_assignments_url(exam, group),
+            'Go to Subject Assignments',
+            'Office',
+        ),
+        SUBJECTS_ALL_DISABLED: (
+            'students.change_subject',
+            mark_evaluation_url(exam, group),
+            'Open Mark Evaluation for this exam type',
+            'Exam (or Office)',
+        ),
+        SUBJECTS_NO_STUDENT: (
+            'students.change_student',
+            f"{reverse('student_list')}?institution={exam.institution_id}"
+            f"&admission_class={exam.admission_class}",
+            'Check the students of this class',
+            'Office',
+        ),
+    }
+    permission, url, label, department = fixes.get(
+        reason, ('', '', '', 'Office'),
+    )
+    can_fix = bool(permission) and request.user.has_perm(permission)
+    return {
+        'reason': reason,
+        'message': message,
+        'action_label': label if can_fix else '',
+        'action_url': url if can_fix else '',
+        'contact_department': '' if can_fix else department,
+    }
 from .marks_import import (
     build_subject_marks_workbook,
     marks_import_sheet_title,
@@ -2225,29 +2300,50 @@ def mark_evaluation_settings(request):
     institution_id = str(institution.pk) if institution is not None else ''
     admission_class = request.GET.get('admission_class') or request.POST.get('admission_class') or ''
     exam_type = request.GET.get('exam_type') or request.POST.get('exam_type') or ''
+    group = request.GET.get('group') or request.POST.get('group') or ''
 
     class_variants = class_filter_variants(admission_class)
     subjects_with_settings = []
+    group_choices = []
     if institution_id and admission_class and exam_type:
         # '9' and '09' are the same class — match either spelling of the
-        # requirements and the existing settings rows. Mandatory/conditional
-        # rows are always available; optional rows are shown only when at
-        # least one current admitted student selected them.
+        # requirements and the existing settings rows. The page is
+        # group-based: with a group selected it shows that group's subjects
+        # plus the group-neutral ones; with none, every assigned subject.
         requirement_scope = SubjectRequirement.objects.filter(
             institution_id=institution_id,
             admission_class__in=class_variants,
         )
+        group_labels = dict(Student.GROUP_CHOICES)
+        assigned_group_codes = set(
+            requirement_scope.exclude(group='').values_list('group', flat=True).distinct()
+        )
+        group_choices = [
+            (code, label) for code, label in Student.GROUP_CHOICES
+            if code in assigned_group_codes
+        ]
         from types import SimpleNamespace
         exam_like = SimpleNamespace(
             institution_id=institution_id,
             admission_class=admission_class,
-            group='',
+            group=group,
             section='',
         )
-        current_students = list(get_exam_students(exam_like))
-        subjects, _is_filtered = get_exam_subjects_for_students(
-            exam_like, current_students,
-        )
+        # Mark Evaluation configures the scheme for the whole
+        # Institution + Class + Exam Type, so it must list every assigned
+        # subject — even before any student is admitted or optional choices
+        # exist. Narrowing the list by current students (as marks entry does)
+        # used to hide brand-new assignments on student-less classes and
+        # unselected optional subjects, which made freshly assigned subjects
+        # invisible here until someone enrolled or chose them. With a group
+        # selected the list narrows to that group's subjects plus the
+        # group-neutral ones — the same offer marks entry makes.
+        subjects, _is_filtered = get_exam_subjects(exam_like)
+        groups_note = {}
+        for row in requirement_scope.values('subject_id', 'group'):
+            note = groups_note.setdefault(row['subject_id'], set())
+            if row['group']:
+                note.add(group_labels.get(row['group'], row['group']))
 
         existing = {
             s.subject_id: s
@@ -2331,6 +2427,7 @@ def mark_evaluation_settings(request):
             return redirect(
                 f"{reverse('mark_evaluation_settings')}?institution={institution_id}"
                 f"&admission_class={admission_class}&exam_type={exam_type}"
+                f"&group={group}"
             )
 
         for subject in subjects:
@@ -2338,6 +2435,7 @@ def mark_evaluation_settings(request):
             config = setting if setting else subject
             subjects_with_settings.append({
                 'subject': subject,
+                'groups_note': ', '.join(sorted(groups_note.get(subject.id, ()))),
                 'is_active': setting.is_active if setting else True,
                 'full_marks': config.full_marks,
                 'cq_marks': config.cq_marks,
@@ -2351,13 +2449,50 @@ def mark_evaluation_settings(request):
                 'parts_match': config.parts_match_full_marks,
             })
 
+    # Why the list came up empty, and the one action that fixes it. "No
+    # subjects" here has three different causes and the old page named a screen
+    # ("Subject Requirements") that no longer exists in the sidebar.
+    empty_reason = ''
+    empty_message = ''
+    assignments_url = ''
+    affected_exams = []
+    if institution_id and admission_class and exam_type:
+        from types import SimpleNamespace
+        probe = SimpleNamespace(
+            institution_id=int(institution_id),
+            admission_class=admission_class,
+            group='',
+            section='',
+            exam_type=exam_type,
+        )
+        assignments_url = (
+            f"{reverse('subject_requirement_list')}?institution={institution_id}"
+            f"&admission_class={admission_class}"
+        )
+        affected_exams = [
+            exam for exam in published_exams_affected_by_assignment(
+                institution_id, admission_class,
+            )
+            if exam.exam_type == exam_type
+        ]
+        if not subjects_with_settings:
+            empty_reason, empty_message = subject_availability_diagnosis(probe)
+
     return render(request, 'students/mark_evaluation_settings.html', {
         'institutions': institutions,
         'exam_type_choices': Exam.EXAM_TYPE_CHOICES,
         'selected_institution': institution_id,
         'selected_class': admission_class,
         'selected_exam_type': exam_type,
+        'selected_group': group,
+        'group_choices': group_choices,
         'subjects_with_settings': subjects_with_settings,
+        'empty_reason': empty_reason,
+        'empty_message': empty_message,
+        'assignments_url': assignments_url,
+        'can_assign': request.user.has_perm('students.add_subjectrequirement'),
+        'can_change_students': request.user.has_perm('students.change_student'),
+        'affected_exams': affected_exams,
         'institutions_data_json': _institutions_data_json(request),
     })
 
@@ -2418,6 +2553,7 @@ def subject_requirement_list(request):
 
     can_auto_fill = False
     result_sheet_links = []
+    affected_exams = []
     if institution_id and admission_class:
         common_rows, _ = curriculum_for_class(admission_class)
         can_auto_fill = common_rows is not None
@@ -2437,6 +2573,13 @@ def subject_requirement_list(request):
                 'url': url,
                 'group_label': exam.get_group_display() or dict(Student.GROUP_CHOICES).get(group, ''),
             })
+        # Published exams that already hold marks. Subject assignments are read
+        # at result time rather than stored on the exam, so adding a subject
+        # here reaches results that were published earlier too — the office has
+        # to see that before saving the change, not after.
+        affected_exams = published_exams_affected_by_assignment(
+            institution_id, admission_class, group,
+        )[:8]
 
     institutions = _visible_institutions(request)
     institutions_data = {
@@ -2456,6 +2599,7 @@ def subject_requirement_list(request):
         'query': query,
         'can_auto_fill': can_auto_fill,
         'result_sheet_links': result_sheet_links,
+        'affected_exams': affected_exams,
         'current_querystring': request.GET.urlencode(),
     })
 
@@ -2502,6 +2646,22 @@ def auto_populate_subject_requirements(request):
 @permission_required('students.add_subjectrequirement', raise_exception=True)
 def add_subject_requirement(request):
     next_qs = request.GET.get('next', '')
+    institution_id = request.POST.get('institution') or request.GET.get('institution') or ''
+    admission_class = (
+        request.POST.get('admission_class', '').strip()
+        or request.GET.get('admission_class', '').strip()
+    )
+    group = request.POST.get('group', '').strip() or request.GET.get('group', '').strip()
+    # A subject assignment is read at result time, so a new row also reaches
+    # exams that were already published. Show which ones before the row is
+    # saved — with EXAM_ABSENT_SUBJECT_FAILS on, a brand-new compulsory subject
+    # fails every student who has no mark for it.
+    affected_exams = []
+    if institution_id.isdigit() and admission_class and \
+            _resolve_requested_institution(request, institution_id) is not None:
+        affected_exams = published_exams_affected_by_assignment(
+            institution_id, admission_class, group,
+        )[:8]
     if request.method == 'POST':
         form = SubjectRequirementForm(request.POST, user=request.user)
         if form.is_valid():
@@ -2516,11 +2676,13 @@ def add_subject_requirement(request):
         next_qs = request.POST.get('next', next_qs)
     else:
         form = SubjectRequirementForm(initial={
-            'institution': request.GET.get('institution') or None,
-            'admission_class': request.GET.get('admission_class', ''),
-            'group': request.GET.get('group', ''),
+            'institution': institution_id or None,
+            'admission_class': admission_class,
+            'group': group,
         })
-    return render(request, 'students/add_subject_requirement.html', {'form': form, 'next_qs': next_qs})
+    return render(request, 'students/add_subject_requirement.html', {
+        'form': form, 'next_qs': next_qs, 'affected_exams': affected_exams,
+    })
 
 
 @login_required
@@ -3102,6 +3264,7 @@ def select_marks_subject(request, pk):
         'no_subjects': no_subjects,
         'no_subjects_message': no_subjects_assigned_message(exam),
         'subject_assignments_url': subject_assignments_url(exam, selected_group),
+        'subject_help': subject_help_context(request, exam, selected_group),
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': dict(group_choices).get(selected_group, ''),
@@ -3177,6 +3340,7 @@ def import_exam_marks(request, pk):
         'no_subjects': no_subjects,
         'no_subjects_message': no_subjects_assigned_message(exam),
         'subject_assignments_url': subject_assignments_url(exam, selected_group),
+        'subject_help': subject_help_context(request, exam, selected_group),
         'marks_config': marks_config,
         'parts': marks_config.parts if marks_config else [],
         'students': students,
@@ -3244,7 +3408,8 @@ def download_marks_import_template(request, pk):
     if raw_subject.isdigit():
         subject = next((item for item in subjects if item.pk == int(raw_subject)), None)
     if not subjects:
-        messages.error(request, no_subjects_assigned_message(exam))
+        _reason, reason_message = subject_availability_diagnosis(exam, group=selected_group or None)
+        messages.error(request, reason_message or no_subjects_assigned_message(exam))
         url = reverse('import_exam_marks', kwargs={'pk': exam.pk})
         if selected_group:
             url += f'?group={selected_group}'
@@ -3315,7 +3480,8 @@ def enter_marks(request, pk, subject_pk):
         exam, students, group=selected_group or None,
     )
     if not allowed_subjects:
-        messages.error(request, no_subjects_assigned_message(exam))
+        _reason, reason_message = subject_availability_diagnosis(exam, group=selected_group or None)
+        messages.error(request, reason_message or no_subjects_assigned_message(exam))
         return redirect('select_marks_subject', pk=exam.pk)
     if not any(item.pk == subject.pk for item in allowed_subjects):
         if subject.pk in religion_by_pk:
@@ -3501,11 +3667,35 @@ def result_sheet(request, pk):
         })
     no_subjects = not columns
     ignored = unassigned_mark_subjects(exam, columns, group=selected_group or None)
+    # An assigned subject with no mark at all is counted as F (see
+    # EXAM_ABSENT_SUBJECT_FAILS). On a *published* exam that is nearly always a
+    # subject assigned to the class after the exam was already published — the
+    # register then reads Fail for every student in it. Name the subject and
+    # how many students it hits, instead of letting a published Pass quietly
+    # become a Fail.
+    # Assigned subjects the exam holds no mark for at all are not columns (see
+    # marked_subject_ids_for_exam). Name them, so a subject assigned after
+    # publication - or one whose marks were never entered - is never just
+    # silently missing from a published register.
+    unmarked_subjects = unmarked_assigned_subjects(exam, group=selected_group or None)
+    missing_mark_subjects = []
+    for index, column in enumerate(columns):
+        blank = sum(
+            1 for result in results
+            if result['subject_results'][index]['absent']
+            and not result['subject_results'][index].get('not_applicable')
+            and not result['subject_results'][index].get('religion_unassigned')
+        )
+        if blank:
+            missing_mark_subjects.append({'subject': column, 'count': blank})
     return render(request, 'students/result_sheet.html', {
         'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
         'ignored_subjects': ignored,
+        'missing_mark_subjects': missing_mark_subjects,
+        'unmarked_subjects': unmarked_subjects,
         'no_subjects': no_subjects,
         'no_subjects_message': no_subjects_assigned_message(exam),
+        'subject_help': subject_help_context(request, exam, selected_group),
         'subject_assignments_url': subject_assignments_url(exam, selected_group),
         'group_choices': group_choices,
         'selected_group': selected_group,
