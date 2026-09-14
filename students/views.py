@@ -2300,23 +2300,33 @@ def mark_evaluation_settings(request):
     institution_id = str(institution.pk) if institution is not None else ''
     admission_class = request.GET.get('admission_class') or request.POST.get('admission_class') or ''
     exam_type = request.GET.get('exam_type') or request.POST.get('exam_type') or ''
+    group = request.GET.get('group') or request.POST.get('group') or ''
 
     class_variants = class_filter_variants(admission_class)
     subjects_with_settings = []
+    group_choices = []
     if institution_id and admission_class and exam_type:
         # '9' and '09' are the same class — match either spelling of the
-        # requirements and the existing settings rows. Mandatory/conditional
-        # rows are always available; optional rows are shown only when at
-        # least one current admitted student selected them.
+        # requirements and the existing settings rows. The page is
+        # group-based: with a group selected it shows that group's subjects
+        # plus the group-neutral ones; with none, every assigned subject.
         requirement_scope = SubjectRequirement.objects.filter(
             institution_id=institution_id,
             admission_class__in=class_variants,
         )
+        group_labels = dict(Student.GROUP_CHOICES)
+        assigned_group_codes = set(
+            requirement_scope.exclude(group='').values_list('group', flat=True).distinct()
+        )
+        group_choices = [
+            (code, label) for code, label in Student.GROUP_CHOICES
+            if code in assigned_group_codes
+        ]
         from types import SimpleNamespace
         exam_like = SimpleNamespace(
             institution_id=institution_id,
             admission_class=admission_class,
-            group='',
+            group=group,
             section='',
         )
         # Mark Evaluation configures the scheme for the whole
@@ -2325,9 +2335,10 @@ def mark_evaluation_settings(request):
         # exist. Narrowing the list by current students (as marks entry does)
         # used to hide brand-new assignments on student-less classes and
         # unselected optional subjects, which made freshly assigned subjects
-        # invisible here until someone enrolled or chose them.
+        # invisible here until someone enrolled or chose them. With a group
+        # selected the list narrows to that group's subjects plus the
+        # group-neutral ones — the same offer marks entry makes.
         subjects, _is_filtered = get_exam_subjects(exam_like)
-        group_labels = dict(Student.GROUP_CHOICES)
         groups_note = {}
         for row in requirement_scope.values('subject_id', 'group'):
             note = groups_note.setdefault(row['subject_id'], set())
@@ -2416,6 +2427,7 @@ def mark_evaluation_settings(request):
             return redirect(
                 f"{reverse('mark_evaluation_settings')}?institution={institution_id}"
                 f"&admission_class={admission_class}&exam_type={exam_type}"
+                f"&group={group}"
             )
 
         for subject in subjects:
@@ -2472,6 +2484,8 @@ def mark_evaluation_settings(request):
         'selected_institution': institution_id,
         'selected_class': admission_class,
         'selected_exam_type': exam_type,
+        'selected_group': group,
+        'group_choices': group_choices,
         'subjects_with_settings': subjects_with_settings,
         'empty_reason': empty_reason,
         'empty_message': empty_message,

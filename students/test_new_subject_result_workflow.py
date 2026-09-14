@@ -824,16 +824,37 @@ class SubjectWorkflowGuidanceTests(TestCase):
                optional_set_key='SET1')
         grouped = Subject.objects.create(code='103', name='Group Paper', full_marks=100)
         assign(self.institution, grouped, group='SCI')
+        agriculture = Subject.objects.create(code='104', name='Agriculture', full_marks=100)
+        assign(self.institution, agriculture, group='BUS')
 
-        response = self.client.get(
+        url = (
             f"{reverse('mark_evaluation_settings')}?institution={self.institution.pk}"
-            f"&admission_class=9&exam_type=FIRST_TERM",
+            f"&admission_class=9&exam_type=FIRST_TERM"
         )
+        response = self.client.get(url)
         rows = response.context['subjects_with_settings']
         self.assertEqual(
             [row['subject'].name for row in rows],
+            ['Bangla', 'Extra Optional', 'Group Paper', 'Agriculture'],
+        )
+
+        # Group-based view: a group shows its own subjects plus the
+        # group-neutral ones — the Business Studies paper appears under
+        # Business Studies, and never under Science.
+        sci = self.client.get(f"{url}&group=SCI").context['subjects_with_settings']
+        self.assertEqual(
+            [row['subject'].name for row in sci],
             ['Bangla', 'Extra Optional', 'Group Paper'],
         )
+        bus = self.client.get(f"{url}&group=BUS")
+        self.assertEqual(
+            [row['subject'].name for row in bus.context['subjects_with_settings']],
+            ['Bangla', 'Extra Optional', 'Agriculture'],
+        )
+        self.assertEqual(
+            [code for code, _ in bus.context['group_choices']], ['SCI', 'BUS'],
+        )
+        self.assertContains(bus, 'Business Studies')
         notes = {row['subject'].name: row['groups_note'] for row in rows}
         self.assertEqual(notes['Bangla'], '')
         self.assertEqual(notes['Group Paper'], 'Science')

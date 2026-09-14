@@ -19,7 +19,7 @@
     </div>
 
     <form method="get" class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label class="form-label fw-semibold">Institution</label>
             <select name="institution" id="id_institution" class="form-select" onchange="this.form.submit()">
                 <option value="">-- Select institution --</option>
@@ -28,13 +28,22 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label class="form-label fw-semibold">Class</label>
             <select name="admission_class" id="id_admission_class" class="form-select" onchange="this.form.submit()">
                 <option value="">-- Select class --</option>
             </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Group</label>
+            <select name="group" class="form-select" onchange="this.form.submit()">
+                <option value="">All groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
             <label class="form-label fw-semibold">Exam Type</label>
             <select name="exam_type" class="form-select" onchange="this.form.submit()">
                 <option value="">-- Select exam type --</option>
@@ -75,6 +84,7 @@
         <input type="hidden" name="institution" value="{{ selected_institution }}">
         <input type="hidden" name="admission_class" value="{{ selected_class }}">
         <input type="hidden" name="exam_type" value="{{ selected_exam_type }}">
+        <input type="hidden" name="group" value="{{ selected_group }}">
         <div class="table-responsive">
             <table class="table align-middle">
                 <thead>
