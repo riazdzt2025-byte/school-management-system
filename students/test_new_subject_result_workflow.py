@@ -811,6 +811,34 @@ class SubjectWorkflowGuidanceTests(TestCase):
         # The stale "Subject Requirements" page name is gone.
         self.assertNotContains(response, 'Subject Requirements')
 
+    def test_mark_evaluation_lists_assigned_subjects_before_any_student_exists(self):
+        # Regression: the page used to narrow the assigned list to the subjects
+        # current students take, so a brand-new assignment on a class without
+        # students — or an optional subject nobody chose, or a group paper with
+        # no student in that group — stayed invisible here until someone
+        # enrolled/chose it. Configuration must not depend on enrollment.
+        self.client.force_login(department_user('exam-officer', 'Exam', self.institution))
+        self.assertFalse(Student.objects.filter(institution=self.institution).exists())
+        optional = Subject.objects.create(code='102', name='Extra Optional', full_marks=100)
+        assign(self.institution, optional, requirement_type='OPTIONAL',
+               optional_set_key='SET1')
+        grouped = Subject.objects.create(code='103', name='Group Paper', full_marks=100)
+        assign(self.institution, grouped, group='SCI')
+
+        response = self.client.get(
+            f"{reverse('mark_evaluation_settings')}?institution={self.institution.pk}"
+            f"&admission_class=9&exam_type=FIRST_TERM",
+        )
+        rows = response.context['subjects_with_settings']
+        self.assertEqual(
+            [row['subject'].name for row in rows],
+            ['Bangla', 'Extra Optional', 'Group Paper'],
+        )
+        notes = {row['subject'].name: row['groups_note'] for row in rows}
+        self.assertEqual(notes['Bangla'], '')
+        self.assertEqual(notes['Group Paper'], 'Science')
+        self.assertContains(response, 'Science')
+
     def test_assign_page_hides_the_new_subject_box_without_the_permission(self):
         user = department_user('exam-officer', 'Exam', self.institution)
         self.client.force_login(user)

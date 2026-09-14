@@ -2319,10 +2319,20 @@ def mark_evaluation_settings(request):
             group='',
             section='',
         )
-        current_students = list(get_exam_students(exam_like))
-        subjects, _is_filtered = get_exam_subjects_for_students(
-            exam_like, current_students,
-        )
+        # Mark Evaluation configures the scheme for the whole
+        # Institution + Class + Exam Type, so it must list every assigned
+        # subject — even before any student is admitted or optional choices
+        # exist. Narrowing the list by current students (as marks entry does)
+        # used to hide brand-new assignments on student-less classes and
+        # unselected optional subjects, which made freshly assigned subjects
+        # invisible here until someone enrolled or chose them.
+        subjects, _is_filtered = get_exam_subjects(exam_like)
+        group_labels = dict(Student.GROUP_CHOICES)
+        groups_note = {}
+        for row in requirement_scope.values('subject_id', 'group'):
+            note = groups_note.setdefault(row['subject_id'], set())
+            if row['group']:
+                note.add(group_labels.get(row['group'], row['group']))
 
         existing = {
             s.subject_id: s
@@ -2413,6 +2423,7 @@ def mark_evaluation_settings(request):
             config = setting if setting else subject
             subjects_with_settings.append({
                 'subject': subject,
+                'groups_note': ', '.join(sorted(groups_note.get(subject.id, ()))),
                 'is_active': setting.is_active if setting else True,
                 'full_marks': config.full_marks,
                 'cq_marks': config.cq_marks,

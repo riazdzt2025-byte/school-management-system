@@ -33,14 +33,16 @@ Evaluation / no student takes it) with a link to the screen that fixes it. There
 is deliberately no fallback to the whole Subject master list, because that is
 how one group's subjects used to leak into another group's exam.
 
-**A subject assigned today also reaches exams that were already published.**
-Assignments are read when a result is calculated, not stored on the exam, so a
-new row appears on older result sheets too — and a subject with no marks entered
-is graded F (see the pass rules), which fails the whole result. The Subject
+**A subject assigned today joins an already-published exam only once someone
+has a mark for it.** Assignments are read when a result is calculated, not
+stored on the exam — but a subject the exam holds no mark for at all is *not*
+a result column (see the pass rules), so merely assigning a subject can never
+rewrite an old result: the sheet names it in a notice instead. The moment the
+first mark is entered, the subject becomes a column on that exam's sheets, and
+from then on a student without a mark in it is graded F. The Subject
 Assignments list, the Assign Subject form and Mark Evaluation all list the
-published exams this would touch *before* you save. If the subject should not
-reach those older results, assign it as **Optional**: an optional subject only
-counts for the students who actually chose it.
+published exams this would touch *before* you save. An **Optional** subject
+only counts for the students who actually chose it.
 
 ## 1. Mark Evaluation Settings (`Exam → Mark Evaluation`)
 

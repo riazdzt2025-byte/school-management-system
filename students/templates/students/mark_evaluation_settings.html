@@ -95,7 +95,7 @@
                 <tbody>
                     {% for row in subjects_with_settings %}
                     <tr>
-                        <td>{{ row.subject.name }} <span class="text-muted small">({{ row.subject.code }})</span></td>
+                        <td>{{ row.subject.name }} <span class="text-muted small">({{ row.subject.code }})</span>{% if row.groups_note %} <span class="badge bg-light text-dark border" title="assigned group">{{ row.groups_note }}</span>{% endif %}</td>
                         <td class="text-center">
                             <input type="checkbox" class="form-check-input subject-active-toggle"
                                    name="is_active_{{ row.subject.id }}" value="1"
