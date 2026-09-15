@@ -3740,9 +3740,54 @@ def top_10(request, pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    _group_choices, selected_group = _exam_group_selection(request, exam)
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
     _, results = build_exam_results(exam, group=selected_group or None)
-    return render(request, 'students/top10.html', {'exam': exam, 'results': [r for r in results if r['position']][:10]})
+    return render(request, 'students/top10.html', {
+        'exam': exam,
+        'results': [r for r in results if r['position']][:10],
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': selected_group_label,
+        'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+    })
+
+
+@login_required
+def full_rank_list(request, pk):
+    """Full Rank List — every ranked student for a published exam.
+
+    Uses the same build_exam_results() ranking (ties share a position) as the
+    result sheet / summary / top-10, but lists the entire cohort instead of
+    just the top 10. Supports the group picker for exams created without a
+    group, matching result_sheet / result_summary.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    _, results = build_exam_results(exam, group=selected_group or None)
+    ranked = [r for r in results if r['position']]
+    unranked = [r for r in results if not r['position']]
+    return render(request, 'students/full_rank_list.html', {
+        'exam': exam,
+        'results': ranked,
+        'unranked_results': unranked,
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': selected_group_label,
+        'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+    })
 
 
 def _exam_result(request, exam, student_pk):
