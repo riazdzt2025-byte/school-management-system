@@ -58,6 +58,19 @@
         padding-left: 5px;
         padding-right: 5px;
     }
+    /* Row action buttons (Details / Edit / ID Card / Marksheet / more) stay
+       disabled until the row's checkbox is ticked — the same checkbox tracking
+       as the Bulk Update bar. The server renders the locked state by default;
+       student_row_actions.js toggles .student-actions-locked to keep it in
+       sync with each row's checkbox. */
+    .students-table .student-actions-bar .btn.student-action {
+        transition: opacity 0.15s ease;
+    }
+    .students-table .student-actions-bar.student-actions-locked .btn.student-action {
+        opacity: 0.45;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
 {% endblock %}
 
 {% block content %}
@@ -231,28 +244,28 @@
                         {% endif %}
                     </td>
                     <td>
-                        <div class="student-actions-bar">
-                            <a class="btn btn-outline-secondary" href="{% url 'student_detail' student.pk %}" title="View Details">
+                        <div class="student-actions-bar student-actions-locked">
+                            <a class="btn btn-outline-secondary student-action" aria-disabled="true" href="{% url 'student_detail' student.pk %}" title="View Details">
                                 <i class="bi bi-eye"></i> Details
                             </a>
                             {% if perms.students.change_student %}
-                            <a class="btn btn-outline-primary" href="{% url 'edit_student' student.pk %}" title="Edit Student">
+                            <a class="btn btn-outline-primary student-action" aria-disabled="true" href="{% url 'edit_student' student.pk %}" title="Edit Student">
                                 <i class="bi bi-pencil"></i> Edit
                             </a>
                             {% endif %}
 
                             {% if selected_department == 'Exam' %}
-                            <a class="btn btn-outline-info" href="{% url 'student_exams' student.pk %}" title="Exam Marks & Results">
+                            <a class="btn btn-outline-info student-action" aria-disabled="true" href="{% url 'student_exams' student.pk %}" title="Exam Marks & Results">
                                 <i class="bi bi-journal-text"></i> Marksheet
                             </a>
                             {% endif %}
 
-                            <a class="btn btn-outline-secondary" href="{% url 'student_id_card' student.pk %}" title="Print ID Card">
+                            <a class="btn btn-outline-secondary student-action" aria-disabled="true" href="{% url 'student_id_card' student.pk %}" title="Print ID Card">
                                 <i class="bi bi-person-badge"></i> ID Card
                             </a>
 
                             <div class="btn-group">
-                                <button type="button" class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" title="More Actions">
+                                <button type="button" class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split student-action" data-bs-toggle="dropdown" aria-expanded="false" aria-disabled="true" disabled title="More Actions">
                                     <span class="visually-hidden">Toggle Dropdown</span>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">
@@ -330,7 +343,11 @@
 
 {% endblock %}
 
+{% load static %}
 {% block extra_script %}
+{# Per-row action buttons (Details / Edit / ID Card / ...): locked until the row's
+   checkbox is ticked — mirrors the bulk-button checkbox tracking. #}
+<script src="{% static 'students/js/student_row_actions.js' %}"></script>
 <script>
     const selectAll = document.getElementById('select-all');
     const rowCheckboxes = document.querySelectorAll('.row-checkbox');
@@ -347,7 +364,14 @@
 
     if (selectAll) {
         selectAll.addEventListener('change', function () {
-            rowCheckboxes.forEach(cb => cb.checked = selectAll.checked);
+            rowCheckboxes.forEach(function (cb) {
+                if (cb.checked !== selectAll.checked) {
+                    cb.checked = selectAll.checked;
+                    // Fire change so the per-row action buttons lock/unlock
+                    // exactly like they do for a single checkbox click.
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
             updateBulkButtons();
         });
     }
