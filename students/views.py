@@ -2675,7 +2675,13 @@ def add_subject_requirement(request):
             messages.error(request, "There are errors in the form — please check the fields below.")
         next_qs = request.POST.get('next', next_qs)
     else:
-        form = SubjectRequirementForm(initial={
+        # user= is what decides whether the inline "New Subject Details" fields
+        # are offered at all (SubjectRequirementForm drops them without
+        # students.add_subject). Leaving it out here built the page as if the
+        # visitor could not create subjects, so even an Office user opening
+        # "+ Assign Subject" was shown the "ask the Office department" notice
+        # on a page whose whole purpose is creating the subject.
+        form = SubjectRequirementForm(user=request.user, initial={
             'institution': institution_id or None,
             'admission_class': admission_class,
             'group': group,

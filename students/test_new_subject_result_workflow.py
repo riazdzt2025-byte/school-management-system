@@ -186,6 +186,29 @@ class SubjectCreateAndAssignTests(TestCase):
             ['BUS', 'SCI'],
         )
 
+    def test_get_page_offers_the_inline_new_subject_fields(self):
+        # This page IS where a new subject is created, so a fresh page load has
+        # to offer the fields. The GET branch used to build the form without
+        # the user, so can_add_subject was False on every page load and even an
+        # Office user — who may create subjects — was told to "ask the Office
+        # department to add it".
+        self.assertTrue(self.user.has_perm('students.add_subject'))
+        response = self.client.get(self.url)
+        self.assertContains(response, 'New Subject Details')
+        self.assertContains(response, 'name="new_subject_code"')
+        self.assertContains(response, 'name="new_subject_name"')
+        self.assertNotContains(response, 'subject-management rights')
+
+    def test_get_page_prefills_filters_from_the_querystring(self):
+        # The fields must stay on the page the "+ Assign Subject" button links
+        # to, with Institution / Class / Group already filled in from the list.
+        response = self.client.get(
+            f"{reverse('add_subject_requirement')}"
+            f"?institution={self.institution.pk}&admission_class=9&group=BUS"
+        )
+        self.assertContains(response, 'New Subject Details')
+        self.assertEqual(response.context['form'].initial['group'], 'BUS')
+
     def test_inline_subject_fields_are_hidden_without_add_subject_permission(self):
         # A user who may assign but not create must not be shown (or allowed to
         # post) the new-subject fields.
