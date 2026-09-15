@@ -199,6 +199,18 @@ class SubjectCreateAndAssignTests(TestCase):
         self.assertContains(response, 'name="new_subject_name"')
         self.assertNotContains(response, 'subject-management rights')
 
+    def test_get_page_offers_the_fields_to_an_admin_too(self):
+        # The regression hid the fields from *every* visitor on a fresh page
+        # load, superuser included, so pin the admin path as well.
+        admin = get_user_model().objects.create_superuser(
+            username='assign-admin', password='pw', email='assign-admin@example.com',
+        )
+        self.client.force_login(admin)
+        response = self.client.get(self.url)
+        self.assertContains(response, 'New Subject Details')
+        self.assertContains(response, 'name="new_subject_code"')
+        self.assertNotContains(response, 'subject-management rights')
+
     def test_get_page_prefills_filters_from_the_querystring(self):
         # The fields must stay on the page the "+ Assign Subject" button links
         # to, with Institution / Class / Group already filled in from the list.
