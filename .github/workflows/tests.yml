@@ -62,3 +62,20 @@ jobs:
             export DATABASE_URL="postgres://postgres:postgres@localhost:5432/sms_test"
           fi
           python manage.py test students --verbosity 1
+
+  # Zero-dependency Node tests for static/students/js/student_row_actions.js —
+  # the checkbox tracker that keeps the student list's row action buttons
+  # disabled until the row's checkbox is ticked.
+  js-row-actions:
+    runs-on: ubuntu-latest
+    name: Node row-action button tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run Node.js unit tests
+        run: node --test students/js/*.test.js
