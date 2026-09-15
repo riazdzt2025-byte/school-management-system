@@ -5,6 +5,9 @@
 {% block extra_style %}
     .rank-badge { background: var(--gold); color: #0f2d52; border-radius: 50%; display: inline-flex;
                   width: 30px; height: 30px; align-items: center; justify-content: center; font-weight: 700; }
+    .rank-badge.rank-1 { background: #FFD700; color: #000; box-shadow: 0 0 8px rgba(255,215,0,0.5); }
+    .rank-badge.rank-2 { background: #C0C0C0; color: #000; }
+    .rank-badge.rank-3 { background: #CD7F32; color: #fff; }
 {% endblock %}
 
 {% block content %}
@@ -13,10 +16,26 @@
         <h1>Top 10 &mdash; {{ exam.name }}</h1>
         <div class="subtitle">
             Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
-            {% if exam.group %} &middot; {{ exam.get_group_display }} group{% endif %} &middot; Session {{ exam.session }}
+            {% if result_group_label %} &middot; {{ result_group_label }} group{% elif exam.group %} &middot; {{ exam.get_group_display }} group{% endif %} &middot; Session {{ exam.session }}
         </div>
     </div>
 </div>
+
+{% if show_group_picker %}
+<form method="get" class="table-card p-3 mb-3 d-flex align-items-end gap-2 flex-wrap">
+    <div>
+        <label class="form-label fw-semibold mb-1">Group</label>
+        <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">All Groups</option>
+            {% for code, label in group_choices %}
+            <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-sm btn-outline-navy">Show Top 10</button>
+    {% if selected_group %}<a href="{% url 'top_10' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+</form>
+{% endif %}
 
 <div class="table-card">
     <div class="table-responsive">
@@ -27,7 +46,7 @@
             <tbody>
                 {% for r in results %}
                 <tr>
-                    <td><span class="rank-badge">{{ r.position }}</span></td>
+                    <td><span class="rank-badge {% if r.position <= 3 %}rank-{{ r.position }}{% endif %}">{{ r.position }}</span></td>
                     <td>{{ r.student.roll_no }}</td>
                     <td>
                         <a href="{% url 'student_result_detail' exam.pk r.student.pk %}">{{ r.student.name }}</a>
@@ -45,6 +64,10 @@
     </div>
 </div>
 
-<a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-outline-navy mt-3">Published Result</a>
-<a href="{% url 'exam_list' %}" class="btn btn-outline-secondary mt-3">Back to Exams</a>
+<div class="mt-3 d-flex gap-2 flex-wrap">
+    <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm"><i class="bi bi-list-ol me-1"></i> Full Rank List</a>
+    <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
+    <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Published Result</a>
+    <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Back to Exams</a>
+</div>
 {% endblock %}

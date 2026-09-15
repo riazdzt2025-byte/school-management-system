@@ -1,0 +1,151 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Full Rank List - {{ block.super }}{% endblock %}
+
+{% block extra_style %}
+    .rank-badge { background: var(--gold); color: #0f2d52; border-radius: 50%; display: inline-flex;
+                  width: 30px; height: 30px; align-items: center; justify-content: center; font-weight: 700; }
+    .rank-badge.rank-1 { background: #FFD700; color: #000; box-shadow: 0 0 8px rgba(255,215,0,0.5); }
+    .rank-badge.rank-2 { background: #C0C0C0; color: #000; }
+    .rank-badge.rank-3 { background: #CD7F32; color: #fff; }
+    .full-rank-page .summary-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .full-rank-page .table-card { border-radius: 12px; }
+    @media print {
+        .d-print-none { display: none !important; }
+        .table-card { box-shadow: none !important; border: 1px solid #000 !important; }
+        table { font-size: 0.85rem; }
+        th, td { border: 1px solid #000 !important; color: #000 !important; background: #fff !important; }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="full-rank-page">
+    <div class="page-header">
+        <div>
+            <h1>Full Rank List &mdash; {{ exam.name }}</h1>
+            <div class="subtitle">
+                Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
+                {% if result_group_label %} &middot; {{ result_group_label }} group{% endif %} &middot; Session {{ exam.session }}
+                &middot; {{ results|length }} ranked student{{ results|length|pluralize }}
+            </div>
+        </div>
+    </div>
+
+    {% if show_group_picker %}
+    <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
+        <div>
+            <label class="form-label fw-semibold mb-1">Group</label>
+            <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-navy">Show Rank List</button>
+        {% if selected_group %}<a href="{% url 'full_rank_list' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+    </form>
+    {% endif %}
+
+    <div class="mb-3 summary-actions d-print-none">
+        <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-table me-1"></i> Full Mark Sheet</a>
+        <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Published Result</a>
+        <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-trophy me-1"></i> Top 10</a>
+        <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
+        <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Back to Exams</a>
+    </div>
+
+    <div class="table-card">
+        <div class="table-responsive">
+            <table class="table table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Roll</th>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Section</th>
+                        <th>Total</th>
+                        <th>Percentage</th>
+                        <th>GPA</th>
+                        <th>Grade</th>
+                        <th>Status</th>
+                        <th class="d-print-none">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in results %}
+                    <tr>
+                        <td>
+                            <span class="rank-badge {% if r.position <= 3 %}rank-{{ r.position }}{% endif %}">{{ r.position }}</span>
+                        </td>
+                        <td>{{ r.student.roll_no }}</td>
+                        <td><small>{{ r.student.student_id }}</small></td>
+                        <td>
+                            <a href="{% url 'student_result_detail' exam.pk r.student.pk %}" class="fw-semibold text-decoration-none">{{ r.student.name }}</a>
+                            {% if r.absent_subject_count %}<span class="text-muted small">({{ r.absent_subject_count }} absent)</span>{% endif %}
+                        </td>
+                        <td>{{ r.student.section|default:'-' }}</td>
+                        <td>{{ r.total_obtained }} / {{ r.total_full }}</td>
+                        <td>{% if r.status == 'Pass' %}{{ r.percentage }}%{% else %}&mdash;{% endif %}</td>
+                        <td>{{ r.gpa }}</td>
+                        <td>
+                            <span class="badge {% if r.grade == 'A+' %}bg-success{% elif r.grade == 'A' %}bg-primary{% elif r.grade == 'A-' %}bg-info text-dark{% elif r.grade == 'B' %}bg-warning text-dark{% elif r.grade == 'C' %}bg-secondary{% elif r.grade == 'F' %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ r.grade }}</span>
+                        </td>
+                        <td>
+                            {% if r.status == 'Pass' %}<span class="badge bg-success">Pass</span>
+                            {% elif r.status == 'Fail' %}<span class="badge bg-danger">Fail</span>
+                            {% else %}<span class="badge bg-secondary">No Marks</span>{% endif %}
+                        </td>
+                        <td class="d-print-none">
+                            <a href="{% url 'student_result_detail' exam.pk r.student.pk %}" class="btn btn-sm btn-outline-navy">Details</a>
+                            <a href="{% url 'result_card' exam.pk r.student.pk %}" class="btn btn-sm btn-navy">Card</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="11" class="text-center py-4">No ranked results yet. Publish marks first.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if unranked_results %}
+    <div class="mt-4">
+        <h5 class="mb-2">Unranked / No Marks</h5>
+        <div class="table-card">
+            <div class="table-responsive">
+                <table class="table table-striped mb-0">
+                    <thead>
+                        <tr><th>Roll</th><th>ID</th><th>Name</th><th>Status</th><th class="d-print-none">Action</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in unranked_results %}
+                        <tr>
+                            <td>{{ r.student.roll_no }}</td>
+                            <td><small>{{ r.student.student_id }}</small></td>
+                            <td>{{ r.student.name }}</td>
+                            <td>
+                                {% if r.status == 'No Marks' %}<span class="badge bg-secondary">No Marks</span>
+                                {% else %}<span class="badge bg-danger">{{ r.status }}</span>{% endif %}
+                            </td>
+                            <td class="d-print-none">
+                                {% if r.has_marks %}
+                                <a href="{% url 'student_result_detail' exam.pk r.student.pk %}" class="btn btn-sm btn-outline-navy">Details</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="mt-3 text-muted small d-print-none">
+        <i class="bi bi-info-circle me-1"></i>
+        Ranking: highest GPA first, then total marks. Ties share the same position (e.g., two students at rank 1, next is rank 3). Students with no marks are unranked.
+    </div>
+</div>
+{% endblock %}
