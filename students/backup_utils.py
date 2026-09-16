@@ -39,6 +39,12 @@ from django.conf import settings
 
 BACKUPS_ENV = "P0B_BACKUP_ROOT"
 
+#: Journal / write-ahead-log files SQLite keeps next to a database file. They
+#: carry committed (or half-committed) state, so a restore that replaces only
+#: the main file leaves the database in the old state — see
+#: :func:`remove_sqlite_sidecars`.
+SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
+
 # --- Encryption at rest -----------------------------------------------------
 # A backup folder is a full copy of the school's PII (names, guardian numbers,
 # photos). It therefore has to be unreadable to anyone who is not the owner:
@@ -245,6 +251,80 @@ def backup_sqlite(src: Path, dest: Path) -> int:
         source_conn.close()
     harden_permissions(Path(dest))
     return dest.stat().st_size
+
+
+def sqlite_sidecars(db_path: Path) -> list[Path]:
+    """The journal / WAL sidecar files that belong to ``db_path``.
+
+    SQLite keeps write-ahead and rollback state *next to* the database file
+    (``-wal`` + ``-shm`` in WAL mode, ``-journal`` for a rollback journal). They
+    are part of the database's state, not decoration.
+    """
+    db_path = Path(db_path)
+    return [db_path.with_name(db_path.name + suffix)
+            for suffix in SQLITE_SIDECAR_SUFFIXES]
+
+
+def remove_sqlite_sidecars(db_path: Path) -> list[str]:
+    """Delete any stale sidecar files next to ``db_path``; return their names.
+
+    A restore that replaces only the main file is *silently wrong* when the old
+    sidecars survive: on the next open SQLite replays the leftover ``-wal``
+    (or rolls back from a hot ``-journal``) and the application sees the data
+    that was there **before** the restore, with ``PRAGMA integrity_check``
+    reporting ``ok``. Reproduced locally: restoring a snapshot containing
+    ``NEW`` over a WAL-mode database whose stale ``-wal`` held ``OLD`` made the
+    first reader see ``OLD`` — a restore that reported success and restored
+    nothing. So the sidecars go before the file is replaced.
+    """
+    removed = []
+    for sidecar in sqlite_sidecars(db_path):
+        try:
+            sidecar.unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:  # a sidecar we cannot remove must not be ignored
+            raise RuntimeError(
+                f"Could not remove the stale SQLite sidecar {sidecar}: {exc}. "
+                "Refusing to restore over a database whose journal state is "
+                "out of our control."
+            )
+        removed.append(sidecar.name)
+    return removed
+
+
+def replace_sqlite_database(src: Path, dest: Path) -> tuple[int, list[str]]:
+    """Overwrite ``dest`` with the snapshot ``src``; return (size, removed).
+
+    The whole replacement, in the order it has to happen:
+
+    1. drop any stale ``-wal``/``-shm``/``-journal`` next to the target (see
+       :func:`remove_sqlite_sidecars` — leaving them makes the restore a no-op
+       that looks like a success),
+    2. copy the snapshot over the target,
+    3. re-read the target and compare its SHA-256 with the source's, so a
+       truncated or partial copy is reported here instead of surfacing later as
+       "database disk image is malformed",
+    4. harden the file mode (a restored database is as sensitive as a backup).
+
+    Callers must close Django's connections first (``connections.close_all()``):
+    an open handle can re-create a sidecar file the moment it is closed.
+    """
+    src, dest = Path(src), Path(dest)
+    if not src.exists():
+        raise FileNotFoundError(f"Snapshot to restore not found at {src}")
+    removed = remove_sqlite_sidecars(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dest)
+    source_sha, dest_sha = sha256(src), sha256(dest)
+    if source_sha != dest_sha:
+        raise RuntimeError(
+            f"Restored database at {dest} does not match the snapshot "
+            f"({dest_sha[:12]}… != {source_sha[:12]}…) — the copy is incomplete. "
+            "Do not start the application against it."
+        )
+    harden_permissions(dest)
+    return dest.stat().st_size, removed
 
 
 def backup_postgres(dest: Path) -> int:
@@ -510,13 +590,19 @@ def decrypt_artifact(path: Path, dest: Path, env=None, mode: str | None = None) 
             raise RuntimeError("openssl is not installed/on PATH — cannot decrypt.")
         child_env = _subprocess_env(env, _passphrase_env(env))
         _run(_openssl_cmd("-d", path, dest), child_env, "openssl decrypt")
-    elif encryption_mode(env) == "age":
+    elif mode == "age":
+        # `mode`, not the environment: a restore follows the scheme the
+        # *manifest* recorded. Reading BACKUP_ENCRYPTION here was a bug — an
+        # age-encrypted backup restored on a host where that variable is unset
+        # (or says 'openssl') fell through to the plaintext branch and copied
+        # the ciphertext verbatim, i.e. a "successful" restore of garbage.
         env_map = os.environ if env is None else env
         identity = (env_map.get(AGE_IDENTITY_ENV) or "").strip()
         if not identity:
             raise RuntimeError(
-                f"{ENCRYPTION_ENV}=age needs {AGE_IDENTITY_ENV} (path to the "
-                "age identity file) to decrypt."
+                f"The backup was encrypted with age, so {AGE_IDENTITY_ENV} "
+                "(path to the age identity file) is needed to decrypt it. "
+                f"This is independent of today's {ENCRYPTION_ENV} setting."
             )
         _run(
             ["age", "--decrypt", "--identity", identity,
@@ -709,7 +795,7 @@ def upload_backup(backup_dir: Path, config: dict | None = None, *,
         )
     client = client if client is not None else object_storage_client(config)
     backup_dir = Path(backup_dir)
-    key = f"{config['prefix']}/{backup_dir.name}.tar.gz"
+    key = remote_key_for(backup_dir, config)
 
     import tempfile
     with tempfile.TemporaryDirectory(prefix="sms-backup-upload-") as tmp:
@@ -728,6 +814,159 @@ def upload_backup(backup_dir: Path, config: dict | None = None, *,
     return {"bucket": config["bucket"], "key": key,
             "size_bytes": size, "pruned": pruned}
 
+
+def remote_key_for(backup_dir: Path, config: dict) -> str:
+    """The object key ``upload_backup`` uses for ``backup_dir``."""
+    return f"{config['prefix']}/{Path(backup_dir).name}.tar.gz"
+
+
+def _is_missing_object(exc) -> bool:
+    """True for a clean S3 404, False for anything worth raising."""
+    response = getattr(exc, "response", None) or {}
+    code = str((response.get("Error") or {}).get("Code", ""))
+    status = (response.get("ResponseMetadata") or {}).get("HTTPStatusCode")
+    return code in ("404", "NoSuchKey", "NotFound") or status == 404
+
+
+def head_remote_backup(client, config: dict, key: str) -> dict | None:
+    """Metadata for one remote bundle, or ``None`` when the key is absent.
+
+    Anything that is not a clean 404 — bad credentials, no network, a bucket
+    that does not exist — is re-raised. Reporting "no off-box copy" for a
+    misconfigured key would send an operator hunting in the wrong place, and
+    would hide the fact that *nothing* has been uploaded for weeks.
+    """
+    try:
+        resp = client.head_object(Bucket=config["bucket"], Key=key)
+    except Exception as exc:  # noqa: BLE001 - classified just above
+        if _is_missing_object(exc):
+            return None
+        raise
+    return {
+        "key": key,
+        "size_bytes": resp.get("ContentLength"),
+        "last_modified": resp.get("LastModified"),
+        "server_side_encryption": resp.get("ServerSideEncryption"),
+    }
+
+
+def verify_remote_copy(client, config: dict, backup_dir: Path) -> dict:
+    """Confirm the off-box bucket really holds ``backup_dir``.
+
+    Returns the remote metadata; raises ``RuntimeError`` with an
+    operator-readable reason when the copy is missing or empty. "The backup
+    command exited 0" and "an independent copy exists off-box" are two
+    different statements, and only this one proves the second.
+    """
+    key = remote_key_for(backup_dir, config)
+    info = head_remote_backup(client, config, key)
+    if info is None:
+        raise RuntimeError(
+            f"no off-box copy at s3://{config['bucket']}/{key} — the newest "
+            "backup exists only on this machine"
+        )
+    if not info.get("size_bytes"):
+        raise RuntimeError(
+            f"off-box copy s3://{config['bucket']}/{key} is 0 bytes — the "
+            "upload did not complete"
+        )
+    return info
+
+
+def verify_unpacked_backup(folder: Path, manifest: dict, source: str = "") -> None:
+    """Check an unpacked backup folder against its own manifest.
+
+    Every recorded SHA-256 must match the bytes on disk. This is what turns a
+    downloaded off-box bundle from "some tarball" back into "a backup we can
+    restore from" — a truncated or corrupted object fails here instead of
+    halfway through a restore.
+    """
+    folder = Path(folder)
+    where = f" (from {source})" if source else ""
+    problems = []
+    for label, name_key, sha_key in (
+        ("DB artifact", "db_file", "db_sha256"),
+        ("media archive", "media_file", "media_sha256"),
+    ):
+        name = manifest.get(name_key)
+        if not name:
+            if label == "DB artifact":
+                problems.append("manifest records no db_file")
+            continue
+        path = folder / name
+        if not path.exists():
+            problems.append(f"{label} '{name}' missing")
+            continue
+        expected = manifest.get(sha_key)
+        if expected and sha256(path) != expected:
+            problems.append(f"{label} '{name}' SHA-256 mismatch")
+    if problems:
+        raise RuntimeError(
+            f"backup {folder.name}{where} failed its own manifest: "
+            + "; ".join(problems)
+        )
+
+
+def download_remote_backup(client, config: dict, key: str, dest_root: Path,
+                           *, force: bool = False) -> Path:
+    """Fetch one off-box bundle and unpack it to ``dest_root/backup-<stamp>``.
+
+    The object is downloaded into a private temp directory, validated member by
+    member (no absolute paths, no traversal, no links), unpacked with ``0700`` /
+    ``0600`` modes, and then checked against the manifest it carries. The
+    returned folder is exactly what ``restore_backup --backup`` expects, so the
+    recovery path from a lost host is: download, restore, done.
+    """
+    name = key.rsplit("/", 1)[-1]
+    if not name.endswith(".tar.gz"):
+        raise RuntimeError(f"'{key}' is not a backup bundle (.tar.gz).")
+    folder_name = name[: -len(".tar.gz")]
+    if (not folder_name.startswith("backup-") or "/" in folder_name
+            or "\\" in folder_name or ".." in folder_name):
+        raise RuntimeError(
+            f"Refusing to unpack '{key}': expected a backup-<stamp>.tar.gz "
+            "bundle name."
+        )
+    dest_root = Path(dest_root)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    harden_permissions(dest_root)
+    dest = dest_root / folder_name
+    if dest.exists():
+        if not force:
+            raise RuntimeError(
+                f"{dest} already exists — pass --force to replace it."
+            )
+        shutil.rmtree(dest)
+
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="sms-backup-fetch-") as tmp:
+        stage = Path(tmp)
+        harden_permissions(stage)
+        bundle = stage / name
+        with open(bundle, "wb") as fh:
+            client.download_fileobj(config["bucket"], key, fh)
+        harden_permissions(bundle)
+        with open(bundle, "rb") as fh:
+            safe_extract_tar_stream(fh, dest)
+
+    harden_permissions(dest)
+    for path in sorted(dest.rglob("*")):
+        harden_permissions(path)
+    manifest_path = dest / "manifest.json"
+    if not manifest_path.exists():
+        shutil.rmtree(dest, ignore_errors=True)
+        raise RuntimeError(
+            f"'{key}' unpacked without a manifest.json — it is not a bundle "
+            "produced by backup_data."
+        )
+    try:
+        verify_unpacked_backup(dest, load_manifest(manifest_path), source=key)
+    except RuntimeError:
+        # Leave the broken folder behind? No: a half-verified backup sitting in
+        # the backup root could be picked by a later `restore_backup --latest`.
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
+    return dest
 
 
 def prune_old_backups(keep: int, backup_root_dir: Path | None = None) -> list[str]:
@@ -765,39 +1004,69 @@ def find_backup_dir(identifier: str | Path) -> Path:
     return matches[0].resolve()
 
 
-def safe_extract_tar(tar_path: Path, dest_dir: Path) -> int:
-    """Extract a media tarball into ``dest_dir``.
+def _validate_tar_member(member, dest_dir: Path, dest_resolved: Path | None = None):
+    """Raise unless ``member`` is safe to extract into ``dest_dir``.
 
     Cross-version safe (Python 3.11 here, so ``extractall(filter=...)`` is not
-    available). Every member is resolved and validated against ``dest_dir``
-    before extraction; absolute paths, ``..`` traversal, and symlink/hardlink
-    members are rejected outright so a tampered archive cannot write outside
-    the intended media root.
+    available). Absolute paths, ``..`` traversal, and symlink/hardlink members
+    are rejected outright so a tampered archive cannot write outside the
+    intended directory.
     """
+    dest_dir = Path(dest_dir)
+    dest_resolved = dest_resolved or dest_dir.resolve()
+    member_path = Path(member.name)
+    if member_path.is_absolute() or ".." in member_path.parts:
+        raise RuntimeError(
+            f"Refusing to extract '{member.name}' (unsafe path)"
+        )
+    target = (dest_dir / member_path).resolve()
+    if not target.is_relative_to(dest_resolved):
+        raise RuntimeError(
+            f"Refusing to extract '{member.name}' (outside {dest_dir})"
+        )
+    # Reject links — our own archives only ever store regular files.
+    if member.issym() or member.islnk() or not member.isfile():
+        raise RuntimeError(
+            f"Refusing to extract '{member.name}' (non-regular file)"
+        )
+
+
+def safe_extract_tar(tar_path: Path, dest_dir: Path) -> int:
+    """Extract a media tarball into ``dest_dir`` (validated member by member)."""
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_resolved = dest_dir.resolve()
     count = 0
     with tarfile.open(tar_path, "r:gz") as tar:
         for member in tar.getmembers():
-            member_path = Path(member.name)
-            if member_path.is_absolute() or ".." in member_path.parts:
-                raise RuntimeError(
-                    f"Refusing to extract '{member.name}' (unsafe path)"
-                )
-            target = (dest_dir / member_path).resolve()
-            if not target.is_relative_to(dest_resolved):
-                raise RuntimeError(
-                    f"Refusing to extract '{member.name}' (outside {dest_dir})"
-                )
-            # Reject links — our own archive_media only stores regular files.
-            if member.issym() or member.islnk() or not member.isfile():
-                raise RuntimeError(
-                    f"Refusing to extract '{member.name}' (non-regular file)"
-                )
+            _validate_tar_member(member, dest_dir, dest_resolved)
             tar.extract(member, dest_dir)
             count += 1
     return count
+
+
+def safe_extract_tar_stream(fileobj, dest_dir: Path) -> int:
+    """Same as :func:`safe_extract_tar` for an already-open stream.
+
+    Used for a bundle downloaded from the off-box bucket, so the bytes coming
+    off the network are validated member by member before anything is written
+    next to the local backups.
+    """
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_resolved = dest_dir.resolve()
+    count = 0
+    # "r:gz" (seekable) rather than "r|gz": a downloaded bundle is a file we
+    # already hold, and a seekable read lets us refuse the whole archive before
+    # extracting any of it.
+    with tarfile.open(fileobj=fileobj, mode="r:gz") as tar:
+        for member in tar.getmembers():
+            _validate_tar_member(member, dest_dir, dest_resolved)
+        for member in tar.getmembers():
+            tar.extract(member, dest_dir)
+            count += 1
+    return count
+
 
 
 def log(msg: str) -> None:

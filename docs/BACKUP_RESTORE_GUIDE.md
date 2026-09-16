@@ -1,18 +1,25 @@
 # Backup & Restore Guide
 
-_Last updated 2026-09-16 (backup tooling + data-safety session). Supersedes nothing:
-`docs/BACKUP_AND_RESTORE.md` remains the tooling runbook; this guide is the
-operator-facing "what do I run, in what order" document, and
+_Last updated 2026-09-16 (second backup tooling + data-safety session). Supersedes
+nothing: `docs/BACKUP_AND_RESTORE.md` remains the tooling runbook; this guide is
+the operator-facing "what do I run, in what order" document, and
 `docs/DATA_SAFETY_STATUS.md` is the verified/unverified status record._
 
 **বাংলা সংক্ষিপ্তসার:** এই গাইড বলে কোন পরিস্থিতিতে কোন কমান্ড চালাতে হবে।
 ডেটাবেস ব্যাকআপ একটা `manage.py backup_data` কমান্ডে হয় (SQLite হলে consistent
 snapshot, Postgres হলে `pg_dump`), ছবি/ডকুমেন্ট `media.tar.gz`-এ একই ফোল্ডারে যায়।
-`manage.py check_backups` ব্যাকআপ সুস্থ কিনা বলে দেয় (exit 0 = ঠিক)।
+`manage.py check_backups` ব্যাকআপ সুস্থ কিনা বলে দেয় (exit 0 = ঠিক);
+`--check-remote` দিলে অফ-বক্স কপিটা সত্যিই বাকেটে আছে কিনাও দেখে।
+`manage.py fetch_backup` অফ-বক্স কপি ফিরিয়ে এনে manifest দিয়ে যাচাই করে — অর্থাৎ
+বাকেটের কপি এখন শুধু লেখা নয়, পড়াও যায়।
 `scripts/backup_smoke_test.sh` ফেলে-দেওয়া-যায়-এমন ডেটা দিয়ে পুরো
-ব্যাকআপ→রিস্টর প্রক্রিয়া পরীক্ষা করে — লাইভ ডেটাবেস ছোঁয় না।
-এখনো **লাইভ শিডিউল, অফ-বক্স বাকেট বা প্রোডাকশন রিস্টর চালু হয়নি** — সেগুলোর জন্য
-মালিকের অনুমোদন ও (কিছু ক্ষেত্রে) পেইড সার্ভিস দরকার।
+ব্যাকআপ→রিস্টর প্রক্রিয়া পরীক্ষা করে (`--s3-endpoint` দিলে অফ-বক্স রাউন্ড ট্রিপসহ) —
+লাইভ ডেটাবেস ছোঁয় না। যাচাই করতে গিয়ে দুটি আসল বাগ ধরা পড়ে ও ঠিক করা হয়েছে:
+SQLite রিস্টরে পুরনো `-wal`/`-journal` ফাইল থেকে যেত (ফলে রিস্টর "সফল" দেখিয়ে
+আসলে পুরনো ডেটাই ফিরত), আর `age`-এ এনক্রিপ্ট করা ব্যাকআপ ভুল শাখায় পড়ে
+সাইফারটেক্সটই কপি করত।
+এখনো **লাইভ শিডিউল, আসল অফ-বক্স বাকেট বা প্রোডাকশন রিস্টর চালু হয়নি** —
+সেগুলোর জন্য মালিকের অনুমোদন ও (কিছু ক্ষেত্রে) পেইড সার্ভিস দরকার।
 
 ---
 
@@ -36,9 +43,10 @@ directory.
 | What went wrong | Use | Detail |
 |---|---|---|
 | App crashes / bad deploy / 500s | Redeploy the previous build. **No restore.** Data is untouched. | §7 |
-| Database lost or corrupt (disk, provider, bad migration) | Restore the newest good backup into the configured DB | §6 |
+| Database lost or corrupt (disk, provider, bad migration) | Restore the newest good backup into the configured DB (§6.4 if the host is gone too) | §6 |
 | Rows deleted or overwritten by mistake | Restore the newest backup **from before** the mistake; prefer restoring into a disposable copy and copying the rows back | §6.3 |
-| Uploaded photos/documents missing | Restore `media.tar.gz`, or (with `USE_S3`) the bucket's versioned copy | §5, §6.4 |
+| Uploaded photos/documents missing | Restore `media.tar.gz`, or (with `USE_S3`) the bucket's versioned copy | §5, §6.5 |
+| Whole host / disk lost | Fetch the newest bundle from the off-box bucket, then restore | §4.3, §6.4 |
 
 The four cases are separated on purpose — see `docs/DATA_SAFETY_STATUS.md` for the
 full taxonomy, blast radius and current status of each.
@@ -152,6 +160,31 @@ BACKUP_OBJECT_STORAGE_KEEP=30 \
 * Use a **separate key scoped to the backup bucket** — least privilege, and it
   keeps a compromised media key from reaching the backups.
 
+**Prove the copy is there.** An upload that quietly stopped (rotated key, renamed
+bucket, expired credential) leaves a perfectly healthy-looking local backup, so
+the gate has a remote half:
+
+```bash
+manage.py check_backups --check-remote     # newest backup must be in the bucket
+```
+
+`scripts/backup_cron.sh` passes that flag automatically once
+`BACKUP_OBJECT_STORAGE_BUCKET` is set (`BACKUP_SKIP_REMOTE_CHECK=1` skips one
+run), so the health-check ping fails instead of reporting success.
+
+**Read it back** — a bucket nobody has ever downloaded from is an assumption:
+
+```bash
+manage.py fetch_backup --list
+manage.py fetch_backup --latest            # download, verify, unpack
+```
+
+The bundle is downloaded into a private temp dir, every tar member is validated
+(no absolute paths, no `..`, no links), it is unpacked `0700`/`0600` and then
+checked against the SHA-256 digests in its own manifest; a corrupt copy fails
+here and is deleted rather than left where a later restore could pick it up.
+The result is an ordinary `backup-<stamp>/` folder — §6 applies unchanged.
+
 > **Not enabled yet.** This needs an owner-created bucket, a paid/allocated plan
 > and an explicit decision. Until then `backup_data` prints
 > `Off-box copy: not configured` and exits 0.
@@ -167,7 +200,8 @@ Exit **0 = healthy**, non-zero = problem. It checks, for the newest backup:
 manifest present and parseable; DB artifact present with a matching SHA-256;
 media archive present with a matching SHA-256; freshness (a scheduler that
 silently stopped becomes stale); retention not exceeding `--want-keep`;
-encryption policy satisfied; and no world/group-readable file.
+encryption policy satisfied; no world/group-readable file; and with
+`--check-remote`, that an off-box copy of it exists and is not empty.
 
 Point any monitor at that exit code, and set `HEALTHCHECK_PING_URL` so
 `backup_cron.sh` reports both success and failure (`<url>` / `<url>/fail`).
@@ -178,6 +212,7 @@ Point any monitor at that exit code, and set `HEALTHCHECK_PING_URL` so
 scripts/backup_smoke_test.sh                 # SQLite, run and clean up
 scripts/backup_smoke_test.sh --keep          # keep the drill directory
 scripts/backup_smoke_test.sh --postgres postgres://user:pass@host:5432/postgres
+scripts/backup_smoke_test.sh --s3-endpoint http://127.0.0.1:5055   # + off-box
 ```
 
 Builds a throwaway database and a real uploaded photo, backs them up, runs
@@ -193,6 +228,25 @@ use: it creates two databases of its own (`sms_drill_src_<stamp>` /
 databases on exit. CI runs both modes on every push
 (`.github/workflows/tests.yml`), the Postgres one against the `postgres:16`
 service.
+
+`--s3-endpoint` adds the off-box round trip against an S3-compatible endpoint you
+start yourself — `moto_server -H 127.0.0.1 -p 5055` (a mock) or a local MinIO,
+never a real bucket:
+
+1. the drill bucket is created (and deleted again on exit, if the drill made it);
+2. `backup_data` uploads a bundle;
+3. `check_backups --check-remote` passes — and fails when the prefix is wrong, so
+   the gate is proven both ways;
+4. `fetch_backup --latest` downloads, verifies and unpacks it;
+5. `restore_backup` restores **from the fetched copy** into a fresh disposable
+   target and the photo comes back byte-identical;
+6. two more backups show `BACKUP_OBJECT_STORAGE_KEEP` pruning the remote set.
+
+CI runs this leg on every push against moto, for both SQLite and Postgres.
+
+The drill is hermetic: it unsets every inherited `BACKUP_*` variable and passes
+`--no-upload` on the local steps, so an operator's real bucket can never receive
+drill bundles — or have real backups pruned by the drill's retention.
 
 > A passing smoke test proves the **procedure** works. It is not a production
 > backup and must never be reported as one.
@@ -242,7 +296,29 @@ DATABASE_URL=sqlite:///$PWD/.restore-drill/recover.sqlite3 \
 `AuditLog` records edits and deletions with a `snapshot` of the row, which is
 often enough to reconstruct a single record without any restore at all.
 
-### 6.4 Media loss
+### 6.4 The host is gone — restore from the off-box copy
+
+When the machine itself is lost, the local `backups/` folder is gone with it, so
+the bucket is the only source. From a fresh checkout:
+
+```bash
+# 1. credentials for the backup bucket (and the passphrase, if encrypted)
+export BACKUP_OBJECT_STORAGE_BUCKET=... BACKUP_OBJECT_STORAGE_ACCESS_KEY=... \
+       BACKUP_OBJECT_STORAGE_SECRET_KEY=... BACKUP_OBJECT_STORAGE_ENDPOINT=...
+export BACKUP_PASSPHRASE_FILE=/etc/sms/backup.key      # if BACKUP_ENCRYPTION was on
+
+# 2. see what survived, then fetch the newest verified bundle
+python manage.py fetch_backup --list
+python manage.py fetch_backup --latest                 # -> backups/backup-<stamp>/
+
+# 3. drill it into a DISPOSABLE target first (§6.1), then restore for real (§6.2)
+```
+
+`fetch_backup` is read-only with respect to the database; the destructive step
+stays `restore_backup --yes`, exactly as before. This path is drill-verified
+end to end (§5.1 `--s3-endpoint`) — against a mock endpoint, not a real bucket.
+
+### 6.5 Media loss
 
 * **Filesystem media:** `media.tar.gz` from the backup restores the whole tree.
 * **`USE_S3=True`:** the bucket is the copy of record. `restore_backup` refuses
@@ -272,10 +348,10 @@ Migrations that drop data, `merge_duplicate_subjects --apply`,
 | Item | Why it is not on | What it needs |
 |---|---|---|
 | Live scheduled backup | Render Cron Jobs have no free tier and no persistent disk | Owner: paid cron + `P0B_BACKUP_ROOT` decision (`render.cron.yaml` is ready, unapplied) |
-| Off-box object storage | Paid/allocated bucket + a key decision | Owner: bucket + scoped key, then set `BACKUP_OBJECT_STORAGE_*` |
+| Off-box object storage | Paid/allocated bucket + a key decision. Upload, gate, fetch and restore-from-fetched are all drill-verified against a **mock** S3 endpoint | Owner: bucket + scoped key, then set `BACKUP_OBJECT_STORAGE_*` and run one real `backup_data` + `fetch_backup` |
 | Health-check alerting | Needs an account + UUID | Owner: create the check, set `HEALTHCHECK_PING_URL` |
 | Production restore rehearsal | Must not run against live data | Owner: approved maintenance window + a copy of the real DB |
-| Postgres backup path in production | Drill-verified locally (PostgreSQL 16.2) and in CI, but never against the production server | P-1: confirm the runtime has the client tools and the engine matches |
+| Postgres backup path in production | Drill-verified locally (PostgreSQL 18.6 over a unix socket, and 16.2 in an earlier session) and in CI against `postgres:16`, but never against the production server | P-1: confirm the runtime has the client tools and the engine matches |
 
 Full status, including what was and was not verified locally:
 `docs/DATA_SAFETY_STATUS.md`.

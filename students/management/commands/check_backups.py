@@ -18,12 +18,16 @@ Health rules (all must hold for the *newest* backup folder):
 * encryption policy holds: when ``BACKUP_ENCRYPTION`` is set, the newest backup
   must actually be encrypted (a plaintext artifact is a policy failure),
 * access control holds: no artifact and not the folder itself is readable by
-  group/others — these files are a complete copy of the school's PII.
+  group/others — these files are a complete copy of the school's PII,
+* with ``--check-remote``: the newest backup also exists in the off-box bucket
+  and is not empty (an upload that quietly stopped is a silent loss of the only
+  copy that survives losing this machine).
 
 Usage::
 
     manage.py check_backups
     manage.py check_backups --max-age-hours 48 --want-keep 7
+    manage.py check_backups --check-remote
     P0B_BACKUP_ROOT=/mnt/backups manage.py check_backups
 """
 from pathlib import Path
@@ -55,6 +59,12 @@ class Command(BaseCommand):
         parser.add_argument(
             "--skip-permission-check", action="store_true",
             help="Do not fail on world/group-readable backup files (not recommended).",
+        )
+        parser.add_argument(
+            "--check-remote", action="store_true",
+            help="Also require the newest backup to exist in the off-box bucket "
+                 "(BACKUP_OBJECT_STORAGE_*). Without this, an upload that quietly "
+                 "stopped still reports a healthy backup.",
         )
 
     def handle(self, *args, **options):
@@ -155,6 +165,12 @@ class Command(BaseCommand):
                     "(pruning not keeping up)"
                 )
 
+        # Off-box copy (only when asked for: it is a network call).
+        remote_line = None
+        if options["check_remote"]:
+            remote_line, remote_errors = self._check_remote(newest)
+            errors.extend(remote_errors)
+
         if errors:
             for e in errors:
                 self.stdout.write(self.style.ERROR(f"  {e}"))
@@ -171,3 +187,40 @@ class Command(BaseCommand):
             f"{newest_manifest.get('engine')}, encryption={enc}, "
             f"{count_col} manifest(s), {len(folders)} folder(s))."
         ))
+        if remote_line:
+            self.stdout.write(self.style.SUCCESS(f"  {remote_line}"))
+
+    def _check_remote(self, newest):
+        """Require an off-box copy of ``newest``; return (ok_line, errors).
+
+        An upload that quietly stopped (rotated key, renamed bucket, expired
+        credential) leaves a perfectly healthy-looking local backup, which is
+        exactly the failure this gate exists to catch. A half-configured bucket
+        is an error rather than a skip: asking for the gate and not getting it
+        must not read as "all good".
+        """
+        try:
+            config = bak.object_storage_config()
+        except RuntimeError as exc:
+            return None, [f"--check-remote: {exc}"]
+        if config is None:
+            return None, [
+                "--check-remote was requested but no off-box bucket is "
+                f"configured (set {bak.OBJECT_STORAGE_BUCKET_ENV}, "
+                f"{bak.OBJECT_STORAGE_ACCESS_KEY_ENV} and "
+                f"{bak.OBJECT_STORAGE_SECRET_KEY_ENV}, or drop the flag)"
+            ]
+        try:
+            client = bak.object_storage_client(config)
+            info = bak.verify_remote_copy(client, config, newest)
+        except Exception as exc:  # noqa: BLE001 - any failure is a failure
+            return None, [f"--check-remote: {exc}"]
+        size = info.get("size_bytes")
+        when = info.get("last_modified")
+        return (
+            f"off-box copy OK: s3://{config['bucket']}/{info['key']} "
+            f"({size} bytes"
+            + (f", uploaded {when.isoformat()}" if hasattr(when, "isoformat") else "")
+            + ")",
+            [],
+        )

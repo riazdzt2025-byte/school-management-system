@@ -1,10 +1,14 @@
 # Backup & Restore Runbook
 
-_Last updated 2026-09-16 (data-safety session: encryption at rest, file-mode
-hardening, the off-box object-storage copy, media/backend-aware restore
-verification, and `scripts/backup_smoke_test.sh`). Original: 2026-09-09 (P0-8
-backup session; + ops readiness: `check_backups`, `backup_cron.sh`,
-`render.cron.yaml`; owner tutorial `docs/OWNER_RENDER_OPS_TUTORIAL.md`)._
+_Last updated 2026-09-16 (second data-safety session: the off-box copy became a
+**restore source** — `fetch_backup`, `check_backups --check-remote`, and an
+end-to-end off-box drill; two real restore bugs fixed — stale SQLite
+journal/WAL sidecars and the `age` decryption path; new deployment checks).
+Earlier the same day: encryption at rest, file-mode hardening, the off-box
+object-storage copy, media/backend-aware restore verification, and
+`scripts/backup_smoke_test.sh`. Original: 2026-09-09 (P0-8 backup session;
++ ops readiness: `check_backups`, `backup_cron.sh`, `render.cron.yaml`; owner
+tutorial `docs/OWNER_RENDER_OPS_TUTORIAL.md`)._
 
 > **Read these first:** `docs/BACKUP_RESTORE_GUIDE.md` is the operator guide
 > (which command for which failure), and `docs/DATA_SAFETY_STATUS.md` is the
@@ -22,11 +26,12 @@ The tooling is two Django management commands plus thin cron-friendly wrappers:
 |---|---|
 | `manage.py backup_data` | Create a consistent DB + media snapshot, write a manifest, prune old backups. |
 | `manage.py restore_backup` | Restore a backup folder into the configured DB + media dir (destructive, needs `--yes`). |
-| `manage.py check_backups` | Backup health gate: verify newest backup (manifest, DB SHA, freshness, retention); **exit 0 = healthy, non-zero = problem** (for alerting). |
+| `manage.py check_backups` | Backup health gate: verify newest backup (manifest, DB SHA, media SHA, freshness, retention, encryption policy, file modes, and with `--check-remote` that the off-box copy exists); **exit 0 = healthy, non-zero = problem** (for alerting). |
+| `manage.py fetch_backup` | Read the off-box copy back: `--list` the bucket, or download a bundle (`--latest` / `--key`), verify it against its manifest and unpack it where `restore_backup` can use it. Read-only — it never writes to the database. |
 | `scripts/backup.sh` | Wrapper around `backup_data` for cron; returns a usable exit code. |
 | `scripts/restore.sh` | Wrapper around `restore_backup`. |
 | `scripts/backup_cron.sh` | Backup + validate + external health-check ping; the recommended cron entrypoint. |
-| `scripts/backup_smoke_test.sh` | End-to-end backup → restore drill on **disposable** data (plaintext *and* encrypted), then cleans up. Never touches the real DB/MEDIA_ROOT. |
+| `scripts/backup_smoke_test.sh` | End-to-end backup → restore drill on **disposable** data (plaintext, encrypted, and — with `--s3-endpoint` — the off-box upload/fetch/restore round trip), then cleans up. Never touches the real DB/MEDIA_ROOT, and clears any inherited `BACKUP_*` env first. |
 
 > **Security rule:** the backup artifact and manifest **never contain
 > credentials**. For Postgres the dump is produced by `pg_dump`/`pg_restore`
@@ -109,6 +114,27 @@ BACKUP_OBJECT_STORAGE_ACCESS_KEY=... BACKUP_OBJECT_STORAGE_SECRET_KEY=... \
   `ServerSideEncryption=AES256`, pruned to `BACKUP_OBJECT_STORAGE_KEEP` (30).
   `--no-upload` skips it. **Not enabled in any environment yet** — it needs an
   owner-created bucket and key.
+* The copy is readable back, which is what makes it a backup and not a write-only
+  artifact:
+
+  ```bash
+  manage.py fetch_backup --list                  # what the bucket holds
+  manage.py fetch_backup --latest                # download + verify + unpack
+  manage.py fetch_backup --key backups/backup-<stamp>.tar.gz --dest /mnt/scratch
+  ```
+
+  `fetch_backup` downloads into a private temp dir, validates every tar member
+  (no absolute paths, no `..`, no links), unpacks with `0700`/`0600` modes and
+  then checks each artifact against the SHA-256 the bundle's own manifest
+  records — a truncated off-box copy fails here, not halfway through a 2 a.m.
+  restore. A broken fetch is deleted rather than left where
+  `restore_backup --backup <name>` could pick it up.
+* `check_backups --check-remote` is the gate that catches an upload which quietly
+  stopped (rotated key, renamed bucket, expired credential): the newest local
+  backup must exist in the bucket and be non-empty. `scripts/backup_cron.sh`
+  passes it automatically as soon as `BACKUP_OBJECT_STORAGE_BUCKET` is set
+  (`BACKUP_SKIP_REMOTE_CHECK=1` skips one run). A credentials/network error is
+  reported as an error, never as "copy missing".
 
 ## 3. Retention guidance
 
@@ -150,8 +176,9 @@ it re-opens the newest backup and verifies the manifest, the DB artifact SHA-256
 (`--max-age-hours`, default 48 — a scheduled backup that silently stopped
 producing new folders becomes stale), retention sanity (more folders than
 `--keep` means pruning is not running), **encryption policy** (a plaintext backup
-fails when `BACKUP_ENCRYPTION` is set), and **file modes** (anything
-group/other-readable fails).
+fails when `BACKUP_ENCRYPTION` is set), **file modes** (anything
+group/other-readable fails), and — with `--check-remote` — that the newest backup
+**exists in the off-box bucket** and is not empty.
 It exits **0 when healthy, non-zero on any problem**. A fresh install with fewer
 folders than `--keep` is normal and not an error.
 
@@ -183,6 +210,22 @@ set (never hard-coded). See §8 for the ready-to-apply Render cron config.
 - `--verify` runs post-restore integrity checks (DB SHA, `migrate --check`,
   sentinel record counts, and that every `ImageField`/`FileField` reference
   resolves to a file on disk).
+
+### SQLite note (journal / WAL sidecars)
+
+A SQLite database is more than its main file: `db.sqlite3-wal` + `-shm`
+(write-ahead log) and `db.sqlite3-journal` (rollback journal) hold committed and
+half-committed state. Replacing only the main file — what a naïve
+`cp backup/db.sqlite3 db.sqlite3` does — leaves the old sidecars in place, and
+**SQLite replays them over the restored file on the next open**. Reproduced
+locally: the reader saw the pre-restore rows while `PRAGMA integrity_check`
+reported `ok`, i.e. a restore that succeeded, verified, and restored nothing.
+
+`restore_backup` therefore closes all Django connections, deletes any stale
+`-wal`/`-shm`/`-journal` next to the target, copies the snapshot, re-reads it and
+compares its SHA-256 with the snapshot's (a partial copy is an error, not a
+warning), and chmods the result `0600`. Removed sidecar files are named in the
+output — their presence means the previous database died mid-write.
 
 ### Postgres note
 
@@ -218,10 +261,24 @@ wrong passphrase is rejected. Exit 0 = every step passed.
 ```bash
 scripts/backup_smoke_test.sh                 # SQLite
 scripts/backup_smoke_test.sh --postgres postgres://user:pass@host:5432/postgres
+scripts/backup_smoke_test.sh --s3-endpoint http://127.0.0.1:5055   # + off-box round trip
 ```
 
 `--postgres` creates its own two drill databases, exercises `pg_dump`/
 `pg_restore`, and drops them on exit. Both modes run in CI on every push.
+
+`--s3-endpoint` adds the off-box round trip against an S3-compatible endpoint you
+start yourself (`moto_server -H 127.0.0.1 -p 5055`, or a local MinIO): create the
+drill bucket → `backup_data` uploads → `check_backups --check-remote` sees it (and
+fails when the prefix is wrong) → `fetch_backup --latest` brings it back and
+verifies it → `restore_backup` restores **from the fetched copy** into a fresh
+disposable target → the photo is byte-identical → two more backups prove
+`BACKUP_OBJECT_STORAGE_KEEP` prunes the remote set. The bucket is emptied and (if
+the drill created it) deleted on exit. CI runs this leg too, against moto.
+
+The drill is hermetic: it unsets every inherited `BACKUP_*` / `P0B_BACKUP_ROOT`
+variable and passes `--no-upload` on the local steps, so an operator's real
+bucket can never receive drill bundles or be pruned by them.
 
 ```bash
 # 1. Disposable source: a throwaway SQLite DB + media file.

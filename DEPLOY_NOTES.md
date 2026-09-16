@@ -89,10 +89,13 @@ assignments per class/group to get the filtered behaviour.
 scripts/backup.sh
 ```
 
-Confirm the newest `backups/backup-*` folder contains a `manifest.json`, and that
-restoring it into a **disposable** target passes `--verify` (see
-`docs/BACKUP_AND_RESTORE.md` §6). Only a backup taken from the production
-database counts as the live backup — a test restore does not.
+Confirm the newest `backups/backup-*` folder contains a `manifest.json`, that
+`manage.py check_backups` exits 0, and that restoring it into a **disposable**
+target passes `--verify` (see `docs/BACKUP_AND_RESTORE.md` §6). Once the off-box
+bucket is configured, also run `manage.py check_backups --check-remote` — a
+backup that never left the machine is not a backup you can restore from after a
+lost host. Only a backup taken from the production database counts as the live
+backup — a test restore does not.
 
 ## Remove retired SSC registration and board-result features
 
