@@ -124,7 +124,8 @@ Environment: Python 3.11.2, **Django 5.2.17**. The project pins Django 6.1,
 which requires Python ≥ 3.12; this sandbox only has 3.11, so the suite was run
 against the newest Django that 3.11 supports. `requirements.txt` was **not**
 changed. CI (`.github/workflows/tests.yml`) runs Python 3.12 + Django 6.1 on both
-SQLite and Postgres 16.
+SQLite and Postgres 16 — and it ran green on this branch, so the tooling is
+proven on the pinned versions as well (see the CI row below).
 
 | Check | Command | Result |
 |---|---|---|
@@ -134,6 +135,7 @@ SQLite and Postgres 16.
 | Smoke test (SQLite) | `scripts/backup_smoke_test.sh` | **steps passed: 15, failed: 0 — RESULT: PASSED** |
 | Smoke test (Postgres) | `scripts/backup_smoke_test.sh --postgres postgres://postgres@/postgres?host=/tmp/pgdata` | **steps passed: 16, failed: 0 — RESULT: PASSED** against PostgreSQL 16.2; the drill created its own two databases and dropped them on exit (verified: only `postgres`, `template0`, `template1` remained) |
 | Smoke test guard | Same script with `DATABASE_URL` pointed outside the drill dir | Aborts: `target database ... is NOT inside ... — refusing to continue`, exit 1, **no file created outside the drill** |
+| CI on the pinned stack | GitHub Actions run `35128930479` (Python 3.12 + Django 6.1) | All jobs **success**, step by step: `Run test suite (sqlite)`, `Run test suite (postgres)`, `Ensure PostgreSQL client tools`, `Backup / restore smoke test (sqlite)`, `Backup / restore smoke test (postgres)`. Read from the run's step conclusions — the raw step logs were not reachable from this sandbox |
 
 What the smoke test actually proved, on disposable data:
 
@@ -163,7 +165,7 @@ client-side kwargs not exported, and a credential-free redacted label).
 
 | Item | Why it is unverified | What would verify it |
 |---|---|---|
-| **Postgres on the production server** | The drill now passes locally against PostgreSQL 16.2 over a unix socket, but the production server's version, host and credentials have not been touched | CI runs the same drill against the `postgres:16` service (`.github/workflows/tests.yml`); P-1 confirms the production runtime |
+| **Postgres on the production server** | The drill passes locally (PostgreSQL 16.2 over a unix socket) and in CI (the `postgres:16` service), but the production server's version, host and credentials have still not been touched | P-1: confirm the production engine and that the runtime image ships `pg_dump`/`pg_restore` |
 | **`age` encryption** | The `age` binary is not installed here | Install `age`, repeat the encrypted round-trip |
 | **Real off-box upload** | No bucket, no credentials — deliberately | One manual `backup_data` with `BACKUP_OBJECT_STORAGE_*` set, then download the object and restore from it |
 | **Production database engine / size** | `DATABASE_URL` never read in this session | Owner: `manage.py dbshell` or the Render dashboard |
