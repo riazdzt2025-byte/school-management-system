@@ -70,18 +70,18 @@ A web-based Student Management System built with Python and Django, inspired by 
 
 ## Documentation
 
-- [`RESULT_PUBLISHING_GUIDE.md`](RESULT_PUBLISHING_GUIDE.md) — marks, CQ/MCQ/Practical/Weekly Test split,
-  pass rules, publishing results, and the Excel import template.
-- [`docs/SUBJECT_WORKFLOW_BN.md`](docs/SUBJECT_WORKFLOW_BN.md) — বাংলায়: নতুন বিষয় কোথায় যোগ
-  ও assign করবেন, নম্বর বণ্টন কোথায় সেট করবেন, কোথা থেকে নম্বর দেবেন, কোথায় publish করবেন,
-  আর বিষয় না দেখালে কী কী পরীক্ষা করবেন।
-- [`DEPLOY_NOTES.md`](DEPLOY_NOTES.md) — what to check after a deploy to Render, including the
-  duplicate-subject cleanup.
-- [`docs/BACKUP_RESTORE_GUIDE.md`](docs/BACKUP_RESTORE_GUIDE.md) — operator guide: which command
-  for which failure, backup / retention / encryption / off-box copy, drills, production restore.
-- [`docs/DATA_SAFETY_STATUS.md`](docs/DATA_SAFETY_STATUS.md) — what is protected against (app
-  failure vs. database loss vs. accidental deletion vs. media loss), and what is verified locally
-  versus still unverified in production.
+- [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) — full module status, verification evidence (550 Django + 6 Node tests), and what is still live-unverified.
+- [`docs/TASK_BACKLOG.md`](docs/TASK_BACKLOG.md) — P0–P2 backlog with complete/partial/missing/unverified status, priority, and acceptance per task.
+- [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — backup runbook: what is backed up, how to back up/restore, retention.
+- [`docs/BACKUP_RESTORE_GUIDE.md`](docs/BACKUP_RESTORE_GUIDE.md) — operator guide: which command for which failure, backup / retention / encryption / off-box copy, drills, production restore.
+- [`docs/DATA_SAFETY_STATUS.md`](docs/DATA_SAFETY_STATUS.md) — what is protected against (app failure vs. database loss vs. accidental deletion vs. media loss), and what is verified locally versus still unverified in production.
+- [`docs/FREE_TIER_MEDIA_STORAGE.md`](docs/FREE_TIER_MEDIA_STORAGE.md) — why `USE_S3` is needed on Render free tier and how to wire an S3-compatible bucket.
+- [`docs/OWNER_RENDER_OPS_TUTORIAL.md`](docs/OWNER_RENDER_OPS_TUTORIAL.md) — step-by-step owner tutorial for Render persistent disk / bucket / cron.
+- [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — P0-7 live checklist before release.
+- [`docs/SUBJECT_WORKFLOW_BN.md`](docs/SUBJECT_WORKFLOW_BN.md) — বাংলায়: নতুন বিষয় কোথায় যোগ ও assign করবেন, নম্বর বণ্টন কোথায় সেট করবেন, কোথা থেকে নম্বর দেবেন, কোথায় publish করবেন, আর বিষয় না দেখালে কী কী পরীক্ষা করবেন।
+- [`RESULT_PUBLISHING_GUIDE.md`](RESULT_PUBLISHING_GUIDE.md) — marks, CQ/MCQ/Practical/Weekly Test split, pass rules, publishing results, and the Excel import template.
+- [`DEPLOY_NOTES.md`](DEPLOY_NOTES.md) — what to check after a deploy to Render, including the duplicate-subject cleanup.
+- [`GROUP_RULE_DEPLOY_NOTES.md`](GROUP_RULE_DEPLOY_NOTES.md) — group logic (groups only from class 9) and deploy notes.
 
 ## How to Run Locally
 
@@ -126,21 +126,24 @@ Behind an HTTPS reverse proxy (Render, Nginx) set `TRUST_FORWARDED_PROTO=True`
 and `CSRF_TRUSTED_ORIGINS=https://your-host` — without them, login POSTs fail with
 a CSRF 403. See [`.env.example`](.env.example).
 
-## Roadmap
-- [ ] Enforce the exam publish flag on every result view and result-card endpoint
-- [ ] Add Excel import for exams and bulk exam marks
-- [ ] Add a proper admission application model and application form workflow
-- [ ] Add Office approval and handoff to Accounts
-- [ ] Add class-wise Accounts confirmation and payment approval
-- [ ] Generate receipt numbers and MoneyReceipt records automatically after approved payment
-- [ ] Add admission-room next-step status and receipt verification workflow
-- [ ] Add promotion history, academic session validation, and rollback support
-- [ ] Add audit history for changes to students, exams, employees, and financial records
-- [ ] Add automated tests for permissions, imports, result publishing, approvals, and receipts
-- [ ] Display subjects and marks on the student detail page
-- [ ] Attendance module
-- [ ] Fees and payment workflow enhancements
-- [ ] Switch to PostgreSQL for production
+## Roadmap — portfolio status (2026-09-16, `main` @ 30da6cb)
+
+> Checked against `docs/PROJECT_STATUS.md` §3. Branch `main` is the source of truth — see that file for evidence per item. Two items remain owner/live-only.
+
+- [x] Enforce the exam publish flag on every result view and result-card endpoint
+- [x] Add Excel import for exams and bulk exam marks (per-subject import + template download)
+- [x] Add a proper admission application model and application form workflow (`AdmissionApplication` with office→accounts state machine)
+- [x] Add Office approval and handoff to Accounts
+- [x] Add class-wise Accounts confirmation and payment approval (`Fee` schedule pre-fills & warns on mismatch)
+- [x] Generate receipt numbers and MoneyReceipt records automatically after approved payment (`ADM-YYYY-…` + `RC-…`)
+- [x] Add admission-room next-step status and receipt verification workflow — partial: `next_step` via workflow; no separate receipt-verification step (not requested)
+- [x] Add promotion history, academic session validation, and rollback support (history + rollback + `PromotionBatch.institution`)
+- [x] Add audit history for changes to students, exams, employees, and financial records (`AuditLog` + `changed_fields` on edits)
+- [x] Add automated tests for permissions, imports, result publishing, approvals, and receipts — 550 Django + 6 Node, CI on sqlite & `postgres:16`
+- [x] Display subjects and marks on the student detail page (Subjects tab = live `SubjectRequirement` assignments)
+- [x] Attendance module (bulk mark, report, summary + sidebar group)
+- [x] Fees and payment workflow enhancements (fee schedule, auto receipts, server-side `MinValue(0)` validation, rate limiting)
+- [ ] Switch to PostgreSQL for production — code ready (`DATABASE_URL` via `dj-database-url`), **CI proven on `postgres:16`**; live `DATABASE_URL` switch still owner-only (see `docs/PRODUCTION_CHECKLIST.md`)
 
 ## Author
 **Habib** — Learning full-stack web development while building real-world projects.
