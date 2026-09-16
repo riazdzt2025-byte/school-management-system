@@ -104,15 +104,56 @@ def sqlite_path() -> Path:
     return Path(settings.DATABASES["default"]["NAME"])
 
 
+def _pg_connection_params() -> dict:
+    """The psycopg2 kwargs Django itself connects with.
+
+    This is the single source of truth for where the database actually is.
+    Reading ``settings.DATABASES['default']['HOST']`` instead is wrong: a
+    ``DATABASE_URL`` such as ``postgres://user@/dbname?host=/var/run/postgresql``
+    leaves ``HOST`` empty and puts the socket directory in ``OPTIONS``, so a
+    dump driven off ``HOST`` would target ``localhost`` — a different server
+    from the one the application is writing to.
+    """
+    from django.db import connections
+    return connections["default"].get_connection_params()
+
+
+# psycopg2 connection kwargs -> libpq environment variables. Anything not in
+# this map (cursor_factory, client_encoding, ...) is a client-side setting with
+# no meaning to pg_dump and is deliberately dropped.
+_PG_ENV_MAP = {
+    "dbname": "PGDATABASE",
+    "user": "PGUSER",
+    "password": "PGPASSWORD",
+    "host": "PGHOST",
+    "port": "PGPORT",
+    "options": "PGOPTIONS",
+    "application_name": "PGAPPNAME",
+    "connect_timeout": "PGCONNECT_TIMEOUT",
+    "sslmode": "PGSSLMODE",
+    "sslrootcert": "PGSSLROOTCERT",
+    "sslcert": "PGSSLCERT",
+    "sslkey": "PGSSLKEY",
+    "target_session_attrs": "PGTARGETSESSIONATTRS",
+    "service": "PGSERVICE",
+}
+
+
 def _postgres_params() -> dict:
-    db = settings.DATABASES["default"]
-    return {
-        "PGDATABASE": db.get("NAME", ""),
-        "PGUSER": db.get("USER", "") or "",
-        "PGPASSWORD": db.get("PASSWORD", "") or "",
-        "PGHOST": db.get("HOST", "") or "localhost",
-        "PGPORT": str(db.get("PORT", "") or "5432"),
-    }
+    """The ``PG*`` environment for pg_dump / pg_restore, from Django's params.
+
+    Empty values are omitted rather than defaulted: an unset ``PGHOST`` makes
+    libpq use its default socket directory, which is exactly what Django does
+    when ``HOST`` is blank. Inventing ``localhost`` there would silently point
+    the dump at another server.
+    """
+    env = {}
+    for key, var in _PG_ENV_MAP.items():
+        value = _pg_connection_params().get(key)
+        if value is None or value == "":
+            continue
+        env[var] = str(value)
+    return env
 
 
 def postgres_connect_env() -> dict:
@@ -129,8 +170,16 @@ def redacted_db_name() -> str:
     if engine == "sqlite":
         return f"sqlite:{sqlite_path().name}"
     name = db.get("NAME", "")
+    # Prefer the host Django actually connects with (OPTIONS can carry a socket
+    # directory that HOST does not), and fall back to settings if resolving it
+    # is impossible — this label must never be the reason a backup fails.
     host = db.get("HOST", "")
-    return f"postgres:{name}@{host or 'default'}" if name else f"postgres@{host or 'default'}"
+    try:
+        host = _pg_connection_params().get("host") or host
+    except Exception:  # noqa: BLE001 - a broken config must not break the label
+        pass
+    where = host or "local socket"
+    return f"postgres:{name}@{where}" if name else f"postgres@{where}"
 
 
 def media_backend_label() -> str:

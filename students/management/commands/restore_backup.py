@@ -167,9 +167,10 @@ class Command(BaseCommand):
             )
         from django.conf import settings as dj_settings
         db = dj_settings.DATABASES["default"]
-        self.stdout.write(
-            f"Restoring Postgres database {db.get('NAME', '')}@{db.get('HOST', '')}"
-        )
+        # Use the redacted label so the host shown is the one Django really
+        # connects with — a DATABASE_URL can carry a socket directory in
+        # OPTIONS, which would otherwise print as an empty host.
+        self.stdout.write(f"Restoring Postgres database {bak.redacted_db_name()}")
         connections.close_all()
         cmd = [
             "pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges",

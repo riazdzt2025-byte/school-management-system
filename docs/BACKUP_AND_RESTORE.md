@@ -211,9 +211,17 @@ are intact. Run it any time before a destructive deploy.
 
 **Automated version:** `scripts/backup_smoke_test.sh` does all of the below in
 one command, on disposable data, with a guard that aborts unless the resolved
-database is inside its own drill directory (so a stray `DATABASE_URL` can never
-be hit). It also runs the whole cycle again with `BACKUP_ENCRYPTION=openssl` and
-checks that a wrong passphrase is rejected. Exit 0 = every step passed.
+database is the drill's own (so a stray `DATABASE_URL` can never be hit). It also
+runs the whole cycle again with `BACKUP_ENCRYPTION=openssl` and checks that a
+wrong passphrase is rejected. Exit 0 = every step passed.
+
+```bash
+scripts/backup_smoke_test.sh                 # SQLite
+scripts/backup_smoke_test.sh --postgres postgres://user:pass@host:5432/postgres
+```
+
+`--postgres` creates its own two drill databases, exercises `pg_dump`/
+`pg_restore`, and drops them on exit. Both modes run in CI on every push.
 
 ```bash
 # 1. Disposable source: a throwaway SQLite DB + media file.

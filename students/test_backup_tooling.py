@@ -841,19 +841,17 @@ class EngineHandlingTests(SimpleTestCase):
             self.assertIn("pg_dump", str(ctx.exception))
 
     def test_credentials_go_to_the_child_environment_not_argv(self):
-        config = {"default": {"ENGINE": "django.db.backends.postgresql",
-                              "NAME": "sms_prod", "USER": "sms",
-                              "PASSWORD": "SuperSecretPass123",
-                              "HOST": "db.internal", "PORT": "5432"}}
-        with override_settings(DATABASES=config):
+        params = {"dbname": "sms_prod", "user": "sms",
+                  "password": "SuperSecretPass123", "host": "db.internal",
+                  "port": 5432}
+        with mock.patch.object(bak, "_pg_connection_params", return_value=params):
             env = bak.postgres_connect_env()
             self.assertEqual(env["PGPASSWORD"], "SuperSecretPass123")
             self.assertEqual(env["PGHOST"], "db.internal")
-            # ...and the human-readable label stays free of them.
-            label = bak.redacted_db_name()
-        self.assertEqual(label, "postgres:sms_prod@db.internal")
-        self.assertNotIn("SuperSecretPass123", label)
-        self.assertNotIn("postgres://", label)
+            # The password reaches the child through its environment only —
+            # never a command line that `ps` or a log could capture.
+            self.assertNotIn("SuperSecretPass123", " ".join(
+                bak._openssl_cmd("-e", Path("a"), Path("b"))))
 
     def test_backup_data_refuses_an_unsupported_engine(self):
         from django.core.management import call_command
@@ -868,3 +866,109 @@ class EngineHandlingTests(SimpleTestCase):
             self.assertEqual(
                 [p for p in Path(tmp).iterdir() if p.is_dir()], [],
                 "a refused backup left a folder behind")
+
+
+class PostgresConnectionEnvTests(SimpleTestCase):
+    """pg_dump must be pointed at the server Django actually uses.
+
+    Regression: `_postgres_params` used to read ``settings.DATABASES['HOST']``
+    and default it to ``localhost``. A ``DATABASE_URL`` such as
+    ``postgres://user@/dbname?host=/var/run/postgresql`` leaves HOST empty and
+    carries the socket directory in OPTIONS, so the dump silently targeted
+    ``localhost`` — a different server from the one holding the data. (Proven
+    end to end by `scripts/backup_smoke_test.sh --postgres` against a real
+    server; these tests pin the mapping itself.)
+
+    ``override_settings(DATABASES=...)`` cannot drive this: Django caches the
+    connection object and does not rebuild it, and dropping it here would
+    destroy the in-memory test database for every later test. So the connection
+    params — the value Django itself connects with — are supplied directly.
+    """
+
+    def _env_for(self, params):
+        with mock.patch.object(bak, "_pg_connection_params", return_value=params):
+            return bak._postgres_params()
+
+    def test_params_come_from_the_live_connection_object(self):
+        from django.db import connections
+        wrapper = connections["default"]
+        with mock.patch.object(
+            type(wrapper), "get_connection_params",
+            return_value={"dbname": "sms", "host": "/sock"},
+        ) as mocked:
+            self.assertEqual(bak._pg_connection_params(),
+                             {"dbname": "sms", "host": "/sock"})
+        mocked.assert_called_once_with()
+
+    def test_socket_directory_becomes_pghost(self):
+        env = self._env_for({"dbname": "sms_prod", "user": "sms",
+                             "password": "pw", "host": "/var/run/postgresql"})
+        self.assertEqual(env["PGHOST"], "/var/run/postgresql")
+        self.assertEqual(env["PGDATABASE"], "sms_prod")
+        self.assertEqual(env["PGUSER"], "sms")
+        self.assertEqual(env["PGPASSWORD"], "pw")
+
+    def test_blank_host_is_never_invented_as_localhost(self):
+        env = self._env_for({"dbname": "sms_prod", "host": ""})
+        self.assertNotIn("PGHOST", env)
+        self.assertNotIn("localhost", env.values())
+
+    def test_missing_host_is_omitted_too(self):
+        env = self._env_for({"dbname": "sms_prod", "user": "sms"})
+        self.assertNotIn("PGHOST", env)
+
+    def test_explicit_host_and_port_are_used(self):
+        env = self._env_for({"dbname": "sms_prod", "host": "db.internal",
+                             "port": 5433})
+        self.assertEqual(env["PGHOST"], "db.internal")
+        self.assertEqual(env["PGPORT"], "5433")
+
+    def test_client_side_kwargs_are_not_exported(self):
+        env = self._env_for({"dbname": "sms", "host": "/var/run/postgresql",
+                             "client_encoding": "UTF8", "cursor_factory": object})
+        # psycopg2-only settings have no libpq environment equivalent.
+        self.assertNotIn("PGCLIENTENCODING", env)
+        self.assertFalse(any("CURSOR" in k for k in env))
+
+    def test_sslmode_travels_to_the_child_process(self):
+        env = self._env_for({"dbname": "sms", "sslmode": "require"})
+        self.assertEqual(env["PGSSLMODE"], "require")
+
+    def test_no_password_is_omitted_rather_than_sent_empty(self):
+        env = self._env_for({"dbname": "sms", "password": ""})
+        self.assertNotIn("PGPASSWORD", env)
+
+
+class RedactedDbLabelTests(SimpleTestCase):
+    """The label printed/logged identifies the target without leaking creds."""
+
+    def test_socket_directory_is_shown_not_a_blank_host(self):
+        with mock.patch.object(bak, "_pg_connection_params",
+                               return_value={"dbname": "sms", "host": "/tmp/pg"}):
+            with override_settings(DATABASES={"default": {
+                    "ENGINE": "django.db.backends.postgresql",
+                    "NAME": "sms", "HOST": ""}}):
+                self.assertEqual(bak.redacted_db_name(), "postgres:sms@/tmp/pg")
+
+    def test_falls_back_to_settings_when_params_are_unavailable(self):
+        with mock.patch.object(bak, "_pg_connection_params",
+                               side_effect=RuntimeError("no connection")):
+            with override_settings(DATABASES={"default": {
+                    "ENGINE": "django.db.backends.postgresql",
+                    "NAME": "sms", "HOST": "db.internal"}}):
+                self.assertEqual(bak.redacted_db_name(),
+                                 "postgres:sms@db.internal")
+
+    def test_no_password_or_dsn_ever_appears(self):
+        with mock.patch.object(bak, "_pg_connection_params",
+                               return_value={"dbname": "sms",
+                                             "password": "SuperSecretPass123",
+                                             "host": "db.internal"}):
+            with override_settings(DATABASES={"default": {
+                    "ENGINE": "django.db.backends.postgresql",
+                    "NAME": "sms", "HOST": "db.internal",
+                    "PASSWORD": "SuperSecretPass123"}}):
+                label = bak.redacted_db_name()
+        self.assertEqual(label, "postgres:sms@db.internal")
+        self.assertNotIn("SuperSecretPass123", label)
+        self.assertNotIn("postgres://", label)

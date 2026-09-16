@@ -9,7 +9,7 @@ _Companion documents: `docs/BACKUP_RESTORE_GUIDE.md` (operator guide),
 আলাদা প্রতিকার লেখা আছে, কারণ সব ক্ষেত্রে রিস্টর করা ভুল হবে। একমাত্র লেখার-যোগ্য
 ডেটাবেস হলো `DATABASE_URL`-এর ডেটাবেস; ব্যাকআপ শুধু পড়ার-যোগ্য কপি, আর ড্রিলের
 ডেটাবেস সাময়িক ও শেষে মুছে ফেলা হয় — তিনটি স্বাধীন "লাইভ" ডেটাবেস বানানো হয়নি।
-টুলিং স্থানীয়ভাবে পরীক্ষা করা: ৪৯৩টি টেস্ট পাস, স্মোক টেস্ট ১৫/১৫ ধাপ পাস।
+টুলিং স্থানীয়ভাবে পরীক্ষা করা: ৫১০টি টেস্ট পাস, স্মোক টেস্ট SQLite-এ ১৫/১৫ এবং আসল PostgreSQL 16.2-এ ১৬/১৬ ধাপ পাস। যাচাই করতে গিয়ে একটা আসল বাগ ধরা পড়ে ও ঠিক করা হয়েছে: `pg_dump` ভুল করে `localhost`-এ যেত যখন `DATABASE_URL` unix socket ব্যবহার করে।
 **লাইভ শিডিউল, অফ-বক্স বাকেট, প্রোডাকশন রিস্টর — কিছুই চালু হয়নি**; এগুলো
 মালিকের অনুমোদন ও পেইড রিসোর্স ছাড়া সম্ভব নয়। নিচে verified / unknown তালিকা আছে।
 
@@ -85,15 +85,23 @@ Rules that follow from it:
 
 | Engine | Backup | Restore | Consistency guarantee |
 |---|---|---|---|
-| SQLite (local default) | `sqlite3` online-backup API → `db.sqlite3` | file copy over the target | Point-in-time snapshot, safe while the app writes |
-| Postgres (`DATABASE_URL`) | `pg_dump --format=custom --no-owner --no-privileges` → `db.dump` | `pg_restore --clean --if-exists` | Server-side consistent dump; credentials via `PG*` env, never argv |
+| SQLite (local default) | `sqlite3` online-backup API → `db.sqlite3` | file copy over the target | Point-in-time snapshot, safe while the app writes. **Drill passed locally** |
+| Postgres (`DATABASE_URL`) | `pg_dump --format=custom --no-owner --no-privileges` → `db.dump` | `pg_restore --clean --if-exists` | Server-side consistent dump; credentials via `PG*` env, never argv. **Drill passed locally against PostgreSQL 16.2** |
 | Anything else | **Refused** (`CommandError`) | **Refused** | No silent no-op backup |
+
+**Fixed while verifying the Postgres path:** `pg_dump` was being pointed at
+``localhost``. `_postgres_params` read `settings.DATABASES['HOST']` and defaulted
+it to `localhost`, but a `DATABASE_URL` like `postgres://user@/dbname?host=/var/run/postgresql`
+leaves `HOST` empty and carries the socket directory in `OPTIONS` — so the dump
+would have targeted a *different server* from the one the app writes to. The
+`PG*` environment is now derived from `connections['default'].get_connection_params()`
+(exactly what Django connects with), and an empty value is omitted rather than
+invented. Covered by unit tests and by the drill below.
 
 **Unknown:** which engine production actually runs. `settings.py` defaults to
 SQLite and honours `DATABASE_URL` via `dj-database-url`; the live value has not
-been read in this session. Confirming it is prerequisite P-1 below, because the
-Postgres path additionally needs `pg_dump`/`pg_restore` in the runtime image —
-neither exists in this sandbox, so that path is **unverified** here.
+been read in this session. Confirming it is prerequisite P-1 below, together with
+confirming that `pg_dump`/`pg_restore` exist in the production runtime image.
 
 ## 4. Retention, encryption, access control, failure reporting
 
@@ -120,10 +128,11 @@ SQLite and Postgres 16.
 
 | Check | Command | Result |
 |---|---|---|
-| Full suite | `.venv/bin/python manage.py test students` | **Ran 499 tests — OK** (452 before this session; +47 new) |
-| Backup tooling tests | `.venv/bin/python manage.py test students.test_backup_tooling` | **Ran 61 tests — OK** (14 before) |
+| Full suite | `.venv/bin/python manage.py test students` | **Ran 510 tests — OK** (452 before this session; +58 new) |
+| Backup tooling tests | `.venv/bin/python manage.py test students.test_backup_tooling` | **Ran 72 tests — OK** (14 before) |
 | System check | `.venv/bin/python manage.py check` | No issues |
-| Smoke test | `scripts/backup_smoke_test.sh` | **steps passed: 15, failed: 0 — RESULT: PASSED** |
+| Smoke test (SQLite) | `scripts/backup_smoke_test.sh` | **steps passed: 15, failed: 0 — RESULT: PASSED** |
+| Smoke test (Postgres) | `scripts/backup_smoke_test.sh --postgres postgres://postgres@/postgres?host=/tmp/pgdata` | **steps passed: 16, failed: 0 — RESULT: PASSED** against PostgreSQL 16.2; the drill created its own two databases and dropped them on exit (verified: only `postgres`, `template0`, `template1` remained) |
 | Smoke test guard | Same script with `DATABASE_URL` pointed outside the drill dir | Aborts: `target database ... is NOT inside ... — refusing to continue`, exit 1, **no file created outside the drill** |
 
 What the smoke test actually proved, on disposable data:
@@ -138,21 +147,23 @@ What the smoke test actually proved, on disposable data:
 * a **wrong passphrase was rejected** rather than producing a fake "verified"
   restore.
 
-New unit coverage added this session (47 tests): encryption round-trip, plaintext
+New unit coverage added this session (58 tests): encryption round-trip, plaintext
 removal, `0600`/`0700` hardening, passphrase-file handling, unknown-scheme and
 missing-tool rejection, `decrypted_backup` for both manifest shapes, manifest
 fields with no passphrase leak, off-box config validation, upload packing +
 server-side encryption + remote pruning (stubbed S3 client), an end-to-end
 `backup_data` against a disposable SQLite file, "failed backup leaves no folder",
-the new `check_backups` gates (media SHA, encryption policy, file modes), and the
+the new `check_backups` gates (media SHA, encryption policy, file modes), the
 engine-handling rules (sqlite/postgres detection, unsupported engine refused,
-`pg_dump` missing, Postgres credentials staying out of argv and of the label).
+`pg_dump` missing), and the `PG*` mapping regression above (socket directory in
+`OPTIONS`, blank host never becoming `localhost`, sslmode, no empty password,
+client-side kwargs not exported, and a credential-free redacted label).
 
 ## 6. Unknown / unverified — do not assume these work yet
 
 | Item | Why it is unverified | What would verify it |
 |---|---|---|
-| **Postgres backup/restore** | No `pg_dump`/`pg_restore` and no Postgres server in this sandbox | Run the smoke test against Postgres in CI (a `postgres:16` service already exists there) or in the production runtime |
+| **Postgres on the production server** | The drill now passes locally against PostgreSQL 16.2 over a unix socket, but the production server's version, host and credentials have not been touched | CI runs the same drill against the `postgres:16` service (`.github/workflows/tests.yml`); P-1 confirms the production runtime |
 | **`age` encryption** | The `age` binary is not installed here | Install `age`, repeat the encrypted round-trip |
 | **Real off-box upload** | No bucket, no credentials — deliberately | One manual `backup_data` with `BACKUP_OBJECT_STORAGE_*` set, then download the object and restore from it |
 | **Production database engine / size** | `DATABASE_URL` never read in this session | Owner: `manage.py dbshell` or the Render dashboard |
@@ -171,7 +182,7 @@ started.
 
 | # | Action | Blocks | Cost / access |
 |---|---|---|---|
-| P-1 | Confirm the production database engine and that `pg_dump`/`pg_restore` exist in the runtime | Everything else | Dashboard / shell access |
+| P-1 | Confirm the production database engine and that `pg_dump`/`pg_restore` exist in the runtime image (the tooling itself is drill-verified) | Everything else | Dashboard / shell access |
 | P-2 | Decide `P0B_BACKUP_ROOT` on a **persistent** location (a cron job's disk is wiped) | Scheduled backup | Paid disk or a worker with a disk |
 | P-3 | Create the backup bucket + a **scoped** key; set `BACKUP_OBJECT_STORAGE_*` | Off-box copy | Paid/allocated storage |
 | P-4 | Enable **versioning** on the media bucket (or mount a persistent disk for `MEDIA_ROOT`) | Media-loss recovery | Free–cheap, dashboard |

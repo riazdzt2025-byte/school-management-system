@@ -175,8 +175,9 @@ Point any monitor at that exit code, and set `HEALTHCHECK_PING_URL` so
 ### 5.1 Smoke test (disposable data)
 
 ```bash
-scripts/backup_smoke_test.sh            # run and clean up
-scripts/backup_smoke_test.sh --keep     # keep the drill directory
+scripts/backup_smoke_test.sh                 # SQLite, run and clean up
+scripts/backup_smoke_test.sh --keep          # keep the drill directory
+scripts/backup_smoke_test.sh --postgres postgres://user:pass@host:5432/postgres
 ```
 
 Builds a throwaway database and a real uploaded photo, backs them up, runs
@@ -185,6 +186,13 @@ counts and that the photo is byte-identical — then repeats the whole thing wit
 `BACKUP_ENCRYPTION=openssl`, including a check that a wrong passphrase is
 rejected. It never touches the real database, the real `MEDIA_ROOT`, or any
 bucket, and it deletes everything afterwards.
+
+`--postgres` runs the identical drill on the engine production is expected to
+use: it creates two databases of its own (`sms_drill_src_<stamp>` /
+`sms_drill_dst_<stamp>`), needs `pg_dump`/`pg_restore` on `PATH`, and drops both
+databases on exit. CI runs both modes on every push
+(`.github/workflows/tests.yml`), the Postgres one against the `postgres:16`
+service.
 
 > A passing smoke test proves the **procedure** works. It is not a production
 > backup and must never be reported as one.
@@ -267,7 +275,7 @@ Migrations that drop data, `merge_duplicate_subjects --apply`,
 | Off-box object storage | Paid/allocated bucket + a key decision | Owner: bucket + scoped key, then set `BACKUP_OBJECT_STORAGE_*` |
 | Health-check alerting | Needs an account + UUID | Owner: create the check, set `HEALTHCHECK_PING_URL` |
 | Production restore rehearsal | Must not run against live data | Owner: approved maintenance window + a copy of the real DB |
-| Postgres backup path | `pg_dump` not present in this dev sandbox | Confirm the client tools exist in the production runtime |
+| Postgres backup path in production | Drill-verified locally (PostgreSQL 16.2) and in CI, but never against the production server | P-1: confirm the runtime has the client tools and the engine matches |
 
 Full status, including what was and was not verified locally:
 `docs/DATA_SAFETY_STATUS.md`.

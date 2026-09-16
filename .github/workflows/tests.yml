@@ -63,6 +63,32 @@ jobs:
           fi
           python manage.py test students --verbosity 1
 
+      # pg_dump/pg_restore are what make the Postgres drill meaningful. They are
+      # preinstalled on the runner image today; install them if that ever stops
+      # being true, so a missing client fails loudly here instead of silently
+      # skipping the backup path.
+      - name: Ensure PostgreSQL client tools
+        if: matrix.postgres
+        run: |
+          if ! command -v pg_dump >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client
+          fi
+          pg_dump --version
+          pg_restore --version
+
+      # End-to-end backup -> restore on DISPOSABLE data only. The script creates
+      # its own drill databases (postgres job) or a drill file (sqlite job),
+      # refuses to run if the resolved target is not one of them, and deletes
+      # everything on exit. It never touches sms_test or any real MEDIA_ROOT.
+      - name: Backup / restore smoke test (${{ matrix.name }})
+        run: |
+          if [ "${{ matrix.postgres }}" = "true" ]; then
+            ./scripts/backup_smoke_test.sh \
+              --postgres "postgres://postgres:postgres@localhost:5432/postgres"
+          else
+            ./scripts/backup_smoke_test.sh
+          fi
+
   # Zero-dependency Node tests for static/students/js/student_row_actions.js —
   # the checkbox tracker that keeps the student list's row action buttons
   # disabled until the row's checkbox is ticked.
