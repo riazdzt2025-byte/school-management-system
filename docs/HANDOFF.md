@@ -451,3 +451,114 @@ disk — so a deploy wipes the database, not just photos. `docs/FREE_TIER_MEDIA_
 §6 and `docs/OWNER_RENDER_OPS_TUTORIAL.md` cover backups, but nobody has confirmed which
 engine production actually uses (P0-7 item). That is now the biggest open risk in the
 repo, bigger than the one this session fixed.
+## Session — 2026-09-16 · Isolated checkout verification (`arena/01a0aaed-school-management-system`)
+
+**Base:** `158b98a Merge pull request #22 from riazdzt2025-byte/arena/01a0a914-school-management-system` — equals `origin/main`, working tree clean. This session follows general instructions: **no big feature implementation**, only verification + docs, no SSC restore, no production DB use, no secrets, no merge without approval.
+
+**Bengali TL;DR:** এই সেশন বড় feature না — সর্বশেষ checkout যাচাই। Isolated env-এ 452 Django + 6 Node test pass, migration clean, docs আপডেট। আগের P0/P1 প্রায় সব complete — বাকি শুধু live Render ops + 2 deferral + doc tick। পরবর্তী সবচেয়ে জরুরি কাজ: **P0-7 production checklist live-এ run করা** (P0-8 backup ছাড়া কোনো destructive deploy নয়)।
+
+### 1. Current commit, branch, working changes
+
+| Item | Value |
+|---|---|
+| Branch (this session) | `arena/01a0aaed-school-management-system` (`git branch --show-current`) |
+| HEAD | `158b98a0bab17bf578e8de2efddaa746c487cd60` `Merge pull request #22 "Apply student workflow and row action updates"` (parents `4fc4c3e` #21 + `79c0921` umbrella) |
+| Equals `origin/main` | `git rev-parse HEAD` == `git rev-parse origin/main` → `git diff origin/main --stat` empty |
+| Working tree | `git status` = `On branch arena/01a0aaed-school-management-system / nothing to commit, working tree clean` |
+| Remote PRs | `gh pr list` → only open PR #23 "Import Exam Marks: সফল আপলোডের পর একই পেজে ফেরত আসা" (arena/01a0a951) — not in this checkout, no effect on verification |
+| Log context | `git log --oneline --graph -20` shows linear merge history from `84e12d8` (PR #11) → `eb2b62e` (PR #13 guardian) → `9caa113` (PR #14 analysis) → `6c8bbb9` (PR #15 office) → `a124b3a`/`bd1bd2c` (#16-17) → `73cec08`/`e9fcfd9`/`c17a45a`/`4bf8f5a`/`4fc4c3e` → `79c0921` → `158b98a` |
+
+### 2. Previous prompt backlog — complete/partial/missing/unverified (verified this session)
+
+Full table is in `docs/TASK_BACKLOG.md` §Complete backlog + §Remaining. Summary:
+
+- **complete:** P0-1 (TC 500), P0-2 (list `?institution=`), P0-3 (pk isolation read+write), P0-4 (promotion column 0037), P0-5 (money validators), P0-6 (42 isolation tests), P0-8 tooling, P0-10 dead-code, P0-11 single source, P1-1 voucher FK 0036, P1-2 Fee 0038, P1-3 auto receipt, P1-4 nav, P1-5 curriculum tab, P1-6 exam class choices, P1-7 import capacity, P1-8 zero-padding, P1-9 rate limit, P2-1 CI (incl. Node job), P2-2 login lockout, P2-4 edit audit, P2-5 delete copilot memory, P2-6 quick links, **plus extras** guardian unification (0039-0042), result analysis (`c0362db`), full rank list + roll order + row gating (PRs #18-21). All verified by 452 pass + 6 Node pass + `RetiredBoardFeatureTests` still guards SSC removal (no SSC restored — historical migrations only).
+- **partial:** P1-10 (CI matrix proven on `postgres:16`, but live `DATABASE_URL` switch not done), P1-11 tooling (code merged `84e12d8`, bucket/env not set), P0-9 (docs/ correct, README roadmap still `[ ]` todo), P0-7 (docs runbook ready, live values unknown).
+- **missing (intentional deferral, large/destructive):** P2-3 i18n (whole-UI translation), P2-7 drop legacy `StudentSubject` (destructive, needs backup+approval).
+- **unverified (needs live access, rule 7 — not claimed):** P0-7 live checklist, P0-8-live scheduling/off-box/alert, P1-10-live, P1-11-live, D-6 live perm policy. Explicitly marked UNKNOWN in `PROJECT_STATUS.md` §7.
+
+### 3. Already completed work excluded from open list
+
+The "Remaining work — detailed" section in `TASK_BACKLOG.md` now contains **only 7 open items** (P0-7, P0-8-live, P0-9, P1-10-live, P1-11-live, P2-3, P2-7, D-6). Every completed item is moved to the "Complete backlog" table and not proposed again. This satisfies instruction #3.
+
+### 4. Isolated environment verification (no production DB)
+
+- **Env:** `python3 -m venv /tmp/venv` on Python 3.11.2 → `pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3` → `Django 5.2.17` (README fallback; `Django==6.1` correctly fails on 3.11 — expected, documented).
+- **Dependency compatibility:** all imports resolve, `pip show Django` 5.2.17, no 6.x-only API used (grep).
+- **Django checks:** `/tmp/venv/bin/python manage.py check` → 0 issues; `check --deploy` (DEBUG=True) → 6 warnings expected (HSTS/SSL/SECRET_KEY/cookies/DEBUG); `check --deploy` with real SECRET_KEY would be 2 optional.
+- **Migrations:** `makemigrations --check --dry-run` → `No changes detected` (0001 initial → 0042 higher_math_mandatory inclusive); 0039 safe backfill (only blank), 0040 archives differing legacy numbers to `AuditLog` before `RemoveField`, 0041 state-only, 0042 HMATH data-migration reviewed.
+- **Tests:** `/tmp/venv/bin/python manage.py test students --verbosity 1` → `Ran 452 tests in 128.599s — OK` (was 293 on 2026-09-09; +159 from 4 later PR merges); `node --test students/js/student_row_actions.test.js` → `pass 6 fail 0`. Full log kept in this session transcript.
+- **Existing failures separated:** **0 code failures** — suite is green. The only "failures" in the past were unverified live items (DB engine, env, backup scheduling) which are now explicitly labelled **unverified/UNKNOWN**, not code bugs (see `PROJECT_STATUS.md` §4 vs §7).
+- **Production DB:** never used — test DB is ephemeral SQLite (`Creating test database for alias 'default'...`), destroyed after run; no `DATABASE_URL` set.
+
+### 5. Existing failures separated
+
+- **Code failures:** none (452 pass).
+- **Operational unknowns (not code):** P0-7/P0-8-live/P1-10-live/P1-11-live/D-6 — all need Render dashboard access. They are not counted as test failures; they are tracked as **unverified** with runbooks in `docs/PRODUCTION_CHECKLIST.md`, `docs/BACKUP_AND_RESTORE.md`, `docs/FREE_TIER_MEDIA_STORAGE.md`, `docs/OWNER_RENDER_OPS_TUTORIAL.md`.
+
+### 6. docs/PROJECT_STATUS.md, TASK_BACKLOG.md, HANDOFF.md created/updated
+
+- `docs/PROJECT_STATUS.md`: header bumped to `158b98a` 2026-09-16, new §1 (verification table with isolated evidence), §2 (31 modules — now includes guardian unification, result analysis, full rank list, row gating; BUG-1/SEC-* marked FIXED), §3 (README roadmap vs code updated), §4 (defects — resolved vs one P0-9 doc debt), §6 (452+6 map), §8 (new PRs 13–22 verified table), §18 (this session checks + docs updated list). No SSC restored. No secrets.
+- `docs/TASK_BACKLOG.md`: new header, status legend, complete table (21 IDs + 3 extras), remaining detailed section with **priority, dependency, acceptance criteria, tests, risk** per task (7 items: P0-7, P0-8-live, P0-9, P1-10-live, P1-11-live, P2-3, P2-7, D-6), business decisions updated (D-1..D-10 resolved/unverified), historical definitions kept for traceability, this-session table added.
+- `docs/HANDOFF.md`: this section appended; working tree clean note; no feature code changed.
+
+### 7. Each remaining task — priority / dependency / acceptance / risk
+
+Written in `TASK_BACKLOG.md` §Remaining (7 items). Full text there; summary:
+
+- **P0-7** (P0, deps none, acceptance 8 checklist answers in handoff, risk none — read-only).
+- **P0-8-live** (P0, deps P0-8 tooling, acceptance daily cron + `check_backups` 0 + health check green, risk medium — ephemeral disk wipes DB).
+- **P0-9** (P0 doc-only, deps none, acceptance README ticks + SSC refs fixed, risk none).
+- **P1-10-live** (P1, deps D-8/P0-7/P0-8-live, acceptance live Postgres with migrations + unique constraints, risk medium — staged migration).
+- **P1-11-live** (P1, deps D-7/P0-7, acceptance upload→redeploy→loads, risk low — additive opt-in).
+- **P2-3** (P2, missing, large i18n, risk large).
+- **P2-7** (P2, missing, destructive drop `StudentSubject`, risk medium).
+- **D-6** (policy P2, unverified, risk low).
+
+### 8. Live deployment / backup status — not asserted without access
+
+Explicitly **UNKNOWN** in `PROJECT_STATUS.md` §7 (9 items) and `TASK_BACKLOG.md` remaining section headers. No claim like "production is on Postgres" or "backup is running" is made. The handoff repeats: "Cannot be verified from this sandbox; marked UNKNOWN until checked on the live Render service (`docs/PRODUCTION_CHECKLIST.md` has the runbook)." This satisfies instruction #8.
+
+### 9. Secrets / personal production data
+
+None requested, none stored. `SECRET_KEY` fallback remains the documented rotated value; live must set a real env var (settings raises `ImproperlyConfigured` if DEBUG=False with fallback). `P0B_BACKUP_ROOT`/`HEALTHCHECK_PING_URL`/`AWS_*` are described as owner-set env vars, never pasted into chat or docs. No personal data in repo.
+
+### 10. What was NOT done (intentional, no approval)
+
+- No feature implementation, no migration, no template/JS change, no `manage.py migrate`, no `merge_duplicate_subjects --apply`, no purge, no live Render change, no SSC restore, no secret request, no merge without approval. Branch stays as verification docs only — push to `arena/01a0aaed-school-management-system` is allowed (rule: save local changes to arena branch), PR from it only with owner approval (rule per general instructions).
+- `gh` only used for read (`gh pr list`/`gh pr view`) — no push/merge attempted.
+
+### 11. Local run & verify for next developer
+
+```bash
+# Isolated (this session's proof — Python 3.11 fallback, no prod DB)
+python3 -m venv /tmp/venv
+/tmp/venv/bin/pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+/tmp/venv/bin/python manage.py check
+/tmp/venv/bin/python manage.py makemigrations --check --dry-run   # expect: No changes detected
+/tmp/venv/bin/python manage.py test students --verbosity 1          # expect: Ran 452 tests — OK
+node --test students/js/student_row_actions.test.js                  # expect: pass 6 fail 0
+
+# Normal local (Python 3.12+, uses pinned Django 6.1)
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py loaddata students/fixtures/institutions.json
+.venv/bin/python manage.py createsuperuser
+.venv/bin/python manage.py test students
+.venv/bin/python manage.py runserver 0.0.0.0:8000
+# Useful
+.venv/bin/python manage.py check --deploy          # dev: 6 warnings; prod (DEBUG=False + real SECRET_KEY): 2 optional
+```
+
+### 12. Files touched by this session
+
+- `docs/PROJECT_STATUS.md` (updated — new §1/§2/§3/§4/§6/§8/§18, header 2026-09-16 / 158b98a)
+- `docs/TASK_BACKLOG.md` (updated — new header/status legend/complete table/remaining detailed/D-1..D-10 updated/this-session table)
+- `docs/HANDOFF.md` (appended — this section)
+- Nothing else (no code, no migration, no template, no `requirements.txt`; `git status` will show 3 modified docs + untracked `/tmp/venv` ignored)
+
+### 13. Next task recommendation — সবচেয়ে জরুরি
+
+**P0-7 — Production configuration verification checklist on Render (live).** যতক্ষণ P0-7 UNKNOWN ততক্ষণ P0-8-live/P1-10-live/P1-11-live সব ঝুঁকিতে — বিশেষ করে "SQLite + free tier = deploy-এ DB মুছে যায়" (PROJECT_STATUS §7 item 1, FREE_TIER_MEDIA_STORAGE §6). Checklist শেষ না করে কোনো destructive migration (`merge_duplicate_subjects --apply`, `clean_student_groups --apply`, `StudentSubject` drop) চালানো যাবে না — DEPLOY_NOTES hard rule. P0-7 শেষ হলে P0-8-live (persistent `P0B_BACKUP_ROOT` + health check) তারপর P1-11-live bucket wiring। সবই owner Render dashboard access নিয়ে; এই sandbox থেকে করা যায় না — অনুমোদিত হলেই `gh` দিয়ে live যাচাই করা যাবে, এখন নয়।
+
+Branch / remote: `arena/01a0aaed-school-management-system` (HEAD `158b98a`). Docs updated in this session; working tree still clean apart from these 3 docs. PR is **not opened** per general instructions (approved remote-এ PR খুলবে — আমার অনুমোদন ছাড়া merge নয়); owner অনুমোদন দিলে `git push origin arena/01a0aaed-school-management-system` + `gh pr create` করা যাবে (এখন শুধু local commit + verification)।
