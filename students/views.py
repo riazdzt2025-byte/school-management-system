@@ -3377,19 +3377,45 @@ def import_exam_marks(request, pk):
                 messages.error(request, 'Import rejected: ' + ' | '.join(errors[:10]))
                 return render(request, 'students/import_exam_marks.html', context)
 
+            created_count = 0
+            updated_count = 0
             with transaction.atomic():
                 for student, defaults in validated_rows:
-                    ExamMark.objects.update_or_create(
+                    _mark, created = ExamMark.objects.update_or_create(
                         exam=exam, student=student, subject=subject, defaults=defaults,
                     )
-            success_message = f'{len(validated_rows)} {subject.name} mark(s) imported successfully.'
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+            # Summary distinguishes first-time imports from re-imports that
+            # overwrote earlier marks, so a teacher re-uploading a corrected
+            # file sees what actually changed.
+            summary_parts = []
+            if created_count:
+                summary_parts.append(f'{created_count} imported')
+            if updated_count:
+                summary_parts.append(f'{updated_count} updated')
+            if skipped_count:
+                summary_parts.append(f'{skipped_count} skipped')
+            summary = ', '.join(summary_parts) if summary_parts else 'no rows'
+            success_message = (
+                f'{subject.name} marks: {summary}.'
+            )
             if skipped_count:
                 success_message += (
-                    f' {skipped_count} row(s) skipped (blank mark, a student who is no longer'
-                    ' in this class, is not assigned this subject, or does not sit this religion paper).'
+                    ' Skipped rows had a blank mark, a student who is no longer'
+                    ' in this class, is not assigned this subject, or does not sit this religion paper.'
                 )
             messages.success(request, success_message)
-            return redirect('exam_list')
+            # Redirect back to the same import page (with the subject preserved)
+            # so the teacher can upload the next subject's file without leaving
+            # the workflow. PRG keeps a browser refresh from re-submitting.
+            redirect_url = reverse('import_exam_marks', kwargs={'pk': exam.pk})
+            redirect_url += f'?subject={subject.pk}'
+            if selected_group:
+                redirect_url += f'&group={selected_group}'
+            return redirect(redirect_url)
         except Exception as exc:
             messages.error(request, f'Could not import the file: {exc}')
     return render(request, 'students/import_exam_marks.html', context)

@@ -87,8 +87,11 @@
         <input type="hidden" name="group" value="{{ selected_group }}">
         {{ form.as_p }}
         <button class="btn btn-navy" type="submit">Upload and Import</button>
-        <a class="btn btn-outline-navy" href="{% url 'exam_list' %}">Cancel</a>
+        <a class="btn btn-outline-navy" href="{% url 'exam_list' %}">Back to Exam List</a>
     </form>
+    <p class="text-muted small mt-3 mb-0">
+        After a successful upload you stay on this page — pick another subject above to import the next one.
+    </p>
     {% endif %}
 </div>
 {% endblock %}
