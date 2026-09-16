@@ -20,6 +20,7 @@ from unittest import mock
 from django.test import SimpleTestCase, override_settings
 
 from students import backup_utils as bak
+from students import checks
 
 HAS_OPENSSL = shutil.which("openssl") is not None
 needs_openssl = unittest.skipUnless(HAS_OPENSSL, "openssl not on PATH")
@@ -972,3 +973,734 @@ class RedactedDbLabelTests(SimpleTestCase):
         self.assertEqual(label, "postgres:sms@db.internal")
         self.assertNotIn("SuperSecretPass123", label)
         self.assertNotIn("postgres://", label)
+
+
+# --------------------------------------------------------------------------
+# Regression: an age-encrypted backup must be decrypted with age, whatever
+# BACKUP_ENCRYPTION happens to be set to on the host doing the restore. The
+# manifest is the source of truth, not today's environment.
+# --------------------------------------------------------------------------
+class AgeDecryptionDispatchTests(SimpleTestCase):
+    """`decrypt_artifact(mode='age')` used to consult the environment instead.
+
+    With BACKUP_ENCRYPTION unset (or 'openssl') on the restoring host, the age
+    branch was skipped and the plaintext fallback copied the *ciphertext*
+    verbatim — a restore that reported success and produced garbage.
+    """
+
+    def _cipher(self, tmp, name="db.dump.enc"):
+        path = Path(tmp) / name
+        path.write_bytes(b"age-ciphertext-not-a-database")
+        return path
+
+    def test_age_mode_is_honoured_when_the_environment_says_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cipher = self._cipher(tmp)
+            out = Path(tmp) / "db.dump"
+            env = {bak.ENCRYPTION_ENV: "off"}
+            with self.assertRaises(RuntimeError) as ctx:
+                bak.decrypt_artifact(cipher, out, env=env, mode="age")
+            self.assertIn(bak.AGE_IDENTITY_ENV, str(ctx.exception))
+            self.assertFalse(
+                out.exists(),
+                "the ciphertext was copied out as if it were the plaintext",
+            )
+
+    def test_age_mode_is_honoured_when_the_environment_says_openssl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cipher = self._cipher(tmp)
+            with self.assertRaises(RuntimeError) as ctx:
+                bak.decrypt_artifact(cipher, Path(tmp) / "out",
+                                     env={bak.ENCRYPTION_ENV: "openssl",
+                                          bak.PASSPHRASE_ENV: TEST_PASSPHRASE},
+                                     mode="age")
+            self.assertIn(bak.AGE_IDENTITY_ENV, str(ctx.exception))
+
+    def test_identity_file_goes_to_age_as_a_path_not_as_a_secret(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cipher = self._cipher(tmp)
+            identity = Path(tmp) / "backup.age"
+            identity.write_text("AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\n")
+            seen = {}
+
+            def fake_run(cmd, env, what):
+                seen["cmd"], seen["env"] = cmd, env
+
+            with mock.patch.object(bak, "_run", side_effect=fake_run):
+                bak.decrypt_artifact(
+                    cipher, Path(tmp) / "out",
+                    env={bak.AGE_IDENTITY_ENV: str(identity)}, mode="age",
+                )
+            self.assertEqual(seen["cmd"][:3], ["age", "--decrypt", "--identity"])
+            self.assertIn(str(identity), seen["cmd"])
+            # The secret material itself is never an argv element (`ps`-visible).
+            self.assertNotIn("AGE-SECRET-KEY-1QQQ", " ".join(seen["cmd"]))
+
+    def test_decrypted_backup_refuses_an_age_manifest_without_an_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "backup-20260101T000000Z"
+            folder.mkdir()
+            self._cipher(folder)
+            manifest = {"db_file": "db.dump.enc", "media_file": None,
+                        "encryption": bak.ENCRYPTION_LABELS["age"]}
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop(bak.ENCRYPTION_ENV, None)
+                os.environ.pop(bak.AGE_IDENTITY_ENV, None)
+                with self.assertRaises(RuntimeError):
+                    with bak.decrypted_backup(folder, manifest) as paths:
+                        self.fail(f"expected a refusal, got {paths}")
+
+    def test_manifest_scheme_decides_not_the_environment(self):
+        """`decrypted_backup` parses the label; openssl still round-trips."""
+        if not HAS_OPENSSL:
+            self.skipTest("openssl not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "backup-20260101T000000Z"
+            folder.mkdir()
+            payload = b"SQLite format 3\x00 fake snapshot"
+            plain = folder / "db.sqlite3"
+            plain.write_bytes(payload)
+            env = {bak.ENCRYPTION_ENV: "openssl", bak.PASSPHRASE_ENV: TEST_PASSPHRASE}
+            cipher = bak.encrypt_artifact(plain, env=env)
+            manifest = {"db_file": cipher.name, "media_file": None,
+                        "encryption": bak.ENCRYPTION_LABELS["openssl"]}
+            # The environment now says "off" — the manifest must still win.
+            with mock.patch.dict(os.environ, {bak.ENCRYPTION_ENV: "off"}):
+                with bak.decrypted_backup(folder, manifest, env=env) as (db_path, _):
+                    self.assertEqual(Path(db_path).read_bytes(), payload)
+
+
+class SqliteSidecarTests(SimpleTestCase):
+    """A restore must not leave the old database's journal/WAL state behind.
+
+    Reproduced before the fix: restoring a snapshot whose only row was ``NEW``
+    over a WAL-mode database with a stale ``-wal`` made the next reader see the
+    OLD rows, with ``PRAGMA integrity_check`` reporting ``ok`` — a restore that
+    succeeded, verified, and restored nothing.
+    """
+
+    def _crashed_wal_database(self, path, rows=("OLD",)):
+        """Leave ``path`` plus a stale ``-wal``/``-shm``, as a crash would."""
+        path = Path(path)
+        conn = sqlite3.connect(path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE t (v TEXT)")
+        for row in rows:
+            conn.execute("INSERT INTO t (v) VALUES (?)", (row,))
+        conn.commit()
+        # A second open connection stops the WAL being checkpointed and deleted
+        # when the first one closes, so the snapshot below is the crashed state.
+        holder = sqlite3.connect(path)
+        holder.execute("SELECT * FROM t").fetchall()
+        snapshot = {}
+        for suffix in ("", "-wal", "-shm"):
+            candidate = Path(str(path) + suffix)
+            if candidate.exists():
+                snapshot[candidate] = candidate.read_bytes()
+        conn.close()
+        holder.close()
+        for candidate, data in snapshot.items():
+            candidate.write_bytes(data)
+        return sorted(p.name for p in snapshot)
+
+    def _snapshot_with(self, tmp, row="NEW", name="snapshot.sqlite3"):
+        src = Path(tmp) / name
+        conn = sqlite3.connect(src)
+        conn.execute("CREATE TABLE t (v TEXT)")
+        conn.execute("INSERT INTO t (v) VALUES (?)", (row,))
+        conn.commit()
+        conn.close()
+        return src
+
+    def _rows(self, path):
+        conn = sqlite3.connect(Path(path))
+        try:
+            return [r[0] for r in conn.execute("SELECT v FROM t")]
+        finally:
+            conn.close()
+
+    def _rows_or_error(self, path):
+        try:
+            return self._rows(path)
+        except sqlite3.Error as exc:
+            return f"{type(exc).__name__}: {exc}"
+
+    def test_stale_wal_is_removed_and_the_snapshot_wins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "dst.sqlite3"
+            created = self._crashed_wal_database(dest)
+            self.assertIn("dst.sqlite3-wal", created)
+            # No read here on purpose: opening the crashed database would
+            # replay (and so clear) the very WAL this test is about.
+            self.assertTrue(Path(str(dest) + "-wal").exists())
+
+            src = self._snapshot_with(tmp)
+            size, removed = bak.replace_sqlite_database(src, dest)
+
+            self.assertIn("dst.sqlite3-wal", removed)
+            self.assertEqual(size, dest.stat().st_size)
+            self.assertEqual(bak.sha256(dest), bak.sha256(src))
+            # The point of the whole test: the reader sees the restored data.
+            self.assertEqual(self._rows(dest), ["NEW"])
+
+    def test_a_naive_copy_replays_the_stale_wal_and_restores_nothing(self):
+        """The hazard the fix exists for, kept as an executable record.
+
+        This is the *old* behaviour — copy the main file, leave the sidecars —
+        asserted to be wrong, so the bug cannot come back quietly.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "dst.sqlite3"
+            self._crashed_wal_database(dest, ("OLD",))
+            src = self._snapshot_with(tmp, row="NEW")
+
+            shutil.copyfile(src, dest)          # what the code used to do
+
+            seen = self._rows_or_error(dest)
+            self.assertNotEqual(
+                seen, ["NEW"],
+                "the stale WAL was not replayed — the hazard this guards is gone; "
+                "this assertion can be retired",
+            )
+
+    def test_stale_rollback_journal_is_removed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "dst.sqlite3"
+            self._snapshot_with(tmp, row="OLD", name="dst.sqlite3")
+            Path(str(dest) + "-journal").write_bytes(b"\x00" * 64)
+            src = self._snapshot_with(tmp, name="src.sqlite3")
+
+            _, removed = bak.replace_sqlite_database(src, dest)
+
+            self.assertEqual(removed, ["dst.sqlite3-journal"])
+            self.assertFalse(Path(str(dest) + "-journal").exists())
+            self.assertEqual(self._rows(dest), ["NEW"])
+
+    def test_no_sidecars_is_not_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "dst.sqlite3"
+            self._snapshot_with(tmp, row="OLD", name="dst.sqlite3")
+            src = self._snapshot_with(tmp, name="src.sqlite3")
+            size, removed = bak.replace_sqlite_database(src, dest)
+            self.assertEqual(removed, [])
+            self.assertGreater(size, 0)
+            self.assertEqual(self._rows(dest), ["NEW"])
+
+    def test_only_the_target_sidecars_are_touched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = self._snapshot_with(tmp, name="src.sqlite3")
+            src_wal = Path(str(src) + "-wal")
+            src_wal.write_bytes(b"backup-side-state")
+            dest = Path(tmp) / "dst.sqlite3"
+            bak.replace_sqlite_database(src, dest)
+            self.assertTrue(src_wal.exists(),
+                            "the snapshot's own sidecar was deleted")
+
+    def test_restored_database_is_private(self):
+        if os.name != "posix":
+            self.skipTest("POSIX permission bits only")
+        with tempfile.TemporaryDirectory() as tmp:
+            src = self._snapshot_with(tmp)
+            dest = Path(tmp) / "dst.sqlite3"
+            bak.replace_sqlite_database(src, dest)
+            self.assertEqual(dest.stat().st_mode & 0o777, 0o600)
+            self.assertFalse(bak.world_readable(dest))
+
+    def test_missing_snapshot_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                bak.replace_sqlite_database(Path(tmp) / "nope.sqlite3",
+                                            Path(tmp) / "dst.sqlite3")
+
+    def test_sidecar_names_are_exactly_the_sqlite_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "db.sqlite3"
+            names = sorted(p.name for p in bak.sqlite_sidecars(db))
+            self.assertEqual(
+                names, ["db.sqlite3-journal", "db.sqlite3-shm", "db.sqlite3-wal"])
+
+
+class RestoreCommandSidecarTests(SimpleTestCase):
+    """The `restore_backup` command itself must clear the sidecars."""
+
+    def test_command_removes_a_stale_wal_and_restores_the_snapshot(self):
+        from django.core.management import call_command
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            # 1. a real backup folder holding a snapshot with the NEW row
+            src = tmp / "src.sqlite3"
+            conn = sqlite3.connect(src)
+            conn.execute("CREATE TABLE t (v TEXT)")
+            conn.execute("INSERT INTO t (v) VALUES ('NEW')")
+            conn.commit()
+            conn.close()
+            folder = tmp / "backups" / "backup-20260101T000000Z"
+            folder.mkdir(parents=True)
+            artifact = folder / "db.sqlite3"
+            bak.backup_sqlite(src, artifact)
+            bak.write_manifest(
+                folder / "manifest.json", engine="sqlite",
+                db_file=artifact.name, media_file=None, media_count=0,
+                db_sha=bak.sha256(artifact), db_size=artifact.stat().st_size,
+                media_backend="filesystem",
+            )
+            # 2. a target database that died mid-write (stale -wal/-shm)
+            dest = tmp / "live.sqlite3"
+            conn = sqlite3.connect(dest)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("CREATE TABLE t (v TEXT)")
+            conn.execute("INSERT INTO t (v) VALUES ('OLD')")
+            conn.commit()
+            holder = sqlite3.connect(dest)
+            holder.execute("SELECT * FROM t").fetchall()
+            crashed = {p: p.read_bytes()
+                       for p in (dest, Path(str(dest) + "-wal"),
+                                 Path(str(dest) + "-shm")) if p.exists()}
+            conn.close()
+            holder.close()
+            for path, data in crashed.items():
+                path.write_bytes(data)
+            self.assertTrue(Path(str(dest) + "-wal").exists())
+
+            settings_db = {"default": {"ENGINE": "django.db.backends.sqlite3",
+                                       "NAME": str(dest)}}
+            out = io.StringIO()
+            with override_settings(DATABASES=settings_db):
+                call_command("restore_backup", backup=str(folder),
+                             media_dir=str(tmp / "restored-media"),
+                             yes=True, verbosity=1, stdout=out)
+            logged = out.getvalue()
+            self.assertIn("stale SQLite sidecar", logged)
+            self.assertFalse(Path(str(dest) + "-wal").exists())
+            conn = sqlite3.connect(dest)
+            try:
+                rows = [r[0] for r in conn.execute("SELECT v FROM t")]
+            finally:
+                conn.close()
+            self.assertEqual(rows, ["NEW"])
+
+
+class FakeClientError(Exception):
+    """Stand-in for ``botocore.exceptions.ClientError`` (shape, not import)."""
+
+    def __init__(self, code="404", status=404):
+        super().__init__(code)
+        self.response = {"Error": {"Code": code},
+                         "ResponseMetadata": {"HTTPStatusCode": status}}
+
+
+class FakeS3ClientWithObjects(FakeS3Client):
+    """The upload stub plus the read side (head/download) a fetch needs."""
+
+    def __init__(self, objects=None):
+        objects = dict(objects or {})
+        super().__init__(existing_keys=list(objects))
+        self.objects = objects
+        self.heads = []
+        self.downloads = []
+
+    def upload_fileobj(self, fh, bucket, key, ExtraArgs=None):
+        data = fh.read()
+        self.uploads.append({"bucket": bucket, "key": key, "extra": ExtraArgs,
+                             "bytes": data})
+        self.objects[key] = data
+        if key not in self.keys:
+            self.keys.append(key)
+
+    def head_object(self, Bucket=None, Key=None):
+        self.heads.append(Key)
+        if Key not in self.objects:
+            raise FakeClientError()
+        return {"ContentLength": len(self.objects[Key]),
+                "LastModified": bak.now_utc(),
+                "ServerSideEncryption": "AES256"}
+
+    def download_fileobj(self, Bucket, Key, Fileobj):
+        self.downloads.append(Key)
+        if Key not in self.objects:
+            raise FakeClientError()
+        Fileobj.write(self.objects[Key])
+
+
+def _backup_folder(root, name="backup-20260101T000000Z", db_bytes=b"real-db",
+                   media_bytes=None, mode=0o600):
+    """A minimal, valid backup folder (artifacts + a manifest that matches)."""
+    import datetime
+    import hashlib
+    if name is None:
+        name = "backup-" + datetime.datetime.now(
+            datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    folder = Path(root) / name
+    folder.mkdir(parents=True)
+    (folder / "db.sqlite3").write_bytes(db_bytes)
+    manifest = {
+        "format": 2, "engine": "sqlite", "db_file": "db.sqlite3",
+        "db_sha256": hashlib.sha256(db_bytes).hexdigest(),
+        "db_size_bytes": len(db_bytes), "media_file": None,
+        "media_file_count": 0, "media_sha256": None, "encryption": None,
+        "credentials_included": False,
+    }
+    if media_bytes is not None:
+        (folder / "media.tar.gz").write_bytes(media_bytes)
+        manifest["media_file"] = "media.tar.gz"
+        manifest["media_file_count"] = 1
+        manifest["media_sha256"] = hashlib.sha256(media_bytes).hexdigest()
+    (folder / "manifest.json").write_text(json.dumps(manifest, sort_keys=True))
+    for path in folder.rglob("*"):
+        path.chmod(mode)
+    folder.chmod(0o700)
+    return folder
+
+
+OFFBOX_ENV = {
+    bak.OBJECT_STORAGE_BUCKET_ENV: "sms-drill-backups",
+    bak.OBJECT_STORAGE_ACCESS_KEY_ENV: "drill-access-key",
+    bak.OBJECT_STORAGE_SECRET_KEY_ENV: "drill-secret-key",
+}
+OFFBOX_CONFIG = {"bucket": "sms-drill-backups", "access_key": "drill-access-key",
+                 "secret_key": "drill-secret-key", "endpoint_url": None,
+                 "region": None, "prefix": "backups", "keep": 30}
+
+
+class RemoteCopyVerificationTests(SimpleTestCase):
+    """`--check-remote`: an upload that quietly stopped must fail the gate."""
+
+    def test_an_uploaded_bundle_is_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = _backup_folder(tmp)
+            client = FakeS3ClientWithObjects()
+            bak.upload_backup(folder, OFFBOX_CONFIG, client=client)
+            info = bak.verify_remote_copy(client, OFFBOX_CONFIG, folder)
+            self.assertEqual(info["key"], f"backups/{folder.name}.tar.gz")
+            self.assertGreater(info["size_bytes"], 0)
+
+    def test_a_missing_bundle_is_reported_not_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = _backup_folder(tmp)
+            client = FakeS3ClientWithObjects()
+            with self.assertRaises(RuntimeError) as ctx:
+                bak.verify_remote_copy(client, OFFBOX_CONFIG, folder)
+            self.assertIn("no off-box copy", str(ctx.exception))
+            self.assertIn(folder.name, str(ctx.exception))
+
+    def test_an_empty_object_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = _backup_folder(tmp)
+            key = bak.remote_key_for(folder, OFFBOX_CONFIG)
+            client = FakeS3ClientWithObjects({key: b""})
+            with self.assertRaises(RuntimeError) as ctx:
+                bak.verify_remote_copy(client, OFFBOX_CONFIG, folder)
+            self.assertIn("0 bytes", str(ctx.exception))
+
+    def test_a_credentials_error_is_not_reported_as_a_missing_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = _backup_folder(tmp)
+            client = FakeS3ClientWithObjects()
+            client.head_object = mock.Mock(
+                side_effect=FakeClientError("AccessDenied", 403))
+            with self.assertRaises(FakeClientError):
+                bak.verify_remote_copy(client, OFFBOX_CONFIG, folder)
+
+    def test_check_remote_passes_when_the_copy_exists(self):
+        from django.core.management import call_command
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = _backup_folder(tmp, name=None)
+            client = FakeS3ClientWithObjects()
+            bak.upload_backup(folder, OFFBOX_CONFIG, client=client)
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, OFFBOX_ENV):
+                with mock.patch.object(bak, "object_storage_client",
+                                       return_value=client):
+                    try:
+                        call_command("check_backups", backup_root=str(tmp),
+                                     max_age_hours=1, check_remote=True,
+                                     verbosity=0, stdout=out)
+                        code = 0
+                    except SystemExit as exc:
+                        code = exc.code
+            self.assertEqual(code, 0, out.getvalue())
+            self.assertIn("off-box copy OK", out.getvalue())
+
+    def test_check_remote_fails_when_the_copy_is_missing(self):
+        from django.core.management import call_command
+        with tempfile.TemporaryDirectory() as tmp:
+            _backup_folder(tmp, name=None)
+            client = FakeS3ClientWithObjects()
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, OFFBOX_ENV):
+                with mock.patch.object(bak, "object_storage_client",
+                                       return_value=client):
+                    try:
+                        call_command("check_backups", backup_root=str(tmp),
+                                     max_age_hours=1, check_remote=True,
+                                     verbosity=0, stdout=out)
+                        code = 0
+                    except SystemExit as exc:
+                        code = exc.code
+            self.assertNotEqual(code, 0)
+            self.assertIn("no off-box copy", out.getvalue())
+
+    def test_check_remote_without_a_bucket_fails_loudly(self):
+        from django.core.management import call_command
+        with tempfile.TemporaryDirectory() as tmp:
+            _backup_folder(tmp, name=None)
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, {bak.OBJECT_STORAGE_BUCKET_ENV: ""}):
+                try:
+                    call_command("check_backups", backup_root=str(tmp),
+                                 max_age_hours=1, check_remote=True,
+                                 verbosity=0, stdout=out)
+                    code = 0
+                except SystemExit as exc:
+                    code = exc.code
+            self.assertNotEqual(code, 0)
+            self.assertIn(bak.OBJECT_STORAGE_BUCKET_ENV, out.getvalue())
+
+    def test_the_bucket_is_not_contacted_without_the_flag(self):
+        from django.core.management import call_command
+        with tempfile.TemporaryDirectory() as tmp:
+            _backup_folder(tmp, name=None)
+            client = FakeS3ClientWithObjects()
+            with mock.patch.dict(os.environ, OFFBOX_ENV):
+                with mock.patch.object(bak, "object_storage_client",
+                                       return_value=client):
+                    try:
+                        call_command("check_backups", backup_root=str(tmp),
+                                     max_age_hours=1, verbosity=0,
+                                     stdout=io.StringIO())
+                        code = 0
+                    except SystemExit as exc:
+                        code = exc.code
+            self.assertEqual(code, 0)
+            self.assertEqual(client.heads, [])
+
+
+class FetchBackupTests(SimpleTestCase):
+    """Download + unpack + verify: the restore path from a lost host."""
+
+    def _uploaded(self, tmp, **kwargs):
+        folder = _backup_folder(tmp, **kwargs)
+        client = FakeS3ClientWithObjects()
+        result = bak.upload_backup(folder, OFFBOX_CONFIG, client=client)
+        return folder, client, result["key"]
+
+    def test_download_round_trips_a_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, client, key = self._uploaded(tmp)
+            dest_root = Path(tmp) / "fetched"
+            folder = bak.download_remote_backup(client, OFFBOX_CONFIG, key,
+                                                dest_root)
+            self.assertEqual(folder, dest_root / src.name)
+            self.assertEqual((folder / "db.sqlite3").read_bytes(),
+                             (src / "db.sqlite3").read_bytes())
+            self.assertEqual(bak.load_manifest(folder / "manifest.json"),
+                             bak.load_manifest(src / "manifest.json"))
+            self.assertEqual(client.downloads, [key])
+
+    def test_downloaded_artifacts_are_private(self):
+        if os.name != "posix":
+            self.skipTest("POSIX permission bits only")
+        with tempfile.TemporaryDirectory() as tmp:
+            _, client, key = self._uploaded(tmp)
+            folder = bak.download_remote_backup(client, OFFBOX_CONFIG, key,
+                                                Path(tmp) / "fetched")
+            self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+            for path in folder.rglob("*"):
+                if path.is_file():
+                    self.assertEqual(path.stat().st_mode & 0o777, 0o600,
+                                     f"{path.name} is not 0600")
+
+    def test_a_corrupt_bundle_is_refused_and_not_left_behind(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder, client, key = self._uploaded(tmp)
+            # Repack the same bundle with a database that does not match the
+            # manifest digest it carries — what a truncated upload looks like.
+            tampered = Path(tmp) / "tampered"
+            shutil.copytree(folder, tampered)
+            (tampered / "db.sqlite3").write_bytes(b"half-written")
+            bundle = Path(tmp) / "bundle.tar.gz"
+            bak.pack_backup_dir(tampered, bundle)
+            client.objects[key] = bundle.read_bytes()
+
+            dest_root = Path(tmp) / "fetched"
+            with self.assertRaises(RuntimeError) as ctx:
+                bak.download_remote_backup(client, OFFBOX_CONFIG, key, dest_root)
+            self.assertIn("SHA-256 mismatch", str(ctx.exception))
+            self.assertFalse((dest_root / folder.name).exists(),
+                             "a bundle that failed verification was left behind")
+
+    def test_a_bundle_without_a_manifest_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bare = Path(tmp) / "bare" / "backup-20260102T000000Z"
+            bare.mkdir(parents=True)
+            (bare / "db.sqlite3").write_bytes(b"x")
+            bundle = Path(tmp) / "bare.tar.gz"
+            bak.pack_backup_dir(bare, bundle)
+            client = FakeS3ClientWithObjects(
+                {"backups/backup-20260102T000000Z.tar.gz": bundle.read_bytes()})
+            with self.assertRaises(RuntimeError) as ctx:
+                bak.download_remote_backup(
+                    client, OFFBOX_CONFIG,
+                    "backups/backup-20260102T000000Z.tar.gz", Path(tmp) / "out")
+            self.assertIn("manifest.json", str(ctx.exception))
+
+    def test_an_existing_folder_is_not_clobbered_without_force(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, client, key = self._uploaded(tmp)
+            dest_root = Path(tmp) / "fetched"
+            bak.download_remote_backup(client, OFFBOX_CONFIG, key, dest_root)
+            marker = dest_root / src.name / "do-not-touch"
+            marker.write_text("keep me")
+            with self.assertRaises(RuntimeError) as ctx:
+                bak.download_remote_backup(client, OFFBOX_CONFIG, key, dest_root)
+            self.assertIn("--force", str(ctx.exception))
+            self.assertTrue(marker.exists())
+            bak.download_remote_backup(client, OFFBOX_CONFIG, key, dest_root,
+                                       force=True)
+            self.assertFalse(marker.exists())
+            self.assertTrue((dest_root / src.name / "db.sqlite3").exists())
+
+    def test_a_key_that_is_not_a_bundle_is_refused(self):
+        client = FakeS3ClientWithObjects()
+        for bad in ("backups/../../etc/passwd.tar.gz", "backups/notes.tar.gz",
+                    "backups/backup-20260101T000000Z.zip"):
+            with self.subTest(key=bad), self.assertRaises(RuntimeError):
+                bak.download_remote_backup(client, OFFBOX_CONFIG, bad,
+                                           Path(tempfile.gettempdir()) / "nope")
+
+    def test_command_lists_the_bucket(self):
+        from django.core.management import call_command
+        with tempfile.TemporaryDirectory() as tmp:
+            src, client, key = self._uploaded(tmp)
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, OFFBOX_ENV):
+                with mock.patch.object(bak, "object_storage_client",
+                                       return_value=client):
+                    call_command("fetch_backup", list=True, backup_root=str(tmp),
+                                 verbosity=0, stdout=out)
+            self.assertIn(key, out.getvalue())
+            self.assertIn("1 bundle(s)", out.getvalue())
+            self.assertEqual(client.downloads, [])
+
+    def test_command_downloads_the_latest(self):
+        from django.core.management import call_command
+        with tempfile.TemporaryDirectory() as tmp:
+            _backup_folder(tmp, name="backup-20260101T000000Z")
+            older = _backup_folder(tmp, name="backup-20251231T000000Z")
+            client = FakeS3ClientWithObjects()
+            for folder in (older, Path(tmp) / "backup-20260101T000000Z"):
+                bak.upload_backup(folder, OFFBOX_CONFIG, client=client)
+            dest = Path(tmp) / "fetched"
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, OFFBOX_ENV):
+                with mock.patch.object(bak, "object_storage_client",
+                                       return_value=client):
+                    call_command("fetch_backup", latest=True, dest=str(dest),
+                                 verbosity=0, stdout=out)
+            self.assertEqual(client.downloads,
+                             ["backups/backup-20260101T000000Z.tar.gz"])
+            self.assertTrue((dest / "backup-20260101T000000Z" / "db.sqlite3").exists())
+            self.assertIn("restore_backup", out.getvalue())
+
+    def test_command_without_a_bucket_says_what_to_set(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {bak.OBJECT_STORAGE_BUCKET_ENV: ""}):
+                with self.assertRaises(CommandError) as ctx:
+                    call_command("fetch_backup", latest=True,
+                                 backup_root=str(tmp), verbosity=0)
+            self.assertIn(bak.OBJECT_STORAGE_BUCKET_ENV, str(ctx.exception))
+
+    def test_command_reports_an_empty_bucket(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with tempfile.TemporaryDirectory() as tmp:
+            client = FakeS3ClientWithObjects()
+            with mock.patch.dict(os.environ, OFFBOX_ENV):
+                with mock.patch.object(bak, "object_storage_client",
+                                       return_value=client):
+                    with self.assertRaises(CommandError) as ctx:
+                        call_command("fetch_backup", latest=True,
+                                     backup_root=str(tmp), verbosity=0)
+            self.assertIn("holds no backup bundles", str(ctx.exception))
+
+
+class DataSafetyCheckTests(SimpleTestCase):
+    """The design rules from docs/DATA_SAFETY_STATUS.md §2, enforced by `check`."""
+
+    def test_one_database_is_silent(self):
+        one = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+        with override_settings(DATABASES=one):
+            self.assertEqual([c.id for c in checks.check_single_writable_database()], [])
+
+    def test_a_second_database_warns(self):
+        two = {
+            "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},
+            "analytics": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},
+        }
+        with override_settings(DATABASES=two):
+            ids = [c.id for c in checks.check_single_writable_database()]
+        self.assertEqual(ids, ["students.W015"])
+
+    def test_backups_inside_media_root_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "media"
+            backups = media / "backups"
+            backups.mkdir(parents=True)
+            with mock.patch.dict(os.environ, {bak.BACKUPS_ENV: str(backups)}):
+                with override_settings(MEDIA_ROOT=str(media),
+                                       STATIC_ROOT=str(Path(tmp) / "staticfiles")):
+                    ids = [c.id for c in
+                           checks.check_backup_root_not_web_served()]
+            self.assertEqual(ids, ["students.E013"])
+
+    def test_backups_inside_static_root_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            static = Path(tmp) / "staticfiles"
+            backups = static / "backups"
+            backups.mkdir(parents=True)
+            with mock.patch.dict(os.environ, {bak.BACKUPS_ENV: str(backups)}):
+                with override_settings(MEDIA_ROOT=str(Path(tmp) / "media"),
+                                       STATIC_ROOT=str(static)):
+                    ids = [c.id for c in
+                           checks.check_backup_root_not_web_served()]
+            self.assertEqual(ids, ["students.E013"])
+
+    def test_backups_outside_every_served_tree_is_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backups = Path(tmp) / "backups"
+            backups.mkdir()
+            with mock.patch.dict(os.environ, {bak.BACKUPS_ENV: str(backups)}):
+                with override_settings(MEDIA_ROOT=str(Path(tmp) / "media"),
+                                       STATIC_ROOT=str(Path(tmp) / "staticfiles")):
+                    ids = [c.id for c in
+                           checks.check_backup_root_not_web_served()]
+            self.assertEqual(ids, [])
+
+    def test_an_ephemeral_backup_root_warns_only_on_a_deployment(self):
+        from school_system import settings as project_settings
+        ephemeral = str(Path(project_settings.BASE_DIR) / "backups")
+        with mock.patch.dict(os.environ, {bak.BACKUPS_ENV: ephemeral}):
+            with override_settings(DEBUG=False):
+                self.assertEqual(
+                    [c.id for c in checks.check_backup_root_durable()],
+                    ["students.W014"])
+            with override_settings(DEBUG=True):
+                self.assertEqual(
+                    [c.id for c in checks.check_backup_root_durable()], [])
+
+    def test_a_persistent_backup_root_is_silent(self):
+        with mock.patch.dict(os.environ, {bak.BACKUPS_ENV: "/data/backups"}):
+            with override_settings(DEBUG=False):
+                self.assertEqual(
+                    [c.id for c in checks.check_backup_root_durable()], [])
+
+    def test_the_new_checks_are_registered_where_they_belong(self):
+        from django.core.checks.registry import registry
+        self.assertIn(checks.check_single_writable_database,
+                      registry.registered_checks)
+        self.assertIn(checks.check_backup_root_not_web_served,
+                      registry.deployment_checks)
+        self.assertIn(checks.check_backup_root_durable,
+                      registry.deployment_checks)

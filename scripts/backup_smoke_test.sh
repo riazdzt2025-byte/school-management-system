@@ -12,21 +12,35 @@
 # bucket:
 #   * DATABASE_URL and MEDIA_ROOT are exported to disposable targets, which
 #     overrides .env (python-dotenv does not overwrite variables already set);
+#   * every BACKUP_* variable is UNSET before the drill starts, because
+#     python-dotenv would otherwise hand the drill the operator's real
+#     encryption passphrase and — worse — the real off-box bucket, where the
+#     drill's throwaway bundles would be uploaded and its retention pruning
+#     could delete genuine backups;
+#   * the plaintext/encrypted steps also pass --no-upload as a second lock;
 #   * before doing anything it asks Django which database it resolved and ABORTS
 #     unless that target is the drill's own (a file inside the drill directory,
 #     or one of the drill databases this script just created) — so a stray
 #     production DATABASE_URL cannot be hit by accident;
-#   * the object-storage upload is never attempted here (no bucket, no keys);
+#   * with --s3-endpoint the off-box round trip runs against THAT endpoint only
+#     (a local mock such as moto/MinIO), in a bucket this script creates;
 #   * everything is deleted on the way out unless --keep is given.
 #
 # Usage:
 #   scripts/backup_smoke_test.sh                     # SQLite, disposable file
 #   scripts/backup_smoke_test.sh --keep              # keep the drill artifacts
 #   scripts/backup_smoke_test.sh --postgres postgres://postgres@localhost:5432/postgres
+#   scripts/backup_smoke_test.sh --s3-endpoint http://127.0.0.1:5055
 #
 # In --postgres mode the script creates two databases of its own
 # (sms_drill_src_<stamp> / sms_drill_dst_<stamp>) on that server and drops them
 # on exit; it needs pg_dump/pg_restore on PATH.
+#
+# With --s3-endpoint it additionally proves the off-box copy is a *restore
+# source* and not just a write: upload, `check_backups --check-remote`,
+# `fetch_backup` back to a clean directory, restore from the fetched copy, and
+# remote retention pruning. Point it at a mock (moto, MinIO) — never at a real
+# bucket: the drill creates and empties the bucket it is given.
 #
 # Exit code: 0 = every step passed, non-zero = something is broken.
 set -uo pipefail
@@ -44,11 +58,23 @@ DRILL="$DRILL_ROOT/smoke-$STAMP"
 KEEP_DIR=0
 MODE="sqlite"
 PG_BASE_URL=""
+S3_ENDPOINT=""
+S3_BUCKET="sms-drill-backups"
+S3_REGION="us-east-1"
+S3_PREFIX="drill-backups"
+# Dummy credentials for a mock endpoint (moto/MinIO accept anything). They are
+# literals for a throwaway bucket on localhost — not secrets, and never used
+# against a real provider.
+S3_ACCESS_KEY="drill-access-key"
+S3_SECRET_KEY="drill-secret-key"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --keep) KEEP_DIR=1; shift ;;
     --postgres) MODE="postgres"; PG_BASE_URL="${2:-}"; shift 2 ;;
+    --s3-endpoint) S3_ENDPOINT="${2:-}"; shift 2 ;;
+    --s3-bucket) S3_BUCKET="${2:-}"; shift 2 ;;
+    --s3-region) S3_REGION="${2:-}"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -103,6 +129,7 @@ if [[ "$MODE" == "postgres" ]]; then
 fi
 
 mkdir -p "$DRILL/media" "$DRILL/backups" "$DRILL/restored-media"
+export DRILL_BUCKET_MARKER="$DRILL/.bucket-created-by-drill"
 
 if [[ "$MODE" == "sqlite" ]]; then
   SRC_DB="$DRILL/src.sqlite3"
@@ -114,8 +141,55 @@ fi
 export MEDIA_ROOT="$DRILL/media"
 unset USE_S3 AWS_STORAGE_BUCKET_NAME 2>/dev/null || true
 
+# Hermetic drill: drop every backup-related variable the operator's .env (or
+# shell) might have set. Without this, a configured off-box bucket would
+# receive the drill's throwaway bundles — and the drill's own retention pruning
+# (BACKUP_OBJECT_STORAGE_KEEP) could delete real backups. Encryption variables
+# are cleared too so step 3 really is the plaintext path.
+INHERITED_BACKUP_VARS="$(env | grep -oE '^(BACKUP_[A-Z0-9_]+|P0B_BACKUP_ROOT|KEEP_BACKUPS)=' | tr -d '=' | tr '\n' ' ')"
+if [[ -n "${INHERITED_BACKUP_VARS//[[:space:]]/}" ]]; then
+  echo "[smoke] cleared inherited backup configuration: ${INHERITED_BACKUP_VARS}"
+  for _var in ${INHERITED_BACKUP_VARS}; do unset "${_var:?}"; done
+fi
+unset _var INHERITED_BACKUP_VARS
+
 cleanup() {
   local rc=$?
+  if [[ -n "$S3_ENDPOINT" && -n "${BACKUP_OBJECT_STORAGE_BUCKET:-}" ]]; then
+    if "$PY" - <<'PYEOF'
+import os
+from pathlib import Path
+import boto3
+from botocore.config import Config
+
+client = boto3.client(
+    "s3",
+    endpoint_url=os.environ["BACKUP_OBJECT_STORAGE_ENDPOINT"],
+    region_name=os.environ.get("BACKUP_OBJECT_STORAGE_REGION") or None,
+    aws_access_key_id=os.environ["BACKUP_OBJECT_STORAGE_ACCESS_KEY"],
+    aws_secret_access_key=os.environ["BACKUP_OBJECT_STORAGE_SECRET_KEY"],
+    config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+)
+bucket = os.environ["BACKUP_OBJECT_STORAGE_BUCKET"]
+prefix = os.environ.get("BACKUP_OBJECT_STORAGE_PREFIX", "drill-backups") + "/"
+keys = []
+for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
+    keys += [o["Key"] for o in page.get("Contents", []) or []]
+if keys:
+    client.delete_objects(Bucket=bucket,
+                          Delete={"Objects": [{"Key": k} for k in keys], "Quiet": True})
+# Only a bucket this script created may be deleted again.
+marker = Path(os.environ["DRILL_BUCKET_MARKER"])
+if marker.exists() and marker.read_text().strip() == bucket:
+    client.delete_bucket(Bucket=bucket)
+    print("deleted the drill bucket")
+else:
+    print("emptied the drill prefix, bucket left in place")
+PYEOF
+    then echo "[smoke] cleaned up the drill bucket ($S3_BUCKET)"
+    else echo "[smoke] could not clean the drill bucket ($S3_BUCKET) — remove it by hand" >&2
+    fi
+  fi
   if [[ "$MODE" == "postgres" && -n "${PG_BASE_DSN:-}" ]]; then
     for db in "$PG_SRC_NAME" "$PG_DST_NAME" "$PG_DST_NAME_WRONG"; do
       PG_BASE_DSN="$PG_BASE_DSN" "$PY" -c "
@@ -241,7 +315,7 @@ else
 fi
 
 step "3. Backup (plaintext) + health gate"
-"$PY" manage.py backup_data --backup-root "$DRILL/backups" --keep 2 \
+"$PY" manage.py backup_data --backup-root "$DRILL/backups" --keep 2 --no-upload \
   || { bad "backup_data (plaintext)"; exit 1; }
 "$PY" manage.py check_backups --backup-root "$DRILL/backups" --max-age-hours 1 \
   && ok "check_backups healthy" || bad "check_backups (plaintext)"
@@ -279,7 +353,7 @@ if command -v openssl >/dev/null 2>&1; then
   # with the drill directory, never printed.
   (umask 077; openssl rand -base64 32 > "$KEY_FILE")
   BACKUP_ENCRYPTION=openssl BACKUP_PASSPHRASE_FILE="$KEY_FILE" \
-    "$PY" manage.py backup_data --backup-root "$DRILL/backups" --keep 2 \
+    "$PY" manage.py backup_data --backup-root "$DRILL/backups" --keep 2 --no-upload \
     && ok "encrypted backup created" || bad "backup_data (encrypted)"
   ENC_BACKUP="$(ls -1dt "$DRILL"/backups/backup-* | head -1)"
   echo "   backup folder: $ENC_BACKUP"
@@ -347,10 +421,181 @@ else
   echo "   skipped: openssl not on PATH (encryption path not exercised here)"
 fi
 
-step "6. Off-box copy is deliberately not exercised"
-echo "   skipped: no bucket/credentials in a smoke test. The upload path is"
-echo "   covered by unit tests with a stubbed S3 client; a real upload needs"
-echo "   owner approval + a paid bucket (see docs/BACKUP_RESTORE_GUIDE.md)."
+step "6. Off-box copy round trip (upload -> gate -> fetch -> restore)"
+if [[ -z "$S3_ENDPOINT" ]]; then
+  echo "   skipped: no --s3-endpoint given, so there is no bucket to talk to."
+  echo "   A real bucket must never be part of a drill (it would receive"
+  echo "   throwaway bundles, and the drill's own retention could prune real"
+  echo "   backups), so this path only runs against a mock you start yourself:"
+  echo
+  echo "     moto_server -H 127.0.0.1 -p 5055 &      # or: minio server /tmp/minio"
+  echo "     scripts/backup_smoke_test.sh --s3-endpoint http://127.0.0.1:5055"
+  echo
+  echo "   The upload/fetch code is also covered by unit tests with a stubbed"
+  echo "   S3 client (students/test_backup_tooling.py)."
+else
+  export BACKUP_OBJECT_STORAGE_BUCKET="$S3_BUCKET"
+  export BACKUP_OBJECT_STORAGE_ACCESS_KEY="$S3_ACCESS_KEY"
+  export BACKUP_OBJECT_STORAGE_SECRET_KEY="$S3_SECRET_KEY"
+  export BACKUP_OBJECT_STORAGE_ENDPOINT="$S3_ENDPOINT"
+  export BACKUP_OBJECT_STORAGE_REGION="$S3_REGION"
+  export BACKUP_OBJECT_STORAGE_PREFIX="$S3_PREFIX"
+  export BACKUP_OBJECT_STORAGE_KEEP=2
+  OFFBOX="$DRILL/backups-offbox"
+  FETCHED="$DRILL/fetched"
+  mkdir -p "$OFFBOX" "$FETCHED"
+
+  # 6.0 The drill bucket. Created here; the marker file is what tells cleanup
+  #     it may delete the bucket again (an operator's pre-existing bucket is
+  #     only emptied of this drill's objects, never removed).
+  if "$PY" - <<'PYEOF'
+import os
+import boto3
+from botocore.config import Config
+
+client = boto3.client(
+    "s3",
+    endpoint_url=os.environ["BACKUP_OBJECT_STORAGE_ENDPOINT"],
+    region_name=os.environ.get("BACKUP_OBJECT_STORAGE_REGION") or None,
+    aws_access_key_id=os.environ["BACKUP_OBJECT_STORAGE_ACCESS_KEY"],
+    aws_secret_access_key=os.environ["BACKUP_OBJECT_STORAGE_SECRET_KEY"],
+    config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+)
+bucket = os.environ["BACKUP_OBJECT_STORAGE_BUCKET"]
+try:
+    client.head_bucket(Bucket=bucket)
+    print(f"   drill bucket already exists: {bucket}")
+except Exception:
+    client.create_bucket(Bucket=bucket)
+    print(f"   created drill bucket: {bucket}")
+    with open(os.environ["DRILL_BUCKET_MARKER"], "w") as fh:
+        fh.write(bucket)
+PYEOF
+  then ok "drill bucket ready: $S3_BUCKET at $S3_ENDPOINT"; else bad "could not prepare the drill bucket"; exit 1; fi
+
+  # 6.1 A backup that actually uploads.
+  if OFFBOX_OUT="$("$PY" manage.py backup_data --backup-root "$OFFBOX" --keep 3 2>&1)"; then
+    ok "backup_data ran with the off-box copy configured"
+  else
+    echo "$OFFBOX_OUT"; bad "backup_data (off-box)"; exit 1
+  fi
+  if grep -q "Off-box copy: s3://$S3_BUCKET/" <<<"$OFFBOX_OUT"; then
+    ok "off-box copy uploaded: $(grep -oE 's3://[^ ]+' <<<"$OFFBOX_OUT" | head -1)"
+  else
+    echo "$OFFBOX_OUT"; bad "backup_data did not report an off-box upload"
+  fi
+  OFFBOX_BACKUP="$(basename "$(ls -1dt "$OFFBOX"/backup-* | head -1)")"
+
+  # 6.2 The health gate must see the remote copy — and must fail without it.
+  if "$PY" manage.py check_backups --backup-root "$OFFBOX" --max-age-hours 1 \
+       --check-remote >/dev/null 2>&1; then
+    ok "check_backups --check-remote confirms the copy is off-box"
+  else
+    bad "check_backups --check-remote failed on a backup that was uploaded"
+  fi
+  if BACKUP_OBJECT_STORAGE_PREFIX="no-such-prefix" \
+     "$PY" manage.py check_backups --backup-root "$OFFBOX" --max-age-hours 1 \
+       --check-remote >/dev/null 2>&1; then
+    bad "--check-remote passed even though the off-box copy is missing"
+  else
+    ok "--check-remote fails when the off-box copy is missing"
+  fi
+
+  # 6.3 Read it back: an off-box copy nobody has downloaded is an assumption.
+  if "$PY" manage.py fetch_backup --latest --dest "$FETCHED" >/dev/null 2>&1; then
+    ok "fetch_backup downloaded the newest bundle"
+  else
+    "$PY" manage.py fetch_backup --latest --dest "$FETCHED" || true
+    bad "fetch_backup --latest"; exit 1
+  fi
+  if [[ -f "$FETCHED/$OFFBOX_BACKUP/manifest.json" ]]; then
+    ok "fetched bundle unpacked and verified against its own manifest"
+  else
+    bad "the fetched bundle did not produce $OFFBOX_BACKUP/manifest.json"
+  fi
+  if "$PY" manage.py check_backups --backup-root "$FETCHED" --max-age-hours 1 \
+       >/dev/null 2>&1; then
+    ok "the fetched copy passes the local health gate (SHA-256 intact)"
+  else
+    bad "the fetched copy failed the local health gate"
+  fi
+
+  # 6.4 Restore from the fetched copy into a fresh disposable target.
+  rm -rf "$DRILL/restored-media-offbox" && mkdir -p "$DRILL/restored-media-offbox"
+  if [[ "$MODE" == "sqlite" ]]; then
+    OFFBOX_RESTORE_URL="sqlite:///$DRILL/dst-offbox.sqlite3"
+  else
+    OFFBOX_RESTORE_URL="$PG_DST_URL"   # pg_restore --clean reuses the drill DB
+  fi
+  if DATABASE_URL="$OFFBOX_RESTORE_URL" "$PY" manage.py restore_backup \
+       --backup "$FETCHED/$OFFBOX_BACKUP" \
+       --media-dir "$DRILL/restored-media-offbox" --yes --verify >/dev/null 2>&1; then
+    ok "restore from the off-box copy verified"
+  else
+    DATABASE_URL="$OFFBOX_RESTORE_URL" "$PY" manage.py restore_backup \
+      --backup "$FETCHED/$OFFBOX_BACKUP" \
+      --media-dir "$DRILL/restored-media-offbox" --yes --verify || true
+    bad "restore_backup from the fetched off-box copy"
+  fi
+  PHOTO_OFFBOX="$DRILL/restored-media-offbox/$PHOTO_REL"
+  if [[ -f "$PHOTO_OFFBOX" ]] && \
+     [[ "$(sha256sum "$PHOTO_OFFBOX" | cut -d' ' -f1)" == "$PHOTO_SHA_SRC" ]]; then
+    ok "photo restored from the off-box copy is byte-identical"
+  else
+    bad "photo from the off-box copy is missing or differs"
+  fi
+  OFFBOX_COUNT="$(DATABASE_URL="$OFFBOX_RESTORE_URL" "$PY" manage.py shell --command "
+from students.models import Student
+print(Student.objects.count())
+" 2>/dev/null | tail -1 | tr -d '\r')"
+  if [[ "$OFFBOX_COUNT" == "1" ]]; then
+    ok "database restored from the off-box copy has the expected record count"
+  else
+    bad "record count after the off-box restore is '$OFFBOX_COUNT', expected 1"
+  fi
+
+  # 6.5 Remote retention: BACKUP_OBJECT_STORAGE_KEEP=2 must bound the bucket.
+  for _run in 1 2; do
+    "$PY" manage.py backup_data --backup-root "$OFFBOX" --keep 3 >/dev/null 2>&1 \
+      || bad "backup_data (retention run $_run)"
+    sleep 1   # keep the folder names distinct (stamps are second-resolution)
+  done
+  REMOTE_LIST="$("$PY" - <<'PYEOF'
+import os
+import boto3
+from botocore.config import Config
+
+client = boto3.client(
+    "s3",
+    endpoint_url=os.environ["BACKUP_OBJECT_STORAGE_ENDPOINT"],
+    region_name=os.environ.get("BACKUP_OBJECT_STORAGE_REGION") or None,
+    aws_access_key_id=os.environ["BACKUP_OBJECT_STORAGE_ACCESS_KEY"],
+    aws_secret_access_key=os.environ["BACKUP_OBJECT_STORAGE_SECRET_KEY"],
+    config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+)
+prefix = os.environ["BACKUP_OBJECT_STORAGE_PREFIX"] + "/"
+keys = []
+for page in client.get_paginator("list_objects_v2").paginate(
+        Bucket=os.environ["BACKUP_OBJECT_STORAGE_BUCKET"], Prefix=prefix):
+    keys += [o["Key"] for o in page.get("Contents", []) or []]
+print(len(keys))
+for key in sorted(keys):
+    print(key)
+PYEOF
+)"
+  REMOTE_COUNT="$(head -1 <<<"$REMOTE_LIST")"
+  if [[ "$REMOTE_COUNT" == "2" ]]; then
+    ok "remote retention kept exactly BACKUP_OBJECT_STORAGE_KEEP=2 bundles"
+  else
+    echo "$REMOTE_LIST"; bad "remote retention left $REMOTE_COUNT bundle(s), expected 2"
+  fi
+  NEWEST_LOCAL="$(basename "$(ls -1dt "$OFFBOX"/backup-* | head -1)")"
+  if grep -q "$NEWEST_LOCAL.tar.gz" <<<"$REMOTE_LIST"; then
+    ok "the newest backup is among the bundles still off-box ($NEWEST_LOCAL)"
+  else
+    echo "$REMOTE_LIST"; bad "the newest backup ($NEWEST_LOCAL) was pruned off-box"
+  fi
+fi
 
 echo
 echo "[smoke] disposable artifacts live under: $DRILL"

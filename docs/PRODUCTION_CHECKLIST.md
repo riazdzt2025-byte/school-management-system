@@ -68,8 +68,13 @@ apply only if the service is on a paid plan. Setup: `docs/FREE_TIER_MEDIA_STORAG
 | Scheduled backup runs | Render cron running `scripts/backup_cron.sh` | 🔧 owner |
 | Backup persisted **off-cron** | A cron job has **no persistent disk** (it is ephemeral). Copy the backup to **object storage** (R2/S3) or run the backup from a **background worker** that has a disk. `P0B_BACKUP_ROOT` alone on a cron is **not** durable. | 🔧 owner |
 | `check_backups` exits 0 when healthy | `python manage.py check_backups` | ✅ |
+| Off-box copy verified, not just attempted | `python manage.py check_backups --check-remote` (automatic in `backup_cron.sh` once `BACKUP_OBJECT_STORAGE_BUCKET` is set) | ✅ tooling / 🔧 owner bucket |
+| Off-box copy is a *restore source* | `python manage.py fetch_backup --list`, then `fetch_backup --latest` + a disposable `restore_backup --yes --verify` | ✅ tooling / 🔧 owner bucket |
+| Backup root is durable and not web-served | `python manage.py check --deploy` → no `students.E013` (served tree) and no `students.W014` (wiped by a deploy) | ✅ |
+| One writable database only | `python manage.py check` → no `students.W015` | ✅ |
 | Failure alert wired | `HEALTHCHECK_PING_URL` set + health check created | 🔧 owner |
 | Restore practised on a disposable DB | `manage.py restore_backup --yes --verify` | ✅ runbook §6 |
+| Drill re-run after any tooling change | `scripts/backup_smoke_test.sh` (+ `--s3-endpoint <mock>` for the off-box leg) | ✅ monthly |
 
 > **Correction (important):** Render **cron jobs cannot attach a persistent disk**.
 > A disk is available on a paid **web service / private service / background

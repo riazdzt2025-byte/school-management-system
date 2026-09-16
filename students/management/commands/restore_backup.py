@@ -150,12 +150,21 @@ class Command(BaseCommand):
 
     # ---------------------------------------------------------------- helpers
     def _restore_sqlite(self, src):
-        import shutil
         dest = bak.sqlite_path()
         self.stdout.write(f"Overwriting SQLite database at {dest}")
+        # An open connection would re-create the journal/WAL sidecars the moment
+        # it closes, undoing the removal below.
         connections.close_all()
-        shutil.copyfile(src, dest)
-        self.stdout.write(f"Restored {src.name} -> {dest}")
+        size, removed = bak.replace_sqlite_database(src, dest)
+        if removed:
+            # Loud on purpose: a stale sidecar means the previous database died
+            # mid-write, and had it survived, SQLite would have replayed it over
+            # the restored file (a restore that succeeds and changes nothing).
+            self.stdout.write(
+                "  removed stale SQLite sidecar file(s) that would otherwise "
+                f"have been replayed over the restore: {', '.join(removed)}"
+            )
+        self.stdout.write(f"Restored {src.name} -> {dest} ({size} bytes, SHA-256 verified)")
 
     def _restore_postgres(self, src):
         import shutil
