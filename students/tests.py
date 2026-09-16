@@ -316,7 +316,8 @@ class ExamWorkflowTests(TestCase):
 				'excel_file': self.workbook_upload([['S001', 'ENG', 87.5]]),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		expected_url = reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.subject.pk}'
+		self.assertRedirects(response, expected_url)
 		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.subject)
 		self.assertEqual(str(mark.marks_obtained), '87.50')
 
@@ -332,7 +333,8 @@ class ExamWorkflowTests(TestCase):
 				]),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		expected_url = reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.subject.pk}'
+		self.assertRedirects(response, expected_url)
 		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 1)
 		self.assertEqual(str(ExamMark.objects.get().marks_obtained), '75.00')
 
@@ -360,7 +362,8 @@ class ExamWorkflowTests(TestCase):
 				),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		expected_url = reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.subject.pk}'
+		self.assertRedirects(response, expected_url)
 		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.subject)
 		self.assertEqual(str(mark.marks_obtained), '81.00')
 
@@ -383,7 +386,8 @@ class ExamWorkflowTests(TestCase):
 				]),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		expected_url = reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.subject.pk}'
+		self.assertRedirects(response, expected_url)
 		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 1)
 		self.assertEqual(str(ExamMark.objects.get().marks_obtained), '70.00')
 
@@ -941,7 +945,8 @@ class MarksPartsAndPassRulesTests(TestCase):
 				),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		expected_url = reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.physics.pk}'
+		self.assertRedirects(response, expected_url)
 		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.physics)
 		self.assertEqual(str(mark.marks_obtained), '80.00')
 		self.assertEqual(str(mark.cq_obtained), '60.00')
@@ -1041,7 +1046,8 @@ class ExamScopeConsistencyTests(TestCase):
 				),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		expected_url = reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.physics.pk}'
+		self.assertRedirects(response, expected_url)
 		self.assertEqual(ExamMark.objects.count(), 0)
 
 	def test_import_skips_rows_without_a_mark(self):
@@ -2810,3 +2816,209 @@ class RetiredBoardFeatureTests(TestCase):
                 self.assertNotContains(response, 'SSC Result Summary')
                 self.assertNotContains(response, 'ssc-registrations')
                 self.assertNotContains(response, 'Register for SSC')
+
+
+class ExamMarksImportRedirectTests(TestCase):
+    """Import-successful POST must stay on the import page (PRG back to the same
+    exam+subject URL) so the teacher can upload the next subject without
+    detouring through Exam List. A different exam must use its own URL, a GET
+    refresh must not re-import, and invalid/unauthorized requests must not
+    show a false success."""
+
+    def setUp(self):
+        self.institution_a = Institution.objects.create(
+            name='Redirect School A', classes='8,9',
+        )
+        self.institution_b = Institution.objects.create(
+            name='Redirect School B', classes='8',
+        )
+        self.user = get_user_model().objects.create_superuser(
+            username='import-redirect-admin', password='password',
+        )
+        self.client.force_login(self.user)
+        self.subject_eng = Subject.objects.create(
+            code='ENG', name='English', full_marks=100,
+        )
+        self.subject_ban = Subject.objects.create(
+            code='BAN', name='Bangla', full_marks=100,
+        )
+        from .models import SubjectRequirement
+        SubjectRequirement.objects.create(
+            institution=self.institution_a, admission_class='8',
+            subject=self.subject_eng, requirement_type='MANDATORY',
+        )
+        SubjectRequirement.objects.create(
+            institution=self.institution_a, admission_class='8',
+            subject=self.subject_ban, requirement_type='MANDATORY',
+        )
+        self.student_a = Student.objects.create(
+            institution=self.institution_a, student_id='RA001',
+            name='Redirect Alice', admission_class='8', section='A',
+            roll_no=1, admission_year=2026,
+            guardian_contact_no='01812345678',
+        )
+        self.exam_a = Exam.objects.create(
+            name='First Term 2026', exam_type='FIRST_TERM',
+            institution=self.institution_a, admission_class='8',
+            session='2026',
+        )
+        self.exam_b = Exam.objects.create(
+            name='First Term 2026', exam_type='FIRST_TERM',
+            institution=self.institution_b, admission_class='8',
+            session='2026',
+        )
+
+    def _workbook_upload(self, rows, headers=None):
+        if headers is None:
+            headers = ['Student ID', 'Subject Code', 'Marks']
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(headers)
+        for row in rows:
+            sheet.append(row)
+        output = BytesIO()
+        workbook.save(output)
+        return SimpleUploadedFile(
+            'marks.xlsx', output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+    @skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+    def test_successful_post_redirects_to_same_import_page_with_subject(self):
+        response = self.client.post(
+            reverse('import_exam_marks', args=[self.exam_a.pk]),
+            {
+                'subject': str(self.subject_eng.pk),
+                'excel_file': self._workbook_upload(
+                    [['RA001', 'ENG', 88]],
+                ),
+            },
+        )
+        expected = (
+            reverse('import_exam_marks', args=[self.exam_a.pk])
+            + f'?subject={self.subject_eng.pk}'
+        )
+        self.assertRedirects(response, expected)
+
+    @skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+    def test_different_exam_uses_its_own_import_url(self):
+        # Create a student in exam B and assign a subject to B's institution.
+        from .models import SubjectRequirement
+        SubjectRequirement.objects.create(
+            institution=self.institution_b, admission_class='8',
+            subject=self.subject_eng, requirement_type='MANDATORY',
+        )
+        Student.objects.create(
+            institution=self.institution_b, student_id='RB001',
+            name='Redirect Bob', admission_class='8', section='A',
+            roll_no=1, admission_year=2026,
+            guardian_contact_no='01812345679',
+        )
+        response = self.client.post(
+            reverse('import_exam_marks', args=[self.exam_b.pk]),
+            {
+                'subject': str(self.subject_eng.pk),
+                'excel_file': self._workbook_upload(
+                    [['RB001', 'ENG', 72]],
+                ),
+            },
+        )
+        expected = (
+            reverse('import_exam_marks', args=[self.exam_b.pk])
+            + f'?subject={self.subject_eng.pk}'
+        )
+        self.assertRedirects(response, expected)
+        # And not exam A's URL:
+        wrong = (
+            reverse('import_exam_marks', args=[self.exam_a.pk])
+            + f'?subject={self.subject_eng.pk}'
+        )
+        self.assertNotEqual(response.url, wrong)
+
+    @skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+    def test_get_refresh_does_not_reimport(self):
+        url = (
+            reverse('import_exam_marks', args=[self.exam_a.pk])
+            + f'?subject={self.subject_eng.pk}'
+        )
+        # First: do the import.
+        self.client.post(
+            reverse('import_exam_marks', args=[self.exam_a.pk]),
+            {
+                'subject': str(self.subject_eng.pk),
+                'excel_file': self._workbook_upload(
+                    [['RA001', 'ENG', 65]],
+                ),
+            },
+        )
+        self.assertEqual(ExamMark.objects.filter(exam=self.exam_a).count(), 1)
+        mark = ExamMark.objects.get(exam=self.exam_a, subject=self.subject_eng)
+        self.assertEqual(str(mark.marks_obtained), '65.00')
+
+        # A plain GET on the redirect target must not create or touch marks.
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ExamMark.objects.filter(exam=self.exam_a).count(), 1)
+        mark.refresh_from_db()
+        self.assertEqual(str(mark.marks_obtained), '65.00')
+
+    @skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+    def test_re_import_updates_existing_marks_and_summary_says_updated(self):
+        # First import: created.
+        self.client.post(
+            reverse('import_exam_marks', args=[self.exam_a.pk]),
+            {
+                'subject': str(self.subject_eng.pk),
+                'excel_file': self._workbook_upload(
+                    [['RA001', 'ENG', 65]],
+                ),
+            },
+        )
+        # Second import: updated with a new mark.
+        response = self.client.post(
+            reverse('import_exam_marks', args=[self.exam_a.pk]),
+            {
+                'subject': str(self.subject_eng.pk),
+                'excel_file': self._workbook_upload(
+                    [['RA001', 'ENG', 91]],
+                ),
+                # follow=True to inspect the flashed message on the landing page.
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        mark = ExamMark.objects.get(exam=self.exam_a, subject=self.subject_eng)
+        self.assertEqual(str(mark.marks_obtained), '91.00')
+        # The success message must report an update, not a create.
+        flash = ' '.join(m.message for m in response.context['messages'])
+        self.assertIn('updated', flash)
+        self.assertNotIn('exam_list', flash)
+
+    @skipUnless(Workbook, 'openpyxl is required for Excel import tests')
+    def test_invalid_file_does_not_show_success(self):
+        # A sheet whose single mark exceeds full marks is rejected entirely.
+        response = self.client.post(
+            reverse('import_exam_marks', args=[self.exam_a.pk]),
+            {
+                'subject': str(self.subject_eng.pk),
+                'excel_file': self._workbook_upload(
+                    [['RA001', 'ENG', 999]],
+                ),
+            },
+        )
+        # On validation error the page re-renders (200), not a redirect to
+        # exam_list or to the success URL.
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ExamMark.objects.filter(exam=self.exam_a).count(), 0)
+        # And no success message was flashed.
+        flash = ' '.join(m.message for m in response.context['messages'])
+        self.assertNotIn('imported successfully', flash)
+        self.assertNotIn('updated', flash)
+
+    def test_unauthenticated_user_cannot_reach_import_page(self):
+        self.client.logout()
+        url = reverse('import_exam_marks', args=[self.exam_a.pk])
+        response = self.client.get(url)
+        # Django's login_required sends them to the login page.
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('login', response.url.lower() if response.url else '')
