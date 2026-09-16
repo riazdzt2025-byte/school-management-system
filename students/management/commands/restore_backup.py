@@ -17,7 +17,6 @@ it overwrites the current data with the backup. It therefore requires
    Restoring into a disposable SQLite file is intended for drills only. This
    must never be described as completing a live / production backup.
 """
-import json
 import os
 
 from django.core.management import call_command
@@ -86,28 +85,68 @@ class Command(BaseCommand):
                 "continuing, but confirm it was produced by backup_data."
             )
 
-        if engine == "sqlite":
-            src = backup_dir / db_file
-            if not src.exists():
-                raise CommandError(f"DB artifact missing: {src}")
-            self._restore_sqlite(src)
-        elif engine == "postgres":
-            self._restore_postgres(backup_dir / db_file)
-        else:
-            raise CommandError(f"Unsupported engine in manifest: {engine}")
+        media_dir = options["media_dir"]
+        from django.conf import settings as dj_settings
+        remote_media = getattr(dj_settings, "MEDIA_IS_REMOTE", False)
+        if media_file and media_dir is None and remote_media:
+            # Extracting photos into MEDIA_ROOT while the app reads them from a
+            # bucket would look like a successful restore and change nothing.
+            raise CommandError(
+                "Media for this deployment lives in object storage (USE_S3), so "
+                "there is no local MEDIA_ROOT to extract into. Pass --media-dir "
+                "<path> to extract to a staging directory, then push it with "
+                "`manage.py copy_media_to_storage`; or restore the bucket's own "
+                "versioned copy. See docs/BACKUP_RESTORE_GUIDE.md."
+            )
 
-        if media_file:
-            media_dir = options["media_dir"]
-            if media_dir is None:
-                from django.conf import settings as dj_settings
-                media_dir = str(dj_settings.MEDIA_ROOT)
-            bak.safe_extract_tar(backup_dir / media_file, media_dir)
-            self.stdout.write(f"Media restored to {media_dir}")
+        # What is about to be replaced — the operator should see the size of the
+        # data they are overwriting before it is gone (read-only; a broken
+        # database, which is a legitimate reason to restore, is not fatal here).
+        self._report_current_state()
+
+        if bak.manifest_is_encrypted(manifest):
+            self.stdout.write(
+                f"Backup is encrypted ({manifest.get('encryption')}) — decrypting "
+                "into a private temporary directory."
+            )
+
+        with bak.decrypted_backup(backup_dir, manifest) as (db_path, media_path):
+            if engine == "sqlite":
+                if db_path is None or not db_path.exists():
+                    raise CommandError(f"DB artifact missing: {backup_dir / db_file}")
+                self._restore_sqlite(db_path)
+            elif engine == "postgres":
+                self._restore_postgres(db_path)
+            else:
+                raise CommandError(f"Unsupported engine in manifest: {engine}")
+
+            if media_path is not None:
+                if media_dir is None:
+                    media_dir = str(dj_settings.MEDIA_ROOT)
+                extracted = bak.safe_extract_tar(media_path, media_dir)
+                self.stdout.write(f"Media restored to {media_dir} ({extracted} file(s))")
 
         self.stdout.write(self.style.SUCCESS("Restore complete."))
 
         if options["verify"]:
             self._verify(backup_dir, manifest, options)
+
+    def _report_current_state(self):
+        """Print the row counts currently in the target database, if readable."""
+        try:
+            from django.contrib.auth import get_user_model
+            from students.models import Institution, Student
+            self.stdout.write(
+                "Current target contents (will be replaced): "
+                f"{Institution.objects.count()} institution(s), "
+                f"{Student.objects.count()} student(s), "
+                f"{get_user_model().objects.count()} user(s)."
+            )
+        except Exception as exc:  # noqa: BLE001 - an unreadable DB is fine here
+            self.stdout.write(
+                f"Current target contents: unreadable ({exc.__class__.__name__}) — "
+                "continuing."
+            )
 
     # ---------------------------------------------------------------- helpers
     def _restore_sqlite(self, src):
@@ -158,6 +197,7 @@ class Command(BaseCommand):
                     ok = False
                 else:
                     self.stdout.write(f"DB artifact SHA-256 OK ({artifact.name})")
+            ok = self._verify_plaintext_digests(backup_dir, manifest) and ok
 
         # Database/schema + record integrity.
         try:
@@ -174,10 +214,15 @@ class Command(BaseCommand):
         media_file = manifest.get("media_file")
         media_dir = options.get("media_dir")
         if media_file:
-            if media_dir is None:
-                from django.conf import settings as dj_settings
-                media_dir = str(dj_settings.MEDIA_ROOT)
-            self._check_media_files(media_dir)
+            from django.conf import settings as dj_settings
+            if media_dir is None and getattr(dj_settings, "MEDIA_IS_REMOTE", False):
+                # Photos are served from the bucket, so the file references have
+                # to be checked against the storage backend, not the local disk.
+                self._check_media_files(None)
+            else:
+                if media_dir is None:
+                    media_dir = str(dj_settings.MEDIA_ROOT)
+                self._check_media_files(media_dir)
         else:
             self.stdout.write("No media in this backup (skipping file check).")
 
@@ -200,11 +245,57 @@ class Command(BaseCommand):
         for label, count in counts.items():
             self.stdout.write(f"  {label}: {count}")
 
+    def _verify_plaintext_digests(self, backup_dir, manifest):
+        """For an encrypted backup, prove decryption yields the recorded bytes.
+
+        The on-disk SHA above only proves the ciphertext is intact; the manifest
+        also recorded the digest of the *plaintext*, so a wrong passphrase (which
+        produces garbage rather than an error for some schemes) is caught here.
+        """
+        if not bak.manifest_is_encrypted(manifest):
+            return True
+        expected_db = manifest.get("db_plain_sha256")
+        expected_media = manifest.get("media_plain_sha256")
+        if not expected_db and not expected_media:
+            return True
+        try:
+            with bak.decrypted_backup(backup_dir, manifest) as (db_path, media_path):
+                if expected_db and db_path is not None:
+                    actual = bak.sha256(db_path)
+                    if actual != expected_db:
+                        self.stdout.write(self.style.ERROR(
+                            "Decrypted DB digest does not match the manifest "
+                            "(wrong passphrase or corrupted artifact)."
+                        ))
+                        return False
+                    self.stdout.write("Decrypted DB digest OK")
+                if expected_media and media_path is not None:
+                    actual = bak.sha256(media_path)
+                    if actual != expected_media:
+                        self.stdout.write(self.style.ERROR(
+                            "Decrypted media digest does not match the manifest."
+                        ))
+                        return False
+                    self.stdout.write("Decrypted media digest OK")
+        except Exception as exc:  # noqa: BLE001 - any failure is a failure
+            self.stdout.write(self.style.ERROR(f"Decryption failed: {exc}"))
+            return False
+        return True
+
     def _check_media_files(self, media_dir):
-        """Verify every ImageField/FileField reference resolves to a file."""
+        """Verify every ImageField/FileField reference resolves to a file.
+
+        ``media_dir=None`` means "ask the configured storage backend" — the right
+        question when uploads live in an S3-compatible bucket, where joining onto
+        a local path would report every single photo as missing.
+        """
         from django.apps import apps
         missing = []
         total = 0
+        storage = None
+        if media_dir is None:
+            from django.core.files.storage import default_storage
+            storage = default_storage
         for model in apps.get_models():
             for field in model._meta.get_fields():
                 f = getattr(field, "field", field)
@@ -214,8 +305,11 @@ class Command(BaseCommand):
                         if not path:
                             continue
                         total += 1
-                        full = os.path.join(media_dir, str(path))
-                        if not os.path.isfile(full):
+                        if storage is not None:
+                            found = storage.exists(str(path))
+                        else:
+                            found = os.path.isfile(os.path.join(media_dir, str(path)))
+                        if not found:
                             missing.append(f"{model.__name__}.{f.name}: {path}")
         if missing:
             self.stdout.write(self.style.ERROR(
@@ -224,4 +318,8 @@ class Command(BaseCommand):
             for line in missing[:20]:
                 self.stdout.write(f"    {line}")
         else:
-            self.stdout.write(f"Media references OK ({total} file reference(s) found).")
+            self.stdout.write(
+                f"Media references OK ({total} file reference(s) found"
+                + (", checked against the storage backend)." if storage is not None
+                   else ", checked on disk).")
+            )

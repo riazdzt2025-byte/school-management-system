@@ -11,6 +11,13 @@
 #   P0B_BACKUP_ROOT     where backup folders live (point at a persistent disk).
 #   HEALTHCHECK_PING_URL  optional; GET success => ping URL, failure => <url>/fail
 #   PYTHON              optional python executable; defaults to .venv/bin/python.
+#   KEEP_BACKUPS / BACKUP_MAX_AGE_HOURS   retention + freshness for the gate.
+#
+# Read from the environment by `backup_data` itself (see docs/BACKUP_RESTORE_GUIDE.md):
+#   BACKUP_ENCRYPTION / BACKUP_PASSPHRASE_FILE   encryption at rest (recommended).
+#   BACKUP_OBJECT_STORAGE_BUCKET / _ACCESS_KEY / _SECRET_KEY [+ _ENDPOINT/_REGION/
+#     _PREFIX/_KEEP]  the independent off-box copy. Without these the backup
+#     stays local only — on a cron job that means it is wiped after the run.
 #
 # Usage:
 #   P0B_BACKUP_ROOT=/data/backups ./scripts/backup_cron.sh

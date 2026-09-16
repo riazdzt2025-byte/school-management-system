@@ -1,6 +1,15 @@
 # Backup & Restore Runbook
 
-_Last updated 2026-09-09 (P0-8 backup session; + ops readiness: `check_backups`, `backup_cron.sh`, `render.cron.yaml`; owner tutorial `docs/OWNER_RENDER_OPS_TUTORIAL.md`)._
+_Last updated 2026-09-16 (data-safety session: encryption at rest, file-mode
+hardening, the off-box object-storage copy, media/backend-aware restore
+verification, and `scripts/backup_smoke_test.sh`). Original: 2026-09-09 (P0-8
+backup session; + ops readiness: `check_backups`, `backup_cron.sh`,
+`render.cron.yaml`; owner tutorial `docs/OWNER_RENDER_OPS_TUTORIAL.md`)._
+
+> **Read these first:** `docs/BACKUP_RESTORE_GUIDE.md` is the operator guide
+> (which command for which failure), and `docs/DATA_SAFETY_STATUS.md` is the
+> verified / unverified status record. This page stays the detailed tooling
+> runbook.
 
 This runbook describes how to back up and restore the School Management System
 across both supported database engines (SQLite, the local default, and
@@ -17,11 +26,16 @@ The tooling is two Django management commands plus thin cron-friendly wrappers:
 | `scripts/backup.sh` | Wrapper around `backup_data` for cron; returns a usable exit code. |
 | `scripts/restore.sh` | Wrapper around `restore_backup`. |
 | `scripts/backup_cron.sh` | Backup + validate + external health-check ping; the recommended cron entrypoint. |
+| `scripts/backup_smoke_test.sh` | End-to-end backup → restore drill on **disposable** data (plaintext *and* encrypted), then cleans up. Never touches the real DB/MEDIA_ROOT. |
 
 > **Security rule:** the backup artifact and manifest **never contain
 > credentials**. For Postgres the dump is produced by `pg_dump`/`pg_restore`
 > driven through the `PG*` environment variables (not argv) so no password is
-> written to a log, `ps`, or a file.
+> written to a log, `ps`, or a file. The same applies to the backup passphrase
+> (`openssl -pass env:VAR`) and the object-storage keys (boto3 client kwargs).
+>
+> **Access control:** backup folders are created `0700` and every artifact and
+> manifest `0600`. `check_backups` fails if anything is group/other-readable.
 
 ---
 
@@ -66,6 +80,36 @@ and `manifest.json`.
 | `--backup-root PATH` | Override where backups are written. |
 | `P0B_BACKUP_ROOT` | Env form of `--backup-root`. |
 
+## 2b. Encryption at rest and the off-box copy
+
+Both are opt-in through env and both are covered in detail in
+`docs/BACKUP_RESTORE_GUIDE.md` §4.2–§4.3. Summary:
+
+```bash
+# Encrypt the artifacts (AES-256-CBC + PBKDF2/600k via openssl, or age)
+BACKUP_ENCRYPTION=openssl BACKUP_PASSPHRASE_FILE=/etc/sms/backup.key \
+  .venv/bin/python manage.py backup_data
+
+# Push an independent copy to an S3-compatible bucket (needs all three)
+BACKUP_OBJECT_STORAGE_BUCKET=sms-backups \
+BACKUP_OBJECT_STORAGE_ACCESS_KEY=... BACKUP_OBJECT_STORAGE_SECRET_KEY=... \
+  .venv/bin/python manage.py backup_data
+```
+
+* Encrypted artifacts are written as `db.sqlite3.enc` / `media.tar.gz.enc` and the
+  plaintext is deleted immediately; the manifest records the scheme and both the
+  ciphertext and the plaintext SHA-256, so `restore_backup --verify` can prove the
+  decryption produced the original bytes.
+* An unknown `BACKUP_ENCRYPTION` value, a missing passphrase, or a missing
+  `openssl`/`age` binary is a **hard error** — never a silent plaintext backup.
+* `restore_backup` decrypts into a private temporary directory that is removed on
+  the way out; a wrong passphrase fails the verification instead of restoring
+  garbage.
+* The off-box bundle is one packed `.tar.gz` per backup folder, uploaded with
+  `ServerSideEncryption=AES256`, pruned to `BACKUP_OBJECT_STORAGE_KEEP` (30).
+  `--no-upload` skips it. **Not enabled in any environment yet** — it needs an
+  owner-created bucket and key.
+
 ## 3. Retention guidance
 
 Default is **keep 7**. Pick a scheme to fit your storage and risk appetite:
@@ -102,9 +146,12 @@ half-written backup folder so a failed run can never be mistaken for a good one.
 
 `check_backups` complements `backup_data` as the **scheduler-facing health gate**:
 it re-opens the newest backup and verifies the manifest, the DB artifact SHA-256
-(good against a truncated/corrupt file), freshness (`--max-age-hours`, default
-48 — a scheduled backup that silently stopped producing new folders becomes stale),
-and retention sanity (more folders than `--keep` means pruning is not running).
+(good against a truncated/corrupt file), the **media archive SHA-256**, freshness
+(`--max-age-hours`, default 48 — a scheduled backup that silently stopped
+producing new folders becomes stale), retention sanity (more folders than
+`--keep` means pruning is not running), **encryption policy** (a plaintext backup
+fails when `BACKUP_ENCRYPTION` is set), and **file modes** (anything
+group/other-readable fails).
 It exits **0 when healthy, non-zero on any problem**. A fresh install with fewer
 folders than `--keep` is normal and not an error.
 
@@ -144,11 +191,29 @@ be reachable via the `PG*` env. The destination is the **configured** database
 (e.g. `DATABASE_URL`); there is no "restore to a different DB" switch — point
 `DATABASE_URL` at the target if you want a different one.
 
+Before overwriting anything, `restore_backup` prints the row counts currently in
+the target, so the size of what is about to be replaced is visible.
+
+### Media note (`USE_S3`)
+
+When uploads live in a bucket, extracting `media.tar.gz` into a local
+`MEDIA_ROOT` would look like a successful restore and change nothing the app ever
+reads. `restore_backup` therefore **refuses** that combination: pass
+`--media-dir <staging>` and push with `manage.py copy_media_to_storage`, or
+restore the bucket's own versioned copy. With `USE_S3` on, `--verify` checks file
+references against the storage backend instead of the local disk.
+
 ## 6. Restore drill (disposable only)
 
 This is a dry run against **throwaway** storage. It never touches the real DB or
 media. It proves the backup can be restored and that the app boots and data/files
 are intact. Run it any time before a destructive deploy.
+
+**Automated version:** `scripts/backup_smoke_test.sh` does all of the below in
+one command, on disposable data, with a guard that aborts unless the resolved
+database is inside its own drill directory (so a stray `DATABASE_URL` can never
+be hit). It also runs the whole cycle again with `BACKUP_ENCRYPTION=openssl` and
+checks that a wrong passphrase is rejected. Exit 0 = every step passed.
 
 ```bash
 # 1. Disposable source: a throwaway SQLite DB + media file.
@@ -191,14 +256,19 @@ restored uploaded file is byte-identical (`sha256sum` matches).
 
 ## 8. Production scheduling / external storage — needs owner access & approval
 
-The tooling here is ready to use, and the **ops config is now prepared**; only the
-**live scheduling and off-box storage are not wired**, because they need
-production-level access and decisions this session should not assume (rule 7).
+The tooling here is ready to use, and the **ops config is now prepared**; the
+**live scheduling is not wired and the off-box bucket does not exist**, because
+they need production-level access, a paid plan, and decisions this session must
+not assume (rule 7).
 
 **Ready-to-apply (in-repo, but not live):**
 
 - `manage.py check_backups` — backup health gate (exit 0/1; see §4).
 - `scripts/backup_cron.sh` — backup + validate + external health-check ping.
+- `scripts/backup_smoke_test.sh` — disposable end-to-end drill (see §6).
+- The **off-box upload is implemented** in `backup_data` and activates the moment
+  `BACKUP_OBJECT_STORAGE_BUCKET` / `_ACCESS_KEY` / `_SECRET_KEY` are set — it has
+  only ever been exercised against a stubbed client, never a real bucket.
 - `render.cron.yaml` — ops-only **Render Blueprint** for a daily Cron Job that runs
   `scripts/backup_cron.sh`. It defines the cron job only (it does **not**
   recreate the existing web service).
@@ -211,6 +281,8 @@ step-by-step** (apply via Render dashboard / Blueprint):
   after the run**. To keep a backup you MUST **upload it to object storage**
   (R2 / S3) after `backup_data`, or run the backup from a **background worker**
   that has a disk. This is the single most important point (see the tutorial Step 2).
+  The upload itself is built in (`BACKUP_OBJECT_STORAGE_*`, §2b); what is missing
+  is the bucket and its key.
 - **Persistent disk** is for the **web service only** (photos): mount `/data`,
   set `MEDIA_ROOT=/data/media` so uploaded photos survive redeploys (D-7).
 - **Notification:** create a health check (e.g. Healthchecks.io) and set

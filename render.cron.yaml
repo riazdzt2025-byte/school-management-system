@@ -37,9 +37,9 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      # Object-storage upload (durable off-box copy) — set whichever you use.
-      - key: BACKUP_OBJECT_STORAGE_URL
-        sync: false
+      # Independent off-box copy (durable, survives losing the app host). Set all
+      # three required values or none — a half-configured bucket makes
+      # `backup_data` fail rather than pretend the copy exists.
       - key: BACKUP_OBJECT_STORAGE_BUCKET
         sync: false
       - key: BACKUP_OBJECT_STORAGE_ACCESS_KEY
@@ -47,6 +47,20 @@ services:
       - key: BACKUP_OBJECT_STORAGE_SECRET_KEY
         sync: false
       - key: BACKUP_OBJECT_STORAGE_ENDPOINT
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_REGION
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_PREFIX
+        value: "backups"
+      - key: BACKUP_OBJECT_STORAGE_KEEP
+        value: "30"
+      # Encryption at rest. Store the passphrase in a 0600 file on a persistent
+      # mount, or set BACKUP_PASSPHRASE here (less exposed: the file).
+      - key: BACKUP_ENCRYPTION
+        value: "openssl"
+      - key: BACKUP_PASSPHRASE_FILE
+        sync: false
+      - key: BACKUP_PASSPHRASE
         sync: false
       - key: BACKUP_MAX_AGE_HOURS
         value: "48"

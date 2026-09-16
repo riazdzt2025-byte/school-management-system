@@ -9,10 +9,16 @@ Health rules (all must hold for the *newest* backup folder):
 
 * a ``manifest.json`` exists and parsed,
 * the recorded DB artifact exists and its SHA-256 matches ``db_sha256``,
+* the recorded media archive (when there is one) exists and its SHA-256 matches
+  ``media_sha256`` — a truncated photo tarball is a broken backup too,
 * the backup is fresh (``--max-age-hours`` default 48; a scheduled backup that
   silently stopped producing new folders becomes stale and trips the check),
 * the number of retained folders does not exceed ``--want-keep`` (above it means
-  pruning is not running). Fewer than ``--want-keep`` on a fresh system is normal.
+  pruning is not running). Fewer than ``--want-keep`` on a fresh system is normal,
+* encryption policy holds: when ``BACKUP_ENCRYPTION`` is set, the newest backup
+  must actually be encrypted (a plaintext artifact is a policy failure),
+* access control holds: no artifact and not the folder itself is readable by
+  group/others — these files are a complete copy of the school's PII.
 
 Usage::
 
@@ -45,6 +51,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--backup-root", default=None,
             help="Override the backup root (default ./backups or $P0B_BACKUP_ROOT).",
+        )
+        parser.add_argument(
+            "--skip-permission-check", action="store_true",
+            help="Do not fail on world/group-readable backup files (not recommended).",
         )
 
     def handle(self, *args, **options):
@@ -82,6 +92,44 @@ class Command(BaseCommand):
             elif expected_sha and bak.sha256(artifact) != expected_sha:
                 errors.append(f"{newest.name}: DB artifact SHA mismatch")
 
+            # The media archive is part of the backup too — a truncated photo
+            # tarball is as much a broken backup as a truncated dump.
+            media_file = manifest.get("media_file")
+            media_sha = manifest.get("media_sha256")
+            if media_file and media_sha:
+                media_artifact = newest / media_file
+                if not media_artifact.exists():
+                    errors.append(f"{newest.name}: media artifact '{media_file}' missing")
+                elif bak.sha256(media_artifact) != media_sha:
+                    errors.append(f"{newest.name}: media artifact SHA mismatch")
+
+            # Encryption compliance: if the deployment asked for encryption, a
+            # plaintext backup is a policy failure even though it is "readable".
+            try:
+                required = bak.encryption_mode()
+            except RuntimeError as exc:
+                errors.append(f"encryption config invalid: {exc}")
+                required = "off"
+            if required != "off" and not bak.manifest_is_encrypted(manifest):
+                errors.append(
+                    f"{newest.name}: BACKUP_ENCRYPTION={required} but the backup is "
+                    "plaintext (encryption is not being applied)"
+                )
+
+        # Access control: these files are the whole school's PII.
+        if not options["skip_permission_check"]:
+            offenders = [
+                p.name for p in newest.rglob("*")
+                if p.is_file() and bak.world_readable(p)
+            ]
+            if bak.world_readable(newest):
+                offenders.insert(0, newest.name + "/")
+            if offenders:
+                errors.append(
+                    f"{newest.name}: world/group-readable ({', '.join(offenders[:5])}) — "
+                    "chmod 600 the artifacts and 700 the folder"
+                )
+
         # Freshness
         from django.utils import timezone
         import datetime
@@ -116,8 +164,10 @@ class Command(BaseCommand):
             raise SystemExit(1)
 
         count_col = sum(1 for d in folders if (d / "manifest.json").exists())
+        newest_manifest = bak.load_manifest(newest / "manifest.json")
+        enc = newest_manifest.get("encryption") or "off"
         self.stdout.write(self.style.SUCCESS(
             f"check_backups OK: newest backup {newest.name} (engine="
-            f"{bak.load_manifest(newest / 'manifest.json').get('engine')}, "
+            f"{newest_manifest.get('engine')}, encryption={enc}, "
             f"{count_col} manifest(s), {len(folders)} folder(s))."
         ))

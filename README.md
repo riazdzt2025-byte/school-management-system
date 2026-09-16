@@ -77,6 +77,11 @@ A web-based Student Management System built with Python and Django, inspired by 
   আর বিষয় না দেখালে কী কী পরীক্ষা করবেন।
 - [`DEPLOY_NOTES.md`](DEPLOY_NOTES.md) — what to check after a deploy to Render, including the
   duplicate-subject cleanup.
+- [`docs/BACKUP_RESTORE_GUIDE.md`](docs/BACKUP_RESTORE_GUIDE.md) — operator guide: which command
+  for which failure, backup / retention / encryption / off-box copy, drills, production restore.
+- [`docs/DATA_SAFETY_STATUS.md`](docs/DATA_SAFETY_STATUS.md) — what is protected against (app
+  failure vs. database loss vs. accidental deletion vs. media loss), and what is verified locally
+  versus still unverified in production.
 
 ## How to Run Locally
 
