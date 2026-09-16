@@ -201,7 +201,7 @@ what the app needs.
 | Smoke test (SQLite + off-box) | `scripts/backup_smoke_test.sh --s3-endpoint http://127.0.0.1:5055` | **steps passed: 28, failed: 0 — RESULT: PASSED**; drill bucket created and deleted again |
 | Smoke test (Postgres + off-box) | `… --postgres … --s3-endpoint http://127.0.0.1:5055` | **steps passed: 29, failed: 0 — RESULT: PASSED** |
 | Smoke test guard | Same script with a database target that is not the drill's own | Aborts with exit 1 before writing anything (`could not create database …` / `target database … is NOT …— refusing to continue`); no file was created outside `.restore-drill/` |
-| CI on the pinned stack | GitHub Actions, this branch | See the PR: Python 3.12 + Django 6.1, `sqlite` and `postgres` legs, each with the backup drill **and** the off-box drill |
+| CI on the pinned stack | GitHub Actions runs `35139041077` (push) and `35139099756` (PR #26) — Python 3.12 + Django 6.1 | Both **success**, on every job. Step conclusions read individually: `Django system check`, `Migrations in sync`, `Run test suite (sqlite)`, `Run test suite (postgres)`, `Ensure PostgreSQL client tools`, `Backup / restore smoke test (sqlite)`, `Backup / restore smoke test (postgres)`, `Off-box backup drill (sqlite)`, `Off-box backup drill (postgres)`, and the Node job. The raw step logs are not reachable from this sandbox, so the counts in the rows above are the local ones |
 
 What the drills actually proved, on disposable data:
 
