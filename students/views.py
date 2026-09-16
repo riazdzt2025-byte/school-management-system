@@ -3654,6 +3654,14 @@ def result_sheet(request, pk):
     selected_group_label = dict(group_choices).get(selected_group, '')
     result_group_label = selected_group_label or exam.get_group_display() or ''
     columns, results = build_exam_results(exam, group=selected_group or None)
+    # Register order follows numeric rolls, not merit; preserve computed places.
+    # Students without a roll follow numbered students, with stable tie-breaks.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
     # Column headers show the subject code (BAN1, ENG1, REL…); the full names
     # sit in the 'Subject codes' legend under the table. Full Marks come from
     # the exam's own setting, not the subject's global default (a Mid Term can

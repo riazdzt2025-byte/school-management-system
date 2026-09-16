@@ -2577,6 +2577,30 @@ class ResultSheetCodeHeaderTests(TestCase):
 		ExamMark.objects.create(exam=self.exam, student=self.student, subject=self.bangla, marks_obtained=80)
 		ExamMark.objects.create(exam=self.exam, student=self.student, subject=self.english, marks_obtained=70)
 
+	def test_sheet_defaults_to_numeric_roll_order_without_changing_merit(self):
+		from .result_utils import build_exam_results
+		for index, (roll, mark) in enumerate(((10, 95), (2, 90), (None, 99), (3, None))):
+			student = Student.objects.create(
+				institution=self.institution, student_id=f'ORDER{index}',
+				name=f'Order Student {index}', admission_class='6', section='A',
+				roll_no=roll, admission_year=2026,
+			)
+			if mark is not None:
+				for subject in (self.bangla, self.english):
+					ExamMark.objects.create(
+						exam=self.exam, student=student, subject=subject, marks_obtained=mark,
+					)
+		_, ranked = build_exam_results(self.exam)
+		expected_places = {row['student'].pk: row['position'] for row in ranked}
+		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		rows = response.context['results']
+		self.assertEqual([row['student'].roll_no for row in rows], [1, 2, 3, 10, None])
+		self.assertEqual(
+			{row['student'].pk: row['position'] for row in rows}, expected_places,
+		)
+		self.assertContains(response, '<th rowspan="2">Roll</th>')
+
 	def test_header_uses_codes_and_legend_maps_them_to_names(self):
 		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
 		content = response.content.decode()

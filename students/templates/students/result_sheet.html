@@ -134,7 +134,7 @@
     .result-table-card col.overall-col { width: 14%; }
     .result-table-card col.result-col { width: 13%; }
     .result-table-card col.subject-col { width: 8%; }
-    .result-table-card th { padding: 9px 5px; border-right: 1px solid rgba(255,255,255,.18); border-bottom: 1px solid rgba(255,255,255,.18); color: #fff; background: var(--result-navy); font-size: .69rem; line-height: 1.15; text-align: center; vertical-align: middle; }
+    .result-table-card th { padding: 9px 5px; border-right: 1px solid rgba(255,255,255,.18); border-bottom: 1px solid rgba(255,255,255,.18); color: #fff; background: var(--result-navy); font-size: .69rem; line-height: 1.15; text-align: center; vertical-align: middle; position: sticky; top: 0; z-index: 10; }
     .result-table-card th.group-heading { color: #d7e9ef; background: var(--result-deep); font-size: .62rem; letter-spacing: .7px; text-transform: uppercase; }
     .result-table-card th small { color: #bad2da; font-size: .6rem; font-weight: 600; }
     .result-table-card th:first-child { border-top-left-radius: 10px; }
@@ -414,7 +414,7 @@
             <div class="result-section-heading">
                 <div>
                     <h2 id="register-title">Class Performance Register</h2>
-                    <p>Subject-wise marks, letter grades and overall standing</p>
+                    <p>Subject-wise marks, letter grades and overall standing · Roll order</p>
                 </div>
                 <span class="result-count">{{ results|length }} students · {{ columns|length }} subjects</span>
             </div>
@@ -431,7 +431,7 @@
                         </colgroup>
                         <thead>
                             <tr>
-                                <th rowspan="2">#</th>
+                                <th rowspan="2">Roll</th>
                                 <th rowspan="2" class="student-col">Student name</th>
                                 <th rowspan="2">Overall<br>standing</th>
                                 <th rowspan="2">Final<br>result</th>
@@ -446,7 +446,7 @@
                         <tbody>
                             {% for r in results %}
                             <tr data-result-status="{{ r.status }}">
-                                <td><span class="roll-badge">{{ r.student.roll_no|default:"—" }}</span></td>
+                                <td><span class="roll-badge">{{ r.student.roll_no|default_if_none:"—" }}</span></td>
                                 <td class="student-col">{{ r.student.name }}</td>
                                 <td>
                                     <div class="overall-stack">
