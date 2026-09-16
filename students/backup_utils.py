@@ -11,11 +11,19 @@ Design rules honoured here (security):
   For Postgres we drive ``pg_dump`` / ``pg_restore`` through the ``PG*``
   environment variables (which stay inside the child process) rather than
   putting a password on the command line where it would land in ``ps`` / logs.
+  The same rule applies to the backup passphrase (``-pass env:VAR``) and to the
+  object-storage keys (boto3 client kwargs), neither of which ever reaches argv.
 * The backup manifest records only engine + artifact file names + SHA-256
   digests + a redacted database name, never connection strings.
+* Artifacts are chmod ``0600`` and backup folders ``0700``: they contain PII,
+  so a shared host / a misconfigured web root must not expose them.
+* Artifacts can be encrypted at rest (``BACKUP_ENCRYPTION=openssl|age``) and an
+  independent copy can be pushed to an S3-compatible bucket, so losing the app
+  host does not mean losing the backups.
 """
 from __future__ import annotations
 
+import contextlib
 import datetime
 import hashlib
 import json
@@ -30,6 +38,44 @@ from pathlib import Path
 from django.conf import settings
 
 BACKUPS_ENV = "P0B_BACKUP_ROOT"
+
+# --- Encryption at rest -----------------------------------------------------
+# A backup folder is a full copy of the school's PII (names, guardian numbers,
+# photos). It therefore has to be unreadable to anyone who is not the owner:
+# on the local filesystem that is a 0600 file mode, and for anything that
+# leaves the box (object storage, a USB stick, a support ticket) it is
+# encryption. Both are opt-in via env so development keeps working unchanged.
+ENCRYPTION_ENV = "BACKUP_ENCRYPTION"
+PASSPHRASE_ENV = "BACKUP_PASSPHRASE"
+PASSPHRASE_FILE_ENV = "BACKUP_PASSPHRASE_FILE"
+AGE_RECIPIENT_ENV = "BACKUP_AGE_RECIPIENT"
+AGE_IDENTITY_ENV = "BACKUP_AGE_IDENTITY_FILE"
+
+# Key-stretching iterations for the openssl passphrase. 600k is above
+# openssl's own 10k default and costs ~0.3 s per call — irrelevant for a
+# nightly job, expensive for someone guessing passphrases offline.
+OPENSSL_ITERATIONS = 600000
+ENCRYPTED_SUFFIX = ".enc"
+
+#: Human-readable label written into the manifest so a restore years from now
+#: knows exactly which scheme (and parameters) produced the artifact.
+ENCRYPTION_LABELS = {
+    "openssl": f"openssl:aes-256-cbc:pbkdf2:{OPENSSL_ITERATIONS}",
+    "age": "age:x25519",
+}
+
+# --- Off-box copy (object storage) -----------------------------------------
+# A backup that lives on the same disk as the database survives a bad deploy
+# but not a lost disk. These variables point at an S3-compatible bucket that
+# holds an independent copy. They are deliberately separate from the media
+# bucket's AWS_* variables so the backup key can be scoped to one bucket.
+OBJECT_STORAGE_BUCKET_ENV = "BACKUP_OBJECT_STORAGE_BUCKET"
+OBJECT_STORAGE_ACCESS_KEY_ENV = "BACKUP_OBJECT_STORAGE_ACCESS_KEY"
+OBJECT_STORAGE_SECRET_KEY_ENV = "BACKUP_OBJECT_STORAGE_SECRET_KEY"
+OBJECT_STORAGE_ENDPOINT_ENV = "BACKUP_OBJECT_STORAGE_ENDPOINT"
+OBJECT_STORAGE_REGION_ENV = "BACKUP_OBJECT_STORAGE_REGION"
+OBJECT_STORAGE_PREFIX_ENV = "BACKUP_OBJECT_STORAGE_PREFIX"
+OBJECT_STORAGE_KEEP_ENV = "BACKUP_OBJECT_STORAGE_KEEP"
 
 
 def backup_root() -> Path:
@@ -58,15 +104,56 @@ def sqlite_path() -> Path:
     return Path(settings.DATABASES["default"]["NAME"])
 
 
+def _pg_connection_params() -> dict:
+    """The psycopg2 kwargs Django itself connects with.
+
+    This is the single source of truth for where the database actually is.
+    Reading ``settings.DATABASES['default']['HOST']`` instead is wrong: a
+    ``DATABASE_URL`` such as ``postgres://user@/dbname?host=/var/run/postgresql``
+    leaves ``HOST`` empty and puts the socket directory in ``OPTIONS``, so a
+    dump driven off ``HOST`` would target ``localhost`` — a different server
+    from the one the application is writing to.
+    """
+    from django.db import connections
+    return connections["default"].get_connection_params()
+
+
+# psycopg2 connection kwargs -> libpq environment variables. Anything not in
+# this map (cursor_factory, client_encoding, ...) is a client-side setting with
+# no meaning to pg_dump and is deliberately dropped.
+_PG_ENV_MAP = {
+    "dbname": "PGDATABASE",
+    "user": "PGUSER",
+    "password": "PGPASSWORD",
+    "host": "PGHOST",
+    "port": "PGPORT",
+    "options": "PGOPTIONS",
+    "application_name": "PGAPPNAME",
+    "connect_timeout": "PGCONNECT_TIMEOUT",
+    "sslmode": "PGSSLMODE",
+    "sslrootcert": "PGSSLROOTCERT",
+    "sslcert": "PGSSLCERT",
+    "sslkey": "PGSSLKEY",
+    "target_session_attrs": "PGTARGETSESSIONATTRS",
+    "service": "PGSERVICE",
+}
+
+
 def _postgres_params() -> dict:
-    db = settings.DATABASES["default"]
-    return {
-        "PGDATABASE": db.get("NAME", ""),
-        "PGUSER": db.get("USER", "") or "",
-        "PGPASSWORD": db.get("PASSWORD", "") or "",
-        "PGHOST": db.get("HOST", "") or "localhost",
-        "PGPORT": str(db.get("PORT", "") or "5432"),
-    }
+    """The ``PG*`` environment for pg_dump / pg_restore, from Django's params.
+
+    Empty values are omitted rather than defaulted: an unset ``PGHOST`` makes
+    libpq use its default socket directory, which is exactly what Django does
+    when ``HOST`` is blank. Inventing ``localhost`` there would silently point
+    the dump at another server.
+    """
+    env = {}
+    for key, var in _PG_ENV_MAP.items():
+        value = _pg_connection_params().get(key)
+        if value is None or value == "":
+            continue
+        env[var] = str(value)
+    return env
 
 
 def postgres_connect_env() -> dict:
@@ -83,8 +170,30 @@ def redacted_db_name() -> str:
     if engine == "sqlite":
         return f"sqlite:{sqlite_path().name}"
     name = db.get("NAME", "")
+    # Prefer the host Django actually connects with (OPTIONS can carry a socket
+    # directory that HOST does not), and fall back to settings if resolving it
+    # is impossible — this label must never be the reason a backup fails.
     host = db.get("HOST", "")
-    return f"postgres:{name}@{host or 'default'}" if name else f"postgres@{host or 'default'}"
+    try:
+        host = _pg_connection_params().get("host") or host
+    except Exception:  # noqa: BLE001 - a broken config must not break the label
+        pass
+    where = host or "local socket"
+    return f"postgres:{name}@{where}" if name else f"postgres@{where}"
+
+
+def media_backend_label() -> str:
+    """Where uploaded media actually lives: ``filesystem`` or ``s3:<bucket>``.
+
+    Recorded in the manifest because it decides whether ``media.tar.gz`` is the
+    whole story. With ``USE_S3`` on, the local tree is legitimately empty and the
+    bucket is the copy of record for uploads — a restorer who does not know that
+    would "restore" zero photos and believe the job was done.
+    """
+    config = getattr(settings, "MEDIA_CONFIG", None) or {}
+    if config.get("backend") == "s3":
+        return f"s3:{config.get('bucket', '')}"
+    return "filesystem"
 
 
 def sha256(path: Path) -> str:
@@ -107,6 +216,9 @@ def make_backup_dir() -> tuple[Path, str]:
         target = root / f"backup-{stamp}-{counter}"
         counter += 1
     target.mkdir(parents=True, exist_ok=False)
+    # Private from the moment it exists: it is about to hold the whole DB.
+    harden_permissions(root)
+    harden_permissions(target)
     return target, stamp
 
 
@@ -131,6 +243,7 @@ def backup_sqlite(src: Path, dest: Path) -> int:
             dest_conn.close()
     finally:
         source_conn.close()
+    harden_permissions(Path(dest))
     return dest.stat().st_size
 
 
@@ -152,6 +265,7 @@ def backup_postgres(dest: Path) -> int:
     )
     if proc.returncode != 0:
         raise RuntimeError(f"pg_dump failed: {proc.stderr.strip()}")
+    harden_permissions(Path(dest))
     return dest.stat().st_size
 
 
@@ -173,14 +287,29 @@ def archive_media(media_root: Path | None, dest: Path) -> tuple[bool, int]:
                 if path.is_file() and not path.is_symlink():
                     tar.add(path, arcname=path.relative_to(media_root))
                     count += 1
+    harden_permissions(Path(dest))
     return count > 0, count
 
 
 def write_manifest(path: Path, *, engine: str, db_file: str | None,
                    media_file: str | None, media_count: int,
-                   db_sha: str | None, db_size: int | None) -> None:
+                   db_sha: str | None, db_size: int | None,
+                   encryption: str | None = None,
+                   db_plain_sha: str | None = None,
+                   media_plain_sha: str | None = None,
+                   media_sha: str | None = None,
+                   media_backend: str | None = None) -> None:
+    """Write ``manifest.json``.
+
+    ``db_sha`` / ``media_sha`` are always the digests of the bytes **on disk**
+    (the ciphertext when encryption is on) — that is what ``check_backups``
+    validates, because it is what corruption or a truncated upload changes.
+    ``db_plain_sha`` / ``media_plain_sha`` are the digests of the *decrypted*
+    payload, so a restore can prove the decryption produced the original file
+    and not merely "some" file.
+    """
     data = {
-        "format": 1,
+        "format": 2,
         "created_utc": now_utc().isoformat(),
         "engine": engine,
         "database": redacted_db_name(),
@@ -189,16 +318,416 @@ def write_manifest(path: Path, *, engine: str, db_file: str | None,
         "db_size_bytes": db_size,
         "media_file": media_file,
         "media_file_count": media_count,
+        "media_sha256": media_sha,
+        # Where uploads live, so a restore knows whether media.tar.gz is the
+        # whole story or whether a bucket holds the copy of record.
+        "media_backend": media_backend,
+        # None when artifacts are plaintext; the scheme label when encrypted.
+        "encryption": encryption,
+        "db_plain_sha256": db_plain_sha,
+        "media_plain_sha256": media_plain_sha,
         # Historical note (SEC-1): never store connection strings / passwords.
         "credentials_included": False,
     }
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, sort_keys=True)
+    harden_permissions(Path(path))
 
 
 def load_manifest(path: Path) -> dict:
     with open(path, "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+# --------------------------------------------------------------------------
+# Access control on the local filesystem
+# --------------------------------------------------------------------------
+def harden_permissions(path: Path) -> None:
+    """Make a backup path private: ``0700`` for a directory, ``0600`` for a file.
+
+    A backup is a complete copy of the school's PII. The default umask leaves it
+    world-readable (``0644``), which on a shared host — or in a web root that
+    got mounted one directory too high — is a data breach waiting to happen.
+    Best-effort by design: a filesystem without POSIX modes (a Windows checkout,
+    some network mounts) must not fail an otherwise good backup.
+    """
+    path = Path(path)
+    if not path.exists():
+        return
+    try:
+        path.chmod(0o700 if path.is_dir() else 0o600)
+    except OSError:
+        pass
+
+
+def world_readable(path: Path) -> bool:
+    """True when group or others can read ``path`` (POSIX only)."""
+    if os.name != "posix":
+        return False
+    try:
+        mode = Path(path).stat().st_mode
+    except OSError:
+        return False
+    return bool(mode & 0o077)
+
+
+# --------------------------------------------------------------------------
+# Encryption at rest (optional)
+# --------------------------------------------------------------------------
+def encryption_mode(env=None) -> str:
+    """The requested encryption scheme: ``'off'``, ``'openssl'`` or ``'age'``.
+
+    Unknown values raise rather than silently falling back to plaintext: an
+    operator who asked for encryption and got none has been lied to, and the
+    artifacts are already sitting on disk unencrypted.
+    """
+    env = os.environ if env is None else env
+    raw = (env.get(ENCRYPTION_ENV) or "off").strip().lower()
+    if raw in ("", "off", "none", "false", "0"):
+        return "off"
+    if raw not in ENCRYPTION_LABELS:
+        raise RuntimeError(
+            f"{ENCRYPTION_ENV}={raw!r} is not supported. "
+            f"Use one of: off, {', '.join(sorted(ENCRYPTION_LABELS))}."
+        )
+    return raw
+
+
+def _subprocess_env(env, extra=None) -> dict:
+    """A copy of the environment for the child process (never mutates ours)."""
+    child = os.environ.copy()
+    if env is not None and env is not os.environ:
+        child.update({k: v for k, v in env.items() if v is not None})
+    if extra:
+        child.update(extra)
+    return child
+
+
+def _run(cmd: list[str], env: dict, what: str) -> None:
+    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    if proc.returncode != 0:
+        # stderr from these tools can echo the input path but not the secret;
+        # still, keep it short and never re-print argv.
+        raise RuntimeError(f"{what} failed: {(proc.stderr or '').strip()[:400]}")
+
+
+def _passphrase_env(env) -> dict:
+    """The passphrase as an environment mapping for ``openssl -pass env:VAR``.
+
+    ``BACKUP_PASSPHRASE_FILE`` (a 0600 file, e.g. ``/etc/sms/backup.key``) is
+    preferred over ``BACKUP_PASSPHRASE``: a file does not show up in the process
+    environment of the scheduler, in a Render dashboard env dump, or in a core
+    dump. Either way the value never reaches argv.
+    """
+    env = os.environ if env is None else env
+    file_path = (env.get(PASSPHRASE_FILE_ENV) or "").strip()
+    value = ""
+    if file_path:
+        path = Path(file_path).expanduser()
+        if not path.exists():
+            raise RuntimeError(
+                f"{PASSPHRASE_FILE_ENV}={file_path} does not exist."
+            )
+        value = path.read_text(encoding="utf-8").strip()
+    if not value:
+        value = (env.get(PASSPHRASE_ENV) or "").strip()
+    if not value:
+        raise RuntimeError(
+            f"{ENCRYPTION_ENV} is set but no passphrase was found. Provide "
+            f"{PASSPHRASE_FILE_ENV}=/path/to/key (preferred) or {PASSPHRASE_ENV}. "
+            "Never commit the passphrase."
+        )
+    return {PASSPHRASE_ENV: value}
+
+
+def _openssl_cmd(direction: str, src: Path, dest: Path) -> list[str]:
+    return [
+        "openssl", "enc", direction, "-aes-256-cbc", "-pbkdf2",
+        "-iter", str(OPENSSL_ITERATIONS), "-salt",
+        "-in", str(src), "-out", str(dest),
+        "-pass", f"env:{PASSPHRASE_ENV}",
+    ]
+
+
+def encrypt_artifact(path: Path, env=None, mode: str | None = None) -> Path:
+    """Encrypt ``path`` in place to ``<path>.enc`` and delete the plaintext.
+
+    Returns the path of the encrypted artifact. The scheme comes from
+    ``BACKUP_ENCRYPTION`` unless ``mode`` is given; the plaintext is removed as
+    soon as the ciphertext is written, so an interrupted run leaves the
+    encrypted copy, never both.
+    """
+    mode = mode if mode is not None else encryption_mode(env)
+    if mode == "off":
+        return Path(path)
+    path = Path(path)
+    dest = path.with_name(path.name + ENCRYPTED_SUFFIX)
+    if mode == "openssl":
+        if shutil.which("openssl") is None:
+            raise RuntimeError(
+                "openssl is not installed/on PATH — cannot encrypt the backup. "
+                "Install openssl or unset BACKUP_ENCRYPTION."
+            )
+        child_env = _subprocess_env(env, _passphrase_env(env))
+        _run(_openssl_cmd("-e", path, dest), child_env, "openssl encrypt")
+    elif mode == "age":
+        if shutil.which("age") is None:
+            raise RuntimeError(
+                "age is not installed/on PATH — cannot encrypt the backup. "
+                "Install age (https://age-encryption.org) or use "
+                f"{ENCRYPTION_ENV}=openssl."
+            )
+        env_map = os.environ if env is None else env
+        recipient = (env_map.get(AGE_RECIPIENT_ENV) or "").strip()
+        if not recipient:
+            raise RuntimeError(
+                f"{ENCRYPTION_ENV}=age needs {AGE_RECIPIENT_ENV} (an age public "
+                "key, e.g. age1...). The matching private key is all that is "
+                "needed to decrypt — keep it off this machine."
+            )
+        _run(
+            ["age", "--encrypt", "--recipient", recipient,
+             "--output", str(dest), str(path)],
+            _subprocess_env(env), "age encrypt",
+        )
+    harden_permissions(dest)
+    path.unlink()
+    return dest
+
+
+def decrypt_artifact(path: Path, dest: Path, env=None, mode: str | None = None) -> Path:
+    """Decrypt ``path`` (``.enc``) into ``dest``; returns ``dest``.
+
+    ``mode`` overrides the environment, which matters for restore: the scheme is
+    whatever the *manifest* recorded, not whatever ``BACKUP_ENCRYPTION`` happens
+    to be set to today (an operator may well have changed it since).
+    """
+    path, dest = Path(path), Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    mode = mode if mode is not None else encryption_mode(env)
+    if mode == "openssl":
+        if shutil.which("openssl") is None:
+            raise RuntimeError("openssl is not installed/on PATH — cannot decrypt.")
+        child_env = _subprocess_env(env, _passphrase_env(env))
+        _run(_openssl_cmd("-d", path, dest), child_env, "openssl decrypt")
+    elif encryption_mode(env) == "age":
+        env_map = os.environ if env is None else env
+        identity = (env_map.get(AGE_IDENTITY_ENV) or "").strip()
+        if not identity:
+            raise RuntimeError(
+                f"{ENCRYPTION_ENV}=age needs {AGE_IDENTITY_ENV} (path to the "
+                "age identity file) to decrypt."
+            )
+        _run(
+            ["age", "--decrypt", "--identity", identity,
+             "--output", str(dest), str(path)],
+            _subprocess_env(env), "age decrypt",
+        )
+    else:
+        shutil.copyfile(path, dest)
+    harden_permissions(dest)
+    return dest
+
+
+def manifest_is_encrypted(manifest: dict) -> bool:
+    """True when the manifest says its artifacts are encrypted."""
+    return bool(manifest.get("encryption"))
+
+
+@contextlib.contextmanager
+def decrypted_backup(backup_dir: Path, manifest: dict, env=None):
+    """Yield ``(db_path, media_path)`` as readable plaintext paths.
+
+    For a plaintext backup these are the artifacts themselves. For an encrypted
+    one they are decrypted into a private temporary directory that is removed
+    on the way out, so plaintext never lingers next to the backup and never
+    needs a caller-supplied scratch path.
+    """
+    backup_dir = Path(backup_dir)
+    db_name = manifest.get("db_file")
+    media_name = manifest.get("media_file")
+    db_path = backup_dir / db_name if db_name else None
+    media_path = backup_dir / media_name if media_name else None
+
+    if not manifest_is_encrypted(manifest):
+        yield db_path, media_path
+        return
+
+    import tempfile
+    scheme = manifest.get("encryption") or ""
+    # The manifest records a label such as 'openssl:aes-256-cbc:pbkdf2:600000';
+    # the first token is the tool that produced the ciphertext.
+    mode = scheme.split(":", 1)[0]
+    if mode not in ENCRYPTION_LABELS:
+        raise RuntimeError(
+            f"Manifest records encryption {scheme!r}, which this version cannot "
+            "decrypt. Restore with the tooling that produced the backup."
+        )
+
+    def plain_name(name: str) -> str:
+        return name[: -len(ENCRYPTED_SUFFIX)] if name.endswith(ENCRYPTED_SUFFIX) else name
+
+    with tempfile.TemporaryDirectory(prefix="sms-restore-") as tmp:
+        work = Path(tmp)
+        harden_permissions(work)
+        plain_db = plain_media = None
+        if db_path is not None:
+            plain_db = decrypt_artifact(
+                db_path, work / plain_name(db_name), env, mode=mode
+            )
+        if media_path is not None:
+            plain_media = decrypt_artifact(
+                media_path, work / plain_name(media_name), env, mode=mode
+            )
+        yield plain_db, plain_media
+
+
+# --------------------------------------------------------------------------
+# Independent off-box copy (S3-compatible object storage)
+# --------------------------------------------------------------------------
+def object_storage_config(env=None) -> dict | None:
+    """The off-box backup bucket config, or ``None`` when not configured.
+
+    Deliberately all-or-nothing: a bucket name with no credentials cannot
+    upload, and half-enabling this would produce a nightly "backup succeeded"
+    message with no off-box copy behind it. ``BACKUP_OBJECT_STORAGE_KEEP``
+    bounds the remote copy count (default 30) so the bucket cannot grow
+    forever.
+    """
+    env = os.environ if env is None else env
+
+    def _get(name):
+        return (env.get(name) or "").strip()
+
+    bucket = _get(OBJECT_STORAGE_BUCKET_ENV)
+    if not bucket:
+        return None
+    missing = [
+        name for name, value in (
+            (OBJECT_STORAGE_BUCKET_ENV, bucket),
+            (OBJECT_STORAGE_ACCESS_KEY_ENV, _get(OBJECT_STORAGE_ACCESS_KEY_ENV)),
+            (OBJECT_STORAGE_SECRET_KEY_ENV, _get(OBJECT_STORAGE_SECRET_KEY_ENV)),
+        ) if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            f"{OBJECT_STORAGE_BUCKET_ENV} is set but these are missing: "
+            + ", ".join(missing)
+            + ". Set all three, or unset the bucket to skip the off-box copy."
+        )
+    keep_raw = _get(OBJECT_STORAGE_KEEP_ENV) or "30"
+    try:
+        keep = max(1, int(keep_raw))
+    except ValueError:
+        raise RuntimeError(f"{OBJECT_STORAGE_KEEP_ENV}={keep_raw!r} is not an integer.")
+    return {
+        "bucket": bucket,
+        "access_key": _get(OBJECT_STORAGE_ACCESS_KEY_ENV),
+        "secret_key": _get(OBJECT_STORAGE_SECRET_KEY_ENV),
+        "endpoint_url": _get(OBJECT_STORAGE_ENDPOINT_ENV) or None,
+        "region": _get(OBJECT_STORAGE_REGION_ENV) or None,
+        "prefix": _get(OBJECT_STORAGE_PREFIX_ENV).strip("/") or "backups",
+        "keep": keep,
+    }
+
+
+def object_storage_client(config: dict):
+    """A boto3 S3 client for the backup bucket (keys stay out of argv/logs)."""
+    import boto3
+    from botocore.config import Config as BotoConfig
+    return boto3.client(
+        "s3",
+        endpoint_url=config["endpoint_url"],
+        region_name=config["region"],
+        aws_access_key_id=config["access_key"],
+        aws_secret_access_key=config["secret_key"],
+        config=BotoConfig(signature_version="s3v4", s3={"addressing_style": "path"}),
+    )
+
+
+def pack_backup_dir(backup_dir: Path, dest: Path) -> int:
+    """Tar.gz a whole backup folder (artifacts + manifest) for upload."""
+    backup_dir, dest = Path(backup_dir), Path(dest)
+    count = 0
+    with tarfile.open(dest, "w:gz") as tar:
+        for path in sorted(backup_dir.rglob("*")):
+            if path.is_file() and not path.is_symlink():
+                tar.add(path, arcname=path.relative_to(backup_dir))
+                count += 1
+    return count
+
+
+def list_remote_backups(client, config: dict) -> list[str]:
+    """Remote backup keys under the configured prefix, oldest first by name."""
+    keys: list[str] = []
+    prefix = f"{config['prefix']}/"
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=config["bucket"], Prefix=prefix):
+        for obj in page.get("Contents", []) or []:
+            name = obj["Key"]
+            # Only our own bundles: backups/<backup-...>.tar.gz
+            if name[len(prefix):].startswith("backup-") and name.endswith(".tar.gz"):
+                keys.append(name)
+    return sorted(keys)
+
+
+def prune_remote_backups(client, config: dict) -> list[str]:
+    """Keep the newest ``config['keep']`` remote bundles; delete the rest."""
+    keys = list_remote_backups(client, config)
+    stale = keys[: max(0, len(keys) - config["keep"])]
+    if not stale:
+        return []
+    # delete_objects takes <=1000 keys per call.
+    for start in range(0, len(stale), 1000):
+        chunk = stale[start:start + 1000]
+        client.delete_objects(
+            Bucket=config["bucket"],
+            Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True},
+        )
+    return stale
+
+
+def upload_backup(backup_dir: Path, config: dict | None = None, *,
+                  client=None) -> dict:
+    """Push an independent copy of ``backup_dir`` to the object-storage bucket.
+
+    Packs the folder (artifacts + manifest) into one ``.tar.gz`` object so a
+    restore fetches a single key, uploads it with server-side encryption
+    (``AES256``) as a second layer under our own ``BACKUP_ENCRYPTION``, then
+    prunes the remote set to ``BACKUP_OBJECT_STORAGE_KEEP``.
+
+    Returns ``{'bucket', 'key', 'size_bytes', 'pruned': [...]}``. The bundle is
+    staged in a private temp dir and deleted afterwards — the only durable copy
+    is the one in the bucket.
+    """
+    config = config if config is not None else object_storage_config()
+    if config is None:
+        raise RuntimeError(
+            "No object storage configured — set "
+            f"{OBJECT_STORAGE_BUCKET_ENV}, {OBJECT_STORAGE_ACCESS_KEY_ENV} and "
+            f"{OBJECT_STORAGE_SECRET_KEY_ENV} (see docs/BACKUP_RESTORE_GUIDE.md)."
+        )
+    client = client if client is not None else object_storage_client(config)
+    backup_dir = Path(backup_dir)
+    key = f"{config['prefix']}/{backup_dir.name}.tar.gz"
+
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="sms-backup-upload-") as tmp:
+        stage = Path(tmp)
+        harden_permissions(stage)
+        bundle = stage / f"{backup_dir.name}.tar.gz"
+        pack_backup_dir(backup_dir, bundle)
+        harden_permissions(bundle)
+        size = bundle.stat().st_size
+        with open(bundle, "rb") as fh:
+            client.upload_fileobj(
+                fh, config["bucket"], key,
+                ExtraArgs={"ServerSideEncryption": "AES256"},
+            )
+    pruned = prune_remote_backups(client, config)
+    return {"bucket": config["bucket"], "key": key,
+            "size_bytes": size, "pruned": pruned}
+
 
 
 def prune_old_backups(keep: int, backup_root_dir: Path | None = None) -> list[str]:

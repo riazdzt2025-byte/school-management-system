@@ -83,7 +83,7 @@ assignments per class/group to get the filtered behaviour.
 
 ```bash
 # From the repo root (creates backups/backup-<timestamp>/ in ./backups or
-# $P0B_BACKUP_ROOT). See docs/BACKUP_AND_RESTORE.md.
+# $P0B_BACKUP_ROOT). See docs/BACKUP_RESTORE_GUIDE.md and docs/BACKUP_AND_RESTORE.md.
 .venv/bin/python manage.py backup_data
 # or, cron-friendly with non-zero-exit failure reporting:
 scripts/backup.sh
