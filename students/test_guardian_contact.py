@@ -525,6 +525,18 @@ class LegacyContactDropMigrationTests(TransactionTestCase):
         executor.migrate([('students', target)])
         return executor
 
+    def _migrate_to_latest(self):
+        """Bring the schema back to the newest migration.
+
+        The shared test database must never be left parked at an intermediate
+        state for the rest of the suite: the target used to be hardcoded to
+        0041, which silently went stale as soon as 0042/0043 (a real schema
+        column) landed after it. Leaf nodes always mean "everything applied".
+        """
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        return executor
+
     def test_drop_backfills_archives_and_removes_the_columns(self):
         # Roll the schema back to the last state where the legacy columns
         # exist (0039 applied) and seed data with the historical models.
@@ -580,8 +592,13 @@ class LegacyContactDropMigrationTests(TransactionTestCase):
 
             # The differing legacy numbers were archived to AuditLog before
             # the columns dropped; matching numbers were not (they live on
-            # in the guardian column).
-            student_archive = AuditLog.objects.get(
+            # in the guardian column). Query through the HISTORICAL model —
+            # the schema is parked at 0041 here, which lacks columns added
+            # by later migrations (e.g. AuditLog.institution in 0043).
+            HistoricalAuditLog = MigrationExecutor(connection).loader.project_state(
+                [('students', '0041_student_guardian_contact_required')],
+            ).apps.get_model('students', 'AuditLog')
+            student_archive = HistoricalAuditLog.objects.get(
                 action='legacy_contact_dropped', model_name='Student')
             archived = {
                 row['identifier']: row for row in student_archive.details['dropped_rows']
@@ -591,7 +608,7 @@ class LegacyContactDropMigrationTests(TransactionTestCase):
             self.assertEqual(archived['X001']['guardian_contact'], '01900000000')
             self.assertNotIn('X002', archived)  # backfilled, not dropped
             self.assertNotIn('X003', archived)  # same number: nothing lost
-            app_archive = AuditLog.objects.get(
+            app_archive = HistoricalAuditLog.objects.get(
                 action='legacy_contact_dropped', model_name='AdmissionApplication')
             self.assertEqual(
                 app_archive.details['dropped_rows'][0]['legacy_contact'],
@@ -599,7 +616,7 @@ class LegacyContactDropMigrationTests(TransactionTestCase):
         finally:
             # Never leave the schema rolled back for the rest of the suite.
             try:
-                self._migrate('0041_student_guardian_contact_required')
+                self._migrate_to_latest()
             except Exception:
                 pass
 

@@ -108,7 +108,7 @@
                     <td>{{ student.admission_class }}{% if student.section %} - {{ student.section }}{% endif %}</td>
                     <td>{{ student.institution.name|default:"—" }}</td>
                     <td>{{ student.archived_at|date:"d M Y, H:i"|default:"—" }}</td>
-                    <td>{{ student.archived_by.get_full_name|default:student.archived_by.username|default:"—" }}</td>
+                    <td>{% if student.archived_by %}{{ student.archived_by.get_full_name|default:student.archived_by.username }}{% else %}—{% endif %}</td>
                     <td>
                         <form method="POST" action="{% url 'restore_student' student.pk %}" class="d-inline"
                               onsubmit="return confirm('Restore {{ student.name|escapejs }} back into the active list?');">

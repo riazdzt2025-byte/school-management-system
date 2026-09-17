@@ -13,6 +13,36 @@ from django.conf import settings
 from django.core.checks import Error, Tags, Warning, register
 
 
+@register(Tags.security, deploy=True)
+def check_production_allowed_hosts_explicit(app_configs=None, **kwargs):
+    """DEBUG=False must not run with Django's Host-header validation disabled.
+
+    ``ALLOWED_HOSTS`` falls back to ``['*']`` when the env var is unset — a
+    convenience for development and previews. In production ('*' means "trust
+    any Host header") that silently disables password-reset/origin safety, the
+    same failure pattern as the fallback SECRET_KEY the settings module already
+    refuses at boot. This is an Error so the ``check --deploy`` build gate
+    fails loudly instead of shipping the misconfiguration; it stays exclusive
+    to ``--deploy`` so local DEBUG=False experiments are not blocked.
+    """
+    if getattr(settings, 'DEBUG', True):
+        return []
+    allowed_hosts = getattr(settings, 'ALLOWED_HOSTS', []) or []
+    if '*' not in allowed_hosts:
+        return []
+    return [
+        Error(
+            "DEBUG is False but ALLOWED_HOSTS contains '*' — Host header "
+            "validation is effectively off (this is the dev/preview fallback).",
+            hint="Set ALLOWED_HOSTS to the real host names "
+                 "(e.g. ALLOWED_HOSTS=myapp.onrender.com,myschool.edu.bd) and "
+                 "CSRF_TRUSTED_ORIGINS to the matching https origins. "
+                 "See docs/PRODUCTION_CHECKLIST.md.",
+            id='students.E016',
+        )
+    ]
+
+
 def _module_available(name):
     return importlib.util.find_spec(name) is not None
 

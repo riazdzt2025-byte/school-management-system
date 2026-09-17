@@ -54,6 +54,48 @@ jobs:
       - name: Migrations in sync (no missing migrations)
         run: python manage.py makemigrations --check
 
+      # --- Production settings guards (SEC session-02) -----------------------
+      # The settings module refuses to boot with the dev fallback SECRET_KEY
+      # when DEBUG=False, and students.E016 fails `check --deploy` when
+      # ALLOWED_HOSTS stays on the '*' dev fallback. The three steps below prove
+      # both gates keep working — with ONLY ephemeral CI values (a throwaway
+      # key and a .invalid host), never real production secrets or hosts.
+      - name: Deploy guard — fallback SECRET_KEY rejected when DEBUG=False
+        env:
+          DEBUG: "False"
+        run: |
+          if python manage.py check --deploy; then
+            echo "::error::DEBUG=False booted with the fallback SECRET_KEY — settings guard is broken"
+            exit 1
+          fi
+
+      - name: Deploy guard — wildcard ALLOWED_HOSTS rejected when DEBUG=False (students.E016)
+        env:
+          DEBUG: "False"
+          SECRET_KEY: "ci-ephemeral-${{ github.run_id }}-${{ github.run_attempt }}"
+        run: |
+          set +e
+          output=$(python manage.py check --deploy 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ $status -eq 0 ]; then
+            echo "::error::check --deploy passed with ALLOWED_HOSTS=['*'] — students.E016 guard is broken"
+            exit 1
+          fi
+          echo "$output" | grep -q 'students.E016' \
+            || { echo "::error::deploy check failed, but not via students.E016 — investigate"; exit 1; }
+
+      - name: Deploy guard — production-shaped config passes check --deploy
+        env:
+          DEBUG: "False"
+          SECRET_KEY: "ci-ephemeral-${{ github.run_id }}-${{ github.run_attempt }}"
+          ALLOWED_HOSTS: "ci.example.invalid,localhost"
+          CSRF_TRUSTED_ORIGINS: "https://ci.example.invalid"
+          TRUST_FORWARDED_PROTO: "True"
+          USE_X_FORWARDED_HOST: "True"
+        run: python manage.py check --deploy
+
       - name: Run test suite (${{ matrix.name }})
         run: |
           # P1-10: point at the real Postgres service only for the postgres job;

@@ -385,5 +385,32 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 
 **Base:** `44cbcc3` = `origin/main` (`158b98a` → `44cbcc3` via PRs #23–#27). This session intentionally adds **no feature code, no migration, no data change**; verifies checkout and rebuilds docs per detailed audit (Exam 9 + Office 8 + Dashboard 5 + Attendance 3 + Employee 4 = 29 items, each Complete/Partial/Missing/Unverified with file evidence). Docs rebuilt: `PROJECT_STATUS.md` (§1, §2, §19), `TASK_BACKLOG.md` (full remaining with priority/dependency/acceptance/tests/risk/decision/small-scope), `DEVELOPMENT_GUIDE.md` (new), `HANDOFF.md` (2026-09-17). SSC not restored, no prod DB touched.
 
-**Evolution of test counts:** 2026-09-08: 159 → 214 → 260 → 293; 2026-09-16: 452 (contact/result/rank/row gating); 2026-09-17: **550** (backup/media now 105 tests total = +98). All green in isolated `/tmp/audit_venv` (Django 5.2.17) + Node 6.
+**Evolution of test counts:** 2026-09-08: 159 → 214 → 260 → 293; 2026-09-16: 452 (contact/result/rank/row gating); 2026-09-17 am: **550** (backup/media now 105 tests total = +98); 2026-09-17 pm: **605 Django + Node green** (+43 SEC session-02 + baseline drift). All green in isolated venv (Django 5.2.17; the sandbox PyPI mirror does not carry the pinned `Django==6.1`, verification pinned to the same 5.2.17 baseline as session ০১).
+
+---
+
+## Update — 2026-09-17 · সেশন ০২ — bounded security batch (SEC)
+
+**Scope (one bounded batch, not a full audit):** task-1 config/upload audit → highest-risk fixes, task-2/3 role & institution isolation re-verification on the riskiest remaining surfaces with negative tests, task-6 CI guards. SSC Registration/Summary not touched; no prod data/secrets anywhere.
+
+**Fixed (code, this session):**
+- **SEC-IP — rate-limit/lockout spoofing closed.** `_client_ip` keyed on the first `X-Forwarded-For` entry, which is client-controlled; an attacker rotated it to dodge the P2-2 login lockout and the P1-9 admission throttle. Now keys on the right-most entry (the one the closest trusted proxy appends) with REMOTE_ADDR fallback. 4 new tests (`test_rate_limiting.py`).
+- **SEC-AUDIT — audit trail now follows institution isolation.** `AuditLog.institution` (migration **0043**, nullable/PROTECT) filled by `record_audit` from the audited object (direct `.institution`, or via `.student`/`.employee`); `audit_log_list`/`audit_log_detail` scoped deny-by-default (NULL rows admin/staff-only, same rule as legacy vouchers). Model-class aggregates (`attendance_marked`) no longer store the pk-descriptor string as `object_id`. 11 tests (`test_audit_log_scoping.py`).
+- **SEC-E016 — new deploy check.** `DEBUG=False` with the wildcard `ALLOWED_HOSTS=['*']` fallback is a `check --deploy` **Error** (Host-header validation off — same fail-fast philosophy as the SECRET_KEY boot guard). 5 tests (`test_security_settings.py`).
+- **SEC-IMPORT — scoped-clerk import must name an institution.** A clerk bound to institutions could create NULL-institution students (invisible to them afterwards, admin-only). Rows without an institution are now skipped with an explicit error for scoped accounts; admin behaviour unchanged.
+- **Template robustness:** `archived_students.html` no longer crashes on legacy rows with NULL `archived_by`.
+
+**Verified (tests/CI):**
+- **68 isolation tests** (16 read + 52 write) incl. new negative batch: `download_admission_sheet`/`download_marks_import_template` exports; result pages (rank/top-10/summary/detail/card); `view_tc`/`view_certificate`/`certificate_list`/`student_id_card`/`student_exams`; `money_receipt_list`/`finance_dashboard` totals; archived list; attendance reads; publish-toggle / marks-import GET+POST / seat-plan generate+clear / purge+restore (single & bulk) / quick-type- / attendance-mark cross-institution refusals.
+- Full suite: **605 Django tests OK** (`check` 0, `makemigrations --check` clean, migration rollback test hardened to restore to leaf nodes and query historical models), Node suite green.
+- CI (`workflows/tests.yml`) gained three **ephemeral-only** deploy-guard steps: fallback SECRET_KEY must fail, wildcard ALLOWED_HOSTS must fail via E016, production-shaped config must pass. No real secrets/hosts in CI.
+- Menu-hiding never relied on: every new negative test reaches the URL directly with the view permissions granted, proving the guard is server-side.
+
+**Unverified (unchanged, live-only):** P0-7 live Render env, P0-8-live cron/off-box backup, P1-11-live bucket wiring, D-8 live DB engine; the assumption that Render's edge appends the client IP as the right-most XFF entry (standard behaviour, confirmable only from live logs); live S3/Pillow media path.
+
+**Residual risks & follow-up tasks (before the next feature where marked):**
+1. **SEC-FU-1 (P1, follow-up task):** rate-limit counters live in LocMemCache — per-process, lost on restart/redeploy, shared by several gunicorn workers. Move to a shared cache (Redis/DB) behind an env flag before relying on the lockout against a patient attacker. Code-ready seam: `_rate_limit_exceeded` / `_login_fail_*`.
+2. **SEC-FU-2 (P2, policy):** `sync_user_department_permissions` maps only Office/Exam/Accounts — a HR/Subjects/Audit group assigned to an InstitutionAccess user is stripped at login. Intentional today (D-6); revisit when HR login is needed.
+3. **SEC-FU-3 (P1):** P0-7/P0-8-live remain the highest *real-world* risks (mis-set prod env, no durable backup) — owner checklist `docs/PRODUCTION_CHECKLIST.md`.
+4. Quirk noted: other unguarded `archived_by`-style lookups may exist in templates (DEBUG-only crash, silent in prod); sweep is P2.
 

@@ -21,7 +21,8 @@ except ModuleNotFoundError:
     load_workbook = None
 
 from .models import (
-    AdmissionApplication, Employee, Exam, ExamMark, Institution, InstitutionAccess, Student, Subject,
+    AdmissionApplication, Certificate, Employee, Exam, ExamMark, Institution,
+    InstitutionAccess, MoneyReceipt, Student, Subject, TransferCertificate,
 )
 from .result_utils import get_exam_students
 
@@ -221,6 +222,140 @@ class InstitutionReadIsolationTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['mandatory'], [])
         self.assertEqual(payload['conditional'], [])
+
+    # ---------------- SEC batch-02: export / result / document read surfaces
+    def test_download_admission_sheet_does_not_leak_other_institution(self):
+        if load_workbook is None:
+            self.skipTest('openpyxl is required for the Excel export tests')
+        self.login_as_clerk()
+        response = self.client.get(
+            reverse('download_admission_sheet'), {'institution': self.other.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        applicants = [
+            row[1]
+            for sheet in workbook.worksheets
+            for row in sheet.iter_rows(values_only=True)
+        ]
+        self.assertIn('App A', applicants)
+        self.assertNotIn('App B', applicants)
+
+    def test_download_marks_import_template_404_for_other_institution_exam(self):
+        self.login_as_clerk()
+        response = self.client.get(
+            reverse('download_marks_import_template', args=[self.exam_b.pk]),
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_result_pages_404_for_other_institution_exam(self):
+        """Every published-result read surface (rank list, top 10, summary,
+        per-student detail and result card) 404s on another institution's exam
+        or student, exactly like result_sheet already did."""
+        self.login_as_clerk()
+        for url in (
+            reverse('full_rank_list', args=[self.exam_b.pk]),
+            reverse('top_10', args=[self.exam_b.pk]),
+            reverse('exam_result_summary', args=[self.exam_b.pk]),
+            reverse('student_result_detail', args=[self.exam_b.pk, self.student_b.pk]),
+            reverse('result_card', args=[self.exam_b.pk, self.student_b.pk]),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_tc_and_certificate_reads_404_for_other_institution(self):
+        tc_b = TransferCertificate.objects.create(student=self.student_b)
+        certificate_b = Certificate.objects.create(
+            student=self.student_b, certificate_type='STUDY',
+        )
+        self.login_as_clerk()
+        for url in (
+            reverse('view_tc', args=[tc_b.pk]),
+            reverse('view_certificate', args=[certificate_b.pk]),
+            reverse('certificate_list', args=[self.student_b.pk]),
+            reverse('student_id_card', args=[self.student_b.pk]),
+            reverse('student_exams', args=[self.student_b.pk]),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_money_receipt_list_does_not_leak_other_institution(self):
+        MoneyReceipt.objects.create(
+            student=self.student_a, receipt_no='RC-READ-A', purpose='Fee',
+            amount=100, date=date(2026, 1, 1),
+        )
+        MoneyReceipt.objects.create(
+            student=self.student_b, receipt_no='RC-READ-B', purpose='Fee',
+            amount=200, date=date(2026, 1, 1),
+        )
+        self.login_as_clerk()
+        response = self.client.get(reverse('money_receipt_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'RC-READ-A')
+        self.assertNotContains(response, 'RC-READ-B')
+
+    def test_finance_dashboard_totals_exclude_other_institution(self):
+        MoneyReceipt.objects.create(
+            student=self.student_a, receipt_no='RC-FIN-A', purpose='Fee',
+            amount=100, date=date(2026, 1, 1),
+        )
+        MoneyReceipt.objects.create(
+            student=self.student_b, receipt_no='RC-FIN-B', purpose='Fee',
+            amount=250, date=date(2026, 1, 1),
+        )
+        self.login_as_clerk()
+        response = self.client.get(reverse('finance_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        # Only the A receipt is read into the finance cards; B's 250 never
+        # appears anywhere on the page (in totals or the recent list).
+        self.assertNotContains(response, '250')
+        self.assertNotContains(response, 'RC-FIN-B')
+
+    def test_archived_list_does_not_leak_other_institution(self):
+        archived_a = Student.objects.create(
+            institution=self.institution, student_id='AA001', name='Archived Alpha',
+            admission_class='6', section='A', admission_year=2026, is_archived=True,
+        )
+        Student.objects.create(
+            institution=self.other, student_id='AB001', name='Archived Beta',
+            admission_class='6', section='A', admission_year=2026, is_archived=True,
+        )
+        self.clerk.user_permissions.add(
+            Permission.objects.get(
+                content_type=ContentType.objects.get_for_model(Student),
+                codename='view_student',
+            )
+        )
+        self.login_as_clerk()
+        response = self.client.get(
+            reverse('archived_students'), {'institution': self.other.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Archived Alpha')
+        self.assertNotContains(response, 'Archived Beta')
+
+    def test_attendance_reads_do_not_leak_other_institution(self):
+        from .models import AttendanceRecord
+        AttendanceRecord.objects.create(
+            institution=self.institution, student=self.student_a,
+            date=date(2026, 9, 1), status='P',
+        )
+        AttendanceRecord.objects.create(
+            institution=self.other, student=self.student_b,
+            date=date(2026, 9, 1), status='A',
+        )
+        self.login_as_clerk()
+        report = self.client.get(reverse('attendance_report'))
+        self.assertEqual(report.status_code, 200)
+        self.assertContains(report, 'Alpha Student')
+        self.assertNotContains(report, 'Beta Student')
+        summary = self.client.get(
+            reverse('attendance_summary'),
+            {'start_date': '2026-09-01', 'end_date': '2026-09-02'},
+        )
+        self.assertEqual(summary.status_code, 200)
+        self.assertContains(summary, 'Alpha Student')
+        self.assertNotContains(summary, 'Beta Student')
 
     # ------------------------------------------------------ cross-institution
     def test_admin_can_read_across_institutions(self):
