@@ -316,7 +316,7 @@ class ExamWorkflowTests(TestCase):
 				'excel_file': self.workbook_upload([['S001', 'ENG', 87.5]]),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		self.assertRedirects(response, reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.subject.pk}')
 		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.subject)
 		self.assertEqual(str(mark.marks_obtained), '87.50')
 
@@ -332,7 +332,7 @@ class ExamWorkflowTests(TestCase):
 				]),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		self.assertRedirects(response, reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.subject.pk}')
 		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 1)
 		self.assertEqual(str(ExamMark.objects.get().marks_obtained), '75.00')
 
@@ -360,7 +360,7 @@ class ExamWorkflowTests(TestCase):
 				),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		self.assertRedirects(response, reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.subject.pk}')
 		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.subject)
 		self.assertEqual(str(mark.marks_obtained), '81.00')
 
@@ -383,7 +383,7 @@ class ExamWorkflowTests(TestCase):
 				]),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		self.assertRedirects(response, reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.subject.pk}')
 		self.assertEqual(ExamMark.objects.filter(exam=self.exam).count(), 1)
 		self.assertEqual(str(ExamMark.objects.get().marks_obtained), '70.00')
 
@@ -941,7 +941,7 @@ class MarksPartsAndPassRulesTests(TestCase):
 				),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		self.assertRedirects(response, reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.physics.pk}')
 		mark = ExamMark.objects.get(exam=self.exam, student=self.student, subject=self.physics)
 		self.assertEqual(str(mark.marks_obtained), '80.00')
 		self.assertEqual(str(mark.cq_obtained), '60.00')
@@ -1041,7 +1041,7 @@ class ExamScopeConsistencyTests(TestCase):
 				),
 			},
 		)
-		self.assertRedirects(response, reverse('exam_list'))
+		self.assertRedirects(response, reverse('import_exam_marks', args=[self.exam.pk]) + f'?subject={self.physics.pk}')
 		self.assertEqual(ExamMark.objects.count(), 0)
 
 	def test_import_skips_rows_without_a_mark(self):
@@ -2810,3 +2810,119 @@ class RetiredBoardFeatureTests(TestCase):
                 self.assertNotContains(response, 'SSC Result Summary')
                 self.assertNotContains(response, 'ssc-registrations')
                 self.assertNotContains(response, 'Register for SSC')
+
+class GPAPaginationAndAbsentDisplayTests(TestCase):
+    """D-GPA (4.90-4.99->5.00) + O2 pagination (100/page) + D-MIS AB display + TC exclusion."""
+
+    def setUp(self):
+        self.institution = Institution.objects.create(name='New Feature School', classes='6,9')
+        self.user = get_user_model().objects.create_superuser(username='newfeat-admin', password='password')
+        self.client.force_login(self.user)
+
+    def test_gpa_490_to_499_boosted_to_500(self):
+        from .models import SubjectRequirement
+        # 10 subjects to get average 4.90 exactly: 9 at 5.00 (80 marks) + 1 at 4.00 (70 marks)
+        subjects = []
+        for i in range(10):
+            subj = Subject.objects.create(code=f'GP{i}', name=f'GpaSub{i}', full_marks=100)
+            SubjectRequirement.objects.create(institution=self.institution, admission_class='6', subject=subj, requirement_type='MANDATORY')
+            subjects.append(subj)
+        exam = Exam.objects.create(name='GPA Boost Exam', exam_type='SECOND_TERM', institution=self.institution, admission_class='6', session='2026', is_published=True)
+        student = Student.objects.create(institution=self.institution, student_id='GPA001', name='GPA Kid', admission_class='6', section='A', roll_no=1, admission_year=2026)
+        # 9 subjects 80 marks (A+ 5.00), 1 subject 70 marks (A 4.00) -> avg 4.90 -> should boost to 5.00
+        for idx, subj in enumerate(subjects):
+            marks = 80 if idx < 9 else 70
+            ExamMark.objects.create(exam=exam, student=student, subject=subj, marks_obtained=marks)
+        from .result_utils import build_exam_results
+        _, results = build_exam_results(exam)
+        result = results[0]
+        self.assertEqual(result['status'], 'Pass')
+        self.assertEqual(str(result['gpa']), '5.00')
+        self.assertEqual(result['grade'], 'A+')
+        # Control: exactly 5.00 stays 5.00
+        ExamMark.objects.filter(student=student).update(marks_obtained=85)
+        _, results2 = build_exam_results(exam)
+        self.assertEqual(str(results2[0]['gpa']), '5.00')
+
+    def test_pagination_limits_to_100(self):
+        # Create 105 students
+        for i in range(105):
+            Student.objects.create(institution=self.institution, student_id=f'PAG{i:03d}', name=f'Page Kid {i}', admission_class='6', section='A', roll_no=i+1, admission_year=2026)
+        resp1 = self.client.get(reverse('student_list'), {'institution': self.institution.pk})
+        self.assertEqual(resp1.status_code, 200)
+        self.assertEqual(resp1.context['student_count'], 105)
+        self.assertEqual(len(resp1.context['students']), 100)
+        self.assertTrue(resp1.context['is_paginated'])
+        self.assertEqual(resp1.context['paginator'].num_pages, 2)
+        resp2 = self.client.get(reverse('student_list'), {'institution': self.institution.pk, 'page': 2})
+        self.assertEqual(len(resp2.context['students']), 5)
+        self.assertContains(resp1, 'Page 1 of 2')
+
+    def test_absent_shows_AB_and_counts_as_F(self):
+        from .models import SubjectRequirement
+        subj1 = Subject.objects.create(code='AB1', name='AbsentSub1', full_marks=100)
+        subj2 = Subject.objects.create(code='AB2', name='AbsentSub2', full_marks=100)
+        for subj in (subj1, subj2):
+            SubjectRequirement.objects.create(institution=self.institution, admission_class='6', subject=subj, requirement_type='MANDATORY')
+        exam = Exam.objects.create(name='AB Exam', exam_type='SECOND_TERM', institution=self.institution, admission_class='6', session='2026', is_published=True)
+        student = Student.objects.create(institution=self.institution, student_id='AB001', name='AB Kid', admission_class='6', section='A', roll_no=1, admission_year=2026)
+        helper = Student.objects.create(institution=self.institution, student_id='AB002', name='Helper Kid', admission_class='6', section='A', roll_no=2, admission_year=2026)
+        # Both subjects must have at least one mark somewhere to be columns; helper sits both, AB kid misses one
+        ExamMark.objects.create(exam=exam, student=student, subject=subj1, marks_obtained=77)
+        ExamMark.objects.create(exam=exam, student=helper, subject=subj1, marks_obtained=80)
+        ExamMark.objects.create(exam=exam, student=helper, subject=subj2, marks_obtained=70)
+        resp = self.client.get(reverse('result_sheet', args=[exam.pk]))
+        self.assertContains(resp, 'AB')
+        self.assertContains(resp, 'absent-mark')
+        self.assertContains(resp, 'no mark entered - counted as F')
+        from .result_utils import build_exam_results
+        _, results = build_exam_results(exam)
+        r = next(row for row in results if row['student'].pk == student.pk)
+        self.assertEqual(r['status'], 'Fail')
+        self.assertEqual(str(r['gpa']), '0.00')
+        # AB subject counted as absent
+        absent = [row for row in r['subject_results'] if row['absent'] and not row.get('not_applicable')]
+        self.assertEqual(len(absent), 1)
+
+    def test_discontinued_and_transferred_excluded_from_result(self):
+        from .models import SubjectRequirement
+        subj = Subject.objects.create(code='EXC1', name='ExcludeSub', full_marks=100)
+        SubjectRequirement.objects.create(institution=self.institution, admission_class='6', subject=subj, requirement_type='MANDATORY')
+        exam = Exam.objects.create(name='Exclude Exam', exam_type='SECOND_TERM', institution=self.institution, admission_class='6', session='2026', is_published=True)
+        active = Student.objects.create(institution=self.institution, student_id='EXA', name='Active Kid', admission_class='6', section='A', roll_no=1, admission_year=2026, status='ACTIVE')
+        tc = Student.objects.create(institution=self.institution, student_id='EXT', name='TC Kid', admission_class='6', section='A', roll_no=2, admission_year=2026, status='TRANSFERRED')
+        disc = Student.objects.create(institution=self.institution, student_id='EXD', name='Disc Kid', admission_class='6', section='A', roll_no=3, admission_year=2026, status='DISCONTINUED')
+        for stu in (active, tc, disc):
+            ExamMark.objects.create(exam=exam, student=stu, subject=subj, marks_obtained=80)
+        from .result_utils import build_exam_results, get_exam_students
+        students = list(get_exam_students(exam))
+        self.assertIn(active, students)
+        self.assertNotIn(tc, students)
+        self.assertNotIn(disc, students)
+        _, results = build_exam_results(exam)
+        result_ids = [r['student'].pk for r in results]
+        self.assertIn(active.pk, result_ids)
+        self.assertNotIn(tc.pk, result_ids)
+        self.assertNotIn(disc.pk, result_ids)
+
+    def test_import_stay_on_page_redirects_to_same_page(self):
+        from .models import SubjectRequirement
+        subj = Subject.objects.create(code='IMP1', name='ImportSub', full_marks=100)
+        SubjectRequirement.objects.create(institution=self.institution, admission_class='6', subject=subj, requirement_type='MANDATORY')
+        exam = Exam.objects.create(name='Import Stay Exam', exam_type='SECOND_TERM', institution=self.institution, admission_class='6', session='2026')
+        student = Student.objects.create(institution=self.institution, student_id='IMP001', name='Import Kid', admission_class='6', section='A', roll_no=1, admission_year=2026)
+        from io import BytesIO
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook
+        wb = Workbook()
+        sh = wb.active
+        sh.append(['Roll', 'ID', 'Name', 'Marks'])
+        sh.append([1, 'IMP001', 'Import Kid', 88])
+        out = BytesIO()
+        wb.save(out)
+        resp = self.client.post(reverse('import_exam_marks', args=[exam.pk]), {'subject': str(subj.pk), 'excel_file': SimpleUploadedFile('imp.xlsx', out.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(reverse('import_exam_marks', args=[exam.pk]), resp.url)
+        self.assertIn(f'subject={subj.pk}', resp.url)
+        self.assertNotEqual(resp.url, reverse('exam_list'))
+

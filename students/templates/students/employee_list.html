@@ -17,7 +17,7 @@
         <h1>Employees</h1>
         <div class="subtitle">
             {% if institution %}{{ institution.name }}{% else %}All Institutions{% endif %}
-            — Total: {{ employees|length }}
+            — Total: {{ total_employees|default:employees|length }}
         </div>
     </div>
     <div class="page-actions d-flex gap-2">
@@ -72,5 +72,27 @@
             {% endfor %}
         </tbody>
     </table>
+    {% if is_paginated %}
+    <nav aria-label="Employee pagination" class="mt-3">
+        <ul class="pagination justify-content-center mb-0">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page=1{% if institution %}&institution={{ institution.id }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">« First</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if institution %}&institution={{ institution.id }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">‹ Prev</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">« First</span></li>
+            <li class="page-item disabled"><span class="page-link">‹ Prev</span></li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ paginator.num_pages }} — {{ total_employees }} total</span></li>
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if institution %}&institution={{ institution.id }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Next ›</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ paginator.num_pages }}{% if institution %}&institution={{ institution.id }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Last »</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">Next ›</span></li>
+            <li class="page-item disabled"><span class="page-link">Last »</span></li>
+            {% endif %}
+        </ul>
+        <p class="text-center text-muted small mt-2">100 per page.</p>
+    </nav>
+    {% endif %}
 </div>
 {% endblock %}

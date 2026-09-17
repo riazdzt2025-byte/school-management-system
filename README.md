@@ -126,9 +126,9 @@ Behind an HTTPS reverse proxy (Render, Nginx) set `TRUST_FORWARDED_PROTO=True`
 and `CSRF_TRUSTED_ORIGINS=https://your-host` — without them, login POSTs fail with
 a CSRF 403. See [`.env.example`](.env.example).
 
-## Roadmap — portfolio status (2026-09-16, `main` @ 30da6cb)
+## Roadmap — portfolio status (2026-09-17, `main` @ ee2bc7b)
 
-> Checked against `docs/PROJECT_STATUS.md` §3. Branch `main` is the source of truth — see that file for evidence per item. Two items remain owner/live-only.
+> Checked against `docs/PROJECT_STATUS.md` §3. Branch `main` is the source of truth — see that file for evidence per item. Two items remain owner/live-only (Postgres switch + `USE_S3` bucket — both CI-proven, free-tier portfolio can stay on SQLite + filesystem with documented trade-off).
 
 - [x] Enforce the exam publish flag on every result view and result-card endpoint
 - [x] Add Excel import for exams and bulk exam marks (per-subject import + template download)

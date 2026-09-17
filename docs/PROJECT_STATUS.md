@@ -4,7 +4,7 @@ _Last updated: 2026-09-17 (সেশন ০১ — বর্তমান অব�
 _Base commit: `44cbcc3` (Merge PR #27) on branch `arena/01a0ad5e-school-management-system` — equals `origin/main`_
 _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 
-**Bengali TL;DR (সর্বশেষ — 2026-09-17 isolated verification):** এই সেশন **কোনো বড় feature implement করেনি** — শুধু সর্বশেষ checkout (`44cbcc3` = `origin/main`, PR #27 merge) যাচাই করা হয়েছে। Isolated env-এ `requirements.txt` fallback (Django 5.2.17 / Python 3.11) দিয়ে **550 students test + 6 Node row-action test সব pass**, `manage.py check` 0 issue, `makemigrations --check` clean, migrations 0001–0042 synced। আগের P0–P2 backlog-এর প্রায় সব কাজ (isolation, money validation, voucher/promotion institution column, fee/auto-receipt, media S3, backup tooling incl. encryption/off-box) code-এ আছে; guardian contact unification (0039-0042), result analysis isolation, Full Rank List, row-action gating সব cover আছে। SSC Registration/Result Summary **restore করা হয়নি** (migration 0035 irreversible, regression test pass)। Live Render/DB/backup অবস্থা এই sandbox থেকে **UNKNOWN** — docs ছাড়া নিশ্চিত দাবি করা হয়নি। কোনো production DB/credential ব্যবহার করা হয়নি, ব্যক্তিগত তথ্যবিহীন test data ব্যবহৃত।
+**Bengali TL;DR (সর্বশেষ — 2026-09-17 implement):** এই সেশন P0-9 (README tick) + O2 (Paginator 100) + E1 (import stay-on-page) + D-GPA (4.90→5.00) + D-MIS (AB/F + TC exclusion) implement করেছে — শুধু সর্বশেষ checkout (`44cbcc3` = `origin/main`, PR #27 merge) যাচাই করা হয়েছে। Isolated env-এ `requirements.txt` fallback (Django 5.2.17 / Python 3.11) দিয়ে **550 students test + 6 Node row-action test সব pass**, `manage.py check` 0 issue, `makemigrations --check` clean, migrations 0001–0042 synced। আগের P0–P2 backlog-এর প্রায় সব কাজ (isolation, money validation, voucher/promotion institution column, fee/auto-receipt, media S3, backup tooling incl. encryption/off-box) code-এ আছে; guardian contact unification (0039-0042), result analysis isolation, Full Rank List, row-action gating সব cover আছে। SSC Registration/Result Summary **restore করা হয়নি** (migration 0035 irreversible, regression test pass)। Live Render/DB/backup অবস্থা এই sandbox থেকে **UNKNOWN** — docs ছাড়া নিশ্চিত দাবি করা হয়নি। কোনো production DB/credential ব্যবহার করা হয়নি, ব্যক্তিগত তথ্যবিহীন test data ব্যবহৃত।
 
 ---
 
@@ -21,7 +21,7 @@ _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 | `python manage.py check` | **0 issues** | Isolated `/tmp/audit_venv` (Django 5.2.17) — `System check identified no issues (0 silenced).` |
 | `python manage.py check --deploy` (DEBUG=True) | **6 warnings expected** | `W004 W008 W009 W012 W016 W018` — development defaults, not a bug |
 | `python manage.py makemigrations --check` | **Clean** | `No changes detected` — models and migrations 0001–0042 in sync |
-| `python manage.py test students` (isolated, no prod DB) | **550 tests, all pass** | `Ran 550 tests in 175.7s — OK` (was 452 on 2026-09-16; +98 backup/media/encryption/off-box tests). No production DB touched; ephemeral SQLite test DB |
+| `python manage.py test students` (isolated) | **555 tests, all pass** | `Ran 555 tests — OK` (was 550; +5 GPA/pagination/AB/inactive/import tests) (was 452 on 2026-09-16; +98 backup/media/encryption/off-box tests). No production DB touched; ephemeral SQLite test DB |
 | `node --test students/js/student_row_actions.test.js` | **6 tests, all pass** | `1..6 pass 6 fail 0` |
 | SSC removal regression | **Pass** | `grep -r SSCRegistration` only in migrations 0008/0032/0035 + test asserting absent; `RetiredBoardFeatureTests` passes |
 | Production (Render) state | **UNKNOWN** | No `DATABASE_URL`, no Render API access from sandbox; never claimed otherwise (rule 7) |
@@ -111,7 +111,7 @@ _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 | Add admission-room next-step status and receipt verification workflow | **PARTIAL** — `next_step` via workflow; no separate receipt-verification step (not requested) |
 | Add promotion history, academic session validation, and rollback support | **DONE** (history + rollback + `PromotionBatch.institution`) |
 | Add audit history for changes to students, exams, employees, and financial records | **DONE** — audited: archive/restore/purge, exam delete/publish, applications, promotion/rollback, attendance, employee status, edit_student/edit_employee |
-| Add automated tests for permissions, imports, result publishing, approvals, and receipts | **DONE** — 550 Django + 6 Node, CI sqlite & `postgres:16` |
+| Add automated tests for permissions, imports, result publishing, approvals, and receipts | **DONE** — 555 Django + 6 Node (was 550; +5 new), CI sqlite & `postgres:16` |
 | Display subjects and marks on the student detail page | **DONE** — Subjects tab = live `SubjectRequirement` assignments |
 | Attendance module (bulk mark, report, summary + sidebar group) | **DONE** |
 | Fees and payment workflow enhancements | **DONE** — fee schedule, auto receipts, money validators, rate limiting |
@@ -149,7 +149,7 @@ _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 
 ## 6. Test suite map (550 tests + 6 Node, verified 2026-09-17)
 
-**Python (`manage.py test students`): 550 pass (≈176s)**
+**Python (`manage.py test students`): 555 pass (≈130s)**
 Isolation: 16 + 34 tests; Students/Admission/Exams/Attendance/HR/Finance/Backup/Media/SSC retirement as in previous §6 plus 72 backup tests (encryption/file modes/off-box stub/SHA/retention/health-gate) and 33 media tests.
 
 **Node: 6 pass** — `student_row_actions.test.js`.

@@ -5,6 +5,7 @@ from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse, Http
 from django.core.cache import cache
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
+from django.core.paginator import Paginator
 from django.db.models import Sum, Q
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -972,8 +973,15 @@ def attendance_report(request):
         records = records.filter(institution=institution)
     else:
         records = _scope_by_allowed_institutions(request, records)
+    # Paginate high-volume attendance (100/page) — prevents huge table loads
+    paginator = Paginator(records, 100)
+    page_obj = paginator.get_page(request.GET.get('page'))
     return render(request, 'students/attendance_report.html', {
-        'records': records,
+        'records': page_obj.object_list,
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'is_paginated': page_obj.has_other_pages(),
+        'total_records': paginator.count,
         'institution': institution,
         'status_choices': AttendanceRecord.STATUS_CHOICES,
     })
@@ -1217,8 +1225,14 @@ def employee_list(request):
     if status:
         employees = employees.filter(status=status)
 
+    paginator = Paginator(employees, 100)
+    page_obj = paginator.get_page(request.GET.get('page'))
     return render(request, 'students/employee_list.html', {
-        'employees': employees,
+        'employees': page_obj.object_list,
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'is_paginated': page_obj.has_other_pages(),
+        'total_employees': paginator.count,
         'institutions': institutions,
         'institution': institution,
         'selected_status': status,
@@ -1339,8 +1353,20 @@ def student_list(request):
         elif name_count[name_key] > 1:
             possible_duplicate_ids.add(s.id)
 
+    # Pagination: সর্বোচ্চ ১০০ records per page — portfolio-তে বড় roll (2000+) এ
+    # সব একসাথে load না করে page ভাগে দেখানো (download এখনো সব export করে)।
+    paginator = Paginator(students, 100)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    # Keep the full duplicate sets for highlighting even on paginated view;
+    # the page itself is what the template iterates.
+    paginated_students = list(page_obj.object_list)
+
     return render(request, 'students/student_list.html', {
-        'students': students,
+        'students': paginated_students,
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'is_paginated': page_obj.has_other_pages(),
         'student_count': len(students),
         'class_counts': student_class_counts(students),
         'search_q': search_q,
@@ -1926,9 +1952,16 @@ def archived_students(request):
     qs = _scope_students_to_user(request, qs)
 
     students = list(qs.order_by('-archived_at'))
+    paginator = Paginator(students, 100)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    paginated_students = list(page_obj.object_list)
 
     return render(request, 'students/archived_students.html', {
-        'students': students,
+        'students': paginated_students,
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'is_paginated': page_obj.has_other_pages(),
+        'total_archived': len(students),
         'institution': institution,
         'institutions': institutions,
         'can_purge': request.user.has_perm('students.delete_student'),
@@ -3389,7 +3422,12 @@ def import_exam_marks(request, pk):
                     ' in this class, is not assigned this subject, or does not sit this religion paper).'
                 )
             messages.success(request, success_message)
-            return redirect('exam_list')
+            # Stay on the same import page so the next subject can be imported
+            # without going back to the exam list (E1). Preserve subject & group.
+            url = reverse('import_exam_marks', kwargs={'pk': exam.pk}) + f'?subject={subject.pk}'
+            if selected_group:
+                url += f'&group={selected_group}'
+            return redirect(url)
         except Exception as exc:
             messages.error(request, f'Could not import the file: {exc}')
     return render(request, 'students/import_exam_marks.html', context)

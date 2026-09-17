@@ -36,7 +36,9 @@ def get_exam_students(exam, group=None):
     """
     from .models import Student
 
-    students = Student.objects.filter(is_archived=False)
+    # D-MIS (2026-09-17): TC / Discontinued / inactive students are not part
+    #    # of the published register — they would otherwise show AB/F for every subject.
+    students = Student.objects.filter(is_archived=False, status='ACTIVE')
     if exam.institution_id:
         students = students.filter(institution_id=exam.institution_id)
     students = students.filter(
@@ -920,6 +922,12 @@ def build_exam_results(exam, group=None):
             overall_gpa = round(sum(gpa_points) / len(gpa_points), 2) if gpa_points else Decimal('0.00')
             overall_grade, _ = get_grade(float(overall_percentage))
             status = 'Pass'
+            # D-GPA (owner decision 2026-09-17): 4.90–4.99 is lifted to 5.00/A+ so a
+            # near-perfect student is not left at 4.99 just because one subject
+            # slipped by a point. Only for passing results; Fail/No Marks stay 0/—.
+            if overall_gpa is not None and Decimal('4.90') <= overall_gpa < Decimal('5.00'):
+                overall_gpa = Decimal('5.00')
+                overall_grade = 'A+'
 
         results.append({
             'student': student, 'subject_results': subject_results,
