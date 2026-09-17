@@ -19,6 +19,7 @@ dashboard items need Render access._
 | `CSRF_TRUSTED_ORIGINS` includes the https origin | env | 🔧 |
 | `TRUST_FORWARDED_PROTO=True` (behind Render proxy) | env — otherwise login POSTs 403 | 🔧 |
 | `USE_X_FORWARDED_HOST=True` | env | 🔧 |
+| `MAILERS_BACKEND` is a real mail backend (Django ≥ 6.0) | env, e.g. `django.core.mail.backends.smtp.EmailBackend`; Django 6+ fails `check --deploy` with `mail.E001` while the default mailer uses the console backend (the app sends no email yet, so console stays the dev default; the CI deploy guard runs this exact gate every push) | 🔧 / ✅ gate |
 
 ## 2. Database
 

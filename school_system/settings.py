@@ -321,9 +321,20 @@ STORAGES = {
     },
 }
 
+# Django 6.0+ reads the MAILERS setting and ships a deploy system check
+# (mail.E001) that fails `manage.py check --deploy` when the default mailer
+# uses a development-only backend (console/filebased/locmem/dummy). Nothing in
+# this codebase sends email yet, so console stays the default everywhere —
+# identical behaviour to before on Django 5.2, where no mail check exists.
+# A production deployment that runs the deploy checks on Django 6+ must set
+# MAILERS_BACKEND to a real backend (e.g. django.core.mail.backends.smtp.
+# EmailBackend) before `check --deploy` will pass.
 MAILERS = {
     'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        'BACKEND': os.environ.get(
+            'MAILERS_BACKEND',
+            'django.core.mail.backends.console.EmailBackend',
+        ),
     },
 }
 

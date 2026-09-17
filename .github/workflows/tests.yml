@@ -94,6 +94,12 @@ jobs:
           CSRF_TRUSTED_ORIGINS: "https://ci.example.invalid"
           TRUST_FORWARDED_PROTO: "True"
           USE_X_FORWARDED_HOST: "True"
+          # Django 6.0+ adds the deploy check `mail.E001` (Error level):
+          # check --deploy fails when MAILERS['default'] uses a development-only
+          # backend. The backend is only instantiated when mail is actually
+          # sent, and nothing sends mail in CI, so naming the SMTP backend here
+          # keeps this a production-shaped config without any mail server.
+          MAILERS_BACKEND: "django.core.mail.backends.smtp.EmailBackend"
         run: python manage.py check --deploy
 
       - name: Run test suite (${{ matrix.name }})
