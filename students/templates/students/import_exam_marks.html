@@ -17,6 +17,31 @@
         {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
     {% endif %}
 
+    {% if published_lock.locked %}
+    <div class="alert alert-warning border-warning">
+        <strong><i class="bi bi-lock-fill me-1"></i>Published result &mdash; marks are locked.</strong>
+        {{ published_lock.message }}
+        <form method="post" class="mt-2">
+            {% csrf_token %}
+            <input type="hidden" name="group" value="{{ selected_group }}">
+            {% if subject %}<input type="hidden" name="subject" value="{{ subject.pk }}">{% endif %}
+            <button type="submit" name="unlock_published_marks" value="1" class="btn btn-sm btn-outline-warning">
+                <i class="bi bi-unlock-fill me-1"></i>{{ published_lock.unlock_label }}
+            </button>
+        </form>
+        <div class="text-muted mt-1">
+            Unlocking imports nothing &mdash; it only allows the next upload to write. The unlock and the
+            import are both recorded in the audit log, so re-check the result sheet and reprint
+            anything that has already been issued.
+        </div>
+    </div>
+    {% elif published_lock.unlocked %}
+    <div class="alert alert-info">
+        <i class="bi bi-unlock-fill me-1"></i>This exam is <strong>published</strong> and you have unlocked its
+        marks for this session. Importing now changes a published result, and the change is audited.
+    </div>
+    {% endif %}
+
     {% if show_group_picker and not no_subjects %}
     <form method="get" class="mb-3" id="group-filter-form">
         <label for="group-select" class="form-label fw-semibold">Group</label>

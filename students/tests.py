@@ -2161,6 +2161,13 @@ class ReligionPaperTests(TestCase):
 	def test_enter_marks_skips_students_who_do_not_sit_the_paper(self):
 		# Entering Islam marks: the Hindu student's (disabled) boxes post
 		# nothing and must never be saved, even when values sneak in.
+		# The exam is published, so R1's marks lock is opened first — this test
+		# is about religion papers, not about the published-marks lock (covered
+		# in test_published_lock_and_cell_shortcut.py).
+		self.client.post(
+			reverse('enter_marks', args=[self.exam.pk, self.islam.pk]),
+			{'unlock_published_marks': '1'},
+		)
 		self.client.post(
 			reverse('enter_marks', args=[self.exam.pk, self.islam.pk]),
 			{

@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse, Http404
@@ -3323,6 +3324,72 @@ def _exam_group_selection(request, exam):
     return group_choices, selected_group
 
 
+# ---------------- Published-result marks lock (R1) ----------------
+# Publishing is what makes a result official: the sheet gets printed, tabulated
+# and handed out. The marks behind it used to stay freely editable, so a
+# correction made weeks later silently changed a result that had already gone
+# out. The marks pages therefore lock once an exam is published and open again
+# only after an explicit unlock, which is audited along with every write they
+# refuse. This is a warning-plus-audit lock, not a hard block — teachers do
+# correct genuine typos — and EXAM_LOCK_PUBLISHED=False turns it off entirely.
+PUBLISHED_LOCK_MESSAGE = (
+    'This exam result is published, so its marks are locked. Saving now would '
+    'change a result that has already been published and printed.'
+)
+PUBLISHED_LOCK_UNLOCK_LABEL = 'Unlock to edit published result'
+
+
+def published_marks_lock_enabled():
+    """Whether the published-marks lock is on (``EXAM_LOCK_PUBLISHED``, default on)."""
+    return bool(getattr(settings, 'EXAM_LOCK_PUBLISHED', True))
+
+
+def _published_marks_unlock_key(exam):
+    return f'marks_unlock_exam_{exam.pk}'
+
+
+def _unlock_published_marks(request, exam, view):
+    """Explicit, audited unlock so a published exam's marks can be corrected."""
+    request.session[_published_marks_unlock_key(exam)] = True
+    record_audit(request.user, 'exam_marks_unlocked', exam,
+                 snapshot={'is_published': exam.is_published},
+                 details={'view': view})
+
+
+def published_marks_lock_state(request, exam):
+    """Lock state for the marks pages, ready to drop into template context.
+
+    ``locked`` is the flag that actually blocks a write: an unpublished exam is
+    never locked, and neither is a published one this session has unlocked.
+    """
+    applies = bool(exam.is_published and published_marks_lock_enabled())
+    unlock_key = _published_marks_unlock_key(exam)
+    unlocked = bool(request.session.get(unlock_key)) if applies else False
+    if not applies and unlock_key in request.session:
+        # Unpublished again, or the lock switched off: drop the stale unlock so
+        # re-publishing starts out locked rather than inheriting the old one.
+        del request.session[unlock_key]
+    return {
+        'applies': applies,
+        'locked': bool(applies and not unlocked),
+        'unlocked': bool(unlocked),
+        'message': PUBLISHED_LOCK_MESSAGE,
+        'unlock_label': PUBLISHED_LOCK_UNLOCK_LABEL,
+    }
+
+
+def _reject_locked_marks_write(request, exam, view):
+    """Refuse a marks write attempted while the published lock is on, and log it."""
+    record_audit(request.user, 'exam_marks_write_blocked', exam,
+                 snapshot={'is_published': exam.is_published},
+                 details={'view': view})
+    messages.error(
+        request,
+        f'{PUBLISHED_LOCK_MESSAGE} Choose “{PUBLISHED_LOCK_UNLOCK_LABEL}” first — '
+        'the unlock is recorded in the audit log.',
+    )
+
+
 @login_required
 @permission_required('students.add_exammark', raise_exception=True)
 def import_exam_marks(request, pk):
@@ -3349,6 +3416,28 @@ def import_exam_marks(request, pk):
             # assigned to this class/group can be imported.
             messages.error(request, 'That subject is not assigned to this class/group.')
             subject = None
+
+    # R1 — a published exam's marks are locked until this session unlocks them.
+    published_lock = published_marks_lock_state(request, exam)
+    import_page_url = reverse('import_exam_marks', kwargs={'pk': exam.pk})
+    if subject:
+        import_page_url += f'?subject={subject.pk}'
+    if selected_group:
+        import_page_url += ('&' if '?' in import_page_url else '?') + f'group={selected_group}'
+
+    if request.method == 'POST' and published_lock['locked']:
+        # Handled before every other POST branch, including the file upload:
+        # nothing may be written to a published exam while the lock is on.
+        if request.POST.get('unlock_published_marks'):
+            _unlock_published_marks(request, exam, view='import_exam_marks')
+            messages.success(
+                request,
+                'Published marks unlocked for this exam. Re-check the result sheet '
+                'and reprint anything that has already gone out.',
+            )
+        else:
+            _reject_locked_marks_write(request, exam, view='import_exam_marks')
+        return redirect(import_page_url)
 
     if request.method == 'POST' and not request.FILES.get('excel_file'):
         if not subject:
@@ -3390,6 +3479,7 @@ def import_exam_marks(request, pk):
         'selected_group_label': dict(group_choices).get(selected_group, ''),
         'show_group_picker': not exam.group and bool(group_choices),
         'sheet_title': marks_import_sheet_title(exam, subject) if subject else '',
+        'published_lock': published_lock,
     }
 
     if request.method == 'POST' and request.FILES.get('excel_file'):
@@ -3565,7 +3655,24 @@ def enter_marks(request, pk, subject_pk):
         mark.student_id: mark for mark in ExamMark.objects.filter(exam=exam, subject=subject)
     }
 
+    # R1 — a published exam's marks are locked until this session unlocks them.
+    published_lock = published_marks_lock_state(request, exam)
+    marks_page_url = reverse('enter_marks', kwargs={'pk': exam.pk, 'subject_pk': subject.pk})
+    if selected_group:
+        marks_page_url += f'?group={selected_group}'
+
     if request.method == 'POST':
+        if published_lock['locked']:
+            if request.POST.get('unlock_published_marks'):
+                _unlock_published_marks(request, exam, view='enter_marks')
+                messages.success(
+                    request,
+                    'Published marks unlocked for this exam. Re-check the result sheet '
+                    'and reprint anything that has already gone out.',
+                )
+            else:
+                _reject_locked_marks_write(request, exam, view='enter_marks')
+            return redirect(marks_page_url)
         saved_count = 0
         skipped = []
         for student in students:
@@ -3676,6 +3783,7 @@ def enter_marks(request, pk, subject_pk):
         'require_all_parts_pass': marks_config.require_all_parts_pass,
         'total_students': len(rows),
         'religion_paper_subject': subject.pk in religion_by_pk,
+        'published_lock': published_lock,
     })
 
 
@@ -3740,8 +3848,16 @@ def result_sheet(request, pk):
         )
         if blank:
             missing_mark_subjects.append({'subject': column, 'count': blank})
+    # E8 — base for the result-cell Ctrl/Cmd+Click correction shortcut: this
+    # exam's marks-entry URL with the subject slot left open, so the page script
+    # can append the pk of the cell that was clicked (a Religion cell uses the
+    # paper that particular student sits, never the column).
+    enter_marks_base_url = reverse(
+        'enter_marks', kwargs={'pk': exam.pk, 'subject_pk': 0},
+    ).removesuffix('0/')
     return render(request, 'students/result_sheet.html', {
         'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
+        'enter_marks_base_url': enter_marks_base_url,
         'ignored_subjects': ignored,
         'missing_mark_subjects': missing_mark_subjects,
         'unmarked_subjects': unmarked_subjects,
@@ -3823,10 +3939,17 @@ def full_rank_list(request, pk):
     _, results = build_exam_results(exam, group=selected_group or None)
     ranked = [r for r in results if r['position']]
     unranked = [r for r in results if not r['position']]
+    # E8 — the rank list has no subject columns (it is one row per student:
+    # rank, total, GPA), so its correction shortcut opens this exam's marks
+    # entry chooser instead of one subject, keeping the group in view.
+    marks_entry_url = reverse('select_marks_subject', kwargs={'pk': exam.pk})
+    if selected_group:
+        marks_entry_url += f'?group={selected_group}'
     return render(request, 'students/full_rank_list.html', {
         'exam': exam,
         'results': ranked,
         'unranked_results': unranked,
+        'marks_entry_url': marks_entry_url,
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': selected_group_label,

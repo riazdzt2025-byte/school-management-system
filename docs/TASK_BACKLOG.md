@@ -149,16 +149,16 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Decision needed:** Owner to confirm 100 is hard cap or configurable (`?per_page` disallowed? we recommend fixed 100).
 - **Small session scope:** Yes — `views.student_list` + `archived_students` + templates + tests (one session).
 
-#### E8 · Result cell থেকে Ctrl/Cmd+Click correction shortcut
+#### E8 · Result cell থেকে Ctrl/Cmd+Click correction shortcut — ✅ DONE (2026-09-17)
 - **Task ID & Purpose:** E8 — result sheet-এর subject cell থেকে Ctrl/Cmd+Click করলে সরাসরি `enter_marks` correction page (same exam+subject+group) খোলা।
-- **Current status:** **Missing** (no shortcut; only Ctrl+B for sidebar + multi-term Ctrl+Click)
-- **Evidence:** `grep -rn ctrlKey.*students/templates` only `base.html` (sidebar) + `result_analysis_multi_term.html` (multi-select). `result_sheet.html` cells have `title` hover but no `<a>` or `data-enter-marks-url`. `enter_marks` URL = `exams/<pk>/marks/<subject_pk>/` with optional `?group=`.
+- **Current status:** **Complete** — `result_sheet.html` cells carry `data-subject-pk` (Religion cells use `sr.paper.pk`, the paper that student sits) + `data-group`, inside `.result-table-card[data-enter-marks-base]`; `static/students/js/result_cell_shortcut.js` opens `enter_marks` in a **new tab** on Ctrl/Cmd+Click and ignores plain clicks (print stays clean). `full_rank_list.html` has no subject columns, so its rows carry `data-shortcut-url` → `select_marks_subject` (group preserved). Without `students.add_exammark` the cell is `data-shortcut-disabled="true"` and the tooltip says “Ask Exam dept”. Documented in `RESULT_PUBLISHING_GUIDE.md` §7.
+- **Evidence:** `students/static/students/js/result_cell_shortcut.js`, `students/templates/students/result_sheet.html`, `students/templates/students/full_rank_list.html`, `views.result_sheet` (`enter_marks_base_url`), `views.full_rank_list` (`marks_entry_url`).
 - **Priority:** **P1** (office correction speed)
 - **Dependencies:** E1 (optional, but independent)
 - **Acceptance:** Published `result_sheet`/`full_rank_list` subject cells have `data-subject-pk` + `data-group` + JS: `Ctrl/Cmd+Click` → `window.open(enter_marks_url, '_blank')` (new tab, not replacing register), plain click does nothing (print-friendly), permission: if `perms.students.add_exammark` false → shortcut disabled with tooltip “Ask Exam dept”. Works with `ReligionColumn` (paper_for student). Documented in `RESULT_PUBLISHING_GUIDE.md`.
-- **Tests required:** JS unit test (Ctrl+Click builds correct URL with group querystring), Django view test `test_result_cell_ctrl_click_url_resolves_with_group`.
+- **Tests:** `students/js/result_cell_shortcut.test.js` (8 Node tests: Ctrl+Click builds the URL with the group querystring, Cmd works, plain click does nothing, disabled cell inert, no-group case, rank-list row, URL builder units) + Django `ResultCellShortcutTests` — `test_result_cell_ctrl_click_url_resolves_with_group`, `test_result_cell_shortcut_is_disabled_without_marks_permission`, `test_full_rank_list_row_links_to_the_exam_marks_entry`. Run: `node --test students/js/` and `python manage.py test students`.
 - **Migration/data risk:** none (template+JS).
-- **Decision needed:** Owner to confirm shortcut should open new tab vs same tab (we recommend new tab to keep register).
+- **Decision (owner-approved 2026-09-17):** opens a **new tab**, so the register is never replaced.
 - **Small session scope:** Yes — `result_sheet.html` + `full_rank_list.html` + small JS + tests.
 
 ---
@@ -204,16 +204,16 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Follow-up PR 1 (if current kept):** keep `True`, add docs/notice for “unmarked_subjects / missing_mark_subjects” warnings already in `result_sheet.html`, test `test_unentered_subject_is_graded_f_and_makes_the_result_fail` already exists — reinforce.
 - **Follow-up PR 2 (if proposed adopted):** set env `EXAM_ABSENT_SUBJECT_FAILS=False` (or per-subject exempt) + adjust `compute_subject_result` → ABSENT excluded + `build_exam_results` avg ignores absent + tests (`test_absent_rule_can_be_switched_off` exists) — **published results will flip from Fail to Pass** for blanks, so own session + backup.
 
-#### R1 · Published/historical result — closed-period lock (optional hardening)
+#### R1 · Published/historical result — closed-period lock — ✅ DONE (2026-09-17)
 - **Task ID & Purpose:** R1 — published exam-এর marks edit lock (historical safety hardening)।
-- **Current status:** **Partial** (published guard exists on views, but marks still editable via `enter_marks`/`import_exam_marks` even after `is_published=True` — no closed-period check)
-- **Evidence:** `views.result_sheet` etc. check `is_published` to block viewing unpublished, but `enter_marks`/`import_exam_marks` only check `_get_scoped_object_or_404` not `is_published` (so marks can still be entered after publish, changing historical result).
+- **Current status:** **Complete** — while `exam.is_published=True`, `enter_marks` and `import_exam_marks` refuse every write and say so on the page; an explicit **Unlock to edit published result** POST opens the lock for that session. `exam_marks_unlocked`, `exam_marks_write_blocked` and the existing `exam_published`/`exam_unpublished` all go to the audit log. `EXAM_LOCK_PUBLISHED=False` switches the lock off.
+- **Evidence:** `views.published_marks_lock_state` / `_unlock_published_marks` / `_reject_locked_marks_write` (+ guards in `enter_marks` and `import_exam_marks`), `settings.EXAM_LOCK_PUBLISHED`, banners in `enter_marks.html` / `import_exam_marks.html`, `RESULT_PUBLISHING_GUIDE.md` §7.
 - **Priority:** **P1**
 - **Dependencies:** D-MIS decision
 - **Acceptance:** When `exam.is_published=True`, `enter_marks`/`import_exam_marks` show warning and require explicit “Unlock to edit published result” POST (audited) before allowing writes; or `EXAM_LOCK_PUBLISHED` env toggle. Existing `toggle_publish_exam` logs.
-- **Tests required:** `test_published_exam_blocks_marks_entry_until_unlocked`, `test_unpublish_allows_entry_again`.
-- **Migration/data risk:** none (view guard). If lock is strict, migration not needed.
-- **Decision needed:** Owner to choose lock strictness (warning vs hard block) — we recommend warning + audit, not hard block (teachers correct typos).
+- **Tests:** `students/test_published_lock_and_cell_shortcut.py::PublishedMarksLockTests` — `test_published_exam_blocks_marks_entry_until_unlocked`, `test_unpublish_allows_entry_again`, `test_published_lock_blocks_excel_import`, `test_published_lock_can_be_switched_off_by_setting`. `ReligionPaperTests.test_enter_marks_skips_students_who_do_not_sit_the_paper` now unlocks first (its exam is published).
+- **Migration/data risk:** none (view guard). No migration needed.
+- **Decision (owner-approved 2026-09-17):** **warning + audit, not a hard block** — a teacher who needs to fix a typo unlocks explicitly, and the unlock is on the record. Both acceptance options were implemented: the unlock flow *and* the `EXAM_LOCK_PUBLISHED` env toggle.
 - **Small session scope:** Yes — two views + tests.
 
 ---

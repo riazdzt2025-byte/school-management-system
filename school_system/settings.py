@@ -334,6 +334,14 @@ MAILERS = {
 # total. See RESULT_PUBLISHING_GUIDE.md.
 EXAM_ABSENT_SUBJECT_FAILS = os.environ.get('EXAM_ABSENT_SUBJECT_FAILS', 'True') == 'True'
 
+# A published exam's marks are the record its printed result sheets, tabulations
+# and result cards were built from, so editing them afterwards quietly rewrites
+# history. With the default (True) a published exam's marks are locked: the
+# marks pages refuse writes until the user explicitly unlocks them, and both the
+# unlock and any blocked write go to the audit log. Set EXAM_LOCK_PUBLISHED=False
+# to let marks be edited freely after publishing. See RESULT_PUBLISHING_GUIDE.md.
+EXAM_LOCK_PUBLISHED = os.environ.get('EXAM_LOCK_PUBLISHED', 'True') == 'True'
+
 SCHOOL_INFO = {
     'name': 'Principal Kazi Faruky School And College',
     'address': 'Rakhalia, Raipur, Lakshmipur',
