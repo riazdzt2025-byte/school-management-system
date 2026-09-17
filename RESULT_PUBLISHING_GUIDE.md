@@ -197,9 +197,45 @@ Top 10, detail, card) — an unpublished exam redirects those visitors to the ex
 list, and the result card carries a *DRAFT* banner if printed anyway.
 
 **Only an administrator can delete an exam** (the Exam department cannot). Use
-that for a mistaken exam, not for routine corrections. After publishing you can
-still correct marks (they flow straight into the result), then unpublish →
-re-check → republish while the correction is verified.
+that for a mistaken exam, not for routine corrections. Marks behind a published
+exam are **locked** — see the next section for how a correction is made.
+
+## 7. Correcting a published result
+
+Publishing is what makes the sheet official, so the marks behind it are locked
+from that moment: `Enter Marks` and `Import Marks` refuse to save anything for a
+published exam and say so on the page.
+
+To make a correction:
+
+1. Open `Enter Marks` (or `Import Marks`) for that exam and press
+   **Unlock to edit published result**.
+2. Save the corrected marks — the register, summary, ranking and result cards
+   all follow straight away.
+3. Re-check the result sheet and **reprint** anything already issued: a corrected
+   mark can change a GPA, a position and a Pass/Fail.
+
+Both the unlock and every write made while unlocked are written to the audit
+log, and so is every write the lock refused. The unlock lasts for your login
+session on that exam; unpublishing clears it, so re-publishing starts locked
+again. Set `EXAM_LOCK_PUBLISHED=False` to switch the lock off entirely — not
+recommended, because it removes the only warning between a typo and a result
+that has already gone home with a student.
+
+### Getting to the right subject quickly (Ctrl/Cmd + Click)
+
+While reading a published result, hold **Ctrl** (Windows/Linux) or **Cmd**
+(macOS) and click a subject cell on the **Result Sheet** — that subject's
+`Enter Marks` page opens **in a new tab**, on the same exam and the same group,
+so the register you were reading stays open. The **Full Rank List** has no
+subject columns, so there the same Ctrl/Cmd + Click opens that exam's marks
+entry chooser instead.
+
+A **plain click does nothing** on purpose: these pages are printed straight from
+the browser, so nothing in the cell can navigate away or show up on the printout.
+The Religion column opens the paper *that student* sits, never the column. If
+your account cannot enter marks, the shortcut is switched off and the cell's
+tooltip says *Ask Exam dept*.
 
 ---
 
