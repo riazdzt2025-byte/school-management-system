@@ -4,7 +4,7 @@ _Last updated: 2026-09-17 (সেশন ০১ — বর্তমান অব�
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 
-**Bengali TL;DR:** 2026-09-09 পর্যন্ত P0 isolation/validation/voucher/promotion/backup প্রায় সব শেষ; 2026-09-17 যাচাইয়ে **550 Django + 6 Node সব pass** (backup 72 test, media 33, isolation 50). Guarded contact unification, result analysis, Full Rank List, numeric roll-order, row gating সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + quick fixes (pagination 100, import stay-on-page, Ctrl+Click) + subject/result gaps (GPA 4.90→5.00 decision + missing-marks decision — দুটোই দুই PR করে) + Office gaps (উন্নত Reports, photo continuity) + Attendance calendar + Employee (teacher assignment, leave, closed-period) + দুটো বড় deferral (i18n, legacy drop) + doc tick (P0-9)। SSC restore করা হয়নি, live backup চালু হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ — এখন implementation scope-এর বাইরে।
+**Bengali TL;DR:** 2026-09-09 পর্যন্ত P0 isolation/validation/voucher/promotion/backup প্রায় সব শেষ; 2026-09-17 যাচাইয়ে **550 Django + 6 Node সব pass** → 2026-09-17 implement P0-9/O2/E1/D-GPA/D-MIS শেষে **555 Django + 6 Node সব pass** (backup 72 test, media 33, isolation 50). Guarded contact unification, result analysis, Full Rank List, numeric roll-order, row gating সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + quick fixes (pagination 100, import stay-on-page, Ctrl+Click) + subject/result gaps (GPA 4.90→5.00 decision + missing-marks decision — দুটোই দুই PR করে) + Office gaps (উন্নত Reports, photo continuity) + Attendance calendar + Employee (teacher assignment, leave, closed-period) + দুটো বড় deferral (i18n, legacy drop) + doc tick (P0-9)। SSC restore করা হয়নি, live backup চালু হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ — এখন implementation scope-এর বাইরে।
 
 ---
 
@@ -125,8 +125,8 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 
 ### P1 — দ্রুত ব্যবহারযোগ্য সংশোধন (quick wins, small session each)
 
-#### E1 · Marks import শেষে একই exam-এর import page-এ থাকা
-- **Task ID & Purpose:** E1 — import সফল হলে teacher একই exam-এর import page-এ থেকে পরের subject import করতে পারে (বর্তমানে exam_list-এ চলে যায়)।
+#### E1 · Marks import শেষে একই exam-এর import page-এ থাকা — ✅ DONE (2026-09-17)
+- **Task ID & Purpose:** E1 — import সফল হলে teacher একই exam-এর import page-এ থাকে (stay-on-page, ?subject=... preserved; was exam_list redirect).
 - **Current status:** **Partial** (import works, redirect wrong)
 - **Evidence:** `students/views.py:3391-3392` `return redirect('exam_list')` after `len(validated_rows)… imported successfully.`; open PR #23 proposes staying on page but not merged at `44cbcc3`; template `import_exam_marks.html` exists, per-subject validation + group picker works; tests `ExamWorkflowTests.test_import_exam_marks_success` expects current redirect.
 - **Priority:** **P1** (usability, small)
@@ -137,8 +137,8 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Decision needed:** Owner to confirm desired stay-on-page vs exam_list (we recommend stay-on-page as per spec).
 - **Small session scope:** Yes — one view + one test file (≤2 files), no migration.
 
-#### O2 · Student pagination: সর্বোচ্চ ১০০ records
-- **Task ID & Purpose:** O2 — student list-এ এক পৃষ্ঠায় সর্বোচ্চ 100 records, pagination সহ (বর্তমানে সব load)।
+#### O2 · Student pagination: সর্বোচ্চ ১০০ records — ✅ DONE (2026-09-17, Paginator 100)
+- **Task ID & Purpose:** O2 — student list / archived / attendance / employee — প্রতি page 100, pagination nav সহ (was all load)।
 - **Current status:** **Missing** (no pagination)
 - **Evidence:** `students/views.py:student_list` `students = list(qs.order_by(...))` no `Paginator`; template `student_list.html` (`school_system/templates/students/student_list.html`) no `{% if is_paginated %}`; `grep -rn Paginator students/views.py` only backup_utils.
 - **Priority:** **P1** (performance + UX for large roll)
@@ -168,7 +168,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 #### D-HM · Higher Math — no code task (verified complete, doc for traceability)
 - **Status:** **Complete** — see `PROJECT_STATUS.md` §2.1 E5 (curriculum mandatory in SCI 9/10, migration 0042, assigned via SubjectRequirement). No new task; future change would be `curriculum_data` edit + data migration.
 
-#### D-GPA · Final GPA 4.90–5.00 → 5.00 নিয়ম — decision + two PRs
+#### D-GPA · Final GPA 4.90–5.00 → 5.00 নিয়ম — ✅ DONE (decision 2026-09-17: 4.90-4.99 → 5.00 A+)
 - **Background (current vs proposed — decision needed before code):**
   - **Current (verified code, 2026-09-17):** `result_utils.get_grade` thresholds (80+ =5.00, 70+ =4.00 …), `build_exam_results` `overall_gpa = round(avg(gpa_points),2)` — no boost. Example: 4.90 stays 4.90, 4.97 stays 4.97, 5.00 only if avg exactly 5.00. **No `if gpa >=4.90: gpa=5.00` anywhere.** Tests use accurate avg.
   - **Proposed (per request to decide):** “Final GPA 4.90–5.00-কে 5.00 করার নিয়ম” — if implemented, `overall_gpa` in [4.90, 5.00) would be promoted to 5.00 (and grade to A+ if not already). School must decide if GPA is a mathematical avg or a rounding benefit.
@@ -177,7 +177,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Evidence:** `students/result_utils.py:525 get_grade`, `:920 overall_gpa = round(...,2)` — no boost.
 - **Priority:** **P1** (policy, affects all results; do not code without approval)
 - **Dependencies:** —
-- **Acceptance (decision):** Owner answers: (a) stay at accurate avg, or (b) promote 4.90–4.99 to 5.00 (and if 4.90 inclusive? 4.89 no?). Documented in `PROJECT_STATUS.md` §2.1 E7 before PR.
+- **Acceptance (decision):** ✅ Owner decided 2026-09-17: **(b) 4.90–4.99 → 5.00 (A+)** inclusive of 4.90, <5.00 — implemented in `result_utils.py` Pass branch (Fail/No Marks unchanged).
 - **Tests:** —
 - **Migration/data risk:** none for decision.
 - **Decision needed:** **Owner MUST choose** current vs proposed (and whether grade also becomes A+). No implementation until answered.
@@ -186,11 +186,11 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Follow-up PR 1 (if current chosen):** lock current behavior with regression test `test_gpa_4_90_not_rounded_to_5` and document “no boost” in `RESULT_PUBLISHING_GUIDE.md`.
 - **Follow-up PR 2 (if proposed chosen):** add `if overall_gpa >= Decimal('4.90') and overall_gpa < 5.00: overall_gpa=5.00; overall_grade='A+'` + boundary tests (4.89→4.89, 4.90→5.00, 5.00→5.00) + migration not needed, but **all published historical results change** — requires fresh backup + reprint notice, so own session.
 
-#### D-MIS · Missing/null marks policy — decision + two PRs
+#### D-MIS · Missing/null marks policy — ✅ DONE (decision 2026-09-17: blank = F, AB display, TC/inactive exclusion)
 - **Background (current vs proposed — decision needed before code):**
   - **Current (verified, EXAM_ABSENT_SUBJECT_FAILS=True default):** assigned subject with no row → dash cell but graded **F/0** and counted (total 0/full, gpa_points includes 0.00, result often Fail). All-blank → `No Marks` (not Fail, no ranking). Entered 0 → real 0/F counted. Optional/religion not applicable → dash not counted, not FAIL. Rationale: NCTB/SSC reading “did not sit = did not pass”.
   - **Proposed (alternative to decide):** blank stays **exempt** (ABSENT excluded from total/GPA, never fails; e.g., subject assigned after publish or student exempt never drags result down; or mode `EXAM_ABSENT_SUBJECT_FAILS=False` globally, or per-subject `exempt` flag). Owner must choose which blank means “fail” vs “not counted”.
-- **Task ID & Purpose:** D-MIS-0 — Document current vs proposed and get owner decision (school rule).
+- **Task ID & Purpose:** D-MIS-0 — Documented current (blank→F `EXAM_ABSENT_SUBJECT_FAILS=True`) vs proposed (exempt); owner kept **blank=F**.
 - **Current status:** **Partial (current works, proposed needs decision)**
 - **Evidence:** `result_utils.compute_subject_result` (L592-L646) + `absent_subject_fails_result()` + `build_exam_results` unmarked handling + `RESULT_PUBLISHING_GUIDE.md` explains toggle; env `EXAM_ABSENT_SUBJECT_FAILS` already exists.
 - **Priority:** **P1** (result correctness; do not silently change published Fail→Pass without approval)
@@ -244,7 +244,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Decision needed:** Whether application photo is required or optional (we recommend optional).
 - **Small session scope:** Yes — model + migration (nullable) + forms + two views + 3 templates + tests (one session, but separate from large fee engine).
 
-#### P0-9 · Documentation refresh (doc-only)
+#### P0-9 · Documentation refresh (doc-only) — ✅ DONE (2026-09-17)
 - **Task ID & Purpose:** P0-9 — README roadmap ticks + stale SSC mentions fix।
 - **Current status:** **Partial** (docs/PROJECT_STATUS accurate, README stale, agent doc stale)
 - **Evidence:** `README.md` roadmap still shows `[ ]` todo for done items (§3); `.github/agents/school-system-maintainer.agent.md` mentions SSC registrations.
@@ -376,8 +376,8 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 | D-8 | Production DB: SQLite on persistent disk or Postgres? | **Partial** — CI Postgres proven; live engine **UNKNOWN** (P0-7) → P1-10-live |
 | D-9 | Promotion scoping: query-only vs column? | **Resolved — column added (0037)** |
 | D-10 | Legacy `StudentSubject` data: keep forever, migrate, or drop? | **Resolved — keep admin-only, stop rendering (P1-5); drop deferred to P2-7** |
-| **D-GPA** | **Final GPA 4.90–5.00 → 5.00 boost? Current (accurate avg) vs proposed (4.90+ →5.00)?** | **Pending owner decision** — see D-GPA tasks above (no code until answered; two PRs planned) |
-| **D-MIS** | **Missing/null marks: blank = F (current, `EXAM_ABSENT_SUBJECT_FAILS=True`) vs blank = exempt (proposed)?** | **Pending owner decision** — see D-MIS tasks above (two PRs planned) |
+| **D-GPA** | **Final GPA 4.90–5.00 → 5.00 boost** | **✅ Decided 2026-09-17 — 4.90-4.99 →5.00 A+ implemented** |
+| **D-MIS** | **Missing/null marks: blank = F (keep `EXAM_ABSENT_SUBJECT_FAILS=True`)** | **✅ Decided 2026-09-17 — keep blank=F, show AB, exclude TC/DISCONTINUED from register** |
 
 ---
 

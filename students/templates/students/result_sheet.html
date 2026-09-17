@@ -167,10 +167,10 @@
     .status-pass { color: #087f66; background: #dff5ee; }
     .status-fail { color: #a33142; background: #fde0e5; }
     .status-muted { color: #687681; background: #edf1f3; }
-    .absent-mark { color: transparent !important; background: #fff !important; }
+    .absent-mark { color: #a33142 !important; background: #fff1f1 !important; font-weight: 800; }
     .failed-mark { color: #b02a37 !important; background: #fff1f1 !important; font-weight: 700; }
     .not-applicable-mark { color: transparent !important; background: #fff !important; }
-    .absent-mark .mark-number, .not-applicable-mark .mark-number { color: transparent !important; }
+    .not-applicable-mark .mark-number { color: transparent !important; }
     .fail-star { display: block; margin-top: 2px; color: var(--result-danger); font-size: .65rem; font-weight: 900; }
 
     .subject-codes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 10px; color: var(--result-muted); font-size: .68rem; line-height: 1.55; }
@@ -471,16 +471,17 @@
                                 </td>
                                 {% else %}
                                 <td class="mark-cell {% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
-                                    title="{% if sr.absent %}no mark entered - counted as F{% else %}Pass mark {{ sr.pass_marks }}{% if sr.paper %} &middot; {{ sr.paper.name }}{% endif %}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
+                                    title="{% if sr.absent %}AB - no mark entered - counted as F (0 / {{ sr.full }}){% else %}Pass mark {{ sr.pass_marks }}{% if sr.paper %} &middot; {{ sr.paper.name }}{% endif %}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}">
                                     <div class="mark-row">
                                         {% if sr.absent %}
-                                        <span class="mark-number">&nbsp;</span>
+                                        <span class="mark-number">AB</span>
+                                        <span class="grade-badge grade-f">F</span>
                                         {% else %}
                                         <span class="mark-number">{{ sr.obtained|floatformat:"-2" }}</span>
                                         <span class="grade-badge {% if sr.grade == 'A+' %}grade-a-plus{% elif sr.grade == 'A' %}grade-a{% elif sr.grade == 'A-' %}grade-a-minus{% elif sr.grade == 'B' %}grade-b{% elif sr.grade == 'C' %}grade-c{% elif sr.grade == 'F' %}grade-f{% else %}grade-muted{% endif %}">{{ sr.grade|default:"—" }}</span>
                                         {% endif %}
                                     </div>
-                                    {% if not sr.passed and not sr.absent %}<span class="fail-star">*</span>{% endif %}
+                                    {% if sr.absent %}<span class="fail-star">AB</span>{% elif not sr.passed %}<span class="fail-star">*</span>{% endif %}
                                 </td>
                                 {% endif %}
                                 {% endfor %}
@@ -523,7 +524,7 @@
         </div>
 
         <p class="text-muted small mt-2 d-print-none result-help">
-            &mdash; = no mark entered for that subject. It is never shown as 0, but it is graded <strong>F</strong> and counted as 0 out of its Full Marks.
+            <strong>AB</strong> = Absent (no mark entered). It is graded <strong>F</strong> and counted as 0 out of its Full Marks — overall result shows <strong>Fail</strong>.
             * = the subject did not pass; hover a cell for the part breakdown and pass mark.
             <strong>REL (Religion &amp; Moral Education)</strong> is one column for both religion papers: each student is graded on their own paper.
         </p>

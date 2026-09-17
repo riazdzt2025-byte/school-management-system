@@ -43,6 +43,28 @@
             {% else %}
                 <div class="alert alert-info mb-0">No attendance records found.</div>
             {% endif %}
+            {% if is_paginated %}
+            <nav aria-label="Attendance pagination" class="mt-3">
+                <ul class="pagination justify-content-center mb-0">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?page=1">« First</a></li>
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹ Prev</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">« First</span></li>
+                    <li class="page-item disabled"><span class="page-link">‹ Prev</span></li>
+                    {% endif %}
+                    <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ paginator.num_pages }} — {{ total_records }} total</span></li>
+                    {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next ›</a></li>
+                    <li class="page-item"><a class="page-link" href="?page={{ paginator.num_pages }}">Last »</a></li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">Next ›</span></li>
+                    <li class="page-item disabled"><span class="page-link">Last »</span></li>
+                    {% endif %}
+                </ul>
+                <p class="text-center text-muted small mt-2">100 per page.</p>
+            </nav>
+            {% endif %}
         </div>
     </div>
 </div>
