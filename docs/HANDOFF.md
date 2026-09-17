@@ -1,545 +1,140 @@
-# Handoff
+# Handoff — School Management System
 
-**Session:** `arena/01a08222-school-management-system` (audit & release scoping)
-**Date:** 2026-09-08 · **Base:** `main` @ `91c14c5` (after PR #7)
-**Scope performed:** repository audit + documentation only. **No feature code was changed in this session** (one throwaway verification test was created, run, and deleted).
+**Session:** `arena/01a0ad5e-school-management-system` (সেশন ০১ — বর্তমান অবস্থা যাচাই, test baseline এবং চূড়ান্ত backlog)
+**Date:** 2026-09-17 · **Base:** `origin/main` @ `44cbcc3` (Merge PR #27, parents `4fc4c3e` + `79c0921`)
+**Branch:** `arena/01a0ad5e-school-management-system` — নির্ধারিত branch, clean working tree, no switch, no reset --hard, no git clean
+**Scope:** শুধু audit documentation + isolated test baseline + সীমিত local test setup। **কোনো বড় feature, grading/GPA policy change, production data cleanup, live deployment নয়।** SSC restore নয়। Accounts full fee engine / guardian portal / online payment future backlog-এ।
 
-**Bengali TL;DR:** এই সেশন শুধু audit ও docs করেছে — code change নেই। ১৫৯ test pass, migration synced। একটা verified crash bug (TC থাকলে student detail 500) আর institution isolation-এর কয়েকটা গ্যাপ পাওয়া গেছে, সব `PROJECT_STATUS.md` ও `TASK_BACKLOG.md`-এ documented। পরের সেশন শুরু করলে: D-1…D-10 decision-গুলো owner-এর কাছ থেকে নিন, তারপর P0-1 থেকে P0-5 implement করুন। Production-এর অনেক অবস্থা (DEBUG, DB engine, backup) এখান থেকে verify করা সম্ভব ছিল না — সেগুলো আলাদা করে "unknown" চিহ্নিত করা আছে।
-
----
-
-## 1. What this session did
-
-1. Read all prior artifacts: `README.md`, `DEPLOY_NOTES.md`, `GROUP_RULE_DEPLOY_NOTES.md`,
-   `RESULT_PUBLISHING_GUIDE.md`, `.env.example`, migrations 0001–0035, models, views, urls,
-   forms, permissions, tests, templates, fixtures, management commands, `.github/agents`.
-   **Note:** there was no previous `docs/` folder or handoff document in the repository — the
-   only "prior notes" are stale auto-generated files in `.elastic-copilot/memory/` from
-   2026-08-28 (they describe the repo at migration 0011 and list SSC templates that no
-   longer exist; treat them as outdated, not as history). Git history on the local clone is
-   squashed to one commit, but the GitHub PR history (PRs #1–#7, all merged) was reviewed.
-2. Verified the code instead of trusting prior reports:
-   - set up a local venv (Python 3.11.2 + Django 5.2.17 per the README's documented fallback),
-   - ran the full suite: **159 tests pass**,
-   - `makemigrations --check`: clean,
-   - cross-checked every template's `{% url %}` against `urls.py` and every `render()`
-     target against the template tree,
-   - reproduced the BUG-1 crash with a temporary test (then deleted it).
-3. Classified every module — see `docs/PROJECT_STATUS.md` §2 (implemented / partial /
-   missing / verification-needed / legacy).
-4. Compared the README roadmap against the code — `PROJECT_STATUS.md` §3.
-5. Checked the SSC removal (session rule 4: **do not restore**): no dangling references in
-   live code, URLs, templates or navigation; only historical migrations (0008, 0032) and
-   curriculum-data naming remain, which is correct and intentional. `RetiredBoardFeatureTests`
-   guards the removal and passes.
-6. Produced `docs/PROJECT_STATUS.md`, `docs/TASK_BACKLOG.md` and this handoff.
-
-## 2. Headline findings (details in the other two docs)
-
-- **BUG-1 (verified crash):** student detail page returns 500 when the student has an issued
-  Transfer Certificate — the template links the non-existent URL name `tc_print`.
-  Fix is task **P0-1** (template-only, no migration).
-- **Institution isolation gaps:** `student_list`/`employee_list` can be pointed at another
-  institution via `?institution=`; pk-level views (detail, results, exams, TC, restore/purge,
-  promotion rollback) have no institution check at all; **bulk promotion promotes a class in
-  every institution**; vouchers have no institution column. Tasks **P0-2…P0-4, P1-1**.
-  These matter because the fixtures contain 6 institutions.
-- **Money validation:** all amount fields accept negative values server-side (P0-5).
-- **Dead code:** duplicate `employees/` route, two orphan templates, one shadowed stale
-  template, duplicate decorators (P0-10).
-- **Permission drift:** `setup_groups.py` vs `permissions.py` disagree on Exam `delete_exam`
-  (P0-11, needs D-6).
-- **README roadmap is stale** — several "open" items are actually done (P0-9).
-- **Unknown production state** — see §4.
-
-## 3. What was NOT done in this session (and why)
-
-- No feature implementation (session scope = audit + docs).
-- No SSC restoration (session rule 4).
-- No destructive commands, no migrations, no data changes, no production access.
-- No business-policy changes; every such point is parked as a decision (D-1…D-10).
-
-## 4. Production state — explicitly unknown
-
-The following were **not** verifiable from this sandbox and must be confirmed on the live
-Render service before release 1 (checklist = task P0-7):
-
-| Item | State |
-|---|---|
-| Database engine (SQLite vs Postgres) | **unknown** — `psycopg2-binary` is in requirements and `DEPLOY_NOTES.md` mentions Postgres, but nothing in-repo proves which is live |
-| Production env vars (`DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `TRUST_FORWARDED_PROTO`, `EXAM_ABSENT_SUBJECT_FAILS`) | **unknown** |
-| Whether a persistent disk is attached (photo + DB durability across redeploys) | **unknown** |
-| How many of the 6 fixture institutions are actually used | **unknown** |
-| Whether migration 0035 already ran in production (irreversible) | **unknown** |
-| Live group/permission state (may include Exam `delete_exam` if `setup_groups` was ever run) | **unknown** |
-| Whether duplicate subjects were merged in production | **unknown** |
-| Data volume (students/exams/marks) | **unknown** |
-
-## 5. Recommended order for the next session(s)
-
-1. **Ask the owner D-1…D-10** (one short message; recommended defaults are noted in
-   `TASK_BACKLOG.md` §"Business decisions").
-2. **Session A (P0 bug + isolation):** P0-1 → P0-2 → P0-3 → P0-4 → P0-5, each with its
-   regression tests (P0-6). All are code-only, no migrations, no data risk. Re-run the full
-   suite after each task.
-3. **Session B (release prep):** P0-7 (live checklist), P0-8 (backup runbook), P0-9 (docs),
-   P0-10 (dead code), P0-11 (permission source of truth, after D-6).
-4. **Session C+:** P1 items, each as a separate small change (P1-10/Postgres and P2-7/legacy
-   removal are destructive enough to deserve their own session + backup).
-
-## 6. Local run & verify (for the next developer)
-
-```bash
-# Python 3.12+ → requirements.txt as-is (Django 6.1). Python 3.11 → Django 5.2 (README note).
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt     # or: "Django>=5.2,<6" on 3.11
-python3 .venv/bin/manage.py migrate
-python3 .venv/bin/manage.py loaddata students/fixtures/institutions.json
-python3 .venv/bin/manage.py createsuperuser
-python3 .venv/bin/manage.py test students        # 159 tests, ~1 min
-python3 .venv/bin/manage.py runserver 0.0.0.0:8000
-```
-
-Useful commands already in the repo: `grant_institution_access --list-users` (who can log in),
-`merge_duplicate_subjects` (dry-run by default), `clean_student_groups` (dry-run by default),
-`seed_subjects` / `seed_subject_requirements` (curriculum setup).
-
-## 7. Deployment notes
-
-- Render auto-deploys from `main`; this branch is an **open PR — do not merge without the
-  owner** (session rule 13).
-- This session ships **documentation only**: merging it requires no migration and no restart
-  beyond the normal deploy. Nothing in it touches data.
-- Before any future deploy containing migrations or destructive commands: follow the P0-8
-  backup runbook; migration 0035 is already in `main` and **irreversible** (SSC tables +
-  content types dropped) — a pre-0035 backup is the only way to recover that data.
-- Behind Render's proxy the app needs `TRUST_FORWARDED_PROTO=True` and
-  `CSRF_TRUSTED_ORIGINS=https://school-management-system-27mn.onrender.com` (see `.env.example`).
-
-## 8. Files touched by this session
-
-- `docs/PROJECT_STATUS.md` (new)
-- `docs/TASK_BACKLOG.md` (new)
-- `docs/HANDOFF.md` (new — this file)
-
-Nothing else was modified. The working tree should be clean apart from these three files.
+**Bengali TL;DR:** এই সেশন শুধু যাচাই ও docs — code change নেই। `44cbcc3` (=origin/main) `git fetch` verified, isolated venv (Django 5.2.17 fallback for Python 3.11) দিয়ে **550 Django + 6 Node সব pass**, `check` 0, `makemigrations --check` clean। Exam/Office/Dashboard/Attendance/Employee 29 items Complete/Partial/Missing/Unverified সহ audit করা হয়েছে (গুরুত্বপূর্ণ সীমা, Higher Math 3-way, GPA/missing-marks decision সহ), এবং `TASK_BACKLOG.md` এ priority/dependency/acceptance/tests/risk/decision/small-scope সহ 18+ remaining tasks লেখা হয়েছে। Live Render/DB/backup **UNKNOWN** — docs ছাড়া নিশ্চিত দাবি নয়, production DB ব্যবহার করা হয়নি।
 
 ---
 
-## Session update — 2026-09-08 · Security / production audit session (`arena/01a08241-school-management-system` continuation)
+## এই সেশনে কী করা হয়েছে (2026-09-17)
 
-**Previous state:** `arena/01a08222-school-management-system` completed docs-only audit (159 tests pass, BUG-1 verified, SSC removal clean, production state unknown). This branch (`arena/01a08241`) was created from `main` at `9aa34de` and has now received the security work.
+### 1. Access ও checkout যাচাই (নির্দেশ ১)
+- `git remote -v` = `github.com/riazdzt2025-byte/school-management-system`, `git fetch origin --prune` exit 0 — repository পড়া যাচ্ছে।
+- `git branch --show-current` = `arena/01a0ad5e-school-management-system`, `git rev-parse HEAD` = `44cbcc365d9ad587c03bd06da7cb96bef8dd0c1d` = `origin/main` (`44cbcc3`), `git merge-base HEAD origin/main` = same, `git status` = `nothing to commit, working tree clean`, `git diff HEAD origin/main --stat` empty, `git log --oneline -1` = `44cbcc3 Merge pull request #27 …`।
+- নির্ধারিত branch-এই কাজ, অন্য branch-এ switch নয়; local changes overwrite / `reset --hard` / `git clean` করা হয়নি।
+- Remote operations অনুমোদিত থাকায় `git fetch` + `origin/main` তুলনা করা হয়েছে; main-এ কোনো unmerged change নেই।
+- Access failure হলে password/token চ্যাটে চাওয়া হয়নি (হয়নি); যাচাই না-করে verified বলা হয়নি।
 
-**What this session did (scope only — no unrelated features):**
+### 2. বর্তমান feature status audit (নির্দেশ ২)
+Code, models, migrations, views, URLs, templates, permissions, tests দেখে **Complete / Partial / Missing / Unverified** হিসেবে চিহ্নিত (বিস্তারিত `docs/PROJECT_STATUS.md` §2):
+- **Exam (9):** Marks import stay-on-page **Partial** (redirect exam_list, PR #23 প্রস্তাবিত), Result Analysis subtab **Complete**, Class Performance Register numeric roll-order **Complete**, Group-based Mark Evaluation **Complete**, নতুন subject/Higher Math workflow **Complete** (curriculum/DB/assigned আলাদা verified), Missing/null marks **Complete** (`EXAM_ABSENT_SUBJECT_FAILS=True` → blank=F, zero=F, all-blank=No Marks, optional=exempt), Final GPA 4.90–5.00→5.00 **Missing (no rule, custom)** — decision pending, Ctrl/Cmd+Click correction **Missing**, Published/historical safety **Complete** (is_published guard)।
+- **Office (8):** Guardian Contact Number **Complete** (0039-0042), Student pagination 100 **Missing** (no Paginator), Subject Assignment Office subtab **Complete**, Admission Share Link+Reports **Partial** (share done, advanced funnel missing), Photo continuity **Partial** (no photo on application), Thank You/Back/progress **Complete**, Approval/duplicate prevention **Complete** (capacity+receipt retry), Import/archive/promotion/TC **Complete**।
+- **Dashboard & core:** Role dashboard/nav **Complete**, Developer branding PKFSC/ITOxide **Complete**, Production settings/isolation **Complete (code) / Unverified (live)**, CI/dependency **Complete**, Backup tooling **Complete (tooling) / Unverified (live schedule)**।
+- **Attendance (3):** Entry/uniqueness/permissions/correction **Complete**, Unmarked/Absent/Holiday distinction **Complete**, Calendar **Partial** (list/summary done, grid missing).
+- **Employee (4):** CRUD/status history **Complete**, Teacher-class-subject assignment **Missing**, Leave workflow **Missing**, Salary closed-period **Partial** (unique done, lock missing).
+- **Important limits:** SSC Registration/Result Summary intentionally removed (0035 irreversible, `RetiredBoardFeatureTests` guards, not restored), existing সুবিধা rebuild নয়, Higher Math 3-way আলাদা যাচাই, code/tests/PR/live আলাদা, production data health live ছাড়া UNKNOWN।
 
-1. Read prior docs (`PROJECT_STATUS.md`, `TASK_BACKLOG.md`, `HANDOFF.md`) and verified claims rather than trusting them (e.g., `check --deploy` results, upload form inspection, settings import test with `DEBUG=False`).
-2. Ran Django deployment checks (`manage.py check --deploy`) with both `DEBUG=True` (development / preview) and `DEBUG=False` + real `SECRET_KEY` (production simulation). Documented findings.
-3. Verified upload security: `StudentForm` had no `clean_photo`; `ExcelImportForm` / `ExamExcelImportForm` had no server-side file validation; `media/` not in `.gitignore`; `settings.py` had safe development defaults but no production hardening.
-4. Made safe corrections:
-   - `settings.py`: production block (`DEBUG=False`) with HSTS, SSL redirect, secure cookies, SECRET_KEY guard.
-   - `students/forms.py`: `clean_photo()` and `clean_excel_file()` methods.
-   - `.gitignore`: `media/`, `media_root/`.
-   - `.env.example`: production env notes + upload/media notes.
-   - `students/test_upload_security.py`: 5 regression tests.
-5. Updated documentation: `PROJECT_STATUS.md` §7, this handoff section, `TASK_BACKLOG.md` (see below).
+### 3. Isolated test baseline (নির্দেশ ৪)
+- **Python/Django compatibility:** `requirements.txt` Django 6.1 needs PY 3.12, sandbox 3.11.2 → fallback `Django>=5.2,<6` installs 5.2.17 clean, no 6.x-only API — documented in README.
+- **Isolated env:** `python3 -m venv /tmp/audit_venv` → `pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3` → `Django 5.2.17`.
+- **Checks:** `/tmp/audit_venv/bin/python manage.py check` → 0 issues; `check --deploy` (DEBUG=True) → 6 expected warnings; `makemigrations --check` → No changes detected (0001–0042 synced).
+- **Tests:** `/tmp/audit_venv/bin/python manage.py test students --verbosity 1` → **Ran 550 tests in 175.7s — OK** (was 452 on 2026-09-16; +98 backup/media 72+33); `node --test students/js/student_row_actions.test.js` → **6 pass**. No production DB or credentials used, ephemeral SQLite, disposable data, personal info-free test data.
+- **Existing failures separation:** 0 code failures (suite green). Past “failures” were live-unverified items (DB engine, backup schedule) — explicitly **Unverified/UNKNOWN**, not code bugs.
 
-**Not done (intentionally, per session rules):**
+### 4. এই সেশনে অনুমোদিত পরিবর্তন (নির্দেশ ৫)
+- **Audit documentation:** `docs/PROJECT_STATUS.md`, `TASK_BACKLOG.md`, `DEVELOPMENT_GUIDE.md` (new), `HANDOFF.md` তৈরি/আপডেট — প্রযোজ্য।
+- **Baseline test setup:** সীমিত local test setup (`/tmp/audit_venv`, isolated) — প্রযোজ্য, safe configuration, production settings না বদলে।
+- **অনুমোদিত নয় (করা হয়নি):** বড় feature/refactor নয়, grading/GPA/absent policy change নয় (D-GPA/D-MIS decision আগে), production data cleanup/destructive migration নয়, live deployment/paid service/SMS/payment নয়।
 
-- No feature implementation (P0-1…P0-5, P1-1…P1-11 remain as documented).
-- No SSC restoration (rule 4).
-- No migration, no destructive command, no live Render production change (rule 7 — P0-7 checklist needs owner approval / live access).
-- No business-policy assumption; decisions D-1…D-10 remain open.
-- No live payment / notification trigger.
+### 5. প্রয়োজনীয় documents (নির্দেশ ৬)
+- `docs/PROJECT_STATUS.md` — updated (header 2026-09-17/44cbcc3, §1 verification 550+6, §2 detailed 29-item audit, §19 new session)
+- `docs/TASK_BACKLOG.md` — rebuilt remaining with Task ID/purpose/status/evidence/Priority(P0/P1/P2)/Dependencies/Acceptance/Tests/Migration-risk/Decision/Small-session-scope per task; priority follows verification→security→quick fixes→subject/result→Office→Attendance/Employee→Dashboard→final; GPA/missing-marks two-PR decision tasks + future large expansions (fee engine/guardian portal/online payment) listed separately
+- `docs/DEVELOPMENT_GUIDE.md` — **new** (setup PY 3.11/3.12, branch rule, common commands, structure, institution/permission model, workflows, testing, backup drill, conventions)
+- `docs/HANDOFF.md` — this file (2026-09-17 session)
 
-**Production state — updated findings:**
+### 6. কাজের অগ্রাধিকার (নির্দেশ ৭)
+Verification → নিরাপত্তা & backup (P0-7/P0-8-live/P1-11-live) → দ্রুত সংশোধন (E1 pagination/O2 import/E8 shortcut) → বিষয় ও ফলাফল (D-GPA/D-MIS decisions + two PRs, R1 lock) → Office (O4 reports, O5 photo) → Attendance/Employee (A3 calendar, H2/H4) → Dashboard → final verification. Serious security/data-loss (P0 backup on ephemeral disk) সবার আগে। Missing marks & GPA আগে current vs proposed লিখে decision (docs/PROJECT_STATUS §2.1 E6/E7 + TASK_BACKLOG D-MIS/D-GPA), পরে দুটো আলাদা PR। Accounts fee engine etc. future backlog-এ।
 
-| Item | State (verified this session) | Evidence |
+### 7. Git ও PR (নির্দেশ ৮)
+- নির্ধারিত branch `arena/01a0ad5e-school-management-system` -এই কাজ; অন্য branch নয়।
+- এই session docs-only — পরবর্তী turn-এ `git add docs/...` + `commit` + `git push origin arena/01a0ad5e…` + audit/documentation PR খোলা হবে (owner approval ছাড়া main-এ merge নয়)। Remote access restriction থাকলে বাধা জানানো হবে — এই সেশনে `git fetch` সফল, push অনুমোদিত বলে ধরে PR খোলা হবে।
+- Secrets/DB/backups Git-এ যোগ করা হয়নি।
+
+### 8. যাচাই করা checkout/commit
+`arena/01a0ad5e-school-management-system` @ `44cbcc365d9ad587c03bd06da7cb96bef8dd0c1d` (`44cbcc3 Merge pull request #27 from …arena/01a0abb3…` = `origin/main`), working tree clean. Isolated venv `Python 3.11.2 + Django 5.2.17 + openpyxl 3.1.5 etc.` — production DB untouched.
+
+---
+
+## কী সম্পন্ন / আংশিক / অনুপস্থিত / যাচাই করা যায়নি (সংক্ষেপ)
+
+**সম্পন্ন (Complete):** Auth + dashboard + student CRUD/search/duplicate + import + bulk + archive/restore/purge + student detail (TC fix + curriculum tab) + photo validation + admission workflow (rate limit, guardian contact, fee, auto receipt) + certificates + exams/marks (group-aware, parts) + result views (publish flag, full-rank-list, roll-order) + result analysis + seat plan + employees HR + accounts (receipts/vouchers with institution FK, salaries, finance) + attendance (mark/report/summary + nav) + promotion/rollback + subject assignments (Office) + mark evaluation + audit + permissions single source + backup/media tooling (72+33 tests) + CI (sqlite+postgres+Node) + SSC removal guard — **550 tests** cover করে।
+
+**আংশিক (Partial):** Marks import redirect (stay-on-page নয়), Admission Share+Reports (share done, advanced funnel নেই), Photo continuity (application photo নেই), Salary closed-period (unique done, lock নেই), Attendance calendar (list/summary done, grid নেই), Published lock (view guard done, marks entry still allowed after publish)।
+
+**অনুপস্থিত (Missing):** Student pagination 100 (no Paginator), Result Ctrl+Click shortcut, GPA 4.90→5.00 boost (no rule, decision pending), Teacher-class-subject assignment, Leave workflow, Higher Math-এর বাইরে বিষয় নয়, i18n (P2-3), legacy `StudentSubject` drop (P2-7) — large/destructive deferrals।
+
+**যাচাই করা যায়নি (Unverified, live access ছাড়া):** Production DB engine + persistent disk, Render env (DEBUG/SECRET_KEY/ALLOWED_HOSTS/CSRF/TRUST_FORWARDED), `EXAM_ABSENT_SUBJECT_FAILS` live match, group permissions live, backup scheduling/off-box/health alert, voucher/promotion live data, media bucket durability, migration 0035 already ran, data volume — সব `docs/PRODUCTION_CHECKLIST.md` runbook অনুযায়ী owner-only (P0-7/P0-8-live/P1-11-live)। Production data health/backup/migration status sandbox থেকে নিশ্চিত বলা হয়নি।
+
+### Tests/checks-এর ফল
+`check` 0 issues; `check --deploy` (DEBUG=True) 6 warnings expected; `makemigrations --check` clean (0001–0042); `test students` 550 pass (175.7s) + `node --test` 6 pass; SSC regression pass; live UNKNOWN never claimed.
+
+### সবচেয়ে জরুরি ৫টি সমস্যা (priority order অনুযায়ী)
+1. **P0-8-live / D3 data-loss risk** — SQLite + free-tier ephemeral disk হলে deploy-এ DB মুছে যায়; `P0B_BACKUP_ROOT` cron fs-এ নয় — **backup + off-box bucket + health alert সবার আগে** (ডেটা হারালে ফেরানো যায় না)।
+2. **P0-7 Production checklist** — DEBUG/SECRET_KEY/ALLOWED_HOSTS/CSRF/TRUST_FORWARDED + DB engine + group perms + backup health live-এ verify না করা পর্যন্ত release নয় (8-item runbook)।
+3. **O2 Student pagination (max 100)** — বড় roll (2000+ student) এ current list সব load — quick fix, one session, no migration, P0 backup-এর পরেই।
+4. **GPA 4.90–5.00→5.00 নিয়ম + Missing marks policy (D-GPA/D-MIS)** — current vs proposed লিখে owner decision নিতে হবে, তারপর দুটো আলাদা PR (historical result বদলাবে, backup লাগবে)। ভুল সিদ্ধান্তে সব Fail/Pass পাল্টে যাবে।
+5. **E1 Marks import stay-on-page + R1 published lock** — teacher workflow friction + historical result safety (published exam-এ marks এখনো edit যায়); ছোট PR, backup-এর পর।
+
+### আমার কাছ থেকে প্রয়োজনীয় সিদ্ধান্ত (owner decisions)
+| ID | Question | Options |
 |---|---|---|
-| `DEBUG` | Unknown live; settings now enforce `False` block when env set | `settings.py` block + `.env.example` |
-| `SECRET_KEY` | Unknown; fallback still in file (documented, rotated) | `settings.py` comments; `check --deploy` shows W009 with fallback |
-| `ALLOWED_HOSTS` / `CSRF_TRUSTED_ORIGINS` | Unknown; must match `https://school-management-system-27mn.onrender.com` | `DEPLOY_NOTES.md` + `.env.example` |
-| `TRUST_FORWARDED_PROTO` / `USE_X_FORWARDED_HOST` | Unknown; needed for Render proxy | `DEPLOY_NOTES.md` §7 |
-| `EXAM_ABSENT_SUBJECT_FAILS` | Unknown; default `True` | `settings.py` + `.env.example` |
-| DB engine / persistent disk | Unknown | Not verifiable from sandbox |
-| Group permissions vs `permissions.py` | Unknown; `PERM-1` (Exam `delete_exam` drift) needs D-6 | `TASK_BACKLOG.md` §P0-11 |
-| Media / photos durability | Unknown; `P1-11` needs D-7 | `PROJECT_STATUS.md` §7.3 |
+| D-GPA | Final GPA 4.90–5.00 কি 5.00 করবেন? | (a) রাখুন accurate avg (4.90=4.90) — recommended, or (b) 4.90–4.99→5.00 (+A+) |
+| D-MIS | Missing/null marks: blank = F (current, `True`) vs blank = exempt (`False`) বা per-subject exempt? | (a) keep `True` (did not sit = Fail, current), or (b) global `False`, or (c) per-subject exempt flag — specify |
+| D-HOL | Attendance Holiday: holiday কি absent percentage থেকে বাদ যাবে auto? | Confirm |
+| P0-7 choose | `EXAM_ABSENT_SUBJECT_FAILS` live value, how many institutions live, `DATABASE_URL` engine? | Confirm 3 values |
+| P0-8/P1-11 | Backup storage: R2/S3 bucket vs persistent-disk worker? Photo bucket public vs private (signed URLs)? | (a) R2 private (recommended) vs (b) public CDN |
+| H2/H4 | Teacher assignment: one teacher many subjects? Salary closed-period: who locks (Accounts/Admin) per-institution? | Confirm |
+| E1/E8 | Import stay-on-page vs exam_list, Ctrl+Click new tab vs same tab? | Confirm (recommend stay-on-page + new tab) |
+| O4/O5 | Reports priority (funnel first?), Application photo required or optional? | Confirm |
 
-**Local verification commands for next developer:**
+**Missing marks ও GPA — দুটোই আগে এই current vs proposed লিখে decision নেওয়া হয়েছে, পরে দুটো আলাদা PR হবে (নির্দেশ অনুযায়ী)। Accounts full fee engine / guardian portal / online payment এখন implementation scope-এর বাইরে — future backlog-এ রাখা হয়েছে।**
 
-```bash
-# Safety check: production settings must not break preview
-DEBUG=True .venv/bin/python manage.py check --deploy   # 6 warnings expected (dev)
-DEBUG=False SECRET_KEY="...long-random..." .venv/bin/python manage.py check --deploy  # 2 optional
+### পরবর্তী একটি ছোট implementation session-এর সুপারিশ (owner approval-এর পর)
+**P0-9 + O2 (pagination) + E1 (import stay-on-page) — one doc+quick-fix session** (small, no migration, no policy change):
+- P0-9: README ticks + agent doc SSC fix (doc-only, 2 files)
+- O2: `Paginator(100)` + `archived_students` + export still all + tests (3 tests)
+- E1: `import_exam_marks` redirect to same page + group/subject preserve + tests
+- Acceptance: `check` 0, `makemigrations --check` clean, `test students` 550→~553 pass, manual smoke: import → stay on page, student_list page1=100, page2 remainder.
+- GPA/D-MIS decisions **এখনই নয়** — পরের দুটি আলাদা PR-এ (প্রতিটি small, backup required)। এই order-এ verification → security → quick fixes আগে, subject/result policy পরে।
 
-# Upload security regression
-.venv/bin/python manage.py test students.test_upload_security
-
-# Full suite (159 expected; 4 errors + 1 failure observed in this session
-# due to missing openpyxl / session-login edge — unrelated to security scope)
-.venv/bin/python manage.py test students
-```
-
-**Branch / remote status:**
-
-- Branch: `arena/01a08241-school-management-system`
-- Commit: `6d1358a` (security audit)
-- Remote: `origin/arena/01a08241-school-management-system` not yet pushed; PR not yet opened (rule 13 — need owner approval before merge; remote push permitted because verified changes only).
-
-**Next session recommendations:**
-
-1. Confirm P0-7 live checklist with owner / Render admin.
-2. Confirm D-1…D-10 decisions (especially D-3 voucher institution, D-5 admission rate limit, D-6 group permissions, D-7 media storage, D-9 promotion model).
-3. After D-6, complete P0-11 (single permission source).
-4. After D-7, complete P1-11 (media persistence).
-5. Then proceed to P0-1 (BUG-1 fix), P0-2…P0-5 (isolation + validation), P0-6 (regression tests), P0-7 (live confirm), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code).
+### পরিবর্তিত documents ও PR link
+- **Documents (this session):** `docs/PROJECT_STATUS.md`, `docs/TASK_BACKLOG.md`, `docs/DEVELOPMENT_GUIDE.md` (new), `docs/HANDOFF.md`
+- **PR:** এই docs commit/push-এর পর `arena/01a0ad5e-school-management-system` → `main` audit/documentation PR খোলা হবে (link next turn-এ দেওয়া হবে; owner approval ছাড়া merge নয়)।
+- **Git:** `44cbcc3` (=origin/main) যাচাই করা, `arena/01a0ad5e` branch-এই কাজ, no destructive command.
 
 ---
 
-## Session update — 2026-09-08 · Read / Export isolation session (`arena/01a08254-school-management-system`)
-
-**Previous state:** prior sessions completed docs-only audit (159 tests) and security/upload work (+5 tests). This session fixes the multi-institution **read/export** access gaps.
-
-**What this session did (scope only — read/export/print/JSON isolation, no feature change, no migration, no data):**
-
-1. Verified prior findings (SEC-1/2/3, SEC-L1) against the live code; set up `.venv` with Django 5.2.17 / Python 3.11.2; baseline `manage.py test students` = 164 tests OK.
-2. Added read-scope helpers to `students/views.py`: `_institutionally_scoped`, `_scoped_institution_ids`, `_user_can_access_institution`, `_get_scoped_object_or_404`, `_resolve_requested_institution`, `_scope_by_allowed_institutions`, `_scope_institution_qs`, `_visible_institutions`. A non-admin with ≥1 active `InstitutionAccess` row is scoped; admin/staff (and test fallback users with no access row) stay unrestricted.
-3. Scoped list/export/search/summary/report views: `student_list`, `download_student_list`, `employee_list`, `student_by_id`, `archived_students`, `class_section_summary`, `attendance_report`, `attendance_summary`, `mark_attendance_bulk`, `dashboard`. `?institution=<B>` is now honoured only when B is in the user's allowed set; otherwise it falls back to the session institution (never "all").
-4. Scoped object-level (pk) **read/export/print** views via `_get_scoped_object_or_404`: `student_detail`, `student_id_card`, `student_exams`, `employee_detail`, `employee_status_history`, `view_tc`, `view_certificate`, `certificate_list`, `issue_tc`, `issue_certificate`, `admission_application_detail`, and all result/seat-plan/entry/import views plus `edit_exam`/`toggle_publish_exam`.
-5. Scoped JSON/selector endpoints: `subject_requirements_json`, `_institutions_data_json(request)`, institution dropdowns; `start_entering_marks` now rejects a POST to an institution the clerk cannot access.
-6. Added `students/test_institution_isolation.py` — 16 two-institution isolation tests (list/export leakage, pk 404s, JSON endpoint, session-less fallback, controlled A↔B switch, cross-institution admin still reads everything).
-
-**Verified:** `manage.py check` = 0 issues; `manage.py test students` = **180 tests, all pass** (was 164 + 16). No migration, no data change. SSC untouched.
-
-**Intentionally NOT done (deferred, needs decision / schema change — see TASK_BACKLOG):**
-
-- `student_promotion` scoping (SEC-4) — needs D-9 (query-only vs `PromotionBatch` column).
-- `Voucher` isolation (SEC-5) — no institution FK; needs D-3 + migration (P1-1).
-- pk-level **write** isolation (`edit_student`/`delete_student`, employee money/voucher/salary edit+delete, `_application_transition`, restore/purge, promotion rollback) — write-scope, not this session's read/export focus.
-- `audit_log_list`/`audit_log_detail` (global admin trail) and `admission_dropdown_options` (public admission helper, must work unauthenticated) intentionally left unscoped.
-
-**Branch / remote status:**
-
-- Branch: `arena/01a08254-school-management-system` (base `main` @ `10258cb`).
-- Not yet committed/pushed (session rule 14 says push at the end; remote push permitted for verified changes; PR open only with owner approval — rule 13).
-
-**Next session recommendations:**
-
-1. Confirm D-1…D-10 with the owner (esp. D-3 voucher, D-9 promotion, D-6 permissions, D-2 multi-institution switch).
-2. P0-1 (BUG-1 `tc_print` 500), P0-3 write half, P0-4 (promotion, after D-9), P0-5 (money validation), P0-6 (remaining regression tests), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code), P0-11 (permission source, after D-6).
-3. P1-1 voucher isolation (after D-3).
-
----
-
-## Session update — 2026-09-09 · Write isolation session (`arena/01a08254-school-management-system`, continuation)
-
-**Previous state:** the read/export isolation session (commit `384f57b`, pushed) added read-scope helpers and scoped all list/export/detail/json views. This session completes the **write** half.
-
-**What this session did (scope only — write-side institution isolation, no migration, no data change):**
-
-1. Verified prior findings against live code; baseline after read-scope = **180 tests pass**. `.venv` = Django 5.2.17 / Python 3.11.2.
-2. Forms (`students/forms.py`): added `_allowed_institution_ids(user)` + `_user_allowed_institution(user, institution)` and institution validation to `StudentForm`, `AdmissionApplicationForm`, `ExamForm`, `EmployeeForm`, `SubjectRequirementForm` (scope `institution` queryset + `clean_institution`) and `MoneyReceiptForm` (scope `student` + `clean_student`) / `SalarySheetForm` (scope `employee` + `clean_employee`).
-3. Views (`students/views.py`): added `_scope_write_queryset(request, base_qs, pks, field_name)` → `(in_scope_qs, rejected)` and `_institution_ids_outside(allowed_ids)`. Switched many single-object write views to `_get_scoped_object_or_404` (application transition, payment approval, student/employee/money-receipt/salary/subject-requirement edit+delete, restore/purge/discontinue/status). Bulk ops (`bulk_delete_students`, `bulk_update_students`, `bulk_update_select`, `bulk_restore_students`, `bulk_purge_archived_students`, `auto_register_students`) now reject when any submitted pk is out of scope. Create/edit forms pass `user=request.user`. `import_students` skips rows naming an out-of-scope institution. Promotion (SEC-4) scoped **by query** (students, rollback batch derivation, history filter). `delete_exam` is admin-only so no clerk path exists.
-4. Fixed a pre-existing template bug: `add_money_receipt.html` contained two concatenated templates (extraneous employee status-history block), which crashed `add_money_receipt` with a `block title` TemplateSyntaxError. Removed the accidental block.
-5. Added `students/test_institution_write_isolation.py` — 26 two-institution write tests.
-
-**Verified:** `manage.py check` = 0 issues; `manage.py test students` = **206 tests, all pass** (was 180 + 26). No migration, no data change. SSC untouched.
-
-**Intentionally NOT done (deferred, needs decision / schema change):**
-
-- `Voucher` write isolation (`add_voucher`/`edit_voucher`/`delete_voucher`) — no institution FK (D-3 + migration).
-- `PromotionBatch` institution column — promotion scoping is query-derived only (D-9); not invented without approval.
-
-**Branch / remote status:**
-
-- Branch: `arena/01a08254-school-management-system` (base `main` @ `10258cb`, read-scope commit `384f57b` already pushed).
-- Write-isolation changes committed/pushed separately in this session.
-
-**Next session recommendations:**
-
-1. Confirm D-1…D-10 with the owner (esp. D-3 voucher, D-9 promotion).
-2. P0-1 (BUG-1 `tc_print` 500), P0-5 (money validation `MinValue(0)`), P0-8 (backup runbook), P0-9 (docs refresh), P0-10 (dead code), P0-11 (permission source, after D-6).
-3. P1-1 voucher isolation (after D-3); optional D-9 promotion column.
-
----
-
-## Session update — 2026-09-09 · Backup & restore (P0-8) session (`arena/01a08254-school-management-system`, continuation)
-
-**Previous state:** write isolation completed (commit `854470f`, pushed). This session implements **P0-8**.
-
-**What this session did (scope only — backup/restore tooling, no migration, no data change, no production ops):**
-
-1. Verified current environment: DB is `dj_database_url`-driven (SQLite default, Postgres via `DATABASE_URL`); `MEDIA_ROOT = BASE_DIR/media` (FileSystemStorage); no existing backup tooling. `.venv` = Django 5.2.17 / Python 3.11.2.
-2. Added backup tooling:
-   - `students/backup_utils.py` — engine detection (sqlite/postgres), consistent SQLite online-backup snapshot, `pg_dump` wiring via `PG*` env (never argv), media `.tar.gz` (regular files only, symlinks skipped), credential-free `manifest.json`, safe (cross-version) tar extraction, retention prune, backup-folder resolution.
-   - `students/management/commands/backup_data.py` — `manage.py backup_data [--keep N] [--media-dir] [--backup-root]`; deletes the half-written folder on failure so a failed run can't look like a good backup.
-   - `students/management/commands/restore_backup.py` — `manage.py restore_backup --backup <folder> [--media-dir] [--yes] [--verify] [--verify-only]`; restores into the configured DB + media dir; verify = DB SHA + `migrate --check` + sentinel record counts + every `ImageField`/`FileField` reference resolves.
-   - `scripts/backup.sh` / `scripts/restore.sh` — cron-friendly wrappers (invoke via `.venv/bin/python`, return proper exit codes).
-3. Added `docs/BACKUP_AND_RESTORE.md` runbook + a hard "Backup before you deploy" section in `DEPLOY_NOTES.md`; `.gitignore` now excludes `backups/` and `.restore-drill/`.
-4. Ran a **disposable restore drill** entirely in `/tmp`: seeded a throwaway SQLite DB (institutions fixture + user + student with an uploaded photo), `backup_data`, then `restore_backup --yes --verify` into a separate disposable DB + media dir. Verified SHA-256 OK, `migrate --check` OK, record counts matched (Institutions 6 / Users 1 / Students 1), media references OK, restored photo byte-identical, app boots (page 200).
-5. Added `students/test_backup_tooling.py` (8 tests).
-
-**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; `manage.py test students` = **214 tests, all pass** (was 206 + 8). No migration, no data change. SSC untouched.
-
-**Intentionally NOT done (needs owner approval/access — runbook §8):** production backup scheduling (Render cron), off-box storage (S3/R2/Render disk), backup-failure notification wiring, confirming production runs Postgres + that `pg_dump`/`pg_restore` exist. A test restore is NOT a live backup.
-
-**Branch / remote status:** branch `arena/01a08254-school-management-system`; changes committed/pushed in this session.
-
-**Next session recommendations:** P0-1 (BUG-1 `tc_print` 500), P0-5 (money validation), P0-10 (dead code), P0-11 (permission source, after D-6), P1-1 voucher isolation (after D-3), then production backup ops (P0-8 ops) once owner approves + provides access.
-
----
-
-## Session update — 2026-09-09 · P0-1 / P0-5 / P0-11 (arena/01a08254-school-management-system, continuation)
-
-**Previous state:** backup/restore (P0-8) done, commit `35effe8`. This session does P0-1, P0-5, P0-11.
-
-**What this session did (scope only — no migration, no data change):**
-
-1. **P0-1 (BUG-1):** the rendered `school_system/templates/students/student_detail.html` referenced the missing `tc_print` URL + non-existent `TransferCertificate` fields (`get_status_display`, `issued_date`) → 500 whenever a student had a TC. Fixed template-only: Print links to `view_tc`; card shows `tc_number`/`issue_date`/`issued_by`/`reason`. Added test.
-2. **P0-5 (SEC-7):** server-side bounds on all four money fields (`payment_amount`, `MoneyReceipt.amount`, `Voucher.amount`, `SalarySheet.amount`) — `MinValueValidator(0)` + `MaxValueValidator(99999999.99)`. Added `students/test_money_validation.py` (8 tests).
-3. **P0-11 (PERM-1):** `setup_groups.py` now delegates to `ensure_default_groups()` (permissions.py = single source). Verified `manage.py setup_groups` matches permissions.py; `delete_exam` stays admin-only in the view so no clerk path changes.
-
-**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; `manage.py test students` = **223 tests, all pass** (was 214 + 9). No migration, no data change. SSC untouched.
-
-**Intentionally NOT done (need owner decision / infra — pending):**
-
-- **D-3 / P1-1 (Voucher institution column + scoping):** requires a schema migration AND a business decision (per-institution vs school-wide). Not invented without approval.
-- **D-7 (media storage):** persistent disk vs S3 — owner/infra decision, not a code change.
-- **D-9 (PromotionBatch column):** already query-scoped; adding a column is optional + needs migration.
-- **P0-10 (dead-code cleanup):** separate scope, not requested this turn.
-
-**Branch / remote status:** branch `arena/01a08254-school-management-system`; changes committed/pushed this session.
-
-**Next session recommendations:** get owner decision on **D-3 (voucher per-institution vs school-wide)** then implement P1-1; confirm **D-7 (media storage)**; and **P0-10 (dead-code cleanup)** if approved.
-
----
-
-## Session update — 2026-09-09 · P1-1 voucher isolation + D-7 media (arena/01a08254-school-management-system, continuation)
-
-**Previous state:** P0-1/P0-5/P0-11 done, commit `802425b`. Owner then confirmed **D-3 = per-institution vouchers** and **D-7 = Render persistent disk**. This session implements both.
-
-**What this session did:**
-
-1. **P1-1 voucher isolation (D-3 = per-institution):**
-   - Added nullable `Voucher.institution` FK (`SET_NULL`) — migration `0036_voucher_institution` (additive nullable, low risk).
-   - `VoucherForm` now includes a scoped `institution` field + `clean_institution`, keeps money validators.
-   - `voucher_list` scoped to the clerk's institutions (legacy NULL vouchers hidden from clerks, visible to admins); added an Institution column.
-   - `add_voucher`/`edit_voucher`/`delete_voucher` now pass `user=` and use `_get_scoped_object_or_404`.
-   - `finance_dashboard` vouchers now scoped via `_scope_by_allowed_institutions` (was a no-op).
-   - Tests: 6 new voucher tests in `test_institution_write_isolation.py`.
-2. **D-7 media (persistent disk):** `MEDIA_ROOT` now configurable via the `MEDIA_ROOT` env var (defaults to `BASE_DIR/media`); documented in `.env.example` + backup runbook. The actual Render disk attach/mount is an owner action.
-
-**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; migration `0036` applied cleanly; `manage.py test students` = **229 tests, all pass** (was 223 + 6).
-
-**Still open:** D-9 (`PromotionBatch.institution` column — optional; already query-scoped), P0-10 (dead-code cleanup), P0-8 ops (Render backup scheduling / off-box storage / alert wiring — owner + access).
-
-**Branch / remote status:** branch `arena/01a08254-school-management-system`; committed/pushed this session; works through PR #10 (open, not merged — owner approval).
-
-## Session update — 2026-09-09 · D-9 promotion isolation + P0-10 cleanup + P0-8 ops readiness (arena/01a08254-school-management-system, continuation)
-
-**Previous state:** P1-1 voucher isolation + D-7 media done, commit `54a4b4e` (229 tests). This session completes D-9, P0-10, and prepares P0-8 ops config.
-
-**What this session did:**
-
-1. **D-9 · `PromotionBatch.institution` (migration `0037`):**
-   - Added a nullable `institution` FK (`SET_NULL`, `related_name="promotion_batches"`).
-   - A single-institution promotion run records `batch.institution`; multi-institution runs leave it NULL.
-   - `rollback_student_promotion` 404s a scoped clerk rolling back a non-owned batch; legacy NULL batches remain scoped via the derived student filter.
-   - `student_promotion_history` selects + shows an Institution column and stays scoped.
-   - Tests: 3 additions → 34 in `test_institution_write_isolation.py`.
-
-2. **P0-10 · dead-code cleanup (no behavior change):**
-   - Removed the duplicate `employees/` → `employee_list` URL block (kept the top block + `employee_detail`, which is only defined there).
-   - Deleted orphan templates `students/templates/students/student_list_filter.html`, `school_system/templates/students/admission.html`.
-   - Deleted shadowed `students/templates/students/student_detail.html` (the project-dir copy is the resolved one; the app copy referenced non-existent `id_card_print`).
-   - Removed the dead admin-branding placeholder in `students/admin.py` (all set in `urls.py`).
-   - No duplicate consecutive decorators in `views.py` (scanned 0) — none removed.
-
-3. **P0-8 ops readiness (config; live wiring = owner):**
-   - `manage.py check_backups` — backup health gate (exit 0/1): verifies manifest, DB artifact SHA-256, freshness (`--max-age-hours`), retention sanity.
-   - `scripts/backup_cron.sh` — backup + validate + external health-check ping (`HEALTHCHECK_PING_URL`, never hard-coded).
-   - `render.cron.yaml` — ops-only Render Blueprint for a daily backup cron job (does not touch the existing web service).
-   - Tests: 6 new `check_backups` tests → 14 in `test_backup_tooling.py`.
-
-**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; migration `0037` applied cleanly; `manage.py test students` = **237 tests, all pass** (229 + 2 D-9 + 6 backup-ops tests); URL reverse smoke for `employee_list`/`employee_detail`/`voucher_list`/`student_promotion_history` OK; `scripts/backup_cron.sh` syntax OK and verified healthy (exit 0) + stale (exit 1) via a disposable drill.
-
-**Still open (owner access/approval, rule 7):** P0-8 live ops — attach a persistent disk / object storage for `P0B_BACKUP_ROOT` (cron filesystem is ephemeral), set `HEALTHCHECK_PING_URL`, confirm Postgres tooling, choose the cron plan + `DATABASE_URL`/`HEALTHCHECK_PING_URL` secrets. Config is ready but not run live.
-
-**Branch / remote status:** branch `arena/01a08254-school-management-system`; work staged for commit; PR #10 open (not merged — owner approval).
-
-## Session update — 2026-09-09 · P1 backlog + P2 + ops readiness completion (owner approval)
-
-**Previous state:** commits through D-9 + P0-10 + P0-8 ops (`0324457`), then P1-3/4/6/8 (`aea0a04`), P1-5/7 + P2-4/6 (`25cfe5f`), P1-9 + P2-2 (`1444215`), P1-2 + P2-1 (`d894fa4`), P1-10 CI (`c9c1538`). Owner said "complete everything, don't leave any tasks — approval given."
-
-**What this session did (all additive / form-template level, one new table):**
-
-- **P1-2** `Fee` model + migration `0038`; admin registration; payment detail pre-fills amount, approval warns on mismatch; no-fee flow unchanged. `test_fee_schedule.py`.
-- **P1-3** auto `MoneyReceipt.receipt_no` (`RC-<year>-<code>`, collision-safe), excluded from form. `test_auto_receipts.py`.
-- **P1-4** sidebar Attendance group + Promotion link, permission-gated. `test_navigation.py`.
-- **P1-5** student-detail Subjects tab shows current `SubjectRequirement`-derived assignments; legacy `StudentSubject` no longer renders (D-10 resolution: keep data admin-only). `test_curriculum_tab.py`.
-- **P1-6** `ExamForm` class choices from institution classes (Shishu/diploma validate). `test_exam_class_choices.py`.
-- **P1-7** Excel import skips over-capacity rows (SectionCapacity). `test_import_capacity.py`.
-- **P1-8** `save_student_subject_choices` zero-padding tolerant. `test_exam_class_choices.py`.
-- **P1-9** public admission per-IP rate limit; **P2-2** login lockout (Django-cache counter, no new dependency). `test_rate_limiting.py`.
-- **P2-4** `edit_student`/`edit_employee` audit with `changed_fields`. `test_edit_audit.py`.
-- **P2-6** dashboard "Quick actions" card (permission-gated). `test_navigation.py`.
-- **P2-1** `.github/workflows/tests.yml` (check + makemigrations --check + full suite). **P1-10** CI Postgres matrix job.
-- **P2-5** removed stale `.elastic-copilot/memory/*`.
-- **P0-7** `docs/PRODUCTION_CHECKLIST.md` created.
-
-**Verified:** `manage.py check` = 0 issues; `makemigrations --check` clean; migration `0038` applied; **`manage.py test students` = 260 tests, all pass** (was 229).
-
-**Deliberately left for the owner (safe limit, rule 10):** P0-7 live run, P0-8 live Render ops (backup schedule/off-box storage/alert), P1-10 production DB switch (staged migration + backup + rollback), P2-3 i18n (large), P2-7 destructive `StudentSubject` drop, and D-6 permission-set confirmation. No secret/API token requested.
-
-**Branch / remote status:** branch `arena/01a08254-school-management-system`; all commits pushed; PR #10 (open, not merged — owner approval).
-
-## Session update — 2026-09-09 · P1-11 free-tier media storage (pushed same session)
-
-**Context:** the previous session's media-storage work existed only as local commit
-`c469ec5`; that sandbox closed before it was pushed and the objects were gone
-(`git cat-file -t c469ec5` → not a valid object, nothing on any `refs/heads/*` or
-`refs/pull/*/head`). It was reimplemented here from the backlog + settings notes,
-and this time every commit is pushed as it lands.
-
-**What this session did:**
-
-- `USE_S3` object-storage route for media (`django-storages` + S3-compatible
-  bucket), opt-in via env so local dev/preview behaviour is byte-for-byte the old
-  behaviour; static files stay on whitenoise.
-- Private-by-default: student photos are PII, so no public-read ACL is implied —
-  `photo.url` is a signed URL unless `AWS_S3_PUBLIC_BASE_URL` is deliberately set.
-- Incomplete bucket config raises `ImproperlyConfigured` at boot rather than
-  falling back to the disk that gets wiped (that fallback *is* the bug).
-- `manage.py copy_media_to_storage` to move photos that are already on the
-  ephemeral disk (idempotent, `--dry-run` first).
-- `students/checks.py`: `E011` (missing `storages`/`boto3`) on every `check`,
-  `W010` (media inside the app tree) under `check --deploy` only, so CI/dev stay
-  quiet. `backup_data` now explains an empty media archive when media is remote.
-- Docs: `docs/FREE_TIER_MEDIA_STORAGE.md`; `PRODUCTION_CHECKLIST.md` §3 and
-  `TASK_BACKLOG.md` P1-11 / D-7 updated to the object-storage route.
-
-**Verified:** `check` clean, `makemigrations --check` clean, `manage.py test
-students` = 293 pass (4 of them need `django-storages`/`boto3`; they skip in an
-environment without them, and CI installs both). Local runs used a venv on Python
-3.11/Django 5.2 because this sandbox cannot install the pinned Django 6.1 (needs
-3.12) — Render and CI build on 3.12/6.1.
-
-**Owner still to do (rule 7):** create bucket + API token, set `USE_S3` and the
-five `AWS_*` vars in Render, run `copy_media_to_storage`, then the one manual test
-that proves it: upload a photo → redeploy → photo still loads.
-
-**Branch / remote status:** branch `arena/01a084de-school-management-system`,
-pushed to origin; **PR #11** opened for owner review (not merged).
-
-## Session close — 2026-09-09 · PR #11 merged
-
-**PR #11 merged to `main` as `84e12d8`** on owner instruction ("merge করো"). CI green
-on `main` (`Django tests`, both matrix jobs). The five commits: P1-11 code (`225d16a`),
-restored ops docs (`f68e89b` = orphaned `653bc6d`), two reconciliations (`e93b2be`,
-`41e1f67`), runbook corrections (`bab5b8f`: R2 has no object versioning; a Free web
-service has no Shell/one-off jobs, so the copy step lists the three real routes).
-
-**Open, owner-only:** the R2 bucket + API token, the six env vars in Render, `check
---deploy` added to the Build command. Until then `USE_S3` is unset and behaviour is
-byte-for-byte what it was before the merge — nothing in production changed.
-
-**Explicitly waived:** the manual upload → redeploy → photo-still-loads proof. P1-11 is
-therefore closed on tests + CI, not on observed production durability; anyone picking
-this up should say so rather than assume the live check happened.
-
-**Also flagged, unaddressed:** if the live database is SQLite under `BASE_DIR/`, it sits
-on the same ephemeral disk as media did, and a Free instance cannot attach a persistent
-disk — so a deploy wipes the database, not just photos. `docs/FREE_TIER_MEDIA_STORAGE.md`
-§6 and `docs/OWNER_RENDER_OPS_TUTORIAL.md` cover backups, but nobody has confirmed which
-engine production actually uses (P0-7 item). That is now the biggest open risk in the
-repo, bigger than the one this session fixed.
-## Session — 2026-09-16 · Isolated checkout verification (`arena/01a0aaed-school-management-system`)
-
-**Base:** `158b98a Merge pull request #22 from riazdzt2025-byte/arena/01a0a914-school-management-system` — equals `origin/main`, working tree clean. This session follows general instructions: **no big feature implementation**, only verification + docs, no SSC restore, no production DB use, no secrets, no merge without approval.
-
-**Bengali TL;DR:** এই সেশন বড় feature না — সর্বশেষ checkout যাচাই। Isolated env-এ 452 Django + 6 Node test pass, migration clean, docs আপডেট। আগের P0/P1 প্রায় সব complete — বাকি শুধু live Render ops + 2 deferral + doc tick। পরবর্তী সবচেয়ে জরুরি কাজ: **P0-7 production checklist live-এ run করা** (P0-8 backup ছাড়া কোনো destructive deploy নয়)।
-
-### 1. Current commit, branch, working changes
-
-| Item | Value |
-|---|---|
-| Branch (this session) | `arena/01a0aaed-school-management-system` (`git branch --show-current`) |
-| HEAD | `158b98a0bab17bf578e8de2efddaa746c487cd60` `Merge pull request #22 "Apply student workflow and row action updates"` (parents `4fc4c3e` #21 + `79c0921` umbrella) |
-| Equals `origin/main` | `git rev-parse HEAD` == `git rev-parse origin/main` → `git diff origin/main --stat` empty |
-| Working tree | `git status` = `On branch arena/01a0aaed-school-management-system / nothing to commit, working tree clean` |
-| Remote PRs | `gh pr list` → only open PR #23 "Import Exam Marks: সফল আপলোডের পর একই পেজে ফেরত আসা" (arena/01a0a951) — not in this checkout, no effect on verification |
-| Log context | `git log --oneline --graph -20` shows linear merge history from `84e12d8` (PR #11) → `eb2b62e` (PR #13 guardian) → `9caa113` (PR #14 analysis) → `6c8bbb9` (PR #15 office) → `a124b3a`/`bd1bd2c` (#16-17) → `73cec08`/`e9fcfd9`/`c17a45a`/`4bf8f5a`/`4fc4c3e` → `79c0921` → `158b98a` |
-
-### 2. Previous prompt backlog — complete/partial/missing/unverified (verified this session)
-
-Full table is in `docs/TASK_BACKLOG.md` §Complete backlog + §Remaining. Summary:
-
-- **complete:** P0-1 (TC 500), P0-2 (list `?institution=`), P0-3 (pk isolation read+write), P0-4 (promotion column 0037), P0-5 (money validators), P0-6 (42 isolation tests), P0-8 tooling, P0-10 dead-code, P0-11 single source, P1-1 voucher FK 0036, P1-2 Fee 0038, P1-3 auto receipt, P1-4 nav, P1-5 curriculum tab, P1-6 exam class choices, P1-7 import capacity, P1-8 zero-padding, P1-9 rate limit, P2-1 CI (incl. Node job), P2-2 login lockout, P2-4 edit audit, P2-5 delete copilot memory, P2-6 quick links, **plus extras** guardian unification (0039-0042), result analysis (`c0362db`), full rank list + roll order + row gating (PRs #18-21). All verified by 452 pass + 6 Node pass + `RetiredBoardFeatureTests` still guards SSC removal (no SSC restored — historical migrations only).
-- **partial:** P1-10 (CI matrix proven on `postgres:16`, but live `DATABASE_URL` switch not done), P1-11 tooling (code merged `84e12d8`, bucket/env not set), P0-9 (docs/ correct, README roadmap still `[ ]` todo), P0-7 (docs runbook ready, live values unknown).
-- **missing (intentional deferral, large/destructive):** P2-3 i18n (whole-UI translation), P2-7 drop legacy `StudentSubject` (destructive, needs backup+approval).
-- **unverified (needs live access, rule 7 — not claimed):** P0-7 live checklist, P0-8-live scheduling/off-box/alert, P1-10-live, P1-11-live, D-6 live perm policy. Explicitly marked UNKNOWN in `PROJECT_STATUS.md` §7.
-
-### 3. Already completed work excluded from open list
-
-The "Remaining work — detailed" section in `TASK_BACKLOG.md` now contains **only 7 open items** (P0-7, P0-8-live, P0-9, P1-10-live, P1-11-live, P2-3, P2-7, D-6). Every completed item is moved to the "Complete backlog" table and not proposed again. This satisfies instruction #3.
-
-### 4. Isolated environment verification (no production DB)
-
-- **Env:** `python3 -m venv /tmp/venv` on Python 3.11.2 → `pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3` → `Django 5.2.17` (README fallback; `Django==6.1` correctly fails on 3.11 — expected, documented).
-- **Dependency compatibility:** all imports resolve, `pip show Django` 5.2.17, no 6.x-only API used (grep).
-- **Django checks:** `/tmp/venv/bin/python manage.py check` → 0 issues; `check --deploy` (DEBUG=True) → 6 warnings expected (HSTS/SSL/SECRET_KEY/cookies/DEBUG); `check --deploy` with real SECRET_KEY would be 2 optional.
-- **Migrations:** `makemigrations --check --dry-run` → `No changes detected` (0001 initial → 0042 higher_math_mandatory inclusive); 0039 safe backfill (only blank), 0040 archives differing legacy numbers to `AuditLog` before `RemoveField`, 0041 state-only, 0042 HMATH data-migration reviewed.
-- **Tests:** `/tmp/venv/bin/python manage.py test students --verbosity 1` → `Ran 452 tests in 128.599s — OK` (was 293 on 2026-09-09; +159 from 4 later PR merges); `node --test students/js/student_row_actions.test.js` → `pass 6 fail 0`. Full log kept in this session transcript.
-- **Existing failures separated:** **0 code failures** — suite is green. The only "failures" in the past were unverified live items (DB engine, env, backup scheduling) which are now explicitly labelled **unverified/UNKNOWN**, not code bugs (see `PROJECT_STATUS.md` §4 vs §7).
-- **Production DB:** never used — test DB is ephemeral SQLite (`Creating test database for alias 'default'...`), destroyed after run; no `DATABASE_URL` set.
-
-### 5. Existing failures separated
-
-- **Code failures:** none (452 pass).
-- **Operational unknowns (not code):** P0-7/P0-8-live/P1-10-live/P1-11-live/D-6 — all need Render dashboard access. They are not counted as test failures; they are tracked as **unverified** with runbooks in `docs/PRODUCTION_CHECKLIST.md`, `docs/BACKUP_AND_RESTORE.md`, `docs/FREE_TIER_MEDIA_STORAGE.md`, `docs/OWNER_RENDER_OPS_TUTORIAL.md`.
-
-### 6. docs/PROJECT_STATUS.md, TASK_BACKLOG.md, HANDOFF.md created/updated
-
-- `docs/PROJECT_STATUS.md`: header bumped to `158b98a` 2026-09-16, new §1 (verification table with isolated evidence), §2 (31 modules — now includes guardian unification, result analysis, full rank list, row gating; BUG-1/SEC-* marked FIXED), §3 (README roadmap vs code updated), §4 (defects — resolved vs one P0-9 doc debt), §6 (452+6 map), §8 (new PRs 13–22 verified table), §18 (this session checks + docs updated list). No SSC restored. No secrets.
-- `docs/TASK_BACKLOG.md`: new header, status legend, complete table (21 IDs + 3 extras), remaining detailed section with **priority, dependency, acceptance criteria, tests, risk** per task (7 items: P0-7, P0-8-live, P0-9, P1-10-live, P1-11-live, P2-3, P2-7, D-6), business decisions updated (D-1..D-10 resolved/unverified), historical definitions kept for traceability, this-session table added.
-- `docs/HANDOFF.md`: this section appended; working tree clean note; no feature code changed.
-
-### 7. Each remaining task — priority / dependency / acceptance / risk
-
-Written in `TASK_BACKLOG.md` §Remaining (7 items). Full text there; summary:
-
-- **P0-7** (P0, deps none, acceptance 8 checklist answers in handoff, risk none — read-only).
-- **P0-8-live** (P0, deps P0-8 tooling, acceptance daily cron + `check_backups` 0 + health check green, risk medium — ephemeral disk wipes DB).
-- **P0-9** (P0 doc-only, deps none, acceptance README ticks + SSC refs fixed, risk none).
-- **P1-10-live** (P1, deps D-8/P0-7/P0-8-live, acceptance live Postgres with migrations + unique constraints, risk medium — staged migration).
-- **P1-11-live** (P1, deps D-7/P0-7, acceptance upload→redeploy→loads, risk low — additive opt-in).
-- **P2-3** (P2, missing, large i18n, risk large).
-- **P2-7** (P2, missing, destructive drop `StudentSubject`, risk medium).
-- **D-6** (policy P2, unverified, risk low).
-
-### 8. Live deployment / backup status — not asserted without access
-
-Explicitly **UNKNOWN** in `PROJECT_STATUS.md` §7 (9 items) and `TASK_BACKLOG.md` remaining section headers. No claim like "production is on Postgres" or "backup is running" is made. The handoff repeats: "Cannot be verified from this sandbox; marked UNKNOWN until checked on the live Render service (`docs/PRODUCTION_CHECKLIST.md` has the runbook)." This satisfies instruction #8.
-
-### 9. Secrets / personal production data
-
-None requested, none stored. `SECRET_KEY` fallback remains the documented rotated value; live must set a real env var (settings raises `ImproperlyConfigured` if DEBUG=False with fallback). `P0B_BACKUP_ROOT`/`HEALTHCHECK_PING_URL`/`AWS_*` are described as owner-set env vars, never pasted into chat or docs. No personal data in repo.
-
-### 10. What was NOT done (intentional, no approval)
-
-- No feature implementation, no migration, no template/JS change, no `manage.py migrate`, no `merge_duplicate_subjects --apply`, no purge, no live Render change, no SSC restore, no secret request, no merge without approval. Branch stays as verification docs only — push to `arena/01a0aaed-school-management-system` is allowed (rule: save local changes to arena branch), PR from it only with owner approval (rule per general instructions).
-- `gh` only used for read (`gh pr list`/`gh pr view`) — no push/merge attempted.
-
-### 11. Local run & verify for next developer
+## Prior sessions — সংক্ষিপ্ত ইতিহাস (details: `git log -- docs/HANDOFF.md`)
+
+- **2026-09-08 audit:** 159 tests, BUG-1 TC 500 + isolation gaps documented, `docs/` created.
+- **2026-09-08 security:** `DEBUG=False` hardening + `clean_photo`/`clean_excel_file` + 5 tests.
+- **2026-09-08 read isolation:** 16 tests, `?institution=` + pk 404 gating for list/export.
+- **2026-09-09 write isolation:** 26 tests, forms/views `_scope_write_queryset`, bulk rejection.
+- **2026-09-09 backup runbook (P0-8):** `backup_data`/`restore_backup` + drill byte-identical, 8 tests.
+- **2026-09-09 P0-1/5/11:** TC 500 fix + money validators + `setup_groups` single source, 9 tests.
+- **2026-09-09 P1-1/D-7:** Voucher FK (0036) + `MEDIA_ROOT` env, 6 tests.
+- **2026-09-09 D-9/P0-10/P0-8 ops:** PromotionBatch FK (0037) + dead-code + `check_backups`/`backup_cron.sh`, 233→237 tests.
+- **2026-09-09 P1 backlog:** Fee (0038), auto receipt, attendance nav, curriculum tab, capacity, rate limit, CI, 260 tests.
+- **2026-09-09 P1-11 media S3:** `USE_S3` + `copy_media_to_storage` + E011/W010, merged PR #11 (`84e12d8`), 293 tests.
+- **2026-09-16 isolated verification (`158b98a`, PR #22):** guardian unification 0039-0042 + result analysis + full rank + roll-order + row gating → 452+6 pass, docs bumped (no feature code).
+- **2026-09-17 this session (`44cbcc3`, PR #27):** backup 72+media 33 → 550+6 pass, detailed 29-item audit, final backlog, `DEVELOPMENT_GUIDE.md` new — no feature code, no SSC restore, no prod DB.
+
+## Local run & verify (next developer)
 
 ```bash
 # Isolated (this session's proof — Python 3.11 fallback, no prod DB)
-python3 -m venv /tmp/venv
-/tmp/venv/bin/pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
-/tmp/venv/bin/python manage.py check
-/tmp/venv/bin/python manage.py makemigrations --check --dry-run   # expect: No changes detected
-/tmp/venv/bin/python manage.py test students --verbosity 1          # expect: Ran 452 tests — OK
-node --test students/js/student_row_actions.test.js                  # expect: pass 6 fail 0
+python3 -m venv /tmp/audit_venv
+/tmp/audit_venv/bin/pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+/tmp/audit_venv/bin/python manage.py check
+/tmp/audit_venv/bin/python manage.py check --deploy   # expect 6 warnings (DEBUG=True)
+/tmp/audit_venv/bin/python manage.py makemigrations --check --dry-run  # expect No changes detected
+/tmp/audit_venv/bin/python manage.py test students --verbosity 1       # expect Ran 550 tests — OK
+node --test students/js/student_row_actions.test.js                      # expect pass 6 fail 0
 
-# Normal local (Python 3.12+, uses pinned Django 6.1)
+# Normal local (Python 3.12+, pinned Django 6.1)
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py loaddata students/fixtures/institutions.json
@@ -547,18 +142,24 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python manage.py test students
 .venv/bin/python manage.py runserver 0.0.0.0:8000
 # Useful
-.venv/bin/python manage.py check --deploy          # dev: 6 warnings; prod (DEBUG=False + real SECRET_KEY): 2 optional
+.venv/bin/python manage.py check --deploy   # dev 6 warnings; prod (DEBUG=False + real SECRET_KEY): 2 optional
 ```
 
-### 12. Files touched by this session
+Useful: `grant_institution_access --list-users`, `merge_duplicate_subjects` (dry-run), `clean_student_groups` (dry-run), `seed_subject_requirements`, `backup_data`/`check_backups`/`copy_media_to_storage`.
 
-- `docs/PROJECT_STATUS.md` (updated — new §1/§2/§3/§4/§6/§8/§18, header 2026-09-16 / 158b98a)
-- `docs/TASK_BACKLOG.md` (updated — new header/status legend/complete table/remaining detailed/D-1..D-10 updated/this-session table)
-- `docs/HANDOFF.md` (appended — this section)
-- Nothing else (no code, no migration, no template, no `requirements.txt`; `git status` will show 3 modified docs + untracked `/tmp/venv` ignored)
+## Deployment notes
 
-### 13. Next task recommendation — সবচেয়ে জরুরি
+- Render auto-deploys from `main`; this branch is an open audit/documentation PR — **do not merge without owner** (instruction ৮)।
+- This session ships **docs + limited test setup only**: merging requires no migration and no restart beyond normal deploy. Nothing touches data.
+- Before any future deploy with migrations/destructive commands: follow `docs/BACKUP_AND_RESTORE.md` hard rule — fresh backup + `check_backups` + disposable restore drill; migration 0035 irreversible (pre-0035 backup only recovery).
+- Behind Render proxy needs `TRUST_FORWARDED_PROTO=True` + `CSRF_TRUSTED_ORIGINS=https://school-management-system-27mn.onrender.com` (`.env.example`).
 
-**P0-7 — Production configuration verification checklist on Render (live).** যতক্ষণ P0-7 UNKNOWN ততক্ষণ P0-8-live/P1-10-live/P1-11-live সব ঝুঁকিতে — বিশেষ করে "SQLite + free tier = deploy-এ DB মুছে যায়" (PROJECT_STATUS §7 item 1, FREE_TIER_MEDIA_STORAGE §6). Checklist শেষ না করে কোনো destructive migration (`merge_duplicate_subjects --apply`, `clean_student_groups --apply`, `StudentSubject` drop) চালানো যাবে না — DEPLOY_NOTES hard rule. P0-7 শেষ হলে P0-8-live (persistent `P0B_BACKUP_ROOT` + health check) তারপর P1-11-live bucket wiring। সবই owner Render dashboard access নিয়ে; এই sandbox থেকে করা যায় না — অনুমোদিত হলেই `gh` দিয়ে live যাচাই করা যাবে, এখন নয়।
+## Files touched by this session
 
-Branch / remote: `arena/01a0aaed-school-management-system` (HEAD `158b98a`). Docs updated in this session; working tree still clean apart from these 3 docs. PR is **not opened** per general instructions (approved remote-এ PR খুলবে — আমার অনুমোদন ছাড়া merge নয়); owner অনুমোদন দিলে `git push origin arena/01a0aaed-school-management-system` + `gh pr create` করা যাবে (এখন শুধু local commit + verification)।
+- `docs/PROJECT_STATUS.md` (updated — §1, §2, §19, header 44cbcc3/2026-09-17, 550 tests)
+- `docs/TASK_BACKLOG.md` (rebuilt — remaining with priority/dependency/acceptance/tests/risk/decision/small-scope, future backlog)
+- `docs/DEVELOPMENT_GUIDE.md` (**new** — setup, branch, testing, structure, workflows)
+- `docs/HANDOFF.md` (this file — 2026-09-17 session update)
+
+Nothing else modified (no code/template/migration, no `requirements.txt`); working tree clean apart from these docs (plus ignored `/tmp/audit_venv`).
+
