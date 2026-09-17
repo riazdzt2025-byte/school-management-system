@@ -47,6 +47,62 @@ class RateLimitTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('Too many failed login attempts', response.content.decode())
 
+    def test_login_lockout_cannot_be_bypassed_by_spoofing_xff(self):
+        """SEC batch-02: X-Forwarded-For is `client, proxy1, ...`; the spoofable
+        entries are the client-controlled ones on the left. The right-most entry
+        is appended by the closest trusted proxy and cannot be forged from the
+        client, so the lockout must keep applying no matter how the left side
+        of the header changes between requests."""
+        url = reverse('login')
+        bad = {'username': 'alice', 'password': 'wrong',
+               'institution_id': '', 'department': 'Office'}
+        fake_edge_ip = '203.0.113.10'
+        for index in range(5):
+            response = self.client.post(
+                url, bad,
+                HTTP_X_FORWARDED_FOR=f'10.0.0.{index}, 172.16.0.{index}, {fake_edge_ip}',
+            )
+            self.assertNotIn('Too many failed login attempts',
+                             response.content.decode())
+        # The 6th request, again with a fresh spoofed left side, is locked out.
+        good = {'username': 'alice', 'password': 'correct-password',
+                'institution_id': '', 'department': 'Office'}
+        response = self.client.post(
+            url, good,
+            HTTP_X_FORWARDED_FOR=f'10.9.9.9, {fake_edge_ip}',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Too many failed login attempts', response.content.decode())
+
+    def test_public_admission_throttle_cannot_be_bypassed_by_spoofing_xff(self):
+        url = reverse('public_admission_apply')
+        fake_edge_ip = '198.51.100.20'
+        payload = {'applicant_name': 'Throttled Applicant'}
+        for index in range(5):
+            response = self.client.post(
+                url, payload,
+                HTTP_X_FORWARDED_FOR=f'192.0.2.{index}, {fake_edge_ip}',
+            )
+            self.assertNotIn('Too many submissions', response.content.decode())
+        response = self.client.post(
+            url, payload, HTTP_X_FORWARDED_FOR=f'192.0.2.99, {fake_edge_ip}',
+        )
+        self.assertIn('Too many submissions', response.content.decode())
+
+    def test_client_ip_falls_back_to_remote_addr_without_xff(self):
+        from django.test import RequestFactory
+        from students.views import _client_ip
+        request = RequestFactory().get('/', REMOTE_ADDR='192.0.2.77')
+        self.assertEqual(_client_ip(request), '192.0.2.77')
+
+    def test_client_ip_prefers_rightmost_xff_entry(self):
+        from django.test import RequestFactory
+        from students.views import _client_ip
+        request = RequestFactory().get(
+            '/', HTTP_X_FORWARDED_FOR=' 9.9.9.9 , , 203.0.113.5 ',
+        )
+        self.assertEqual(_client_ip(request), '203.0.113.5')
+
     def test_successful_login_resets_fail_counter(self):
         url = reverse('login')
         bad = {'username': 'alice', 'password': 'wrong',

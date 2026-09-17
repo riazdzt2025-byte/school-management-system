@@ -13,12 +13,13 @@ dashboard items need Render access._
 |---|---|---|
 | System check passes | `python manage.py check` | ✅ 0 issues |
 | No missing migrations | `python manage.py makemigrations --check` | ✅ clean |
-| `SECRET_KEY` is a long random value (not default) | Render env `SECRET_KEY` | 🔧 |
+| `SECRET_KEY` is a long random value (not default) | Render env `SECRET_KEY` (the boot itself refuses the dev fallback when `DEBUG=False`; CI proves it every run) | 🔧 / ✅ gate |
 | `DEBUG=False` | Render env `DEBUG=False` | 🔧 |
-| `ALLOWED_HOSTS` includes the Render host | env, e.g. `school-management-system-27mn.onrender.com` | 🔧 |
+| `ALLOWED_HOSTS` includes the Render host (never `'*'`) | env, e.g. `school-management-system-27mn.onrender.com`; `python manage.py check --deploy` fails with `students.E016` while the dev fallback `['*']` is in effect (CI proves it every run) | 🔧 / ✅ gate |
 | `CSRF_TRUSTED_ORIGINS` includes the https origin | env | 🔧 |
 | `TRUST_FORWARDED_PROTO=True` (behind Render proxy) | env — otherwise login POSTs 403 | 🔧 |
 | `USE_X_FORWARDED_HOST=True` | env | 🔧 |
+| `MAILERS_BACKEND` is a real mail backend (Django ≥ 6.0) | env, e.g. `django.core.mail.backends.smtp.EmailBackend`; Django 6+ fails `check --deploy` with `mail.E001` while the default mailer uses the console backend (the app sends no email yet, so console stays the dev default; the CI deploy guard runs this exact gate every push) | 🔧 / ✅ gate |
 
 ## 2. Database
 
@@ -49,7 +50,8 @@ apply only if the service is on a paid plan. Setup: `docs/FREE_TIER_MEDIA_STORAG
 
 | Check | How | Status |
 |---|---|---|
-| A scoped clerk can't reach another institution | run `students.test_institution_isolation` / `_write_isolation` | ✅ 34 tests |
+| A scoped clerk can't reach another institution | run `students.test_institution_isolation` / `_write_isolation` | ✅ 68 tests (incl. export / result / TC-certificate / purge / restore / marks-import negatives, SEC session-02) |
+| Audit trail follows the same isolation | run `students.test_audit_log_scoping` (AuditLog.institution, migration 0043) | ✅ 11 tests |
 | Group permissions map is the single source | `ensure_default_groups()` (permissions.py) | ✅ (P0-11) |
 | Department groups synced at login | login as a clerk → check menu | 🔧 |
 
@@ -59,7 +61,8 @@ apply only if the service is on a paid plan. Setup: `docs/FREE_TIER_MEDIA_STORAG
 |---|---|---|
 | Public admission form rate-limited | 6 rapid POSTs → throttled | ✅ test_rate_limiting |
 | Login locked after 5 failures | 6 bad logins → locked | ✅ test_rate_limiting |
-| Upload validation (photo ≤2MB image, xlsx ≤10MB) | `test_upload_security` | ✅ |
+| Both limits can't be dodged by spoofing `X-Forwarded-For` | counters key on the right-most (proxy-appended) entry | ✅ test_rate_limiting |
+| Upload validation (photo ≤2MB image, xlsx ≤10MB, real image content) | `test_upload_security` (full-form end-to-end incl. Pillow check) | ✅ |
 
 ## 6. Backup / restore ops (P0-8)
 

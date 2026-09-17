@@ -17,9 +17,9 @@ from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 
 from .models import (
-    AdmissionApplication, Employee, Exam, ExamMark, Institution, InstitutionAccess,
-    MoneyReceipt, PromotionBatch, SalarySheet, Student, StudentPromotionHistory,
-    Subject, SubjectRequirement, Voucher,
+    AdmissionApplication, AttendanceRecord, Employee, Exam, ExamMark, Institution,
+    InstitutionAccess, MoneyReceipt, PromotionBatch, SalarySheet, SeatPlan, Student,
+    StudentPromotionHistory, Subject, SubjectRequirement, Voucher,
 )
 
 
@@ -500,6 +500,155 @@ class InstitutionWriteIsolationTests(TestCase):
         self.assertContains(response, 'Fee A')
         self.assertContains(response, 'Fee B')
         self.assertContains(response, 'Legacy Voucher')
+
+    # ----------- SEC batch-02: publish / marks / seat-plan / purge negative writes
+    def test_toggle_publish_404_and_unchanged_for_other_institution_exam(self):
+        self.login_as_clerk()
+        response = self.client.post(reverse('toggle_publish_exam', args=[self.exam_b.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.exam_b.refresh_from_db()
+        self.assertFalse(self.exam_b.is_published)
+
+    def test_import_exam_marks_404_for_other_institution_exam(self):
+        self.grant((ExamMark, 'add_exammark'))
+        self.login_as_clerk()
+        response = self.client.get(reverse('import_exam_marks', args=[self.exam_b.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_import_exam_marks_post_404_for_other_institution_exam(self):
+        self.grant((ExamMark, 'add_exammark'))
+        self.login_as_clerk()
+        import openpyxl
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(['Roll', 'ID', 'Name', 'Marks'])
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        response = self.client.post(
+            reverse('import_exam_marks', args=[self.exam_b.pk]),
+            {'subject': str(self.subject.pk),
+             'excel_file': SimpleUploadedFile(
+                 'marks.xlsx', buffer.read(),
+                 content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(ExamMark.objects.filter(exam=self.exam_b).count(), 0)
+
+    def test_generate_and_clear_seat_plan_404_for_other_institution_exam(self):
+        from django.contrib.contenttypes.models import ContentType as _CT
+        from django.contrib.auth.models import Permission as _P
+        seatplan_ct = _CT.objects.get_for_model(SeatPlan)
+        self.clerk.user_permissions.add(_P.objects.get(content_type=seatplan_ct, codename='add_seatplan'))
+        self.clerk.user_permissions.add(_P.objects.get(content_type=seatplan_ct, codename='delete_seatplan'))
+        SeatPlan.objects.create(
+            exam=self.exam_b, room_name='Room B', room_type='INDOOR',
+            student=self.student_b, seat_no=1,
+        )
+        self.login_as_clerk()
+        generate = self.client.post(
+            reverse('generate_seat_plan', args=[self.exam_b.pk]),
+            {'room_config': 'Room 101, Indoor, 30'},
+        )
+        self.assertEqual(generate.status_code, 404)
+        clear = self.client.post(reverse('clear_seat_plan', args=[self.exam_b.pk]))
+        self.assertEqual(clear.status_code, 404)
+        # Both posts refused and the existing plan is untouched.
+        self.assertEqual(SeatPlan.objects.filter(exam=self.exam_b).count(), 1)
+
+    def test_purge_archived_student_404_and_kept_for_other_institution(self):
+        self.student_b.is_archived = True
+        self.student_b.save(update_fields=['is_archived'])
+        self.login_as_clerk()
+        response = self.client.post(reverse('purge_archived_student', args=[self.student_b.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Student.objects.filter(pk=self.student_b.pk).exists())
+
+    def test_bulk_purge_rejects_mixed_selection_without_touching_anything(self):
+        """Irreversible hard-delete: one out-of-scope pk must stop the whole
+        batch, never partially purge."""
+        for student in (self.student_a, self.student_b):
+            student.is_archived = True
+            student.save(update_fields=['is_archived'])
+        self.login_as_clerk()
+        response = self.client.post(reverse('bulk_purge_archived_students'), {
+            'student_ids': [self.student_a.pk, self.student_b.pk],
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Student.objects.filter(pk=self.student_a.pk).exists())
+        self.assertTrue(Student.objects.filter(pk=self.student_b.pk).exists())
+
+    def test_restore_and_bulk_restore_refuse_other_institution(self):
+        for student in (self.student_a, self.student_b):
+            student.is_archived = True
+            student.pre_archive_status = 'ACTIVE'
+            student.save(update_fields=['is_archived', 'pre_archive_status'])
+        self.login_as_clerk()
+        response = self.client.post(reverse('restore_student', args=[self.student_b.pk]))
+        self.assertEqual(response.status_code, 404)
+        response = self.client.post(reverse('bulk_restore_students'), {
+            'student_ids': [self.student_a.pk, self.student_b.pk],
+        })
+        self.assertEqual(response.status_code, 302)
+        self.student_a.refresh_from_db()
+        self.student_b.refresh_from_db()
+        self.assertTrue(self.student_a.is_archived)
+        self.assertTrue(self.student_b.is_archived)
+
+    def test_quick_update_requirement_type_404_for_other_institution(self):
+        self.login_as_clerk()
+        response = self.client.post(
+            reverse('quick_update_requirement_type', args=[self.req_b.pk]),
+            {'requirement_type': 'OPTIONAL'},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.req_b.refresh_from_db()
+        self.assertEqual(self.req_b.requirement_type, 'MANDATORY')
+
+    def test_mark_attendance_ignores_posted_ids_of_other_institution(self):
+        """The bulk marker only ever iterates the scoped student list, so a
+        hand-crafted extra POST key for a B student creates no record."""
+        self.login_as_clerk(department='Office')
+        response = self.client.post(
+            reverse('mark_attendance_bulk', args=['2026-09-01', '6', 'A', 'STUDENT']),
+            {f'status_{self.student_a.pk}': 'P', f'status_{self.student_b.pk}': 'A'},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            AttendanceRecord.objects.filter(student=self.student_a, date=date(2026, 9, 1)).exists()
+        )
+        self.assertFalse(
+            AttendanceRecord.objects.filter(student=self.student_b).exists()
+        )
+
+    def test_import_students_skips_blank_institution_rows_for_scoped_clerk(self):
+        """A scoped clerk importing a row with no institution must not create a
+        NULL-institution student they can never see again."""
+        import openpyxl
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self.login_as_clerk()
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["Institution", "Name", "Admission Class", "Section",
+                   "Admission Year", "Roll No", "Gender", "Religion",
+                   "Father's Name", "Guardian Contact Number", "Group"])
+        ws.append([self.institution.name, "Import Scoped Alpha", "6", "A", 2026, 31,
+                   "Male", "Islam", "Father A", "01800000001", "Non-Group"])
+        ws.append(["", "Import Institutionless", "6", "A", 2026, 32,
+                   "Male", "Islam", "Father B", "01800000002", "Non-Group"])
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        response = self.client.post(reverse('import_students'), {
+            'excel_file': SimpleUploadedFile('students.xlsx', buffer.read(),
+                                             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Student.objects.filter(name='Import Scoped Alpha').exists())
+        self.assertFalse(Student.objects.filter(name='Import Institutionless').exists())
 
     # ------------------------------------------------------------- cross-institution admin
     def test_admin_can_write_across_institutions(self):

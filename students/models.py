@@ -439,6 +439,11 @@ class AuditLog(models.Model):
     model_name = models.CharField(max_length=100)
     object_id = models.CharField(max_length=100, blank=True)
     object_repr = models.CharField(max_length=255, blank=True)
+    # The institution the audited object belongs to (deny-by-default: rows
+    # with NULL — system-level actions and everything logged before this
+    # column existed — are visible to admin/staff only, never to an
+    # institution-bound user). record_audit fills it in from the object.
+    institution = models.ForeignKey(Institution, on_delete=models.PROTECT, null=True, blank=True, related_name='audit_logs')
     timestamp = models.DateTimeField(auto_now_add=True)
     snapshot = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     details = models.JSONField(default=dict, encoder=DjangoJSONEncoder)

@@ -787,9 +787,22 @@ def _matching_fee(application):
 # generous and intended to blunt spam/brute-force, not to be a per-user quota.
 
 def _client_ip(request):
+    """Best-effort client IP for the rate-limit / lockout counters (P1-9, P2-2).
+
+    ``X-Forwarded-For`` is ``client, proxy1, proxy2`` — every hop appends the
+    peer it saw on the right. Taking the FIRST entry would let a client forge
+    the header and rotate IPs on every request, sidestepping the login lockout
+    and the public-admission throttle with a different spoofed IP each time.
+    The LAST entry (the one appended by the closest trusted proxy, e.g.
+    Render's edge) reflects the real connecting peer and cannot be forged from
+    the client, so that is what the counters key on. With no header at all the
+    direct peer (REMOTE_ADDR) is used.
+    """
     xff = request.META.get('HTTP_X_FORWARDED_FOR')
     if xff:
-        return xff.split(',')[0].strip()
+        entries = [ip.strip() for ip in xff.split(',') if ip.strip()]
+        if entries:
+            return entries[-1]
     return request.META.get('REMOTE_ADDR', '')
 
 
@@ -3027,6 +3040,19 @@ def import_students(request):
                                 f"'{institution_name}' — skipped."
                             )
                             continue
+                    elif _institutionally_scoped(request.user):
+                        # An institution-bound account must not create rows with
+                        # NO institution: such rows would be invisible to that
+                        # clerk afterwards (institution-scoped reads treat NULL
+                        # as out-of-scope), silently littering the roll with
+                        # data only an admin can see. Name the institution in
+                        # every row instead.
+                        error_rows.append(
+                            f"Row {row_num}: institution is missing — an account "
+                            "bound to specific institutions must name the "
+                            "institution in every row — skipped."
+                        )
+                        continue
 
                     gender_code = gender_map.get(str(gender_raw).strip().lower(), '') if gender_raw else ''
                     group_code = parse_group_label(group_raw)
@@ -4533,14 +4559,22 @@ def student_promotion_history(request):
 @login_required
 @permission_required('students.view_auditlog', raise_exception=True)
 def audit_log_list(request):
-    logs = AuditLog.objects.select_related('actor').all()
+    logs = AuditLog.objects.select_related('actor', 'institution').all()
+    # Same deny-by-default rule as vouchers (P1-1) and every other list: an
+    # institution-bound user reads audit rows of their own institutions only.
+    # Rows with no institution (system-level actions, and everything recorded
+    # before the institution column existed) stay admin/staff-only.
+    logs = _scope_by_allowed_institutions(request, logs)
     return render(request, 'students/audit_log_list.html', {'logs': logs})
 
 
 @login_required
 @permission_required('students.view_auditlog', raise_exception=True)
 def audit_log_detail(request, pk):
-    log = get_object_or_404(AuditLog.objects.select_related('actor'), pk=pk)
+    log = _get_scoped_object_or_404(
+        request, AuditLog.objects.select_related('actor', 'institution'), pk,
+        lambda l: l.institution,
+    )
     return render(request, 'students/audit_log_detail.html', {'log': log})
 
 # ---------------- Result Analysis ----------------
