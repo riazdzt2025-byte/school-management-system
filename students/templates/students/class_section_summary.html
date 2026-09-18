@@ -22,6 +22,9 @@
                 {% endfor %}
             </select>
         </form>
+        {% if perms.students.view_admissionapplication %}
+        <a href="{% url 'admission_funnel_report' %}" class="btn btn-outline-secondary">Admission Funnel</a>
+        {% endif %}
         <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
     </div>
 </div>

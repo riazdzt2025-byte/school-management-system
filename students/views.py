@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.core.paginator import Paginator
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Count
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from .curriculum_data import curriculum_for_class
@@ -977,6 +977,265 @@ def class_section_summary(request):
         'summary_rows': summary_rows,
         'grand_total': grand_total,
     })
+
+
+# ---------------- Admission funnel report (O4) ----------------
+#
+# The funnel counts the very same AdmissionApplication rows the Office list and
+# download_admission_sheet export use, but per status instead of per
+# application: how many are still sitting in SUBMITTED, how many the office
+# approved, how many are waiting on Accounts, how many got their payment
+# approved, and how many actually enrolled (plus the ones rejected, which leave
+# the funnel rather than advancing through it). Query-only — no model, no
+# migration, and the Share Application Link on the list page is untouched.
+
+FUNNEL_STAGES = [
+    'SUBMITTED', 'OFFICE_APPROVED', 'ACCOUNT_PENDING', 'PAYMENT_APPROVED',
+    'ENROLLED', 'REJECTED',
+]
+
+
+def _funnel_stages():
+    """[(status key, label)] in funnel order, labelled by the model itself.
+
+    The labels come from ``AdmissionApplication.STATUS_CHOICES`` so a renamed
+    status can never show one wording on the funnel page and another on the
+    application list.
+    """
+    labels = dict(AdmissionApplication.STATUS_CHOICES)
+    return [(key, labels.get(key, key)) for key in FUNNEL_STAGES]
+
+
+def _parse_report_date(raw):
+    """A ``?from=`` / ``?to=`` date as a ``date``, or ``None``.
+
+    Blank and unparseable input are both treated as "no filter", the way the
+    attendance summary treats its date fields — a hand-typed URL should not
+    raise a 500.
+    """
+    from datetime import datetime
+
+    raw = (raw or '').strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw).date()
+    except ValueError:
+        return None
+
+
+def _admission_funnel_queryset(request):
+    """The applications the funnel counts, scoped and date-filtered.
+
+    Returns ``(queryset, institution, from_date, to_date, export_url)``; the
+    last one is the Excel link carrying exactly the filters in effect.
+
+    Institution scoping is exactly the list/export one
+    (:func:`_resolve_requested_institution` + :func:`_scope_institution_qs`):
+    ``?institution=`` is honoured only inside the user's own access, an
+    unscoped admin with no session institution spans every institution, and a
+    scoped clerk who lost their session selection falls back to their allowed
+    set rather than to "everything". The date filter bounds ``submitted_at`` on
+    whole inclusive days in the current timezone.
+    """
+    from datetime import datetime, timedelta
+    from urllib.parse import urlencode
+
+    institution = _resolve_requested_institution(request, request.GET.get('institution'))
+    applications = AdmissionApplication.objects.all()
+    applications = _scope_institution_qs(request, applications, institution)
+
+    from_date = _parse_report_date(request.GET.get('from'))
+    to_date = _parse_report_date(request.GET.get('to'))
+    midnight = datetime.min.time()
+    if from_date is not None:
+        applications = applications.filter(
+            submitted_at__gte=timezone.make_aware(datetime.combine(from_date, midnight)),
+        )
+    if to_date is not None:
+        # ``< to_date + 1 day`` keeps the whole end day inclusive without
+        # depending on whether the backend stores microseconds.
+        applications = applications.filter(
+            submitted_at__lt=timezone.make_aware(
+                datetime.combine(to_date + timedelta(days=1), midnight)
+            ),
+        )
+
+    params = {}
+    if institution is not None:
+        params['institution'] = institution.pk
+    if from_date is not None:
+        params['from'] = from_date.isoformat()
+    if to_date is not None:
+        params['to'] = to_date.isoformat()
+    export_url = reverse('admission_funnel_export')
+    if params:
+        export_url = f'{export_url}?{urlencode(params)}'
+    return applications, institution, from_date, to_date, export_url
+
+
+def _admission_funnel_counts(queryset):
+    """``{status: count}`` for every funnel stage, zeroes included."""
+    counts = {key: 0 for key, _label in _funnel_stages()}
+    for row in queryset.values('status').annotate(total=Count('id')):
+        if row['status'] in counts:
+            counts[row['status']] = row['total']
+    return counts
+
+
+def _admission_funnel_summary(queryset):
+    """The funnel as template-ready rows plus the totals the page highlights."""
+    counts = _admission_funnel_counts(queryset)
+    total = sum(counts.values())
+    rows = []
+    for key, label in _funnel_stages():
+        count = counts[key]
+        rows.append({
+            'key': key,
+            'label': label,
+            'count': count,
+            'percent': round(count * 100 / total, 1) if total else 0.0,
+        })
+    enrolled = counts['ENROLLED']
+    rejected = counts['REJECTED']
+    return {
+        'rows': rows,
+        'counts': counts,
+        'total': total,
+        'enrolled': enrolled,
+        'rejected': rejected,
+        # Everything that is still moving through the funnel, i.e. neither
+        # enrolled nor rejected — the number the office chases daily.
+        'in_progress': total - enrolled - rejected,
+        'conversion_percent': round(enrolled * 100 / total, 1) if total else 0.0,
+    }
+
+
+def _admission_funnel_by_institution(queryset):
+    """Funnel counts split per institution (the 'All Institutions' page/sheet).
+
+    ``stages`` carries the same per-status numbers as the main funnel table in
+    template order; ``counts`` is the same data keyed by status for the export.
+    """
+    stage_keys = _funnel_stages()
+    buckets = {}
+    for row in queryset.values('institution_id', 'institution__name', 'status').annotate(total=Count('id')):
+        name = row['institution__name'] or '—'
+        bucket = buckets.setdefault(name, {key: 0 for key, _label in stage_keys})
+        if row['status'] in bucket:
+            bucket[row['status']] = row['total']
+
+    out = []
+    for name in sorted(buckets):
+        counts = buckets[name]
+        out.append({
+            'institution': name,
+            'counts': counts,
+            'stages': [
+                {'key': key, 'label': label, 'count': counts[key]}
+                for key, label in stage_keys
+            ],
+            'total': sum(counts.values()),
+        })
+    return out
+
+
+@login_required
+@permission_required('students.view_admissionapplication', raise_exception=True)
+@_require_department(('Office', 'Accounts'))
+def admission_funnel_report(request):
+    """Office → Reports: how many applications sit at each admission stage."""
+    applications, institution, from_date, to_date, export_url = _admission_funnel_queryset(request)
+    summary = _admission_funnel_summary(applications)
+    institution_rows = []
+    if institution is None:
+        institution_rows = _admission_funnel_by_institution(applications)
+
+    return render(request, 'students/admission_funnel_report.html', {
+        'institutions': _visible_institutions(request),
+        'institution': institution,
+        'from_date': from_date.isoformat() if from_date else '',
+        'to_date': to_date.isoformat() if to_date else '',
+        'funnel_rows': summary['rows'],
+        'total_applications': summary['total'],
+        'enrolled': summary['enrolled'],
+        'rejected': summary['rejected'],
+        'in_progress': summary['in_progress'],
+        'conversion_percent': summary['conversion_percent'],
+        'institution_rows': institution_rows,
+        'funnel_stages': [{'key': key, 'label': label} for key, label in _funnel_stages()],
+        'export_url': export_url,
+    })
+
+
+@login_required
+@permission_required('students.view_admissionapplication', raise_exception=True)
+@_require_department(('Office', 'Accounts'))
+def admission_funnel_export(request):
+    """Excel export of the funnel counts, with the filters of the report page.
+
+    This is the aggregate sheet; ``download_admission_sheet`` remains the
+    per-application sheet and is not changed by it. When the scope spans
+    several institutions a second 'By Institution' sheet is added, so an admin
+    exporting 'All Institutions' still gets the per-school breakdown.
+    """
+    if openpyxl is None:
+        messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
+        return redirect('admission_funnel_report')
+
+    applications, institution, from_date, to_date, _export_url = _admission_funnel_queryset(request)
+    summary = _admission_funnel_summary(applications)
+
+    wb = openpyxl.Workbook()
+    sheet = wb.active
+    sheet.title = 'Admission Funnel'
+    sheet.append(['Admission Funnel Report'])
+    sheet.append(['Institution', institution.name if institution is not None else 'All Institutions'])
+    sheet.append(['Submitted from', from_date.isoformat() if from_date else ''])
+    sheet.append(['Submitted to', to_date.isoformat() if to_date else ''])
+    sheet.append([])
+    sheet.append(['Status', 'Applications', '% of total'])
+    for row in summary['rows']:
+        sheet.append([row['label'], row['count'], row['percent']])
+    sheet.append([])
+    sheet.append(['Total applications', summary['total'], ''])
+    sheet.append(['In progress (not enrolled/rejected)', summary['in_progress'], ''])
+    sheet.append(['Enrolled', summary['enrolled'], ''])
+    sheet.append(['Rejected', summary['rejected'], ''])
+    sheet.append(['Conversion (enrolled / total) %', summary['conversion_percent'], ''])
+    for col in sheet.columns:
+        max_length = max((len(str(cell.value)) for cell in col if cell.value is not None), default=8)
+        sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
+
+    if institution is None:
+        institution_rows = _admission_funnel_by_institution(applications)
+        if institution_rows:
+            labels = dict(_funnel_stages())
+            breakdown = wb.create_sheet(title='By Institution')
+            breakdown.append(
+                ['Institution'] + [labels[key] for key, _label in _funnel_stages()] + ['Total']
+            )
+            for row in institution_rows:
+                breakdown.append(
+                    [row['institution']]
+                    + [row['counts'][key] for key, _label in _funnel_stages()]
+                    + [row['total']]
+                )
+            breakdown.append(
+                ['All Institutions']
+                + [summary['counts'][key] for key, _label in _funnel_stages()]
+                + [summary['total']]
+            )
+            for col in breakdown.columns:
+                max_length = max((len(str(cell.value)) for cell in col if cell.value is not None), default=8)
+                breakdown.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="admission_funnel_report.xlsx"'
+    wb.save(response)
+    return response
 
 
 @login_required

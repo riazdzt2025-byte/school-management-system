@@ -198,6 +198,7 @@
             {% if perms.students.view_subjectrequirement %}<a href="{% url 'subject_requirement_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subject Assignments</a>{% endif %}
             {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>{% endif %}
             <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+            {% if perms.students.view_admissionapplication %}<a href="{% url 'admission_funnel_report' %}"><i class="bi bi-funnel-fill"></i> Admission Funnel</a>{% endif %}
             <a href="{% url 'import_students' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Import Students</a>
             {% if user.is_staff %}<a href="{% url 'audit_log_list' %}"><i class="bi bi-clock-history"></i> Audit Log</a>{% endif %}
             <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> Certificates</a>
