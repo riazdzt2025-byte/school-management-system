@@ -86,6 +86,10 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    # LocaleMiddleware must sit between SessionMiddleware and CommonMiddleware:
+    # it resolves each user's language (cookie set by /i18n/setlanguage/) so
+    # every template renders in English or Bangla without separate URLs.
+    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -132,6 +136,18 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
+
+# English and Bangla. The sidebar switcher posts to /i18n/setlanguage/ which
+# stores the choice in the "django_language" cookie; LocaleMiddleware then
+# applies it for every request. Untranslated strings silently fall back to
+# the English source text, so partial translation is always safe.
+from django.utils.translation import gettext_lazy as _
+
+LANGUAGES = [
+    ('en', _('English')),
+    ('bn', _('Bangla')),
+]
+LOCALE_PATHS = [BASE_DIR / 'locale']
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'

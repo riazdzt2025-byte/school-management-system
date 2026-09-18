@@ -1,12 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
+{% load i18n %}<!DOCTYPE html>
+{% get_current_language as CURRENT_LANG %}
+<html lang="{{ CURRENT_LANG }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Principal Kazi Faruky School And College{% endblock %}</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --navy: #0F2D52;
@@ -17,6 +18,8 @@
             --sidebar-w-collapsed: 68px;
         }
         body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
+        /* Bangla UI needs a Bangla-capable font, otherwise conjuncts look broken. */
+        html[lang="bn"] body { font-family: 'Noto Sans Bengali', 'Inter', sans-serif; }
         h1, h2, .brand { font-family: 'Fraunces', serif; }
 
         .sidebar {
@@ -174,11 +177,11 @@
     <div class="user-badge">
         <span class="u-name"><i class="bi bi-person-circle me-1"></i>{{ request.user.username }}</span>
         {% if request.user.is_superuser %}
-            <span class="u-dept">Super Admin (Full Access)</span>
+            <span class="u-dept">{% trans "Super Admin (Full Access)" %}</span>
         {% elif request.user.groups.all %}
-            <span class="u-dept">{{ request.user.groups.first.name }} Department</span>
+            <span class="u-dept">{% blocktrans with group_name=request.user.groups.first.name %}{{ group_name }} Department{% endblocktrans %}</span>
         {% else %}
-            <span class="u-dept">No Department</span>
+            <span class="u-dept">{% trans "No Department" %}</span>
         {% endif %}
         {% if request.user.email %}
         <span class="u-dept" style="font-size:0.75rem;color:#fff;">{{ request.user.email }}</span>
@@ -188,85 +191,98 @@
         {% endif %}
     </div>
 
-    <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}"><i class="bi bi-grid-1x2-fill"></i><span class="nav-text">Dashboard</span></a>
+    <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}"><i class="bi bi-grid-1x2-fill"></i><span class="nav-text">{% trans "Dashboard" %}</span></a>
 
     <div class="nav-group">
-        <div class="group-label"><span><i class="bi bi-folder-fill"></i><span class="nav-text">Office</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="group-label"><span><i class="bi bi-folder-fill"></i><span class="nav-text">{% trans "Office" %}</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">
-            <a href="{% url 'admission_application_list' %}"><i class="bi bi-file-earmark-person-fill"></i> Admission</a>
-            <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> Students</a>
-            {% if perms.students.view_subjectrequirement %}<a href="{% url 'subject_requirement_list' %}"><i class="bi bi-journal-bookmark-fill"></i> Subject Assignments</a>{% endif %}
-            {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>{% endif %}
-            <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
-            {% if perms.students.view_admissionapplication %}<a href="{% url 'admission_funnel_report' %}"><i class="bi bi-funnel-fill"></i> Admission Funnel</a>{% endif %}
-            <a href="{% url 'import_students' %}"><i class="bi bi-file-earmark-spreadsheet"></i> Import Students</a>
-            {% if user.is_staff %}<a href="{% url 'audit_log_list' %}"><i class="bi bi-clock-history"></i> Audit Log</a>{% endif %}
-            <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> Certificates</a>
-            {% if perms.students.change_student %}<a href="{% url 'student_promotion' %}"><i class="bi bi-arrow-up-right-circle"></i> Promotion</a>{% endif %}
+            <a href="{% url 'admission_application_list' %}"><i class="bi bi-file-earmark-person-fill"></i> {% trans "Admission" %}</a>
+            <a href="{% url 'student_list' %}"><i class="bi bi-people-fill"></i> {% trans "Students" %}</a>
+            {% if perms.students.view_subjectrequirement %}<a href="{% url 'subject_requirement_list' %}"><i class="bi bi-journal-bookmark-fill"></i> {% trans "Subject Assignments" %}</a>{% endif %}
+            {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> {% trans "Mark Evaluation" %}</a>{% endif %}
+            <a href="{% url 'class_section_summary' %}"><i class="bi bi-bar-chart-fill"></i> {% trans "Reports" %}</a>
+            {% if perms.students.view_admissionapplication %}<a href="{% url 'admission_funnel_report' %}"><i class="bi bi-funnel-fill"></i> {% trans "Admission Funnel" %}</a>{% endif %}
+            <a href="{% url 'import_students' %}"><i class="bi bi-file-earmark-spreadsheet"></i> {% trans "Import Students" %}</a>
+            {% if user.is_staff %}<a href="{% url 'audit_log_list' %}"><i class="bi bi-clock-history"></i> {% trans "Audit Log" %}</a>{% endif %}
+            <a href="{% url 'student_list' %}"><i class="bi bi-award-fill"></i> {% trans "Certificates" %}</a>
+            {% if perms.students.change_student %}<a href="{% url 'student_promotion' %}"><i class="bi bi-arrow-up-right-circle"></i> {% trans "Promotion" %}</a>{% endif %}
         </div>
     </div>
 
     {% if perms.students.view_attendancerecord or perms.students.add_attendancerecord %}
     <div class="nav-group">
-        <div class="group-label"><span><i class="bi bi-calendar-check-fill"></i><span class="nav-text">Attendance</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="group-label"><span><i class="bi bi-calendar-check-fill"></i><span class="nav-text">{% trans "Attendance" %}</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">
-            {% if perms.students.add_attendancerecord %}<a href="{% url 'mark_attendance' %}"><i class="bi bi-pencil-fill"></i> Mark Attendance</a>{% endif %}
-            {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_report' %}"><i class="bi bi-clipboard-data"></i> Attendance Report</a>{% endif %}
-            {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_summary' %}"><i class="bi bi-bar-chart-fill"></i> Attendance Summary</a>{% endif %}
+            {% if perms.students.add_attendancerecord %}<a href="{% url 'mark_attendance' %}"><i class="bi bi-pencil-fill"></i> {% trans "Mark Attendance" %}</a>{% endif %}
+            {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_report' %}"><i class="bi bi-clipboard-data"></i> {% trans "Attendance Report" %}</a>{% endif %}
+            {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_summary' %}"><i class="bi bi-bar-chart-fill"></i> {% trans "Attendance Summary" %}</a>{% endif %}
         </div>
     </div>
     {% endif %}
 
     <div class="nav-group">
-        <div class="group-label"><span><i class="bi bi-pencil-square"></i><span class="nav-text">Exam</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="group-label"><span><i class="bi bi-pencil-square"></i><span class="nav-text">{% trans "Exam" %}</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">
             {% comment %}
             Each entry is guarded by the permission its own view enforces, so a
             user never sees a link that only leads to a 403.
             {% endcomment %}
-            {% if perms.students.add_exammark %}<a href="{% url 'start_entering_marks' %}"><i class="bi bi-pencil-fill"></i> Enter Marks</a>{% endif %}
-            <a href="{% url 'exam_list' %}"><i class="bi bi-journal-check"></i> Exam List</a>
-            {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>{% endif %}
+            {% if perms.students.add_exammark %}<a href="{% url 'start_entering_marks' %}"><i class="bi bi-pencil-fill"></i> {% trans "Enter Marks" %}</a>{% endif %}
+            <a href="{% url 'exam_list' %}"><i class="bi bi-journal-check"></i> {% trans "Exam List" %}</a>
+            {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> {% trans "Mark Evaluation" %}</a>{% endif %}
         </div>
     </div>
 
     {% if can_result_analysis %}
     <div class="nav-group">
-        <div class="group-label"><span><i class="bi bi-graph-up"></i><span class="nav-text">Result Analysis</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="group-label"><span><i class="bi bi-graph-up"></i><span class="nav-text">{% trans "Result Analysis" %}</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">
-            <a href="{% url 'result_analysis_subject_fail' %}"><i class="bi bi-exclamation-triangle"></i> Subject Fail List</a>
-            <a href="{% url 'result_analysis_multi_term' %}"><i class="bi bi-layout-three-columns"></i> Multi-term Results</a>
-            <a href="{% url 'result_analysis_merit_slides' %}"><i class="bi bi-easel"></i> Merit Slides</a>
-            <a href="{% url 'result_analysis_result_cards' %}"><i class="bi bi-card-list"></i> Result Cards (Class)</a>
-            <a href="{% url 'section_arrangement' %}"><i class="bi bi-diagram-3"></i> Section Arrangement</a>
+            <a href="{% url 'result_analysis_subject_fail' %}"><i class="bi bi-exclamation-triangle"></i> {% trans "Subject Fail List" %}</a>
+            <a href="{% url 'result_analysis_multi_term' %}"><i class="bi bi-layout-three-columns"></i> {% trans "Multi-term Results" %}</a>
+            <a href="{% url 'result_analysis_merit_slides' %}"><i class="bi bi-easel"></i> {% trans "Merit Slides" %}</a>
+            <a href="{% url 'result_analysis_result_cards' %}"><i class="bi bi-card-list"></i> {% trans "Result Cards (Class)" %}</a>
+            <a href="{% url 'section_arrangement' %}"><i class="bi bi-diagram-3"></i> {% trans "Section Arrangement" %}</a>
         </div>
     </div>
     {% endif %}
 
     <div class="nav-group">
-        <div class="group-label"><span><i class="bi bi-cash-coin"></i><span class="nav-text">Accounts</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="group-label"><span><i class="bi bi-cash-coin"></i><span class="nav-text">{% trans "Accounts" %}</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">
-            <a href="{% url 'money_receipt_list' %}"><i class="bi bi-receipt"></i> Money Receipts</a>
-            <a href="{% url 'voucher_list' %}"><i class="bi bi-file-earmark-ruled-fill"></i> Vouchers</a>
-            <a href="{% url 'salary_sheet_list' %}"><i class="bi bi-wallet-fill"></i> Salary Sheets</a>
-            <a href="{% url 'finance_dashboard' %}"><i class="bi bi-graph-up-arrow"></i> Finance Dashboard</a>
+            <a href="{% url 'money_receipt_list' %}"><i class="bi bi-receipt"></i> {% trans "Money Receipts" %}</a>
+            <a href="{% url 'voucher_list' %}"><i class="bi bi-file-earmark-ruled-fill"></i> {% trans "Vouchers" %}</a>
+            <a href="{% url 'salary_sheet_list' %}"><i class="bi bi-wallet-fill"></i> {% trans "Salary Sheets" %}</a>
+            <a href="{% url 'finance_dashboard' %}"><i class="bi bi-graph-up-arrow"></i> {% trans "Finance Dashboard" %}</a>
         </div>
     </div>
 
     <div class="nav-group">
-        <div class="group-label"><span><i class="bi bi-person-badge-fill"></i><span class="nav-text">Employees</span></span><i class="bi bi-chevron-right"></i></div>
+        <div class="group-label"><span><i class="bi bi-person-badge-fill"></i><span class="nav-text">{% trans "Employees" %}</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">
-            <a href="{% url 'employee_list' %}"><i class="bi bi-people-fill"></i> Employee List</a>
-            <a href="{% url 'add_employee' %}"><i class="bi bi-person-plus-fill"></i> Add Employee</a>
+            <a href="{% url 'employee_list' %}"><i class="bi bi-people-fill"></i> {% trans "Employee List" %}</a>
+            <a href="{% url 'add_employee' %}"><i class="bi bi-person-plus-fill"></i> {% trans "Add Employee" %}</a>
         </div>
     </div>
 
     <div class="nav-divider"></div>
 
+    <form method="POST" action="{% url 'set_language' %}" class="d-print-none" style="padding: 0 20px 6px;">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <div class="d-flex" style="gap:6px;">
+            <button type="submit" name="language" value="en"
+                class="btn btn-sm {% if request.LANGUAGE_CODE == 'en' %}btn-warning{% else %}btn-outline-light{% endif %} flex-fill"
+                style="font-size:0.8rem; padding:4px 6px;">EN</button>
+            <button type="submit" name="language" value="bn"
+                class="btn btn-sm {% if request.LANGUAGE_CODE == 'bn' %}btn-warning{% else %}btn-outline-light{% endif %} flex-fill"
+                style="font-size:0.8rem; padding:4px 6px;">বাংলা</button>
+        </div>
+    </form>
+
     <form method="POST" action="{% url 'logout' %}" class="logout-form" style="padding: 12px 20px;">
         {% csrf_token %}
         <button type="submit" style="background: none; border: none; color: rgba(255,255,255,0.75); padding: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 10px; white-space: nowrap; overflow: hidden;">
-            <i class="bi bi-box-arrow-right"></i><span class="nav-text">Logout</span>
+            <i class="bi bi-box-arrow-right"></i><span class="nav-text">{% trans "Logout" %}</span>
         </button>
     </form>
 </div>

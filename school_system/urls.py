@@ -11,6 +11,7 @@ admin.site.index_title = "Welcome to School Administration"
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('i18n/', include('django.conf.urls.i18n')),
     path('login/', institution_login, name='login'),
     path('logout/', auth_views.LogoutView.as_view(next_page='login'), name='logout'),
     path('', include('students.urls')),

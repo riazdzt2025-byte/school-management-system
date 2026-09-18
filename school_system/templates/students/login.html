@@ -1,10 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
+{% load i18n %}<!DOCTYPE html>
+{% get_current_language as CURRENT_LANG %}
+<html lang="{{ CURRENT_LANG }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Professor Kazi Faruky Kallan Trust</title>
+    <title>{% trans "Login" %} - Professor Kazi Faruky Kallan Trust</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             background: linear-gradient(135deg, #0f2d52 0%, #1f4d7a 100%);
@@ -26,6 +28,13 @@
             color: #fff;
             padding: 32px 28px;
         }
+        .brand-band { position: relative; }
+        .lang-switch { position: absolute; top: 14px; right: 16px; display: flex; gap: 6px; }
+        .lang-switch button {
+            background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.35);
+            border-radius: 999px; font-size: 0.8rem; padding: 3px 12px; cursor: pointer;
+        }
+        .lang-switch button.active { background: #C9A227; border-color: #C9A227; color: #0f2d52; font-weight: 600; }
         .brand-band h1 {
             font-size: clamp(1.6rem, 2vw, 2.4rem);
             margin: 0;
@@ -113,8 +122,20 @@
 <body>
     <div class="trust-shell">
         <div class="brand-band">
+            <div class="lang-switch">
+                <form method="POST" action="{% url 'set_language' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <button type="submit" name="language" value="en" class="{% if request.LANGUAGE_CODE == 'en' %}active{% endif %}">EN</button>
+                </form>
+                <form method="POST" action="{% url 'set_language' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <button type="submit" name="language" value="bn" class="{% if request.LANGUAGE_CODE == 'bn' %}active{% endif %}">বাংলা</button>
+                </form>
+            </div>
             <h1>Professor Kazi Faruky Kallan Trust</h1>
-            <p>Choose your institution and department to continue.</p>
+            <p>{% trans "Choose your institution and department to continue." %}</p>
         </div>
 
         {% if messages %}
@@ -129,7 +150,7 @@
                      data-institution-id="{{ institution.id }}"
                      data-department="{{ departments.0|default:'Office' }}">
                     <h3>{{ institution.name }}</h3>
-                    <small>Pick your department, then log in</small>
+                    <small>{% trans "Pick your department, then log in" %}</small>
                     <div class="department-pills">
                         {% for department in departments %}
                             <span class="department-pill{% if forloop.first %} active{% endif %}" data-department="{{ department }}">{{ department }}</span>
@@ -138,7 +159,7 @@
                     <button type="button" class="btn btn-sm btn-outline-primary w-100 select-institution">Select</button>
                 </div>
             {% empty %}
-                <div class="alert alert-warning w-100 mb-0">No institution has been created yet. Add one from the Django admin, then log in.</div>
+                <div class="alert alert-warning w-100 mb-0">{% trans "No institution has been created yet. Add one from the Django admin, then log in." %}</div>
             {% endfor %}
         </div>
 
@@ -149,21 +170,21 @@
 
             <div class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label class="form-label">Username</label>
+                    <label class="form-label">{% trans "Username" %}</label>
                     <input type="text" name="username" id="username" class="form-control" required autocomplete="username">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Password</label>
+                    <label class="form-label">{% trans "Password" %}</label>
                     <input type="password" name="password" id="password" class="form-control" required autocomplete="current-password">
                 </div>
                 <div class="col-md-4">
-                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                    <button type="submit" class="btn btn-primary w-100">{% trans "Login" %}</button>
                 </div>
             </div>
 
             <div class="save-user-row">
                 <input type="checkbox" id="saveUsername" name="save_username" value="1">
-                <label for="saveUsername">Save username</label>
+                <label for="saveUsername">{% trans "Save username" %}</label>
             </div>
         </form>
     </div>

@@ -1,0 +1,148 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: school-management-system\n"
+"Language: bn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Dashboard"
+msgstr "ড্যাশবোর্ড"
+
+msgid "Office"
+msgstr "অফিস"
+
+msgid "Admission"
+msgstr "ভর্তি"
+
+msgid "Students"
+msgstr "শিক্ষার্থীবৃন্দ"
+
+msgid "Subject Assignments"
+msgstr "বিষয় নির্ধারণ"
+
+msgid "Mark Evaluation"
+msgstr "নম্বর গণনার নিয়ম"
+
+msgid "Reports"
+msgstr "রিপোর্ট"
+
+msgid "Admission Funnel"
+msgstr "ভর্তি পরিসংখ্যান"
+
+msgid "Import Students"
+msgstr "শিক্ষার্থী ইমপোর্ট"
+
+msgid "Audit Log"
+msgstr "নিরীক্ষা লগ"
+
+msgid "Certificates"
+msgstr "সনদপত্র"
+
+msgid "Promotion"
+msgstr "বার্ষিক প্রমোশন"
+
+msgid "Attendance"
+msgstr "উপস্থিতি"
+
+msgid "Mark Attendance"
+msgstr "উপস্থিতি নেওয়া"
+
+msgid "Attendance Report"
+msgstr "উপস্থিতি রিপোর্ট"
+
+msgid "Attendance Summary"
+msgstr "উপস্থিতি সারসংক্ষেপ"
+
+msgid "Exam"
+msgstr "পরীক্ষা"
+
+msgid "Enter Marks"
+msgstr "নম্বর এন্ট্রি"
+
+msgid "Exam List"
+msgstr "পরীক্ষার তালিকা"
+
+msgid "Result Analysis"
+msgstr "ফলাফল বিশ্লেষণ"
+
+msgid "Subject Fail List"
+msgstr "বিষয়ভিত্তিক ফেল তালিকা"
+
+msgid "Multi-term Results"
+msgstr "একাধিক টার্মের ফলাফল"
+
+msgid "Merit Slides"
+msgstr "মেধা তালিকা"
+
+msgid "Result Cards (Class)"
+msgstr "ফলাফল কার্ড (শ্রেণি)"
+
+msgid "Section Arrangement"
+msgstr "সেকশন বিন্যাস"
+
+msgid "Accounts"
+msgstr "হিসাব শাখা"
+
+msgid "Money Receipts"
+msgstr "নগদ রসিদ"
+
+msgid "Vouchers"
+msgstr "ভাউচার"
+
+msgid "Salary Sheets"
+msgstr "বেতন শিট"
+
+msgid "Finance Dashboard"
+msgstr "আর্থিক ড্যাশবোর্ড"
+
+msgid "Employees"
+msgstr "কর্মী"
+
+msgid "Employee List"
+msgstr "কর্মী তালিকা"
+
+msgid "Add Employee"
+msgstr "কর্মী যোগ"
+
+msgid "Logout"
+msgstr "লগআউট"
+
+msgid "Super Admin (Full Access)"
+msgstr "সুপার অ্যাডমিন (পূর্ণ অধিকার)"
+
+msgid "No Department"
+msgstr "বিভাগ নেই"
+
+msgid "{{ group_name }} Department"
+msgstr "{{ group_name }} বিভাগ"
+
+msgid "Bangla"
+msgstr "বাংলা"
+
+msgid "Login"
+msgstr "লগইন"
+
+msgid "Choose your institution and department to continue."
+msgstr "চালিয়ে যেতে আপনার প্রতিষ্ঠান ও বিভাগ নির্বাচন করুন।"
+
+msgid "Pick your department, then log in"
+msgstr "বিভাগ নির্বাচন করে লগইন করুন"
+
+msgid ""
+"No institution has been created yet. Add one from the Django admin, then log"
+" in."
+msgstr ""
+"এখনো কোনো প্রতিষ্ঠান যোগ করা হয়নি। Django অ্যাডমিন থেকে প্রতিষ্ঠান যোগ "
+"করুন, তারপর লগইন করুন।"
+
+msgid "Username"
+msgstr "ব্যবহারকারীর নাম"
+
+msgid "Password"
+msgstr "পাসওয়ার্ড"
+
+msgid "Save username"
+msgstr "ব্যবহারকারীর নাম মনে রাখুন"
