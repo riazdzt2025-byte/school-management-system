@@ -1,0 +1,176 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Admission Funnel Report - {{ block.super }}{% endblock %}
+
+{% block print_subtitle %}Admission Funnel Report{% endblock %}
+
+{% block extra_style %}
+.funnel-stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-bottom: 18px;
+}
+.funnel-stat {
+    background: #fff; border: 1px solid #e7ebf0; border-radius: 12px; padding: 12px 16px;
+}
+.funnel-stat .label { font-size: .76rem; color: #6c757d; text-transform: uppercase; letter-spacing: .03em; }
+.funnel-stat .value { font-size: 1.5rem; font-weight: 700; color: var(--navy); line-height: 1.2; }
+.funnel-meta { color: #6c757d; font-size: .9rem; margin-top: 2px; }
+.funnel-bar-track { background: #eef1f6; border-radius: 6px; height: 14px; width: 100%; min-width: 110px; }
+/* Only rendered for non-zero stages, so a minimum width keeps a single
+   application visible without faking a bar where the count is zero. */
+.funnel-bar { height: 14px; min-width: 3px; border-radius: 6px; background: var(--navy);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.funnel-bar.bar-submitted { background: #0d6efd; }
+.funnel-bar.bar-office_approved { background: #6f42c1; }
+.funnel-bar.bar-account_pending { background: #fd7e14; }
+.funnel-bar.bar-payment_approved { background: #0dcaf0; }
+.funnel-bar.bar-enrolled { background: #198754; }
+.funnel-bar.bar-rejected { background: #dc3545; }
+.table-card td.num, .table-card th.num { text-align: right; white-space: nowrap; }
+@media print {
+    .funnel-stats { grid-template-columns: repeat(5, 1fr); }
+    .table-card { border: none; box-shadow: none; page-break-inside: avoid; }
+    .page-header { padding-top: 0; box-shadow: none; }
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Admission Funnel Report</h1>
+        <div class="subtitle">
+            {% if institution %}{{ institution.name }}{% else %}All Institutions{% endif %}
+            &middot; Total applications: {{ total_applications }}
+        </div>
+        <div class="funnel-meta">
+            {% if from_date or to_date %}
+            Submitted
+            {% if from_date %}from {{ from_date }}{% else %}since the first application{% endif %}
+            {% if to_date %}up to {{ to_date }}{% endif %}
+            {% else %}
+            Every submitted application, regardless of date
+            {% endif %}
+            &middot; Generated {% now "Y-m-d H:i" %}
+        </div>
+    </div>
+    <div class="page-actions d-flex gap-2 d-print-none">
+        <form method="get" class="d-flex gap-2 align-items-center">
+            <select name="institution" class="form-select" onchange="this.form.submit()">
+                <option value="">-- All Institutions --</option>
+                {% for inst in institutions %}
+                <option value="{{ inst.id }}" {% if institution and institution.id == inst.id %}selected{% endif %}>{{ inst.name }}</option>
+                {% endfor %}
+            </select>
+            <input type="date" name="from" value="{{ from_date }}" class="form-control" title="Submitted on or after">
+            <input type="date" name="to" value="{{ to_date }}" class="form-control" title="Submitted on or before">
+            <button type="submit" class="btn btn-navy">Apply</button>
+        </form>
+        <a href="{{ export_url }}" class="btn btn-outline-navy">📥 Excel</a>
+        <a href="{% url 'class_section_summary' %}" class="btn btn-outline-secondary">Class/Section</a>
+        <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+    </div>
+</div>
+
+<div class="funnel-stats">
+    <div class="funnel-stat">
+        <div class="label">Total</div>
+        <div class="value">{{ total_applications }}</div>
+    </div>
+    <div class="funnel-stat">
+        <div class="label">In progress</div>
+        <div class="value">{{ in_progress }}</div>
+    </div>
+    <div class="funnel-stat">
+        <div class="label">Enrolled</div>
+        <div class="value">{{ enrolled }}</div>
+    </div>
+    <div class="funnel-stat">
+        <div class="label">Rejected</div>
+        <div class="value">{{ rejected }}</div>
+    </div>
+    <div class="funnel-stat">
+        <div class="label">Conversion</div>
+        <div class="value">{{ conversion_percent }}%</div>
+    </div>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <caption class="caption-top fw-semibold" style="padding-left:1rem;">
+                Applications per stage
+            </caption>
+            <thead>
+                <tr>
+                    <th>Stage</th>
+                    <th class="num">Applications</th>
+                    <th class="num">% of total</th>
+                    <th style="width: 35%;">Funnel</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in funnel_rows %}
+                <tr>
+                    <td>{{ row.label }}</td>
+                    <td class="num">{{ row.count }}</td>
+                    <td class="num">{{ row.percent }}%</td>
+                    <td>
+                        <div class="funnel-bar-track">
+                            {% if row.count %}
+                            <div class="funnel-bar bar-{{ row.key|lower }}" style="width: {{ row.percent }}%;"></div>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="fw-semibold">
+                    <td>Total applications</td>
+                    <td class="num">{{ total_applications }}</td>
+                    <td class="num">100.0%</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+        {% if not total_applications %}
+        <div class="text-center text-muted py-4">No applications match this filter.</div>
+        {% endif %}
+    </div>
+</div>
+
+{% if institution_rows %}
+<div class="table-card mt-4">
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <caption class="caption-top fw-semibold" style="padding-left:1rem;">
+                Applications per institution
+            </caption>
+            <thead>
+                <tr>
+                    <th>Institution</th>
+                    {% for stage in funnel_stages %}<th class="num">{{ stage.label }}</th>{% endfor %}
+                    <th class="num">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in institution_rows %}
+                <tr>
+                    <td>{{ row.institution }}</td>
+                    {% for stage in row.stages %}
+                    <td class="num">{{ stage.count }}</td>
+                    {% endfor %}
+                    <td class="num">{{ row.total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<p class="text-muted mt-3" style="font-size:.85rem;">
+    Counts are of applications <em>submitted</em> in the selected date range, each in the stage it is
+    in right now. Rejected applications are listed alongside the funnel, not inside it.
+</p>
+{% endblock %}

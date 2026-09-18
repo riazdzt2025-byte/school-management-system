@@ -98,6 +98,8 @@ urlpatterns = [
     path('result-analysis/result-cards/', views.result_analysis_result_cards, name='result_analysis_result_cards'),
     path('result-analysis/section-arrangement/', views.section_arrangement, name='section_arrangement'),
 path('reports/class-section-summary/', views.class_section_summary, name='class_section_summary'),
+    path('reports/admission-funnel/', views.admission_funnel_report, name='admission_funnel_report'),
+    path('reports/admission-funnel/export/', views.admission_funnel_export, name='admission_funnel_export'),
     # Subject Assignment URLs (the old standalone "Subjects" master-list
     # page was removed — new subjects are created inline from the Assign
     # Subject form, and default assignments come from the curriculum
