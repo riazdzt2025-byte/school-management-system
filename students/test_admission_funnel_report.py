@@ -18,6 +18,7 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
+from django.template.loader import get_template
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -438,3 +439,104 @@ class AdmissionFunnelReportTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Share Application Link')
         self.assertContains(response, reverse('public_admission_apply'))
+
+    # --------------------- the Admission page Reports link (ADM-REPORTS follow-up)
+    # The owner's original requirement was the report *beside Share Application
+    # Link* on the internal Admission page, not only in the Office flyout. These
+    # lock that placement, the URL it points at, the institution scope it carries
+    # and the fact that nobody unauthorised ever gets the link.
+    def test_admission_page_shows_reports_link_beside_the_share_link(self):
+        """Reports sits next to Share Application Link and uses the named URL."""
+        self._login(self.office_clerk, institution=self.institution_a)
+        response = self.client.get(reverse('admission_application_list'))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        url = reverse(FUNNEL_PAGE)
+
+        anchor = re.search(r'<a[^>]*id="admission-reports-link"[^>]*>', body)
+        self.assertIsNotNone(anchor, 'Reports action missing from the Admission page')
+        self.assertIn(f'href="{url}"', anchor.group(0))
+        # The label is bilingual, matching how the owner asked for it.
+        self.assertIn('Reports', body)
+        self.assertIn('রিপোর্টস', body)
+
+        # Placement: after the share action, which itself stays intact.
+        self.assertIn('Share Application Link', body)
+        self.assertGreater(
+            body.index('admission-reports-link'), body.index('share-application-link-btn'),
+            'Reports must sit beside (after) Share Application Link',
+        )
+
+        # Both entry points coexist — this follow-up adds the page action without
+        # removing the existing Office flyout link rendered by base.html.
+        self.assertGreaterEqual(body.count(f'href="{url}"'), 2)
+
+    def test_admission_page_reports_link_keeps_the_session_institution(self):
+        """Following the link lands on the same institution scope the list uses."""
+        self._login(self.office_clerk, institution=self.institution_a)
+        body = self.client.get(reverse('admission_application_list')).content.decode()
+        anchor = re.search(r'<a[^>]*id="admission-reports-link"[^>]*>', body)
+        href = re.search(r'href="([^"]+)"', anchor.group(0)).group(1)
+
+        # No institution id travels in the URL: the report resolves the same
+        # session selection the list page filters by, so there is nothing a
+        # scoped clerk could tamper with to widen the scope.
+        self.assertEqual(href, reverse(FUNNEL_PAGE))
+        self.assertNotIn('institution=', href)
+
+        report = self.client.get(href)
+        self.assertEqual(report.status_code, 200)
+        self.assertEqual(report.context['total_applications'], TOTAL_A)
+        self.assertNotContains(report, 'Funnel B')
+
+    def test_admission_page_reports_link_is_denied_to_unauthorised_users(self):
+        """No permission → no page and no link; wrong department → redirected."""
+        url = reverse(FUNNEL_PAGE)
+        list_url = reverse('admission_application_list')
+
+        # Anonymous: bounced to login, so no internal action is rendered at all.
+        self.client.logout()
+        anonymous = self.client.get(list_url)
+        self.assertEqual(anonymous.status_code, 302)
+        self.assertIn(reverse('login'), anonymous.url)
+        self.assertNotIn(url, anonymous.content.decode())
+
+        # Institution access but no view_admissionapplication permission: the
+        # Admission page answers 403, so the Reports action cannot appear — and
+        # typing the report URL directly is refused the same way.
+        self._login(self.exam_clerk, institution=self.institution_a, department='Exam')
+        forbidden = self.client.get(list_url)
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertNotIn(url, forbidden.content.decode())
+        self.assertEqual(self.client.get(url).status_code, 403)
+
+        # Holding the permission is not enough from a department that does not run
+        # admissions: both the page and the report redirect to the dashboard, so
+        # the link is never a dead end for anybody who can actually see it.
+        exam_with_perm = self._clerk('funnel-exam-perm', 'Exam')
+        self._login(exam_with_perm, institution=self.institution_a, department='Exam')
+        for target in (list_url, url):
+            with self.subTest(target=target):
+                redirected = self.client.get(target)
+                self.assertEqual(redirected.status_code, 302)
+                self.assertIn(reverse('dashboard'), redirected.url)
+
+    def test_public_admission_pages_carry_no_internal_report_link(self):
+        """The public form and the Thank You page stay free of internal reports."""
+        response = self.client.get(reverse('public_admission_apply'))
+        self.assertEqual(response.status_code, 200)
+        for forbidden in (reverse(FUNNEL_PAGE), reverse(FUNNEL_EXPORT),
+                          reverse('class_section_summary'), 'admission-funnel'):
+            self.assertNotContains(response, forbidden)
+
+        # Source-level guard so the Thank You page (rendered only after a
+        # successful public POST) is covered without posting the whole form.
+        for template_name in ('students/public_admission_form.html',
+                              'students/public_admission_success.html'):
+            with self.subTest(template=template_name):
+                path = get_template(template_name).origin.name
+                with open(path, encoding='utf-8') as handle:
+                    source = handle.read()
+                for forbidden in ('admission_funnel_report', 'admission_funnel_export',
+                                  'class_section_summary', 'admission-funnel'):
+                    self.assertNotIn(forbidden, source)

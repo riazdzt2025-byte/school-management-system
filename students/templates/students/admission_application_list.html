@@ -62,6 +62,17 @@
         <a href="{% url 'admission' %}" class="btn btn-navy">+ New Application</a>
         <a href="{% url 'download_admission_sheet' %}?status={{ status|default:'' }}" class="btn btn-outline-navy">📥 Download Excel</a>
         <button type="button" id="share-application-link-btn" class="btn btn-outline-navy" title="Copies a ready-to-paste WhatsApp message with the public application form link">📲 Share Application Link</button>
+        {% if perms.students.view_admissionapplication %}
+        {# ADM-REPORTS: the funnel report beside the share action. No query string is
+           passed on purpose — admission_funnel_report resolves the institution from
+           the same session selection this list page filters by
+           (_resolve_requested_institution → _selected_institution_for_request) and
+           bounds it with _scope_institution_qs, so a scoped clerk cannot widen the
+           scope through the link. The view carries the identical guards as this page
+           (view_admissionapplication + Office/Accounts department), so the link is
+           never a dead end for anyone who can see it. #}
+        <a href="{% url 'admission_funnel_report' %}" id="admission-reports-link" class="btn btn-outline-navy" title="Admission funnel report — applications at each stage, scoped to your institution">📊 Reports / রিপোর্টস</a>
+        {% endif %}
     </div>
 </div>
 
