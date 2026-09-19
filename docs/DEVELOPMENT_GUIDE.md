@@ -1,6 +1,8 @@
 # Development Guide — School Management System
 
-_Last updated: 2026-09-17 · Base: `44cbcc3` (= `origin/main`) · Branch: `arena/01a0ad5e-school-management-system`_
+_Last updated: 2026-09-19 · Base: `f64194a` (= `origin/main`, Merge PR #33) · Branch: `arena/01a0b7f7-school-management-system`_
+
+> **প্রথম release-এর কাজের পরিকল্পনা:** ২৮টি ক্রমিক সেশন-প্রম্পট (`০০` যাচাই → `EX-01…EX-07` → `OF-01…OF-08` → `DB-01…DB-06` → `AT-01…AT-02` → `EM-01…EM-03` → `FN-01`) `docs/prompts/README.md`-এ; কোন প্রম্পট চলছে/শেষ হয়েছে তা `docs/prompts/PROGRESS.md`-এ।
 
 এই ফাইলটি একজন নতুন developer কীভাবে লোকাল setup করবেন, কোন branch-এ কাজ করবেন, কীভাবে test চালাবেন এবং কোড কনভেনশন কী — তা এক জায়গায় বলে। Production বা live Render-এ হাত দেওয়ার আগে `docs/PRODUCTION_CHECKLIST.md` ও `docs/BACKUP_AND_RESTORE.md` পড়ুন।
 
@@ -9,7 +11,7 @@ _Last updated: 2026-09-17 · Base: `44cbcc3` (= `origin/main`) · Branch: `arena
 ## 1. Repository & Branch নিয়ম
 
 - **Main source of truth:** `origin/main` (commit `44cbcc3` এই সেশনে)।
-- **Session branch:** `arena/01a0ad5e-school-management-system` — এই session-এর সব কাজ এই branch-এই থাকবে। অন্য branch-এ switch করবেন না; Arena এই branch-কে track করে।
+- **Session branch:** `arena/01a0b7f7-school-management-system` — এই session-এর সব কাজ এই branch-এই থাকবে। অন্য branch-এ switch করবেন না; Arena এই branch-কে track করে।
 - **Remote:** `https://github.com/riazdzt2025-byte/school-management-system.git` — `git fetch` / `git push origin arena/...` অনুমোদিত, কিন্তু `main`-এ direct push নয়।
 - **Working tree:** এই সেশনে `git status` clean ছিল — কোনো local overwrite, `reset --hard` বা `git clean` করা হয়নি (নির্দেশ অনুযায়ী)।
 - **PR:** পরিবর্তন থাকলে এই branch থেকে PR খুলুন; owner approval ছাড়া merge নয়।
@@ -33,7 +35,7 @@ psycopg2-binary, python-dotenv, django-storages, boto3
 ```bash
 git clone https://github.com/riazdzt2025-byte/school-management-system.git
 cd school-management-system
-git checkout arena/01a0ad5e-school-management-system  # এই session-এর branch
+git checkout arena/01a0b7f7-school-management-system  # এই session-এর branch
 python3 -m venv .venv
 source .venv/bin/activate
 
@@ -165,4 +167,5 @@ State machine: `SUBMITTED → OFFICE_APPROVED → ACCOUNT_PENDING → PAYMENT_AP
 - `docs/OWNER_RENDER_OPS_TUTORIAL.md` — disk/bucket/cron tutorial।
 - `docs/PRODUCTION_CHECKLIST.md` — P0-7 live checklist।
 - `docs/SUBJECT_WORKFLOW_BN.md` — বাংলায় subject assign/configure/marks workflow।
+- `docs/prompts/README.md` + `docs/prompts/PROGRESS.md` — ২৮-সেশন প্রম্পট প্ল্যান ও কোন প্রম্পট চলছে/শেষ হয়েছে তার ledger (প্রতি সেশনের এজেন্ট PROGRESS.md আপডেট করবে)।
 - `RESULT_PUBLISHING_GUIDE.md` / `DEPLOY_NOTES.md` / `GROUP_RULE_DEPLOY_NOTES.md` — result/mark/curriculum + deploy।
