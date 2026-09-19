@@ -83,7 +83,6 @@ node --test students/js/*.test.js
 python manage.py check
 python manage.py makemigrations --check
 python manage.py test students
-node --test students/js/*.test.js
 ```
 
 - Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।

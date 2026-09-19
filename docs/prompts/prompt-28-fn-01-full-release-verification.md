@@ -85,10 +85,7 @@ SECRET_KEY=$(python3 -c 'import secrets;print(secrets.token_urlsafe(64))') DEBUG
 python manage.py test students
 node --test students/js/*.test.js
 bash scripts/backup_smoke_test.sh
-python manage.py check
 python manage.py makemigrations --check
-python manage.py test students
-node --test students/js/*.test.js
 ```
 
 - Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।

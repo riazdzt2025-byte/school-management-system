@@ -78,7 +78,6 @@ pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url white
 python manage.py check
 python manage.py test students.test_security_settings
 python manage.py test students.test_navigation
-python manage.py check
 python manage.py makemigrations --check
 python manage.py test students
 node --test students/js/*.test.js
