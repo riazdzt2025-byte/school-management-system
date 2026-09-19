@@ -239,6 +239,8 @@ Owner-only live ops (P0-7, P0-8-live, P1-11-live) + quick fixes (pagination 100,
 | `./scripts/backup_smoke_test.sh` | **১৫ step pass / ০ fail** (disposable sqlite, plaintext + encrypted, SHA verify, wrong-passphrase reject) |
 | `moto_server` + `backup_smoke_test.sh --s3-endpoint …` | **২৮ step pass / ০ fail** (off-box upload → `--check-remote` → `fetch_backup` → restore → retention ২) |
 
+**CI (PR #38, `gh pr checks 38`):** `test (sqlite, 3.12)` **pass** 6m21s · `test (postgres, 3.12)` **pass** 6m36s · `Node row-action button tests` **pass** 10s — অর্থাৎ postgres:16-এও suite সবুজ (লোকালে Postgres ছিল না)।
+
 `RetiredBoardFeatureTests` সহ পুরো suite pass ⇒ SSC Registration/BoardResult পুনরুদ্ধার হয়নি।
 কোনো production DB/credential/Render/S3 আসল bucket ছোঁয়া হয়নি; `.restore-drill/` নিজেই পরিষ্কার হয়েছে।
 
