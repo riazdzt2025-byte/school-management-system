@@ -1,5 +1,38 @@
 # Handoff — School Management System
 
+## সেশন EX-02 — 2026-09-19 · প্রম্পট ০৩/২৮ · Result/Register roll-order
+
+**Session branch:** `arena/01a0baa2-school-management-system` · **Base:** `cf70109` = `origin/main` (EX-01, PR #39 merge-পরবর্তী) ·
+**Commits:** `4e9f24c` (helper + register outputs) · `4c09be8` (print CSS) · `15721a4` (১৮ টেস্ট) · ডক-কমিট ·
+**PR:** #40 OPEN (owner merge-অনুমোদন বাকি; এজেন্ট merge করবে না) · **CI (Django 6.1/py3.12):** sqlite ✅ 6m23s · postgres:16 ✅ 6m37s · Node ✅ 4s ·
+**Scope:** শুধু ordering + shared helper + টেস্ট + print CSS — **কোনো model/migration/JS/settings/data পরিবর্তন নেই**।
+
+**Bengali TL;DR:** এই সেশনে register/roll-order-এর নিয়ম লিখে ফেলা হয়েছে — **register/roll output = numeric roll**
+(`roll_no` numerically, `None` সবার শেষে, তারপর name → pk) · **merit/rank output = position order**
+(`top_10`, `full_rank_list`, `section_arrangement` — ইচ্ছাকৃত)। `result_sheet`-এ আগে থেকেই ছিল; নতুন করে
+`exam_result_summary` ও `result_analysis_result_cards` merit → roll, `student_list`/`download_student_list`-এ
+`F('roll_no').asc(nulls_last=True)` + `pk` (sqlite ও postgres-এ একই ক্রম; স্ক্রিন ও Excel এক), attendance class list
+name → roll, seat-plan generation roll + `pk`। `result_utils.py`-এ shared helper (`roll_order_key`,
+`roll_order_queryset`, `sort_result_rows_by_roll`) — `get_exam_students`, `failed_subject_rows`,
+`section_arrangement_rows` সব এখন এক নিয়ম মানে। ৪টি print template-এ `thead{display:table-header-group}` +
+`tr{page-break-inside:avoid}`। **কোনো মান/GPA/position বদলায়নি — শুধু ক্রম।**
+
+**যাচাই (লোকাল, Django 5.2.17 fallback / Python 3.11.2 / sqlite):** পূর্ণ suite **656 Django test OK** (638 + নতুন ১৮) ·
+`check` 0 · `makemigrations --check` clean · Node **14/0** · focused: `test_result_analysis` 38 OK,
+`test_published_lock_and_cell_shortcut` 7 OK, `test_institution_isolation` 24 OK। Regression pin যাচাই করা হয়েছে:
+`result_summary`-এর sort সরালে নতুন টেস্ট fail (`[100, None, 2, 10]` ≠ `[2, 10, 100, None]`).
+**যাচাই হয়নি:** live Render · PostgreSQL-এ NULL-placement (CI-এর postgres:16 job-ই proof) · print/PDF ভিজ্যুয়াল।
+
+**Docs updated this session:** `docs/prompts/reports/EX-02.md` (নতুন — ordering matrix সহ), `docs/prompts/PROGRESS.md`
+(সারি ০৩ + header), `docs/PROJECT_STATUS.md` (E3 হালনাগাদ + §20.2/§20.3), `docs/TASK_BACKLOG.md` (নতুন update-log),
+`docs/HANDOFF.md` (এই নোট)।
+
+**Owner করণীয়:** PR merge-অনুমোদন · (ঐচ্ছিক) Published Result-এ merit ক্রম চাইলে জানান · (ঐচ্ছিক) `admission_class`-এর
+textual ক্রম numeric করতে চাইলে আলাদা সেশন · merge-এর পর live spot-check (Published Result → roll 2/10/100 + Excel)।
+**পরের প্রম্পট:** ০৪/২৮ (EX-03 — Group-based Mark Evaluation) — কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+---
+
 ## সেশন EX-01 — 2026-09-19 · প্রম্পট ০২/২৮ · Import redirect ও Analysis subtab
 
 **Session branch:** `arena/01a0ba60-school-management-system` · **Base:** `f03a16d` = `origin/main` (PR #38 merge-পরবর্তী) ·

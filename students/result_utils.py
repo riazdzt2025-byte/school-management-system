@@ -8,7 +8,54 @@ here so there is exactly one implementation of each.
 from collections import defaultdict
 from decimal import Decimal
 
-from django.db.models import Q
+from django.db.models import F, Q
+
+
+# ---- Register (roll) order -------------------------------------------------
+#
+# EX-02 (2026-09-19) — one rule for every register-flavoured output (result
+# sheet, published result summary, class result cards, student list/export,
+# attendance class list, seat-plan generation):
+#
+#     numeric roll first → students without a roll last → name → pk
+#
+# ``roll_no`` is an IntegerField, so the classic string-sort trap ('10' < '2')
+# only reaches an output that re-sorts as text; keeping the sort here (and
+# numeric) is what keeps the register in roll order everywhere. The pk is the
+# last tie-break so two students sharing a roll never swap places between two
+# pages of a paginated list or between a page and its Excel export.
+#
+# Merit outputs (``top_10``, ``full_rank_list``, ``section_arrangement``) are
+# deliberately *not* sorted with these helpers — they follow the computed
+# ``position`` / merit ranking, and tests pin both behaviours.
+
+def roll_order_key(student):
+    """Sort key placing a student in register (roll) order.
+
+    Usable both for a ``Student`` and for a row dict built by
+    :func:`build_exam_results` (through :func:`sort_result_rows_by_roll`).
+    """
+    return (
+        student.roll_no is None,
+        student.roll_no if student.roll_no is not None else 0,
+        (student.name or '').lower(),
+        student.pk or 0,
+    )
+
+
+def roll_order_queryset(queryset):
+    """Order a ``Student`` queryset exactly like :func:`roll_order_key`.
+
+    Plain ``order_by('roll_no')`` puts NULL rolls *first* on SQLite and *last*
+    on PostgreSQL — the same page would show a different register depending on
+    the engine. ``nulls_last=True`` pins one behaviour on both.
+    """
+    return queryset.order_by(F('roll_no').asc(nulls_last=True), 'name', 'pk')
+
+
+def sort_result_rows_by_roll(results):
+    """Sort :func:`build_exam_results` rows (``row['student']``) by roll."""
+    return sorted(results, key=lambda row: roll_order_key(row['student']))
 
 
 def class_filter_variants(value):
@@ -33,6 +80,11 @@ def get_exam_students(exam, group=None):
     and group. ``group`` overrides the exam's own group for exams created
     without one, so the group picker on the marks pages drives the same filter
     as the subject list.
+
+    Returned in register order (see :func:`roll_order_key`): numeric roll,
+    students without a roll last, then name and pk. Every exam screen that
+    lists students — marks entry, seat plan, result pages — inherits it;
+    merit screens re-sort by ``position`` on top of it.
     """
     from .models import Student
 
@@ -49,7 +101,7 @@ def get_exam_students(exam, group=None):
     effective_group = (group if group is not None else exam.group) or ''
     if effective_group:
         students = students.filter(group=effective_group)
-    return students.order_by('roll_no', 'name')
+    return roll_order_queryset(students)
 
 
 def get_exam_subjects(exam, group=None):
@@ -796,6 +848,11 @@ def build_exam_results(exam, group=None):
     Islam). A student whose own paper is not assigned gets a plain dash in that
     column — never a fail, never counted, and never an "absent subject".
     Papers that nobody in the class sits are not printed at all.
+
+    Ordering (EX-02): rows come back **merit first** — every placed student in
+    ``position`` order, then the unplaced ones (failed / 'No Marks') in register
+    order. Register screens re-sort the whole list with
+    :func:`sort_result_rows_by_roll`; merit screens use it as it is.
     """
     from .models import ExamMark
 
@@ -958,7 +1015,12 @@ def build_exam_results(exam, group=None):
         key = (result['gpa'], result['total_obtained'])
         result['position'] = ranked[index - 1]['position'] if index and key == previous_key else index + 1
         previous_key = key
-    return columns, ranked + [result for result in results if result['position'] is None]
+    # Merit order for the placed students, register order for the rest (failed
+    # and 'No Marks' rows have no position, so ranking cannot order them).
+    unplaced = sort_result_rows_by_roll(
+        [result for result in results if result['position'] is None]
+    )
+    return columns, ranked + unplaced
 
 
 def failed_subject_rows(exam, group=None):
@@ -989,11 +1051,12 @@ def failed_subject_rows(exam, group=None):
                 'failed_parts': subject_result.get('failed_parts', []),
                 'result': subject_result,
             })
+    # Subject-first (an office reading one paper at a time), then the shared
+    # register order — including the pk tie-break, so two students on the same
+    # roll keep the same relative place in every run.
     return sorted(rows, key=lambda row: (
         getattr(row['subject'], 'code', ''),
-        row['student'].roll_no is None,
-        row['student'].roll_no or 0,
-        row['student'].name.lower(),
+        *roll_order_key(row['student']),
     ))
 
 
@@ -1022,7 +1085,5 @@ def section_arrangement_rows(exam, group=None):
     return sorted(rows, key=lambda row: (
         row['failed_subject_count'],
         -row['total_obtained'],
-        row['student'].roll_no is None,
-        row['student'].roll_no or 0,
-        row['student'].name.lower(),
+        *roll_order_key(row['student']),
     ))

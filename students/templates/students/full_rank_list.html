@@ -16,6 +16,10 @@
         .table-card { box-shadow: none !important; border: 1px solid #000 !important; }
         table { font-size: 0.85rem; }
         th, td { border: 1px solid #000 !important; color: #000 !important; background: #fff !important; }
+        /* EX-02 — a rank list runs to several printed pages: repeat the header
+           on each one and never split a student's row across a page break. */
+        thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
     }
 {% endblock %}
 
