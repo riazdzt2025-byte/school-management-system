@@ -437,3 +437,35 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 **অপরিবর্তিত বাকি কাজ (এই baseline-এও খোলা):** EX-01 Analysis subtab · EX-02 বাকি output-এর roll-order নিয়ম · EX-03 `SubjectMarkSetting.group` · OF-02 বাকি list views · OF-05 তিন গ্যাপ · OF-06 public progress page + share · OF-07/OF-08 integrity audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification। পূর্ণ matrix: `docs/prompts/reports/০০-baseline.md`।
 
 **⚠️ Note:** এই ফাইলের `44cbcc3`-ভিত্তিক section-গুলোর সংখ্যা (৫৫০/৬০৫ test) ঐতিহাসিক; সর্বশেষ verified সংখ্যা **৬২৫ Django + ১৪ Node**। `P0-9` entry-র heading (✅ DONE) ও body (Partial) পরস্পরবিরোধী — ২০২৬-০৯-১৯-এ README-তে এখনো কিছু `[ ]` পাওয়া গেছে, তাই body-র অবস্থাই সঠিক বলে ধরা হবে; এটি আলাদা ছোট doc-কাজ (DB-04/FN-01 সেশনে যাচাইযোগ্য)।
+
+---
+
+## Update — 2026-09-19 · সেশন EX-02 — register/roll-order নিয়ম (প্রম্পট ০৩/২৮)
+
+**Base:** `cf70109` = `origin/main` (EX-01, PR #39 merge-পরবর্তী) · branch `arena/01a0baa2-school-management-system`
+· **কোনো model/migration/JS/settings পরিবর্তন নেই** — শুধু ordering + shared helper + টেস্ট + print CSS।
+
+**যাচাই করা সংখ্যা (isolated venv, Django 5.2.17 / Python 3.11.2 / sqlite):** `check` 0 issue ·
+`makemigrations --check` clean · **`Ran 656 tests` → OK** (baseline 638 + নতুন ১৮) · **Node 14 pass / 0 fail**।
+PostgreSQL-এর authoritative proof CI-এর postgres:16 job (`nulls_last=True` এই সেশনে sqlite-তেই চালানো)।
+
+**এই update-এ সংশোধিত entry:**
+- `E3` (PROJECT_STATUS) — **Complete**: নিয়ম লিখিত (**register/roll = numeric roll, `None` শেষে → name → pk**;
+  **merit/rank = position order**) এবং সব register output-এ প্রয়োগ। আগে শুধু `result_sheet`-এ ছিল;
+  `exam_result_summary` (merit → roll), `result_analysis_result_cards` (merit → roll), `student_list` ও
+  `download_student_list` (`nulls_last=True` + `pk`), attendance class list (name → roll), seat-plan generation
+  (roll + `pk`) যোগ হয়েছে।
+- নতুন টেস্ট ফাইল `students/test_register_roll_order.py` (১৮) — roll **2 / 10 / 100 / None**, alphabetical-বিরোধী
+  নাম, merit-বিরোধী নম্বর, duplicate-roll stability, Excel-export ক্রম। Regression pin যাচাই: `result_summary`-এর
+  sort সরালে টেস্ট fail (`[100, None, 2, 10]` ≠ `[2, 10, 100, None]`)。
+
+**বাকি কাজের তালিকা থেকে বাদ:** **EX-02** (এই সেশনে সম্পন্ন, PR OPEN — owner merge-অনুমোদন সাপেক্ষে)।
+EX-01 Analysis subtab-ও কোড-স্তরে সম্পন্ন, শুধু PR #39-এর merge-অনুমোদন বাকি।
+
+**নতুন/উন্মুক্ত ছোট follow-up (EX-02-এর scope-বহির্ভূত, owner চাইলে পরের সেশনে):**
+1. `admission_class` CharField ⇒ class-স্তরের ক্রম এখনো textual (`'10' < '9'`); roll-ক্রম ঠিক হলেও class-ক্রম numeric নয়।
+2. Published Result-এর ক্রম merit করতে চাইলে `sort_result_rows_by_roll` সরালেই হবে (টেস্ট সিদ্ধান্তের প্রহরী)।
+3. attendance class list-এর ক্রম name-এ ফেরাতে চাইলে এক লাইনের বদল (`roll_order_queryset` → `order_by('name')`)।
+
+**⚠️ Note:** EX-02-এর সর্বশেষ verified সংখ্যা **৬৫৫ Django + ১৪ Node**; `reports/EX-02.md`-এ ordering matrix (output →
+নিয়ম → কোথায় enforced)।
