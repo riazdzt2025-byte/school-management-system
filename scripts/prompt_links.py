@@ -89,11 +89,12 @@ def main() -> None:
     for p in prompts:
         slug = p["path"].stem
         md = f"{base_blob}/{slug}.md"
-        txt = f"{base_raw}/copy-paste/{slug}.txt"
+        txt = f"{base_blob}/copy-paste/{slug}.txt"
         kick = f"{base_blob}/copy-paste/kickoff/prompt-{p['num']:02d}-START.txt"
         docx = f"{base_blob}/export/docx/{slug}.docx"
         rows.append(f"| {p['num']:02d} | {p['sid']} | {p['title']} | [📄 md]({md}) · "
-                    f"[📋 কপি-টেক্সট]({txt}) · [▶ START]({kick}) · [📝 Word]({docx}) |")
+                    f"[📋 কপি-টেক্সট]({txt}) · [⬇ raw]({base_raw}/copy-paste/{slug}.txt) · "
+                    f"[▶ START]({kick}) · [📝 Word]({docx}) |")
         kw = KEYWORDS.get(p["sid"], "")
         key_rows.append(f"| `{p['sid']}` | **{p['num']:02d}** | {kw} | {p['title']} |")
 
@@ -122,7 +123,7 @@ _repo: `{repo}` · branch: `{branch}` · এই ফাইল তৈরি কর
 
 | কী | লিংক |
 |---|---|
-| কপি-পেস্ট (সব ২৮টি, প্লেইন টেক্সট) | [ALL_PROMPTS.txt]({base_raw}/copy-paste/ALL_PROMPTS.txt) |
+| কপি-পেস্ট (সব ২৮টি, প্লেইন টেক্সট) | [ALL_PROMPTS.txt]({base_blob}/copy-paste/ALL_PROMPTS.txt) · [⬇ raw]({base_raw}/copy-paste/ALL_PROMPTS.txt) |
 | কপি-পেস্ট (Markdown, সব) | [ALL_PROMPTS.md]({base_blob}/ALL_PROMPTS.md) |
 | **PDF** (কভার + সূচি + ২৮টি, ৮৯ পৃষ্ঠা) | [School-Prompts-28-BN.pdf]({base_blob}/export/School-Prompts-28-BN.pdf) |
 | Word (সব একসাথে) | [School-Prompts-28-BN.docx]({base_blob}/export/School-Prompts-28-BN.docx) |
@@ -140,6 +141,9 @@ python3 scripts/show_prompt.py gpa        # শিরোনামে শব্�
 python3 scripts/show_prompt.py 4 --start-only   # শুধু START-ব্লক
 python3 scripts/show_prompt.py 4 --out /tmp/p4.txt   # ফাইলে লিখে দেয়
 ```
+
+> **কপি করার সহজ পথ:** `কপি-টেক্সট` / `raw` লিংকটা সাদা টেক্সট — খুলে Ctrl+A → Ctrl+C করলেই পুরো প্রম্পট কপি হয়ে যায়।
+> (⚠️ `raw.githubusercontent.com` কিছু নেটওয়ার্কে ব্লক থাকতে পারে; তখন `📄 md` বা `📋 কপি-টেক্সট` লিংকটি ব্যবহার করুন।)
 
 ## ৫. লিংক ঠিক রাখা
 
