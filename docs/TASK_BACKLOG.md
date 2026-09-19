@@ -447,7 +447,7 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 
 **যাচাই করা সংখ্যা (isolated venv, Django 5.2.17 / Python 3.11.2 / sqlite):** `check` 0 issue ·
 `makemigrations --check` clean · **`Ran 656 tests` → OK** (baseline 638 + নতুন ১৮) · **Node 14 pass / 0 fail**।
-PostgreSQL-এর authoritative proof CI-এর postgres:16 job (`nulls_last=True` এই সেশনে sqlite-তেই চালানো)।
+PostgreSQL-এর authoritative proof CI-এর postgres:16 job — **PR #40-এ `test (postgres, 3.12, true)` pass (6m37s)**; লোকালে শুধু sqlite (`nulls_last=True`)। CI সব মিলিয়ে **sqlite ✅ 6m23s · postgres:16 ✅ 6m37s · Node ✅ 4s** — তিনটি check-ই pass।
 
 **এই update-এ সংশোধিত entry:**
 - `E3` (PROJECT_STATUS) — **Complete**: নিয়ম লিখিত (**register/roll = numeric roll, `None` শেষে → name → pk**;

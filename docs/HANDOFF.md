@@ -4,7 +4,7 @@
 
 **Session branch:** `arena/01a0baa2-school-management-system` · **Base:** `cf70109` = `origin/main` (EX-01, PR #39 merge-পরবর্তী) ·
 **Commits:** `4e9f24c` (helper + register outputs) · `4c09be8` (print CSS) · `15721a4` (১৮ টেস্ট) · ডক-কমিট ·
-**PR:** এই branch থেকে OPEN (owner merge-অনুমোদন বাকি; এজেন্ট merge করবে না) ·
+**PR:** #40 OPEN (owner merge-অনুমোদন বাকি; এজেন্ট merge করবে না) · **CI (Django 6.1/py3.12):** sqlite ✅ 6m23s · postgres:16 ✅ 6m37s · Node ✅ 4s ·
 **Scope:** শুধু ordering + shared helper + টেস্ট + print CSS — **কোনো model/migration/JS/settings/data পরিবর্তন নেই**।
 
 **Bengali TL;DR:** এই সেশনে register/roll-order-এর নিয়ম লিখে ফেলা হয়েছে — **register/roll output = numeric roll**
