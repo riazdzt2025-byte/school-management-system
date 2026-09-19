@@ -1,5 +1,16 @@
 # Task Backlog — first production release scope
 
+_Last updated: 2026-09-19 (সেশন ০০ / প্রম্পট ০১ — ২৮-প্রম্পট baseline যাচাই, base `8b7aa62` = `origin/main`)_
+_Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
+_Baseline 2026-09-19: 625 Django + 14 Node pass · `check` 0 · `makemigrations --check` clean · migration leaf 0043।_
+
+**২০২৬-০৯-১৯ baseline TDL;DR:** ২৮-প্রম্পট পরিকল্পনা অনুযায়ী প্রথম পাসে দেখা গেছে — অনেক আইটেম (EX-02 numeric roll, EX-04 Higher Math, EX-06 GPA 4.90→5 boost, OF-01 unified guardian contact, OF-02 pagination 100, OF-03 subject assignment subtab, OF-04 admission funnel, DB-03 isolation/permissions, DB-05 backup tooling) ইতিমধ্যেই `main`-এ আছে এবং test pass করছে → এগুলো upcoming prompt-এ verify-only (⏭️)। প্রকৃত কাজ বাকি: EX-03 SubjectMarkSetting.group field (DB migration দরকার), DB-02 developer branding (owner decision প্রথমে), AT-02 attendance calendar view (build), EM-01 teacher assignment (build), EM-02 leave (owner policy decision প্রথমে — সিদ্ধান্ত ছাড়া কোড নয়)। বিভিন্ন Partial আইটেমে (EX-01 Exam-subtab link, EX-05 AB/dash policy, EX-07 shortcut page coverage, OF-05/06/07/08 edge cases, DB-04 deploy security settings, DB-06 restore automation, AT-01 correction, EM-03 payroll lock) owner decision + small fix দরকার — বিস্তারিত `docs/prompts/reports/০০-baseline.md` §2।
+
+নিচের 2026-09-17 বিবরণ archival হিসেবে রাখা হলো (এখনকার বাস্তব সংখ্যা উপরে লেখা হয়েছে)।
+
+---
+
+
 _Last updated: 2026-09-17 (সেশন ০১ — বর্তমান অবস্থা যাচাই, test baseline এবং চূড়ান্ত backlog, base `44cbcc3` = `origin/main`)_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._

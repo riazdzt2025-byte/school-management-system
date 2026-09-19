@@ -1,5 +1,32 @@
 # Project Status — School Management System
 
+_Last updated: 2026-09-19 (সেশন ০০ / প্রম্পট ০১ — ২৮-প্রম্পট পরিকল্পনার baseline যাচাই)_
+_Base commit: `8b7aa62` (Merge PR #35) on branch `arena/01a0b85c-school-management-system` — equals `origin/main`_
+_Working tree: clean · Django 5.2.17 (py3.11 fallback) · 625 Django tests pass · 14 Node tests pass · `check` 0 issue · `makemigrations --check` clean · migrations leaf 0043_
+
+**২০২৬-০৯-১৯ baseline (প্রম্পট ০১) TL;DR:** Isolated venv-এ `python manage.py test students` → **625 pass** (পুরোনো 555 চেয়ে +70), `node --test` → **14 pass**, `check` 0 issue, `makemigrations --check` clean, leaf migration `0043_auditlog_institution.py`। ২৮-প্রম্পটের মধ্যে EX-02/EX-04/EX-06/OF-01/OF-02/OF-03/OF-04/DB-03/DB-05 ইতিমধ্যেই সম্পন্ন (verify-only); EX-03 (SubjectMarkSetting-এ group field নেই → build), DB-02 (branding নেই → owner decision), AT-02 (calendar view নেই → build), EM-01 (TeacherAssignment নেই → build), EM-02 (Leave model নেই → owner decision)। বিস্তারিত: `docs/prompts/reports/০০-baseline.md`। SSC/BoardResult RetiredBoardFeatureTests pass; production Render state UNKNOWN (ছোঁয়া হয়নি)।
+
+> **Branch note:** বর্তমান কাজ `arena/01a0b85c-school-management-system`-এ (system-prompt নির্দেশিত); পুরোনো docs-এ `01a0b7f7…` নাম থাকতে পারে।
+
+---
+
+## 0. Verification (2026-09-19, প্রম্পট ০১ / সেশন ০০)
+
+| Check | Result |
+|---|---|
+| Branch / HEAD / base | `arena/01a0b85c-school-management-system` @ `8b7aa62` = `origin/main`, working tree clean |
+| `python manage.py check` | 0 issues |
+| `python manage.py check --deploy` | 6 expected warnings (W004/W008/W009/W012/W016/W018) |
+| `python manage.py makemigrations --check` | No changes detected; leaf `0043_auditlog_institution.py` |
+| `python manage.py test students` | 625 tests pass (Django 5.2.17 / SQLite, 228s) |
+| `node --test students/js/*.test.js` | 14 pass / 0 fail (result_cell_shortcut 8 + student_row_actions 6) |
+| SSC/BoardFeature regression | RetiredBoardFeatureTests pass (625-এর অংশ); restore হয়নি |
+
+**Verdict matrix (28 prompts):** `docs/prompts/reports/০০-baseline.md` §2।
+
+---
+
+
 _Last updated: 2026-09-17 (সেশন ০১ — বর্তমান অবস্থা যাচাই, test baseline এবং চূড়ান্ত backlog)_
 _Base commit: `44cbcc3` (Merge PR #27) on branch `arena/01a0ad5e-school-management-system` — equals `origin/main`_
 _Working tree: clean, no local overwrite, no reset --hard, no git clean_

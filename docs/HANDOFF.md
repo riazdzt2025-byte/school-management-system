@@ -1,5 +1,32 @@
 # Handoff — School Management System
 
+**Session:** `arena/01a0b85c-school-management-system` (সেশন ০০ / প্রম্পট ০১ — ২৮-প্রম্পট পরিকল্পনার baseline)
+**Date:** 2026-09-19 · **Base:** `origin/main` @ `8b7aa62` (Merge PR #35)
+**Branch:** `arena/01a0b85c-school-management-system` — system-prompt নির্দেশিত; clean working tree; no switch, no `reset --hard`, no `git clean`
+**Scope:** শুধু baseline audit + documentation update। **কোনো feature code/migration/live work নেই।** SSC restore নয়। Production DB/credential ছোঁয়া হয়নি।
+
+**Bengali TL;DR:** Isolated venv (Django 5.2.17 / Python 3.11 fallback) — **625 Django tests pass**, **14 Node tests pass**, `check` 0 issue, `check --deploy` 6 expected warnings, `makemigrations --check` clean, migration leaf `0043_auditlog_institution.py`। ২৮-প্রম্পট verdict matrix `docs/prompts/reports/০০-baseline.md`-এ। অনেক আইটেম ইতিমধ্যেই সম্পন্ন (EX-02/EX-04/EX-06/OF-01–OF-04/DB-03/DB-05) → verify-only; EX-03/DB-02/AT-02/EM-01/EM-02-এ প্রকৃত build দরকার (কিছু owner decision সাপেক্ষে)।
+
+## এই সেশনে কী করা হয়েছে
+1. `git fetch origin --prune` → HEAD `8b7aa62` = `origin/main` (PR #35) verified; pre-existing uncommitted change নেই।
+2. `/tmp/audit_venv`-এ Django 5.2.17 + dependencies install করে `check` / `check --deploy` / `makemigrations --check` / `test students` / Node tests চালানো → সব pass (625+14)।
+3. ২৮-প্রম্পটের প্রতিটি জন্য code evidence সংগ্রহ (urls.py, views.py, models.py, migrations, templates, tests) → verdict matrix লেখা হয়েছে।
+4. `docs/prompts/reports/০০.md`, `docs/prompts/reports/০০-baseline.md` রিপোর্ট লেখা; `docs/prompts/PROGRESS.md`-এ প্রম্পট ০১-এর সারি আপডেট; `docs/PROJECT_STATUS.md`-এ Verification সেকশন যোগ।
+5. **কোনো production/live/credential স্পর্শ করা হয়নি**; SSC restore করা হয়নি; test DB throwaway SQLite।
+
+## পরবর্তী সেশন (প্রম্পট ০২ / EX-01)
+- Import stay-on-page redirect (L3731/3802) কাজ করছে — verify-first তারপর Exam flyout-এ Result Analysis subtab link যোগ (বর্তমানে Result Analysis আলাদা sidebar group); owner-সিদ্ধান্ত থাকলে সেই অনুযায়ী।
+- Details: `docs/prompts/prompt-02-ex-01-import-redirect-analysis-subtab.md`
+
+## ঝুঁকি
+- CI status এই সেশনে PR তৈরি করে নিশ্চিত করতে হবে।
+- Python 3.12+Django 6.1 (CI) vs Python 3.11+Django 5.2 (audit) — compatibility gap CI-তে প্রকাশ পাবে।
+- Live Render/DB/backup/cron state UNKNOWN; এজেন্টদের নিয়ম অনুযায়ী ছোঁয়া নিষেধ।
+
+---
+
+# Handoff — School Management System
+
 **Session:** `arena/01a0ad5e-school-management-system` (সেশন ০১ — বর্তমান অবস্থা যাচাই, test baseline এবং চূড়ান্ত backlog)
 **Date:** 2026-09-17 · **Base:** `origin/main` @ `44cbcc3` (Merge PR #27, parents `4fc4c3e` + `79c0921`)
 **Branch:** `arena/01a0ad5e-school-management-system` — নির্ধারিত branch, clean working tree, no switch, no reset --hard, no git clean
