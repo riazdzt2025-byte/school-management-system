@@ -1,8 +1,10 @@
 # Project Status — School Management System
 
-_Last updated: 2026-09-17 (সেশন ০১ — বর্তমান অবস্থা যাচাই, test baseline এবং চূড়ান্ত backlog)_
-_Base commit: `44cbcc3` (Merge PR #27) on branch `arena/01a0ad5e-school-management-system` — equals `origin/main`_
+_Last updated: 2026-09-19 (সেশন ০০ — নতুন baseline যাচাই, প্রম্পট ০১/২৮)_
+_Base commit: `8b7aa62` (Merge PR #35) on branch `arena/01a0b9da-school-management-system` — equals `origin/main`_
 _Working tree: clean, no local overwrite, no reset --hard, no git clean_
+
+> **২০২৬-০৯-১৯ baseline (প্রম্পট ০১/২৮, সেশন ০০):** এই checkout-এ নিজে চালিয়ে যাচাই — **৬২৫ Django + ১৪ Node test pass**, `check` 0 issue, `check --deploy` ৬টি dev warning, `makemigrations --check` clean (leaf `0043`), backup drill sqlite ১৫/০ ও moto-S3 ২৮/০ pass। ২৮-সেশনের পূর্ণ verdict matrix: **`docs/prompts/reports/০০-baseline.md`** (§20-এ সারসংক্ষেপ)। নিচের ২০২৬-০৯-১৭-এর section-গুলো ঐতিহাসিক রেকর্ড; যেখানে সংখ্যা বা verdict ভিন্ন, §20-ই সত্য।
 
 **Bengali TL;DR (সর্বশেষ — 2026-09-17 implement):** এই সেশন P0-9 (README tick) + O2 (Paginator 100) + E1 (import stay-on-page) + D-GPA (4.90→5.00) + D-MIS (AB/F + TC exclusion) implement করেছে — শুধু সর্বশেষ checkout (`44cbcc3` = `origin/main`, PR #27 merge) যাচাই করা হয়েছে। Isolated env-এ `requirements.txt` fallback (Django 5.2.17 / Python 3.11) দিয়ে **550 students test + 6 Node row-action test সব pass**, `manage.py check` 0 issue, `makemigrations --check` clean, migrations 0001–0042 synced। আগের P0–P2 backlog-এর প্রায় সব কাজ (isolation, money validation, voucher/promotion institution column, fee/auto-receipt, media S3, backup tooling incl. encryption/off-box) code-এ আছে; guardian contact unification (0039-0042), result analysis isolation, Full Rank List, row-action gating সব cover আছে। SSC Registration/Result Summary **restore করা হয়নি** (migration 0035 irreversible, regression test pass)। Live Render/DB/backup অবস্থা এই sandbox থেকে **UNKNOWN** — docs ছাড়া নিশ্চিত দাবি করা হয়নি। কোনো production DB/credential ব্যবহার করা হয়নি, ব্যক্তিগত তথ্যবিহীন test data ব্যবহৃত।
 
@@ -33,6 +35,10 @@ _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 ## 2. বর্তমান feature status audit (Complete / Partial / Missing / Unverified)
 
 > Legend: **Complete** = end-to-end works + tests; **Partial** = core works but gap listed; **Missing** = not built / intentionally deferred; **Unverified** = needs live Render check (rule 7). প্রতিটি আইটেমে code/file evidence উল্লেখ আছে। Feature code থাকা / tests pass / PR merge / live deploy — আলাদা অবস্থা হিসেবে রিপোর্ট করা হয়েছে।
+>
+> ⚠️ **এই §2-এর কয়েকটি সারি ২০২৬-০৯-১৯-এ বাসি প্রমাণিত:** E1 (import redirect এখন stay-on-page),
+> E7 (GPA 4.90–4.99 → 5.00 এখন implement করা), O2 (student/archived/employee/attendance-এ pagination ১০০ আছে)।
+> সঠিক ও প্রমাণসহ সর্বশেষ অবস্থা **§20** এবং `docs/prompts/reports/০০-baseline.md`-এ।
 
 ### 2.1 Exam (পরীক্ষা ও ফলাফল)
 
@@ -147,12 +153,14 @@ _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 - `students_data.json`: 254 students (2026), 251 in pk 2 (School).
 - **Unknown live:** production DB content, years, volume — fixtures are example data only (rule 7).
 
-## 6. Test suite map (550 tests + 6 Node, verified 2026-09-17)
+## 6. Test suite map (৬২৫ Django + ১৪ Node — re-verified 2026-09-19, §20)
 
-**Python (`manage.py test students`): 555 pass (≈130s)**
+**Python (`manage.py test students`): 625 pass in 231.4s** (৬২৫ = এই checkout-এ ২০২৬-০৯-১৯-এ নিজে চালানো ফল;
+নিচের ২০২৬-০৯-১৭-এর breakdown ঐতিহাসিক — module-ভিত্তিক সংখ্যা বদলেছে, মোট ৬২৫)।
 Isolation: 16 + 34 tests; Students/Admission/Exams/Attendance/HR/Finance/Backup/Media/SSC retirement as in previous §6 plus 72 backup tests (encryption/file modes/off-box stub/SHA/retention/health-gate) and 33 media tests.
 
-**Node: 6 pass** — `student_row_actions.test.js`.
+**Node: 14 pass** — `student_row_actions.test.js` (৬) + `result_cell_shortcut.test.js` (৮) — `node --test students/js/*.test.js`,
+২০২৬-০৯-১৯-এ re-verified।
 
 **Not yet automated (intentional deferrals):** `P2-3` i18n, `P2-7` drop `StudentSubject`.
 
@@ -210,3 +218,54 @@ Owner-only live ops (P0-7, P0-8-live, P1-11-live) + quick fixes (pagination 100,
 
 **No feature code, no migration, no grading/policy change, no destructive command, no live deploy in this session.**
 
+
+---
+
+## 20. Session 00 — 2026-09-19 · নতুন baseline যাচাই (প্রম্পট ০১/২৮)
+
+**Scope:** শুধু যাচাই + ডকুমেন্টেশন (prompt §২) — **কোনো feature code, migration, template বা live কাজ নয়**।
+**Branch:** `arena/01a0b9da-school-management-system` · **Base:** `8b7aa62` = `origin/main` (Merge PR #35) · working tree clean।
+**পূর্ণ matrix + প্রমাণ (file:line, view, test নাম):** `docs/prompts/reports/০০-baseline.md`।
+
+### 20.1 যাচাই কমান্ড ও ফল (isolated venv, Django 5.2.17 fallback)
+
+| কমান্ড | ফল |
+|---|---|
+| `python manage.py check` | `0 issues` |
+| `python manage.py check --deploy` | ৬ warning (`W004 W008 W009 W012 W016 W018`) — প্রত্যাশিত dev expectation |
+| `python manage.py makemigrations --check` | `No changes detected` — models ⇄ migrations `0001`–**`0043`** synced |
+| `python manage.py test students` | **`Ran 625 tests in 231.431s` → `OK`** |
+| `node --test students/js/*.test.js` | **14 pass / 0 fail** (৮ shortcut + ৬ row-action) |
+| `./scripts/backup_smoke_test.sh` | **১৫ step pass / ০ fail** (disposable sqlite, plaintext + encrypted, SHA verify, wrong-passphrase reject) |
+| `moto_server` + `backup_smoke_test.sh --s3-endpoint …` | **২৮ step pass / ০ fail** (off-box upload → `--check-remote` → `fetch_backup` → restore → retention ২) |
+
+`RetiredBoardFeatureTests` সহ পুরো suite pass ⇒ SSC Registration/BoardResult পুনরুদ্ধার হয়নি।
+কোনো production DB/credential/Render/S3 আসল bucket ছোঁয়া হয়নি; `.restore-drill/` নিজেই পরিষ্কার হয়েছে।
+
+### 20.2 ২৮-সেশনের verdict (সংক্ষেপ)
+
+| Verdict | সেশন |
+|---|---|
+| **Complete** (যাচাই করা: ইতিমধ্যে সম্পন্ন — শুধু regression) | **EX-04, EX-05, EX-06, EX-07, OF-01, OF-03, OF-04, DB-01, DB-04, DB-05, DB-06** (+ EX-01-এর import redirect, + OF-02-এর ৪টি view) |
+| **Partial** (মূল অংশ আছে, নির্দিষ্ট কাজ বাকি) | **EX-01** (Analysis subtab), **EX-02** (বাকি output-এর নিয়ম), **EX-03** (group field), **OF-02** (১১টি list view), **OF-05** (ছবি), **OF-06** (progress page), **DB-02** (agent নামের comment), **DB-03** (SEC-FU-1/2), **AT-01** (correction), **EM-03** (closed-period) |
+| **Missing** | **AT-02** (calendar view), **EM-01** (teacher assignment), **EM-02** (leave — ⛔ owner-policy ছাড়া কোড নয়) |
+| **Unverified** | **OF-07 / OF-08** (audit-সেশন এখনো চালানো হয়নি), **FN-01** (২৭টির পরে), + সব live-only অংশ |
+
+### 20.3 বাকি কাজ (সংশোধিত তালিকা)
+
+১. EX-01 Analysis subtab ও ২. EX-02 বাকি output-order নিয়ম · ৩. EX-03 `SubjectMarkSetting.group`
+(+ append-only migration) · ৪. OF-02 ১১টি list view-এ pagination · ৫. OF-05 admission photo +
+list photo + purge-এ ফাইল মুছে ফেলা · ৬. OF-06 public progress/status page · ৭. OF-07/OF-08 audit ·
+৮. DB-02 `migrations/0034`-এর agent-নামের comment · ৯. DB-03 SEC-FU-1/2 · ১০. AT-01 per-record
+correction · ১১. AT-02 calendar view · ১২. EM-01 assignment · ১৩. EM-03 closed-period · ১৪. FN-01 release যাচাই।
+
+বিস্তারিত ও priority: `docs/TASK_BACKLOG.md` §Remaining (২০২৬-০৯-১৯ update-log সহ)।
+
+### 20.4 owner-সিদ্ধান্ত (এই সেশনে নতুন নিয়ম নয়, শুধু তালিকা)
+
+- OPEN **PR #36 / #37** — সমান্তরাল "প্রম্পট ০১" সেশন; কোনটি merge হবে (একটির বেশি merge করলে ডকে পরস্পরবিরোধী verdict)।
+- **EM-02 leave নীতি** — শুধু এই সেশনটিই সত্যিকারের blocked (লিখিত কোড-পূর্ব নীতি ছাড়া নয়)।
+- DB-04-এর HSTS/SSL-redirect/secure-cookie (live) — `check --deploy`-এর ৬ warning-এর মূল কারণ।
+- README §৭-এর বাকি সারি (EX-01/EX-03/EX-06/EX-07/OF-02/OF-05/OF-06/OF-07/OF-08/AT-01/AT-02/EM-01/EM-03)।
+
+**এই সেশনে কোনো feature code, migration, policy change, destructive command বা live deploy নেই।**

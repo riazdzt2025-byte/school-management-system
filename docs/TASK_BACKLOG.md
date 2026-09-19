@@ -139,8 +139,8 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 
 #### O2 · Student pagination: সর্বোচ্চ ১০০ records — ✅ DONE (2026-09-17, Paginator 100)
 - **Task ID & Purpose:** O2 — student list / archived / attendance / employee — প্রতি page 100, pagination nav সহ (was all load)।
-- **Current status:** **Missing** (no pagination)
-- **Evidence:** `students/views.py:student_list` `students = list(qs.order_by(...))` no `Paginator`; template `student_list.html` (`school_system/templates/students/student_list.html`) no `{% if is_paginated %}`; `grep -rn Paginator students/views.py` only backup_utils.
+- **Current status (2026-09-19 baseline re-verified):** **Partial** — `Paginator(..., 100)` এখন ৪টি high-volume view-এ আছে: `student_list` (`views.py:1631`), `archived_students` (`:2228`), `employee_list` (`:1501`), `attendance_report` (`:1250`); template-এ `is_paginated`/`page_obj` ব্যবহৃত। **বাকি ১১টি list view** এখনো পুরো queryset render করে: `money_receipt_list` (`:4482`), `voucher_list` (`:4533`), `salary_sheet_list` (`:4588`), `audit_log_list` (`:4820`), `admission_application_list` (`:561`), `exam_list` (`:3456`), `subject_requirement_list` (`:2818`), `student_exams` (`:2419`), `certificate_list` (`:2109`), `student_promotion_history` (`:4799`), `accounts_admission_queue` (`:759`)। `download_*` export ইচ্ছাকৃতভাবে unpaginated (পুরো ডেটা) — রাখতে হবে।
+- **Evidence:** প্রমাণ ও line-ref: `docs/prompts/reports/০০-baseline.md` §৪ (OF-02 সারি); `tests.py:2822+` pagination টেস্ট (`test_pagination_limits_to_100`, `Page 1 of 2`)।
 - **Priority:** **P1** (performance + UX for large roll)
 - **Dependencies:** —
 - **Acceptance:** `student_list` paginated `paginate_by=100` (server-side, institution/class/section/group/search filters + ordering preserved across pages), URL `?page=N` works, `download_student_list` still exports **all** filtered (not just current page) with warning, `archived_students` similarly paginated, page controls show `x–y of total`, direct `?page=999` → last page (not 500). No N+1 query.
@@ -236,7 +236,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 
 #### O5 · Application থেকে student record ও প্রয়োজনীয় documents-এ photo continuity
 - **Task ID & Purpose:** O5 — application-এ আপলোড করা photo student record + ID/TC/certificate-এ দেখা।
-- **Current status:** **Missing** (no photo on application)
+- **Current status (2026-09-19 baseline re-verified):** **Partial** — (১) `AdmissionApplication`-এ **photo field নেই** (admission থেকে ছবি আসে না), (২) **student list template-এ ছবি দেখানো হয় না** (`school_system/templates/students/student_list.html`-এ `photo` নেই; ছবি ব্যবহৃত শুধু `id_card_print.html`, `result_analysis_merit_slides.html`, `add_student.html`), (৩) **`purge_archived_student` ছবির ফাইল মোছে না** — `views.py:2312-2334` শুধু `student.delete()` করে (Django model delete-এ file delete হয় না)। `Student.photo` + 2MB/type validation + S3 storage path আগে থেকেই কাজ করে।
 - **Evidence:** `models.AdmissionApplication` has no `photo` field; `forms.AdmissionApplicationForm` no image; `views.accounts_approve_payment` creates `Student` without photo (L912). `Student.photo` exists separately, `student_id_card`, `tc_print`, `certificate_print` use `student.photo` but admission flow leaves it blank.
 - **Priority:** **P1**
 - **Dependencies:** P1-11-live (S3 bucket determines where photos live persistently)
@@ -418,3 +418,21 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 3. **SEC-FU-3 (P1):** P0-7/P0-8-live remain the highest *real-world* risks (mis-set prod env, no durable backup) — owner checklist `docs/PRODUCTION_CHECKLIST.md`.
 4. Quirk noted: other unguarded `archived_by`-style lookups may exist in templates (DEBUG-only crash, silent in prod); sweep is P2.
 
+---
+
+## Update — 2026-09-19 · সেশন ০০ — নতুন baseline যাচাই (প্রম্পট ০১/২৮)
+
+**Base:** `8b7aa62` = `origin/main` (PR #35 merge) · branch `arena/01a0b9da-school-management-system` · **কোনো feature code/migration/data change নেই** — শুধু যাচাই + ডক।
+
+**যাচাই করা সংখ্যা (isolated venv, Django 5.2.17):** `check` 0 issue · `check --deploy` ৬ dev warning · `makemigrations --check` clean (migrations `0001`–`0043`) · **`Ran 625 tests` → OK (231.4s)** · **Node 14 pass / 0 fail** · `backup_smoke_test.sh` sqlite **১৫/০ pass** ও moto-S3 off-box **২৮/০ pass** (disposable ডেটা; `.restore-drill/` gitignored, work শেষে পরিষ্কার)।
+
+**এই update-এ সংশোধিত entry:**
+- `O2` — status `Missing` → **`Partial`**: ৪টি view-এ `Paginator(...,100)` আছে (student/archived/employee/attendance), বাকি ১১টি list view-এর তালিকা entry-তে যোগ করা হলো।
+- `O5` — status `Partial`: admission photo field অনুপস্থিত + student list-এ ছবি নেই + purge-এ ছবির ফাইল মুছে ফেলা হয় না — তিনটি গ্যাপ entry-তে যোগ করা হলো।
+- `E1` / `D-GPA` / `D-MIS` / `E8` / `O4` / `R1` — baseline-এ যাচাই করে **সঠিক** পাওয়া গেছে (কোনো পরিবর্তন দরকার হয়নি)।
+
+**নতুনভাবে Baseline-এ Complete প্রমাণিত (backlog-এ আলাদা কাজ দরকার নেই):** EX-04 (Higher Math — curriculum 0042 + seeds + ৪৭+ test), EX-05 (missing marks → AB/F — `EXAM_ABSENT_SUBJECT_FAILS=True` + টেস্ট), EX-06 (GPA 4.90–4.99 → 5.00 boost + টেস্ট), EX-07 (Ctrl/Cmd+Click — Node ৮ + Django ৩), OF-01 (guardian contact 0039–0041 + ৩৯ test), OF-03 (Subject Assignment subtab + ২৮ test), DB-01 (dashboard scoping + nav টেস্ট), DB-04/DB-05/DB-06 (settings/CI/backup tooling + drill এই সেশনে হাতে চালিয়ে pass)।
+
+**অপরিবর্তিত বাকি কাজ (এই baseline-এও খোলা):** EX-01 Analysis subtab · EX-02 বাকি output-এর roll-order নিয়ম · EX-03 `SubjectMarkSetting.group` · OF-02 বাকি list views · OF-05 তিন গ্যাপ · OF-06 public progress page + share · OF-07/OF-08 integrity audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification। পূর্ণ matrix: `docs/prompts/reports/০০-baseline.md`।
+
+**⚠️ Note:** এই ফাইলের `44cbcc3`-ভিত্তিক section-গুলোর সংখ্যা (৫৫০/৬০৫ test) ঐতিহাসিক; সর্বশেষ verified সংখ্যা **৬২৫ Django + ১৪ Node**। `P0-9` entry-র heading (✅ DONE) ও body (Partial) পরস্পরবিরোধী — ২০২৬-০৯-১৯-এ README-তে এখনো কিছু `[ ]` পাওয়া গেছে, তাই body-র অবস্থাই সঠিক বলে ধরা হবে; এটি আলাদা ছোট doc-কাজ (DB-04/FN-01 সেশনে যাচাইযোগ্য)।

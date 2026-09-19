@@ -2,8 +2,9 @@
 
 > **নতুন সেশনে শুরু করছেন?** `docs/prompts/HANDOFF-START.md` পড়ুন (মাত্র ২টি জিনিস পাঠাতে হয়)।
 > **✅ প্রম্পট প্ল্যান এখন `main`-এ merge হয়েছে (PR #34, `ec6604b`) — সাধারণ `git pull main` করলেই সব ফাইল চলে আসবে। লিংক: `docs/prompts/LINKS.md`।**
-> **এখনকার অবস্থা:** কোনো প্রম্পট এখনো ✅ নয় → **প্রথম কাজ প্রম্পট ০১** = `docs/prompts/prompt-01-session-00-baseline.md`
-> (START-ব্লক: `docs/prompts/copy-paste/kickoff/prompt-01-START.txt`)।
+> **এখনকার অবস্থা:** প্রম্পট **০১ ✅ সম্পন্ন** (২০২৬-০৯-১৯, সেশন ০০ — ৬২৫ Django + ১৪ Node pass, verdict matrix
+> `docs/prompts/reports/০০-baseline.md`) → **পরবর্তী কাজ প্রম্পট ০২ (EX-01)** = `docs/prompts/prompt-02-ex-01-import-redirect-analysis-subtab.md`
+> (START-ব্লক: `docs/prompts/copy-paste/kickoff/prompt-02-START.txt`)।
 > প্রতি সেশনের এজেন্ট কাজ শেষে **নিজের সারি** আপডেট করবে — তাই "কত নম্বর চলছে / শেষ" এখানেই দেখা যাবে।
 
 _এই ফাইলটিই একমাত্র সত্য: **কত নম্বরের প্রম্পট চলছে, কোনটি শেষ হয়েছে**। প্রতি সেশনের এজেন্ট নিজের সারি আপডেট করবে।_
@@ -13,40 +14,44 @@ _এই ফাইলটিই একমাত্র সত্য: **কত ন�
 
 **ক্রম:** ০১ (সেশন ০০ যাচাই) → EX-01…EX-07 → OF-01…OF-08 → DB-01…DB-06 → AT-01…AT-02 → EM-01…EM-03 → FN-01। ক্রম ভাঙা যাবে না; প্রতিটি প্রম্পট নিজের যাচাই প্রথমে করবে।
 
+**নোট-কলামের নিয়ম:** প্রম্পট ০১ শুধু **initial baseline verdict** বসিয়েছে (প্রমাণ: `reports/০০-baseline.md`)।
+`যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে` মানে ওই সেশনের কোড+টেস্ট
+ইতিমধ্যেই আছে; তবু নম্বরের ক্রম ভাঙা যাবে না — সেই সেশনে গিয়ে নিজে চালিয়ে প্রমাণ করতে হবে।
+
 | # | সেশন | বিভাগ | ধরন | শিরোনাম | নির্ভরতা | স্ট্যাটাস | তারিখ | Commit / PR | টেস্ট প্রমাণ | নোট |
 |---|------|-------|------|---------|----------|-----------|-------|-------------|---------------|------|
-| ০১ | ০০ | প্রাথমিক | যাচাই | সর্বশেষ checkout থেকে বাকি কাজ নির্ধারণ (baseline) | — | ▶ পরবর্তী (এখনো চালানো হয়নি) | — | — | — | — |
-| ০২ | EX-01 | Exam | সংশোধন | Import redirect ও Analysis subtab | প্রম্পট ০১ (baseline) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ০৩ | EX-02 | Exam | সংশোধন | Result/Register roll-order | প্রম্পট ০২ (EX-01) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ০৪ | EX-03 | Exam | উন্নয়ন | Group-based Mark Evaluation | প্রম্পট ০৩ (EX-02) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ০৫ | EX-04 | Exam | যাচাই + উন্নয়ন | নতুন subject / Higher Math workflow | প্রম্পট ০৪ (EX-03) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ০৬ | EX-05 | Exam | নিয়ম সংশোধন (policy) | Missing marks → Absent/Fail | প্রম্পট ০৫ (EX-04) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ০৭ | EX-06 | Exam | নতুন নিয়ম | GPA 4.90–5.00 → 5.00 | প্রম্পট ০৬ (EX-05) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ০৮ | EX-07 | Exam | নতুন সুবিধা | Ctrl/Cmd+Click correction | প্রম্পট ০৭ (EX-06) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ০৯ | OF-01 | Office | সংশোধন | একটি Guardian Contact | প্রম্পট ০৮ (EX-07) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১০ | OF-02 | Office | সংশোধন | সর্বোচ্চ ১০০-র pagination | প্রম্পট ০৯ (OF-01) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১১ | OF-03 | Office | সংশোধন | Subject Assignment Office subtab | প্রম্পট ১০ (OF-02) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১২ | OF-04 | Office | উন্নয়ন | Admission reports | প্রম্পট ১১ (OF-03) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১৩ | OF-05 | Office | যাচাই + উন্নয়ন | Student photos | প্রম্পট ১২ (OF-04) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১৪ | OF-06 | Office | উন্নয়ন | Public success page ও progress | প্রম্পট ১৩ (OF-05) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১৫ | OF-07 | Office | যাচাই | Admission/import integrity | প্রম্পট ১৪ (OF-06) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১৬ | OF-08 | Office | যাচাই | Archive/promotion/certificates | প্রম্পট ১৫ (OF-07) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১৭ | DB-01 | Dashboard | যাচাই + উন্নয়ন | Dashboard/navigation | প্রম্পট ১৬ (OF-08) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১৮ | DB-02 | মূল ব্যবস্থা | সংশোধন | Developer branding | প্রম্পট ১৭ (DB-01) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ১৯ | DB-03 | মূল ব্যবস্থা | নিরাপত্তা | Permissions ও data isolation | প্রম্পট ১৮ (DB-02) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২০ | DB-04 | মূল ব্যবস্থা | নিরাপত্তা | Settings ও CI | প্রম্পট ১৯ (DB-03) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২১ | DB-05 | মূল ব্যবস্থা | নতুন ব্যবস্থা | Backup tooling | প্রম্পট ২০ (DB-04) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২২ | DB-06 | মূল ব্যবস্থা | যাচাই | Restore drill ও automation | প্রম্পট ২১ (DB-05) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২৩ | AT-01 | Attendance | যাচাই + উন্নয়ন | Entry/correction | প্রম্পট ২২ (DB-06) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২৪ | AT-02 | Attendance | যাচাই + উন্নয়ন | Calendar/report accuracy | প্রম্পট ২৩ (AT-01) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২৫ | EM-01 | Employee | যাচাই + উন্নয়ন | Employee/teacher assignment | প্রম্পট ২৪ (AT-02) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২৬ | EM-02 | Employee | শর্তসাপেক্ষ (owner decision) | Leave | প্রম্পট ২৫ (EM-01) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২৭ | EM-03 | Employee | যাচাই + উন্নয়ন | Payroll controls | প্রম্পট ২৬ (EM-02) | ⏳ অপেক্ষমাণ | — | — | — | — |
-| ২৮ | FN-01 | সমাপনী | যাচাই | পুরো release পরীক্ষা ও নির্দেশিকা | প্রম্পট ০১–২৭ (সব) | ⏳ অপেক্ষমাণ | — | — | — | — |
+| ০১ | ০০ | প্রাথমিক | যাচাই | সর্বশেষ checkout থেকে বাকি কাজ নির্ধারণ (baseline) | — | ✅ সম্পন্ন | ২০২৬-০৯-১৯ | `(commit)` · PR #38 (OPEN) | **৬২৫ Django + ১৪ Node pass** · `check` 0 issue · `check --deploy` ৬ warning (প্রত্যাশিত) · `makemigrations --check` clean (leaf 0043) · backup drill ১৫/০ ও moto-S3 ২৮/০ pass | ✅ ২৮-সেশনের baseline verdict matrix `reports/০০-baseline.md`; Complete ৯+২ অর্ধ, Partial ৭, Missing ৩, Unverified ৪ — **ইতিমধ্যে সম্পন্ন:** EX-04/EX-05/EX-06/EX-07/OF-01/OF-03/OF-04/DB-01/DB-04/DB-05/DB-06 (ও EX-01-এর import redirect, OF-02-এর ৪ view)। ⚠️ প্রম্পট-ফাইলগুলোর base `f64194a` এখন stale (আসল `8b7aa62`)। ⚠️ সমান্তরাল PR #36/#37 খোলা |
+| ০২ | EX-01 | Exam | সংশোধন | Import redirect ও Analysis subtab | প্রম্পট ০১ (baseline) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: import stay-on-page **যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে** (`views.py:3803-3810`, test `tests.py:2915`)। বাকি = Exam flyout-এ Result Analysis **subtab** (`base.html:221-243` এখন আলাদা group) + owner-সিদ্ধান্ত ২টি |
+| ০৩ | EX-02 | Exam | সংশোধন | Result/Register roll-order | প্রম্পট ০২ (EX-01) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: register/roll order ✅ (`views.py:4078-4090`, `:1610`, `:1693`, `:4968`; `result_utils.py:52, 994-1027`)। বাকি = `exam_result_summary`/`class_section_summary`/attendance class-wise list/print CSS-এর নিয়ম + নিয়ম-ডক |
+| ০৪ | EX-03 | Exam | উন্নয়ন | Group-based Mark Evaluation | প্রম্পট ০৩ (EX-02) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial (dev work)**: `SubjectMarkSetting`-এ **group field নেই** (`models.py:779-812`), group-aware UI আছে (`views.py:2602+`)। দরকার = নতুন field + append-only migration + UI + test; owner-সিদ্ধান্ত ৩টি |
+| ০৫ | EX-04 | Exam | যাচাই + উন্নয়ন | নতুন subject / Higher Math workflow | প্রম্পট ০৪ (EX-03) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (`curriculum_data.py:42,135,179`; migration 0042; `test_result_analysis.py:57`+, `test_new_subject_result_workflow.py` ৪৭) |
+| ০৬ | EX-05 | Exam | নিয়ম সংশোধন (policy) | Missing marks → Absent/Fail | প্রম্পট ০৫ (EX-04) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (`EXAM_ABSENT_SUBJECT_FAILS` default True `settings.py:346`; AB display `result_sheet.html:480,487,530`; test `tests.py:2869`)। ছোট open item: AB token অন্য print-এ ভিন্ন শব্দ |
+| ০৭ | EX-06 | Exam | নতুন নিয়ম | GPA 4.90–5.00 → 5.00 | প্রম্পট ০৬ (EX-05) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (`result_utils.py:925-930`; test `tests.py:2829`)। boundary = rounded 2-dp (4.895→4.90→boost); owner-নিশ্চিতকরণ বাকি |
+| ০৮ | EX-07 | Exam | নতুন সুবিধা | Ctrl/Cmd+Click correction | প্রম্পট ০৭ (EX-06) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete (core)** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (`result_cell_shortcut.js` + Node ৮; `result_sheet.html:422,474-475`; `full_rank_list.html:79-80`; `test_published_lock_and_cell_shortcut.py:183,211,222`)। বাকি = owner-scope প্রশ্ন (আর কোন পেজ/mobile) |
+| ০৯ | OF-01 | Office | সংশোধন | একটি Guardian Contact | প্রম্পট ০৮ (EX-07) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (migrations 0039–0041; canonical `guardian_contact_no`; `test_guardian_contact.py` ৩৯ test)। legacy `contact_no` শুধু `Employee`-এ (আলাদা মডেল) |
+| ১০ | OF-02 | Office | সংশোধন | সর্বোচ্চ ১০০-র pagination | প্রম্পট ০৯ (OF-01) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: `Paginator(...,100)` আছে ৪ view-এ (`views.py:1250,1501,1631,2228`) — এটুকু **যাচাই করা: ইতিমধ্যে সম্পন্ন — শুধু regression**। বাকি = ১১টি list view (`money_receipt_list`, `voucher_list`, `salary_sheet_list`, `audit_log_list`, `admission_application_list`, `exam_list`, `subject_requirement_list`, `student_exams`, `certificate_list`, `student_promotion_history`, `accounts_admission_queue`); export ইচ্ছাকৃতভাবে unpaginated |
+| ১১ | OF-03 | Office | সংশোধন | Subject Assignment Office subtab | প্রম্পট ১০ (OF-02) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (`base.html:198-199`; routes `subject-requirements/…`; `test_subject_assignment_office.py` ২৮) |
+| ১২ | OF-04 | Office | উন্নয়ন | Admission reports | প্রম্পট ১১ (OF-03) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (`views.py:1146,1174`; `test_admission_funnel_report.py` ২০; PR #32/#33 merged)। optional `ADM-REPORTS-OPT-1` (capacity/trend) এখনো নেই |
+| ১৩ | OF-05 | Office | যাচাই + উন্নয়ন | Student photos | প্রম্পট ১২ (OF-04) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: `Student.photo` + 2MB validation + storage tests ✅; বাকি = admission form-এ ছবি (`AdmissionApplication`-এ photo field নেই), student list-এ ছবি নেই, purge-এ ফাইল মুছে ফেলা (`views.py:2312-2334`) + owner-সিদ্ধান্ত ৩টি |
+| ১৪ | OF-06 | Office | উন্নয়ন | Public success page ও progress | প্রম্পট ১৩ (OF-05) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: success page + rate limit ✅ (`views.py:665-681`); বাকি = public status/progress route (নেই) ও success পেজে share/copy (নেই) + owner-সিদ্ধান্ত ২টি |
+| ১৫ | OF-07 | Office | যাচাই | Admission/import integrity | প্রম্পট ১৪ (OF-06) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Unverified** (audit-সেশন এখনো চালানো হয়নি): guard কোড আছে (capacity skip `views.py:3353-3364`, zero-pad `:2449/2615/2844`, receipts/`Fee` pre-fill; `test_import_capacity.py`, isolation ও money tests)। owner-নীতি ৩টি আগে দরকার |
+| ১৬ | OF-08 | Office | যাচাই | Archive/promotion/certificates | প্রম্পট ১৫ (OF-07) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Unverified** (audit-সেশন): কোড+টেস্ট আছে (`archived_students:2217`, `purge:2312`, promotion `:4691-4799`, TC/certificate `:2033-2109`; `tests.py:63-183`, isolation `:266/561`)। owner-নীতি ৩টি আগে দরকার |
+| ১৭ | DB-01 | Dashboard | যাচাই + উন্নয়ন | Dashboard/navigation | প্রম্পট ১৬ (OF-08) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (`dashboard` view scoped `views.py:529-557`; template override; `test_navigation.py` ৫) |
+| ১৮ | DB-02 | মূল ব্যবস্থা | সংশোধন | Developer branding | প্রম্পট ১৭ (DB-01) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: admin brand `urls.py:8-10` + README author ✅; বাকি = `students/migrations/0034_subjectmarksetting_is_active.py:1`-এ agent নাম (`# Generated by Arena Agent …`) সরানো (comment-only, operations নয়) + owner-সিদ্ধান্ত |
+| ১৯ | DB-03 | মূল ব্যবস্থা | নিরাপত্তা | Permissions ও data isolation | প্রম্পট ১৮ (DB-02) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: single-source permissions + ১৪ scoping helper + ≈৭৯ isolation test ✅; খোলা **SEC-FU-1** (`settings.py`-এ `CACHES` নেই ⇒ rate-limit counter LocMemCache/per-process) ও **SEC-FU-2** (`permissions.py:137-157` ⇒ HR/Subjects/Audit group login-এ মুছে যায়) |
+| ২০ | DB-04 | মূল ব্যবস্থা | নিরাপত্তা | Settings ও CI | প্রম্পট ১৯ (DB-03) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete (code)** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (boot guard + `students.E016` + CI ৩ deploy-guard ধাপ + sqlite/postgres:16 matrix + Node job; `test_security_settings.py` ৫)। live env/HSTS নীতি owner-নির্ভর (৬ warning-এর কারণ) |
+| ২১ | DB-05 | মূল ব্যবস্থা | নতুন ব্যবস্থা | Backup tooling | প্রম্পট ২০ (DB-04) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete (tooling)** — যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে (৫টি command + ৪ script + `render.cron.yaml`; `test_backup_tooling.py` ১১২)। live cron/off-box/alert = owner (P0-8-live) |
+| ২২ | DB-06 | মূল ব্যবস্থা | যাচাই | Restore drill ও automation | প্রম্পট ২১ (DB-05) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Complete (drill প্রমাণিত)** — যাচাই করা: ইতিমধ্যে সম্পন্ন — শুধু regression + live cron যাচাই: সেশন ০০-তেই sqlite drill ১৫/০ ও moto-S3 off-box drill ২৮/০ pass; `restore_backup --yes --verify` SHA/`migrate --check`/media-ref যাচাই করে। RPO/RTO/alert owner-সিদ্ধান্ত |
+| ২৩ | AT-01 | Attendance | যাচাই + উন্নয়ন | Entry/correction | প্রম্পট ২২ (DB-06) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: entry ✅ (`mark_attendance_bulk:1286` `update_or_create` = একই দিন পুনরায় mark, form pre-fill), audit শুধু aggregate · বাকি = per-record correction পেজ/diff + সময়-সীমা/ভবিষ্যৎ-তারিখ নিয়ম + owner-সিদ্ধান্ত ৩টি |
+| ২৪ | AT-02 | Attendance | যাচাই + উন্নয়ন | Calendar/report accuracy | প্রম্পট ২৩ (AT-01) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Missing (calendar)**: `attendance_report:1242` (100/পেজ) + `attendance_summary:1400` আছে; **calendar view/template নেই**, central holiday model নেই (`H` শুধু প্রতি-রেকর্ড status) + owner-সিদ্ধান্ত ৩টি |
+| ২৫ | EM-01 | Employee | যাচাই + উন্নয়ন | Employee/teacher assignment | প্রম্পট ২৪ (AT-02) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Missing**: Employee CRUD/status-log আছে (`employee_list:1490`, `change_employee_status:4443`); **শিক্ষক↔শ্রেণি/বিভাগ/বিষয় assignment মডেল নেই** → নতুন মডেল+UI+test + owner-সিদ্ধান্ত ৩টি |
+| ২৬ | EM-02 | Employee | শর্তসাপেক্ষ (owner decision) | Leave | প্রম্পট ২৫ (EM-01) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Missing · ⛔ owner-policy ছাড়া কোড নয়**: leave মডেল নেই (`ON_LEAVE` status + `EmployeeStatusLog` আছে); attendance-এ `L` = Late, `H` = Holiday; payroll deduction নীতি অনুপস্থিত। শুরুর আগে `reports/EM-02-decision-request.md`-ভিত্তিক লিখিত নীতি লাগবে |
+| ২৭ | EM-03 | Employee | যাচাই + উন্নয়ন | Payroll controls | প্রম্পট ২৬ (EM-02) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Partial**: duplicate prevention ✅ (`SalarySheet` unique `(employee, month)` `models.py:993`) + money validation ৮ test; বাকি = **closed-period/lock নেই** (PAID sheet-ও edit হয়) + owner-সিদ্ধান্ত ৩টি |
+| ২৮ | FN-01 | সমাপনী | যাচাই | পুরো release পরীক্ষা ও নির্দেশিকা | প্রম্পট ০১–২৭ (সব) | ⏳ অপেক্ষমাণ | — | — | — | baseline **Unverified (শুরু হয়নি)**: ০১–২৭ শেষ হলে সামগ্রিক যাচাই + go/no-go নির্দেশিকা; live-only অংশ (P0-7, P0-8-live, P1-11-live, P1-10-live, D-8) এই sandbox থেকে অসম্ভব |
 
 ## নিয়ম (এজেন্টদের জন্য)
 
-1. নিজের প্রম্পটের সারি ছাড়া অন্য সারির স্ট্যাটাস বদলাবে না (owner ছাড়া)। শুধু প্রম্পট ০১-এ পুরো ledger-এর initial verdict বসানো যাবে।
+1. নিজের প্রম্পটের সারি ছাড়া অন্য সারির স্ট্যাটাস বদলাবে না (owner ছাড়া)। শুধু প্রম্পট ০১-এ পুরো ledger-এর initial verdict বসানো যাবে। _(প্রম্পট ০১ শুধু নোট-কলামে verdict বসিয়েছে; অন্য সারির স্ট্যাটাস অপরিবর্তিত।)_
 2. সেশন শেষে অবশ্যই: স্ট্যাটাস + তারিখ (UTC) + commit sha + PR নম্বর ও state + টেস্ট সংখ্যা (Django/Node) + `check` / `makemigrations --check` ফল।
 3. স্ট্যাটাস `✅` তখনই যখন ফোকাসড টেস্ট + পূর্ণ suite + `check` + `makemigrations --check` সব pass এবং সংশ্লিষ্ট ডক হালনাগাদ।
 4. `⛔ ব্লকড` হলে কারণ + owner-প্রশ্ন এক লাইনে, এবং `docs/prompts/reports/<সেশন>.md`-এ বিস্তারিত।
