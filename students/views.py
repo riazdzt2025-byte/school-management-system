@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.core.paginator import Paginator
-from django.db.models import Sum, Q, Count
+from django.db.models import F, Sum, Q, Count
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from .curriculum_data import curriculum_for_class
@@ -61,6 +61,9 @@ from .result_utils import (
     unassigned_mark_subjects,
     failed_subject_rows,
     section_arrangement_rows,
+    roll_order_key,
+    roll_order_queryset,
+    sort_result_rows_by_roll,
 )
 
 
@@ -938,6 +941,13 @@ def accounts_approve_payment(request, pk):
 
 @login_required
 def class_section_summary(request):
+    """Student **counts** per class and section for the visible institutions.
+
+    Ordering (EX-02): rows are class → section. There is no student list and
+    therefore no roll order to apply here — the page counts students, it does
+    not print a register. The Excel student list
+    (``download_student_list``), which does list students, follows roll order.
+    """
     institutions = _visible_institutions(request)
     institution_id = request.GET.get('institution')
     institution = _resolve_requested_institution(request, institution_id)
@@ -1305,8 +1315,11 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
             students = students.filter(institution=institution)
         else:
             students = _scope_by_allowed_institutions(request, students)
-        students = students.order_by('name')
-        
+        # EX-02 — the class-wise attendance sheet is a register: numeric roll
+        # order (no roll last) instead of alphabetical, so the teacher can read
+        # down the same order as the class register and the result sheet.
+        students = roll_order_queryset(students)
+
         if request.method == 'POST':
             records_created = 0
             for student in students:
@@ -1607,7 +1620,12 @@ def student_list(request):
         if group:
             qs = qs.filter(group=group)
     qs = apply_student_text_search(qs, search_q)
-    students = list(qs.order_by('admission_class', 'section', 'roll_no', 'name', 'pk'))
+    # EX-02 — within a class/section the register order is numeric roll
+    # (roll_no NULLs last on every engine), then name, then pk so two students
+    # sharing a roll never trade places between pages.
+    students = list(qs.order_by(
+        'admission_class', 'section', F('roll_no').asc(nulls_last=True), 'name', 'pk',
+    ))
 
     # ---- Duplicate detection ----
     exact_key_count = defaultdict(int)
@@ -1690,7 +1708,12 @@ def download_student_list(request):
             qs = qs.filter(group=group)
     qs = apply_student_text_search(qs, search_q)
 
-    qs = qs.order_by('admission_class', 'section', 'roll_no', 'name')
+    # EX-02 — the export must be the page you are looking at: same filters,
+    # same numeric roll order (no roll last, pk tie-break), so a row never
+    # lands on a different page of the workbook than on the screen.
+    qs = qs.order_by(
+        'admission_class', 'section', F('roll_no').asc(nulls_last=True), 'name', 'pk',
+    )
 
     headers = [
         "Student ID", "Name", "Class", "Section", "Roll No", "Gender", "Religion",
@@ -4085,14 +4108,10 @@ def result_sheet(request, pk):
     selected_group_label = dict(group_choices).get(selected_group, '')
     result_group_label = selected_group_label or exam.get_group_display() or ''
     columns, results = build_exam_results(exam, group=selected_group or None)
-    # Register order follows numeric rolls, not merit; preserve computed places.
-    # Students without a roll follow numbered students, with stable tie-breaks.
-    results = sorted(results, key=lambda row: (
-        row['student'].roll_no is None,
-        row['student'].roll_no if row['student'].roll_no is not None else 0,
-        row['student'].name.lower(),
-        row['student'].pk,
-    ))
+    # EX-02 — register order follows numeric rolls, not merit; the computed
+    # places travel with each row, so re-sorting never changes a result.
+    # Students without a roll follow the numbered ones (see roll_order_key).
+    results = sort_result_rows_by_roll(results)
     # Column headers show the subject code (BAN1, ENG1, REL…); the full names
     # sit in the 'Subject codes' legend under the table. Full Marks come from
     # the exam's own setting, not the subject's global default (a Mid Term can
@@ -4161,6 +4180,15 @@ def result_sheet(request, pk):
 
 @login_required
 def result_summary(request, pk):
+    """Published Result — one row per student of the exam's class.
+
+    Ordering (EX-02): **numeric roll order** (no roll last), not merit. This
+    page is the register view of a published result — it lists every student
+    including the failed and 'No Marks' ones, who hold no position at all, so
+    merit sorting could only ever order part of the table. The Position column
+    still shows each student's place; the ranking itself lives in
+    ``full_rank_list`` / ``top_10``, which stay in merit order.
+    """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
@@ -4170,6 +4198,7 @@ def result_summary(request, pk):
     selected_group_label = dict(group_choices).get(selected_group, '')
     result_group_label = selected_group_label or exam.get_group_display() or ''
     _, results = build_exam_results(exam, group=selected_group or None)
+    results = sort_result_rows_by_roll(results)
     return render(request, 'students/exam_result_summary.html', {
         'exam': exam, 'results': results,
         'group_choices': group_choices,
@@ -4183,6 +4212,12 @@ def result_summary(request, pk):
 
 @login_required
 def top_10(request, pk):
+    """Top 10 of a published exam.
+
+    Ordering (EX-02, deliberate): **merit order** — the ten best positions.
+    A register-order "first ten rows" would just be the first ten rolls, which
+    is what the result sheet already prints.
+    """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
@@ -4212,6 +4247,11 @@ def full_rank_list(request, pk):
     result sheet / summary / top-10, but lists the entire cohort instead of
     just the top 10. Supports the group picker for exams created without a
     group, matching result_sheet / result_summary.
+
+    Ordering (EX-02, deliberate): **merit order** — this is a ranking, not a
+    register. Students with no position (failed / 'No Marks') are listed after
+    the ranked ones in register (numeric roll) order, because ranking cannot
+    order them.
     """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
@@ -4223,7 +4263,9 @@ def full_rank_list(request, pk):
     result_group_label = selected_group_label or exam.get_group_display() or ''
     _, results = build_exam_results(exam, group=selected_group or None)
     ranked = [r for r in results if r['position']]
-    unranked = [r for r in results if not r['position']]
+    # Pinned here too, so the page keeps the register order of the unplaced
+    # rows even if build_exam_results() is ever changed.
+    unranked = sort_result_rows_by_roll([r for r in results if not r['position']])
     # E8 — the rank list has no subject columns (it is one row per student:
     # rank, total, GPA), so its correction shortcut opens this exam's marks
     # entry chooser instead of one subject, keeping the group in view.
@@ -4302,7 +4344,10 @@ def seat_plan_list(request, pk):
 @permission_required('students.add_seatplan', raise_exception=True)
 def generate_seat_plan(request, pk):
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
-    students = list(get_exam_students(exam))
+    # EX-02 — seats are handed out in register (numeric roll) order, with the
+    # pk tie-break so a re-run puts the same student in the same seat even when
+    # two students share a roll or have none.
+    students = sorted(get_exam_students(exam), key=roll_order_key)
     form = GenerateSeatPlanForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         rooms, errors, room_names = [], [], set()
@@ -4361,8 +4406,12 @@ def generate_seat_plan(request, pk):
 
 @login_required
 def view_seat_plan_room(request, pk, room_name):
+    # EX-02 — seat order, not roll order: the printout follows the room layout
+    # (seat 1, 2, 3…), which was assigned in roll order at generation time.
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
-    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
+    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related(
+        'student'
+    ).order_by('room_name', 'seat_no')
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
         return redirect('seat_plan_list', pk=exam.pk)
@@ -4373,8 +4422,12 @@ def view_seat_plan_room(request, pk, room_name):
 
 @login_required
 def signature_sheet(request, pk, room_name):
+    # EX-02 — seat order (see view_seat_plan_room): the invigilator signs down
+    # the room, and seats were allocated in roll order when the plan was built.
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
-    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
+    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related(
+        'student'
+    ).order_by('room_name', 'seat_no')
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
         return redirect('seat_plan_list', pk=exam.pk)
@@ -4988,13 +5041,19 @@ def result_analysis_merit_slides(request):
 
 @login_required
 def result_analysis_result_cards(request):
+    """Print one result card per student of the exam's class.
+
+    Ordering (EX-02): **numeric roll order** (no roll last). The cards are a
+    printed register of the whole class, so they follow the same order as the
+    result sheet — merit order belongs to the rank list, not to a print run.
+    """
     _require_result_analysis_department(request)
     exams = _analysis_exam_queryset(request)
     exam = _selected_analysis_exam(request, exams)
     results = []
     if exam:
         _columns, results = build_exam_results(exam, request.GET.get('group') or None)
-        results = [row for row in results if row['has_marks']]
+        results = sort_result_rows_by_roll([row for row in results if row['has_marks']])
     context = _analysis_base_context(request, exams)
     context.update({'exam': exam, 'results': results})
     return render(request, 'students/result_analysis_result_cards.html', context)
