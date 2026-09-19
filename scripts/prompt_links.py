@@ -166,7 +166,7 @@ https://github.com/{repo}/archive/refs/heads/{branch}.zip
 #      Ctrl+S (Save as) বা Ctrl+A → Ctrl+C
 ```
 
-> **merge-এর পরে:** PR #34 merge হলে `{branch}`-এর বদলে `main` লিখলেই সরাসরি `git pull` কাজ করবে।
+> **✅ merge হয়ে গেছে (PR #34, merge commit `ec6604b`) — তাই উপরের সব লিংক এখন `main`-এর, চিরস্থায়ী।**
 
 ## ৬. লিংক ঠিক রাখা
 

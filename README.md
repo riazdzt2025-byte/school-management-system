@@ -165,8 +165,8 @@ python3 scripts/show_prompt.py 4      # START-ব্লক + পুরো প্
 **লোকালি নামানো (git ছাড়াও চলে):**
 
 ```bash
-git fetch origin arena/01a0b7f7-school-management-system   # আগে থেকেই clone থাকলে
-bash scripts/fetch_prompts.sh                              # শুধু docs/prompts → ./prompts-bundle/
+git checkout main && git pull     # ✅ PR #34 merge হয়েছে — সব প্রম্পট ফাইল main-এ
+bash scripts/fetch_prompts.sh     # অথবা git ছাড়া: শুধু docs/prompts → ./prompts-bundle/
 ```
 
 ## Author

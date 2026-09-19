@@ -1,6 +1,7 @@
 # PROGRESS — প্রম্পট প্ল্যান (২৮ সেশন)
 
 > **নতুন সেশনে শুরু করছেন?** `docs/prompts/HANDOFF-START.md` পড়ুন (মাত্র ২টি জিনিস পাঠাতে হয়)।
+> **✅ প্রম্পট প্ল্যান এখন `main`-এ merge হয়েছে (PR #34, `ec6604b`) — সাধারণ `git pull main` করলেই সব ফাইল চলে আসবে। লিংক: `docs/prompts/LINKS.md`।**
 > **এখনকার অবস্থা:** কোনো প্রম্পট এখনো ✅ নয় → **প্রথম কাজ প্রম্পট ০১** = `docs/prompts/prompt-01-session-00-baseline.md`
 > (START-ব্লক: `docs/prompts/copy-paste/kickoff/prompt-01-START.txt`)।
 > প্রতি সেশনের এজেন্ট কাজ শেষে **নিজের সারি** আপডেট করবে — তাই "কত নম্বর চলছে / শেষ" এখানেই দেখা যাবে।
