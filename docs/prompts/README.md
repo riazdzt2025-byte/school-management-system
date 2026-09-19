@@ -6,6 +6,18 @@ _তৈরি: ২০২৬-০৯-১৯ · branch `arena/01a0b7f7-school-manag
 
 ---
 
+## ০. দ্রুত খোঁজার তালিকা (সবচেয়ে আগে পড়ুন)
+
+| কী চাই | কোথায় |
+|---|---|
+| **২৮টি প্রম্পটের ক্লিকযোগ্য লিংক** (md · কপি-টেক্সট · START · Word) | `docs/prompts/LINKS.md` — অথবা GitHub: [`LINKS.md`](https://github.com/riazdzt2025-byte/school-management-system/blob/main/docs/prompts/LINKS.md) |
+| কোন প্রম্পট চলছে/শেষ | `docs/prompts/PROGRESS.md` |
+| নতুন সেশনে শুরু (মাত্র ২টি জিনিস) | `docs/prompts/HANDOFF-START.md` |
+| নম্বর/সেশন/শব্দ দিয়ে প্রম্পট বের করা (এজেন্ট বা টার্মিনাল) | `python3 scripts/show_prompt.py 4` (বা `EX-03`, `gpa`) |
+| লিংক তালিকা হালনাগাদ (merge-এর পরে `main`) | `python3 scripts/prompt_links.py --branch main` |
+
+> এজেন্টকে শুধু বললেই হবে: **“প্রম্পট ০৪ দাও”** — সে `LINKS.md`/`show_prompt.py` দিয়ে এক ধাপে সঠিক প্রম্পট + START-ব্লক বের করে দেবে।
+
 ## ১. কীভাবে ব্যবহার করবেন
 
 0. **নতুন সেশনে শুরু করতে হলে** `docs/prompts/HANDOFF-START.md` পড়ুন — মাত্র **দুইটি** জিনিস পাঠাতে হয়:
