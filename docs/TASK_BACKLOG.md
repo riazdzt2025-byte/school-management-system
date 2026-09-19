@@ -221,16 +221,18 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 ### P1 — Office
 
 #### O4 · Admission Share Link-এর পাশে উন্নত Reports
-- **Task ID & Purpose:** O4 — admission + class performance আরও analytics (বর্তমান class_section_summary ছাড়াও funnel/section-wise pass funnel)।
-- **Current status:** **Partial** (share link done, basic reports done, advanced missing)
-- **Evidence:** `admission_application_list.html` share toast + `class_section_summary.html` (counts by class/section/gender) + `download_admission_sheet` per institution. No admission funnel (`SUBMITTED→ENROLLED` conversion), no payment-vs-capacity, no date-wise trend.
-- **Priority:** **P1**
-- **Dependencies:** —
-- **Acceptance:** New `reports` page(s) under Office → Reports: (a) admission funnel counts per status (with date filter), (b) section-wise student bar (already class_section_summary but add chart/table export), (c) capacity vs enrolled per class/section (SectionCapacity vs actual). Each scoped by institution, print-friendly, Excel export. Share link stays as is (no change).
-- **Tests required:** `test_reports_show_funnel_counts`, `test_reports_scoped_by_institution`, `test_report_excel_export`.
-- **Migration/data risk:** none (query-only).
-- **Decision needed:** Owner to prioritize which report matters most (funnel vs capacity vs date trend — we recommend funnel first, one chart).
-- **Small session scope:** Yes — one view + template + tests (no migration). Keep first PR to funnel only.
+- **Task ID & Purpose:** O4 — admission + class performance আরও analytics (বর্তমান class_section_summary ছাড়াও funnel/section-wise pass funnel)। স্থায়ী পরিচয়: **ADM-REPORTS** (`docs/WORK_TRACKER.md`)।
+- **Current status:** **Complete** (মূল funnel/report চাহিদা পূর্ণ; capacity/trend chart আলাদা Optional enhancement `ADM-REPORTS-OPT-1` — ওটি না থাকায় এই কাজ Partial নয়)
+- **Evidence:** `views.admission_funnel_report` + `views.admission_funnel_export` (routes `reports/admission-funnel/`, `reports/admission-funnel/export/`), template `admission_funnel_report.html`; institution scoping `_resolve_requested_institution` + `_scope_institution_qs`; guard `students.view_admissionapplication` (`raise_exception`) + Office/Accounts department; `?from`/`?to` date filter (`submitted_at` whole-day inclusive); Excel-এ multi-institution scope হলে `By Institution` sheet। **মূল navigation চাহিদা:** `admission_application_list.html`-এ `📲 Share Application Link`-এর ঠিক পাশে `📊 Reports / রিপোর্টস` (named URL, কোনো query string নেই — session-selected institution নিরাপদভাবে বহাল); Office flyout `Admission Funnel` + `class_section_summary` cross-link অক্ষত। `download_admission_sheet` ও public form/Thank You page অপরিবর্তিত (public পেজে internal report link নেই)। **PR/merge:** PR #32 **MERGED** (`11cd35d`, 2026-09-18) — funnel code `main`-এ যাচাইকৃত; PR #33 **OPEN, merge হয়নি** (অনুমোদনের অপেক্ষায়)। **Live deployment: Unverified**।
+- **Priority:** **P1** → সম্পন্ন
+- **Dependencies:** — (কোনো model/migration নেই)
+- **Acceptance:** (a) admission funnel counts per status with date filter — **done** (institution-scoped, print-friendly, Excel export)। Share link stays as is — **done** (অপরিবর্তিত, regression test আছে)। মূল navigation চাহিদা (Share Link-এর পাশে Reports) — **done** (PR #33)। (b) section-wise student bar chart/export ও (c) capacity vs enrolled per class/section — **আলাদা Optional enhancement `ADM-REPORTS-OPT-1`** হিসেবে নিচে `P2 — Optional / deferred`-এ সরানো হয়েছে; এগুলো মূল O4 চাহিদার শর্ত নয়।
+- **Tests required → run:** `test_reports_show_funnel_counts` ✅, `test_reports_scoped_by_institution` ✅, `test_report_excel_export` ✅ — সবগুলো আছে ও pass করেছে। মোট `students/test_admission_funnel_report.py` = **20 tests OK**; এই follow-up-এ ৪টি নতুন (placement/named URL, link-এর institution scope, unauthorised user-এর জন্য 403/302 + anonymous redirect, public form ও Thank You page-এ internal report link নেই)। লোকাল ফুল suite **625 tests OK**, `manage.py check` 0 issue, `makemigrations --check` clean, `node --test` 14 pass (README fallback Django 5.2.17 / Python 3.11); CI (Django 6.1 / Python 3.12, sqlite + postgres) PR #32-এ সবুজ যাচাই করা ছিল, PR #33-এর চেক PR-এ।
+- **Migration/data risk:** none (query-only) — যাচাইকৃত: `makemigrations --check` → No changes detected।
+- **Decision needed:** funnel-first সিদ্ধান্ত কার্যকর হয়েছে (funnel done)। **খোলা সিদ্ধান্ত:** funnel report ও Admission page-এর Reports button বিদ্যমান নীতি অনুযায়ী Office **ও** Accounts উভয়কে দেখা যায় — Accounts কি পুরো funnel (enrolment stage-সহ) দেখবে, নাকি শুধু payment stage-সীমিত view পাবে? এই follow-up-এ নীতি বদলানো হয়নি।
+- **Small session scope:** Yes — হয়ে গেছে (এক view + template + tests, কোনো migration নেই)।
+- **অবশিষ্ট:** শুধু PR #33 merge-এর অনুমোদন; merge-এর পরে চাইলে live Render যাচাই (sandbox থেকে সম্ভব নয়)।
+
 
 #### O5 · Application থেকে student record ও প্রয়োজনীয় documents-এ photo continuity
 - **Task ID & Purpose:** O5 — application-এ আপলোড করা photo student record + ID/TC/certificate-এ দেখা।
@@ -348,6 +350,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 |---|---|---|---|
 | P2-3 | i18n / Bengali UI strings | **Missing** (deferred, large) | Entire UI English; needs marks + runbook + locale switcher — own session(s) |
 | P2-7 | Remove legacy `StudentSubject` model entirely | **Missing** (deferred, destructive) | Keep admin-only; drop needs backup + migration (destructive) — own session, after FINAL |
+| ADM-REPORTS-OPT-1 | Admission reports — capacity / trend charts | **Missing** (Optional, not started) | O4 (ADM-REPORTS) থেকে 2026-09-18-এ আলাদা করা **Optional enhancement** — মূল funnel/report চাহিদা Complete, এটি তার শর্ত নয়। Scope: capacity vs enrolled per class/section (`SectionCapacity` vs actual), payment-vs-enrolled trend, date-wise trend chart, section-wise student bar chart/export। যাচাইকৃত ভিত্তি: `admission_funnel_report` / `admission_funnel_export` institution-scoped, print-ready, Excel export সহ `main`-এ আছে (PR #32 merged `11cd35d`), তাই নতুন chart পেজ একই scoping/guard প্যাটার্ন পুনর্ব্যবহার করতে পারে। Migration/data risk: none (query-only) হওয়ার সম্ভাবনা; chart লাইব্রেরি নির্বাচন মালিকের সিদ্ধান্ত (বর্তমানে কোনো JS chart নেই)। |
 
 ## Future backlog — out of implementation scope per instruction (do not start now)
 
