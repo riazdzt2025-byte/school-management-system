@@ -1,5 +1,23 @@
 # Handoff — School Management System
 
+## সেশন EX-01 — 2026-09-19 · প্রম্পট ০২/২৮ · Import redirect ও Analysis subtab
+
+**Session branch:** `arena/01a0ba60-school-management-system` · **Base:** `f03a16d` = `origin/main` (PR #38 merge-পরবর্তী) ·
+**Commit:** `b255fcd` · **PR:** #39 (OPEN — owner merge-অনুমোদন বাকি; এজেন্ট merge করবে না) ·
+**Scope:** শুধু EX-01 — navigation/template + test; **কোনো model/migration/JS/settings নেই**।
+
+**Bengali TL;DR:** ইউজারের নির্দেশে পুরোনো সেশনের বাকি কাজ ধরা — আগের সেশনের branch (`arena/01a0ba1e-…`) remote-এ নেই (push হয়নি/মিল পাওয়া যায়নি), তাই main (= PR #38-পরবর্তী) থেকে লেজার অনুযায়ী পরবর্তী কাজ **প্রম্পট ০২ (EX-01)** করা হয়েছে। ফল: (ক) import redirect আগে থেকেই stay-on-page ছিল — এবার **group param সংরক্ষণসহ** regression pin; (খ) Exam flyout-এ nested **Analysis subtab** (৫টি existing named URL, `can_result_analysis` gate; পুরোনো "Result Analysis" group রাখা — দুই entry point একই URL); (গ) `exam_list`-এ `analysis-entry` + ৫টি result পেজের হেডারে প্রাসঙ্গিক cross-link (`analysis-jump`); (ঘ) guard অপরিবর্তিত (anonymous→302, no-perm→403, Accounts→403 — সব test-এ pinned)।
+**যাচাই (লোকাল, Django 5.2.17 fallback):** পূর্ণ suite **638 Django test OK** (625+১৩ নতুন) · `check` 0 · `makemigrations --check` clean · Node **14/0**।
+**CI (PR #39, Django 6.1/py3.12):** sqlite ✅ 6m28s · postgres:16 ✅ 5m12s · Node ✅ 5s।
+
+**Docs updated this session:** `docs/prompts/reports/EX-01.md` (নতুন), `docs/prompts/PROGRESS.md` (সারি ০২ + header),
+`docs/PROJECT_STATUS.md` (E1→Complete, E2-এ subtab), `docs/TASK_BACKLOG.md` (E1 হালনাগাদ), `docs/HANDOFF.md` (এই নোট)।
+
+**Owner করণীয়:** PR #39 merge-অনুমোদন · (ঐচ্ছিক) PR #23 supersede করে বন্ধ · merge-এর পর চাইলে live spot-check।
+**পরের প্রম্পট:** ০৩/২৮ (EX-02 — Result/Register roll-order) — কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+---
+
 ## সেশন ০০ — 2026-09-19 · নতুন baseline যাচাই (প্রম্পট ০১/২৮)
 
 **Session:** `arena/01a0b9da-school-management-system` · **Base:** `8b7aa62` = `origin/main` (Merge PR #35) ·

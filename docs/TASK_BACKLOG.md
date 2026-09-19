@@ -136,6 +136,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Migration/data risk:** none (view redirect only).
 - **Decision needed:** Owner to confirm desired stay-on-page vs exam_list (we recommend stay-on-page as per spec).
 - **Small session scope:** Yes — one view + one test file (≤2 files), no migration.
+- **হালনাগাদ (2026-09-19, EX-01 / PR #39):** Acceptance-এর `?subject=&group=` অংশ এখন পুরোপুরি test-এ pinned — আগের `test_import_stay_on_page_redirects_to_same_page`-এর পাশে নতুন `test_import_stay_on_page_preserves_subject_and_group` (group param সংরক্ষণ)। আচরণ `views.py:3803-3810`-এ main-এ ছিলই; এই সেশনে শুধু regression pin + (প্রম্পট ০২ অনুযায়ী) Exam flyout-এ Analysis subtab ও cross-link এসেছে। পুরোনো PR #23 superseded মনে করা যেতে পারে (owner-সিদ্ধান্ত)। → E1 পুরোপুরি **Complete**।
 
 #### O2 · Student pagination: সর্বোচ্চ ১০০ records — ✅ DONE (2026-09-17, Paginator 100)
 - **Task ID & Purpose:** O2 — student list / archived / attendance / employee — প্রতি page 100, pagination nav সহ (was all load)।
