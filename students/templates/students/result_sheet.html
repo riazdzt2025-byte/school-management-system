@@ -290,6 +290,7 @@
             <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Published Result</a>
             <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm"><i class="bi bi-list-ol me-1"></i> Full Rank List</a>
             <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-trophy me-1"></i> Top 10</a>
+            {% if can_result_analysis %}<a href="{% url 'result_analysis_subject_fail' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-exclamation-triangle me-1"></i> Subject Fail List</a>{% endif %}
             <a href="{{ subject_assignments_url }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-journal-check me-1"></i> Subject Assignments</a>
             <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
             <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>

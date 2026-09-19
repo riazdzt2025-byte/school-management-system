@@ -74,6 +74,7 @@
     &amp; Moral Education, everyone else Islam &amp; Moral Education). When the student's own paper is not
     assigned to the class, the row shows a dash and is never counted.</p>
     <a href="{% url 'result_card' exam.pk result.student.pk %}" class="btn btn-navy">Print Result Card</a>
+    {% if can_result_analysis %}<a href="{% url 'result_analysis_multi_term' %}" class="btn btn-outline-navy analysis-jump"><i class="bi bi-layout-three-columns me-1"></i> Multi-term Results</a>{% endif %}
     <a href="{% url 'exam_result_summary' exam.pk %}" class="btn btn-outline-navy">Back</a>
 </div>
 {% endblock %}
