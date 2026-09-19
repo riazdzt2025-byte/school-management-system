@@ -1,0 +1,3359 @@
+# ALL PROMPTS — ২৮টি সেশন (এক ফাইলে, ক্রমানুসারে)
+_এই ফাইলটি `docs/prompts/prompt-01…28-*.md` থেকে তৈরি; প্রতিটি prompt আলাদা ফাইল হিসেবেও আছে।_
+**ক্রম:** ০১ (সেশন ০০ যাচাই) → EX-01…EX-07 → OF-01…OF-08 → DB-01…DB-06 → AT-01…AT-02 → EM-01…EM-03 → FN-01।
+প্রতিটি prompt আলাদা করে এজেন্টকে দিন; সেশন শেষে এজেন্ট `PROGRESS.md`-এ নিজের সারি আপডেট করবে।
+
+
+---
+
+# প্রম্পট ০১ / ২৮ — সেশন ০০ · সর্বশেষ checkout থেকে বাকি কাজ নির্ধারণ (baseline)
+
+_বিভাগ: প্রাথমিক · ধরন: যাচাই · নির্ভরতা: —_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০১ / ২৮ (prompt 01/28) — সেশন ০০ · যাচাই · বিভাগ: প্রাথমিক
+   পূর্ববর্তী: — (এটি প্রথম প্রম্পট; আগের কোনো সেশন নেই)
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ০২ / ২৮ (EX-01 — Import redirect ও Analysis subtab)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০১ / ২৮ (prompt 01/28) — সেশন ০০ → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ০২ / ২৮ (EX-01 — Import redirect ও Analysis subtab) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- বর্তমান checkout: branch `arena/01a0b7f7-school-management-system`, base `f64194a` = `origin/main` (Merge PR #33; PR #32 ও #33 দুটোই MERGED)।
+- আগের সেশনগুলোর দাবি: ৬২৫ Django + ১৪ Node টেস্ট pass, `check` 0 issue, `makemigrations --check` clean — কিন্তু **এই checkout-এ নিজে চালিয়ে যাচাই করা হয়নি**, তাই সব দাবিই এখন "Unverified"।
+- স্যান্ডবক্স: Python 3.11.2, Node v22.22.3, Django ইনস্টল নেই। `requirements.txt` পিন করে `Django==6.1` (Python 3.12+), তাই README-এর documented fallback লাগবে (`Django>=5.2,<6`)।
+- ডকুমেন্টেশন শেষ হালনাগাদ ২০২৬-০৯-১৭ (`44cbcc3`) — অর্থাৎ এই checkout (`f64194a`) থেকে পিছিয়ে; নতুন release plan-এর জন্য তাজা baseline দরকার।
+- পরিকল্পনার ২৮টি সেশনের মধ্যে বেশ কিছু আইটেম ইতিমধ্যে কোডে থাকতে পারে — উদাহরণ: GPA boost (`students/result_utils.py` ~L925-930), pagination 100 (`student_list`/`archived_students`/`employee_list`/`attendance_report`), guardian contact unification (`0039`–`0042`), admission funnel report (`admission_funnel_report` + export), Ctrl/Cmd+Click (`students/js/result_cell_shortcut.js`)। এগুলো নতুন করে বানানো এই সেশনের কাজ নয় — খুঁজে বের করে "ইতিমধ্যে আছে" বলা এবং ঘাটতি চিহ্নিত করা কাজ।
+
+## ২. এই সেশনের চাহিদা
+
+- এই checkout-এর প্রকৃত অবস্থা যাচাই করে **২৮-সেশন পরিকল্পনার প্রতিটি আইটেমকে** `Complete / Partial / Missing / Unverified` শ্রেণীতে ফেলা, প্রমাণসহ (ফাইল:লাইন, ভিউ/ফাংশন নাম, টেস্ট নাম)।
+- কী কী ইতিমধ্যে সম্পন্ন, কী আসলে বাকি, কোনটি owner-সিদ্ধান্ত ছাড়া শুরু করা যাবে না — এই তিনটি তালিকা পরিষ্কার করা।
+- পরিকল্পনার পরের সেশনগুলো যাতে ভুল দাবির উপর দাঁড়িয়ে অপ্রয়োজনীয় কাজ না করে, সেজন্য প্রতিটি আইটেমের "এখনকার অবস্থা → দরকার কি না" সংক্ষেপে লেখা।
+- এই সেশন **শুধু যাচাই ও ডকুমেন্টেশন** — কোনো ফিচার কোড, migration বা live কাজ নয়।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. `git fetch origin --prune`, `git status`, `git rev-parse HEAD origin/main`, `git log --oneline -3` — branch ও base নিশ্চিত করা (কোনো checkout/reset নয়)।
+2. §৫-এর isolated venv বানিয়ে (Django 5.2.x fallback) `check`, `check --deploy` (dev: ~৬ warning প্রত্যাশিত), `makemigrations --check`, পূর্ণ `test students`, `node --test students/js/*.test.js` চালানো; প্রকৃত সংখ্যা ও সময় লিপিবদ্ধ করা।
+3. Inventory করা: `students/urls.py` (সব route), `students/views.py` (guard/scoping helper), `students/models.py` + `students/migrations/*` (শেষ leaf 0043 কি না), templates (কোনটি `school_system/templates` override করছে), `students/test_*.py` (২৩টি ফাইল), `.github/workflows/tests.yml`।
+4. ২৮টি সেশনের প্রতিটির জন্য verdict লেখা — বিশেষভাবে যাচাই করবে: EX-01 (import redirect stay-on-page আছে কি), EX-02 (numeric roll order কোথায় কোথায়), EX-03 (`SubjectMarkSetting`-এ group field আছে কি — মনে হচ্ছে নেই), EX-05 (`EXAM_ABSENT_SUBJECT_FAILS` default ও AB display), EX-06 (GPA boost boundary), EX-07 (shortcut কোন কোন page-এ), OF-01…OF-08 (প্রতিটির code প্রমাণ), DB-01…DB-06, AT-01/02 (calendar view নেই বলে অনুমান — যাচাই করো), EM-01/02/03 (teacher assignment/leave/closed-period নেই বলে অনুমান — যাচাই করো), FN-01।
+5. ফলাফল লেখা: `docs/prompts/reports/০০-baseline.md` (বিস্তারিত matrix + প্রমাণ), `docs/prompts/PROGRESS.md`-এ সারি ০১ হালনাগাদ, এবং `docs/PROJECT_STATUS.md`-এ একটি সংক্ষিপ্ত dated section (Verification) + `docs/TASK_BACKLOG.md`-এর remaining list সংশোধন।
+6. কোনো আইটেম ইতিমধ্যে সম্পন্ন হলে PROGRESS.md-এর নোটে লিখবে `যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে`।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py check
+python manage.py check --deploy   # DEBUG=True সহ dev expectation লিপিবদ্ধ করতে
+python manage.py test students --verbosity 1
+node --test students/js/*.test.js
+python manage.py makemigrations --check
+python manage.py test students
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `০০: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০১-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/০০.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- এই সেশনে নতুন policy সিদ্ধান্ত নয়। যদি কোনো পরিকল্পিত আইটেম ইতিমধ্যে সম্পন্ন/অপ্রযোজ্য দেখায়, শুধু তা ledger-এ লেখা হবে — কেউ নিজে থেকে নিয়ম বদলাবে না।
+- baseline-এ কোনো টেস্ট fail করলে তার root cause লিখবে এবং সেসম্পর্কে owner-প্রশ্ন তুলবে (এই সেশন ঠিক করার সেশন নয়, তবে fail লুকানো যাবে না)।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/০০.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ০২ / ২৮ — সেশন EX-01 · Import redirect ও Analysis subtab
+
+_বিভাগ: Exam · ধরন: সংশোধন · নির্ভরতা: প্রম্পট ০১ (baseline)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০২ / ২৮ (prompt 02/28) — সেশন EX-01 · সংশোধন · বিভাগ: Exam
+   পূর্ববর্তী: প্রম্পট ০১ / ২৮ (০০ — সর্বশেষ checkout থেকে বাকি কাজ নির্ধারণ (baseline)) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ০৩ / ২৮ (EX-02 — Result/Register roll-order)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০২ / ২৮ (prompt 02/28) — সেশন EX-01 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ০৩ / ২৮ (EX-02 — Result/Register roll-order) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `students/views.py::import_exam_marks` সফল import-এর পর `redirect(import_page_url)` করে (দেখা গেছে ~L3700-3735 region-এ) — অর্থাৎ "একই exam/subject/group-এর import page-এ থাকা" একবার ঠিক করা হয়েছিল (PR #29 দাবি)। এটি এখনো ঠিক আছে কি না regression test দিয়ে প্রমাণ করতে হবে।
+- Sidebar: `students/templates/students/base.html` ~L234-243-এ **আলাদা "Result Analysis" flyout group** (৫টি link: Subject Fail List, Multi-term Results, Merit Slides, Result Cards (Class), Section Arrangement), কিন্তু Exam flyout (~L220-232) এ Enter Marks / Exam List / Mark Evaluation আছে — **কোনো Analysis entry নেই**।
+- Result Analysis views: `result_analysis_subject_fail`, `result_analysis_multi_term`, `result_analysis_merit_slides`, `result_analysis_result_cards`, `section_arrangement` + `_require_result_analysis_department` guard, `can_result_analysis` context flag, `students/test_result_analysis.py`, nav টেস্ট `students/test_navigation.py`।
+- অর্থাৎ "Analysis subtab" চাহিদার বর্তমান অবস্থা: পেজগুলো আছে, কিন্তু **Exam সেকশনের ভেতরে subtab হিসেবে নেই** — এটি এই সেশনের সংশোধন।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) Marks import শেষে ব্যবহারকারী **একই exam + subject (+group)**-এর import পেজে ফেরে — আচরণ নিশ্চিত করা এবং test দিয়ে পিন করা (regression guard)।
+- (খ) **Exam সেকশনের ভেতরে Analysis subtab**: Exam flyout থেকে Result Analysis-এর ৫টি পেজেই যাওয়া যায়, permission-gated (per-view guard অপরিবর্তিত থাকবে)। পুরোনো আলাদা "Result Analysis" group-এর linkগুলো যেন ভেঙে না যায় — ডিফল্ট সিদ্ধান্ত: দুটো entry point-ই থাকবে (একই named URL), নতুন কোনো view/template বানানো নয়।
+- (গ) Cross-link: `exam_list` পেজ থেকে Analysis subtab-এ দৃশ্যমান entry, এবং প্রতিটি result page-এর header-এ প্রাসঙ্গিক Analysis পেজের link (ব্যবহারযোগ্যতার উন্নতি)।
+- (ঘ) কোনো dead link, `NoReverseMatch` বা permission ফাঁক থাকবে না — প্রতিটি link `reverse()` করা নামযুক্ত URL এবং server-side guard-ই নিরাপত্তা দেবে (মেনু লুকানো নিরাপত্তা নয়)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. প্রথমে যাচাই: `import_exam_marks`-এর POST সফল হলে redirect কোথায় যায় — বর্তমান আচরণ test দিয়ে লিখে ফেলো (subject/group param সংরক্ষিত থাকে কি)।
+2. `test_navigation.py`-এর বিদ্যমান convention পড়ে নাও (কীভাবে nav entry + permission gate টেস্ট করা হয়)।
+3. Exam flyout-এ "Analysis" nested link ব্লক যোগ করো — ৫টি existing named URL, `can_result_analysis` / perms গেট; HTML/CSS `nav-group`/`flyout` প্যাটার্ন অনুসরণ করে (নতুন JS নয়)।
+4. `exam_list` + result page গুলোতে cross-link যোগ করো (শুধু permission থাকলে)।
+5. টেস্ট যোগ করো: (i) import POST → redirect URL-এ একই exam + subject (+group), (ii) Exam flyout-এ Analysis links authorized user-এর জন্য উপস্থিত, unauthorized/anonymous-এর জন্য অনুপস্থিত, (iii) প্রতিটি Analysis URL direct hit-এ guard আগের মতোই (403/302), (iv) দুটো entry point একই named URL-এ যায়।
+6. চালাও §৫-এর কমান্ড; তারপর PR।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_published_lock_and_cell_shortcut
+python manage.py test students.test_result_analysis
+python manage.py test students.test_navigation
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EX-01: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০২-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EX-01.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Placement: Exam flyout-এ সরাসরি ৫টি Analysis link (সুপারিশ, নতুন view লাগে না) নাকি Exam-এর ভেতরে একটি ছোট Analysis landing page (নতুন view + টেস্ট বেশি)? ডিফল্ট = সরাসরি link; owner ভিন্ন কিছু চাইলে লেখো।
+- পুরোনো আলাদা "Result Analysis" sidebar group রাখা হবে (সুপারিশ: রাখা, যাতে কেউ বিভ্রান্ত না হয়) নাকি Exam-এর ভেতরে merge? রাখার পক্ষে সুপারিশ, কিন্তু owner-সিদ্ধান্ত চূড়ান্ত।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EX-01.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ০৩ / ২৮ — সেশন EX-02 · Result/Register roll-order
+
+_বিভাগ: Exam · ধরন: সংশোধন · নির্ভরতা: প্রম্পট ০২ (EX-01)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০৩ / ২৮ (prompt 03/28) — সেশন EX-02 · সংশোধন · বিভাগ: Exam
+   পূর্ববর্তী: প্রম্পট ০২ / ২৮ (EX-01 — Import redirect ও Analysis subtab) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ০৪ / ২৮ (EX-03 — Group-based Mark Evaluation)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০৩ / ২৮ (prompt 03/28) — সেশন EX-02 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ০৪ / ২৮ (EX-03 — Group-based Mark Evaluation) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `result_sheet` (Class Performance Register) numeric roll order-এ sort করে (`roll_no is None` শেষে, tie-break name/pk), merit `position` অপরিবর্তিত — আগের সেশনে ঠিক করা (c17a45a দাবি), কিন্তু অন্য output-এ এখনো যাচাই হয়নি।
+- `Student.roll_no` = `IntegerField(null=True, blank=True)` (`students/models.py` ~L227) → string-sort-এর ক্লাসিক বাগ (`'10' < '2'`) template-side `|dictsort` বা unordered queryset-এ ফিরে আসতে পারে।
+- যাচাই বাকি: `result_summary` (exam_result_summary), `full_rank_list` (merit — ইচ্ছাকৃত), `top_10` (merit), `student_result_detail`, `result_card`, `class_section_summary`, `section_arrangement`, `result_analysis_result_cards`, `download_student_list` (Excel), `signature_sheet`, seat-plan print, attendance report class-wise list, এবং print CSS।
+- নিয়ম (এই সেশনে আনুষ্ঠানিকভাবে লিখে ফেলা হবে): **register/roll-ভিত্তিক output = numeric roll order (roll_no, তারপর name, তারপর pk; roll_no None সবার শেষে); merit/rank output = position order।**
+
+## ২. এই সেশনের চাহিদা
+
+- প্রতিটি list/export/print-এর ordering নির্ধারণ করে যেখানে দরকার সেখানে numeric roll order প্রয়োগ করা, এবং যেখানে merit order ইচ্ছাকৃত সেখানে তা অপরিবর্তিত রাখা।
+- Ordering determinism: একই roll-এ দুইজন থাকলে stable tie-break; pagination/exports-এ page জুড়ে duplicate/skip নেই।
+- Group/section/institution filter, permission ও scoping আগের মতোই থাকবে; কোনো মান/গণনা বদলাবে না — শুধু ক্রম।
+- সেশন-শেষে একটি সংক্ষিপ্ত "ordering matrix" (output → order rule → কোথায় enforced) রিপোর্টে ও সংশ্লিষ্ট view docstring-এ লেখা।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. সব list/export/print output-এর inventory করো (view + template) এবং প্রতিটির বর্তমান ordering কোডে খুঁজে বের করো (`order_by`, `sorted`, `dictsort`, queryset default ordering)।
+2. যেখানে ভুল/অনিশ্চিত সেখানে smallest fix: numeric roll sort helper (থাকলে reuse) — যেমন `sorted(qs, key=lambda s: (s.roll_no is None, s.roll_no or 0, s.name.lower(), s.pk))` বা `order_by(F('roll_no').asc(nulls_last=True), 'name', 'pk')`।
+3. খেয়াল রাখো: `full_rank_list`/`top_10` merit order-এ থাকবে (ইচ্ছাকৃত), শুধু register/roll output numeric — কোড না ভেঙে টেস্ট দিয়ে দুটোই পিন করো।
+4. Roll number 2, 10, 100, None — এই চারটি কেস দিয়ে প্রতিটি সংশ্লিষ্ট output-এ টেস্ট লেখো (string-sort trap ধরা পড়বে)।
+5. Excel/print export-এ একই ক্রম যাচাই করো।
+6. চালাও §৫-এর কমান্ড + নতুন টেস্ট; রিপোর্টে ordering matrix লেখো।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_result_analysis
+python manage.py test students.test_published_lock_and_cell_shortcut
+python manage.py test students.test_institution_isolation
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EX-02: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০৩-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EX-02.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- `download_student_list`/`class_section_summary`-তে ক্রম roll নাকি name — সুপারিশ: roll (register-ধরনের output), কিন্ত owner যদি name চান তবে সেভাবেই নথিভুক্ত হবে।
+- Roll number কারো `None` থাকলে তাকে সবার শেষে দেখানো — সুপারিশ; অন্য নিয়ম চাইলে জানাও।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EX-02.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ০৪ / ২৮ — সেশন EX-03 · Group-based Mark Evaluation
+
+_বিভাগ: Exam · ধরন: উন্নয়ন · নির্ভরতা: প্রম্পট ০৩ (EX-02)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০৪ / ২৮ (prompt 04/28) — সেশন EX-03 · উন্নয়ন · বিভাগ: Exam
+   পূর্ববর্তী: প্রম্পট ০৩ / ২৮ (EX-02 — Result/Register roll-order) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ০৫ / ২৮ (EX-04 — নতুন subject / Higher Math workflow)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০৪ / ২৮ (prompt 04/28) — সেশন EX-03 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ০৫ / ২৮ (EX-04 — নতুন subject / Higher Math workflow) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `SubjectMarkSetting` (`students/models.py` ~L779-812) = `institution + admission_class + subject + exam_type`, uniqueness ওই চারটি মিলে; **group field নেই**। `MarksConfigMixin` থেকে full marks / CQ / MCQ / practical / weekly test + pass % নিয়ম আসে; row না থাকলে `Subject`-এর global default-এ fallback।
+- `is_active` (migration 0034) দিয়ে "এই exam type-এ subjectটি ধরা হবে কি না" নিয়ন্ত্রণ হয়; `mark_evaluation_settings` view (URL `mark-evaluation/`) Office ও Exam — দুটো flyout থেকেই যাওয়া যায়; `_exam_group_selection` helper আছে।
+- Group-ভিত্তিক subject তালিকা আসে `SubjectRequirement(institution, admission_class, group, subject, requirement_type, optional_set_key, religion_condition)` + `get_applicable_subjects()` থেকে; SSC Science-এ HMATH MANDATORY (0042), HSC Science-এ OPTIONAL।
+- `GROUPED_CLASS_LABELS = ['9','10','11','12']` — class 9-এর নিচে group নেই; এই নিয়ম class-choices validation-এ মানতে হবে।
+- বিদ্যমান টেস্ট: `MarksPartsAndPassRulesTests`, `MarkEvaluationActiveSubjectTests`, `students/test_result_analysis.py`, `students/test_new_subject_result_workflow.py`।
+
+## ২. এই সেশনের চাহিদা
+
+- Mark Evaluation পুরোপুরি **group-aware** করা: একই class + exam type-এ SCI / ARTS / HUM আলাদা config পাবে (full marks, parts, pass %), এবং সেই config-ই marks entry ও result computation-এ ব্যবহৃত হবে।
+- Backward compatibility: পুরোনো row-এ group খালি থাকলে তা **সব group-এ প্রযোজ্য default** হিসেবে কাজ করবে (migration ডেটা হারাবে না, বিদ্যমান config ভাঙবে না)।
+- Validation: full marks > 0; parts (CQ/MCQ/PT/WT) যোগ full marks-এর সাথে সঙ্গতিপূর্ণ (owner-নীতিমালা অনুযায়ী exact বা ≤); pass % 0–100; duplicate (institution+class+exam_type+subject+group) প্রতিরোধ; class <9 হলে group খালি রাখা বাধ্যতামূলক।
+- UI: group selector + per-group listing/tabs; কোন subject কোন group-এ active তা একনজরে দেখা; inactive subject marks entry-তে আসবে না এবং result-এ count হবে না (আচরণ অপরিবর্তিত)।
+- Config পরিবর্তনে অডিট (`record_audit`) থাকবে; institution scoping ও permission (`change_subject`) অপরিবর্তিত।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. বর্তমান behavior-এর baseline টেস্ট লিখো: একই class-এ SCI ও ARTS-এর জন্য আলাদা full marks দেওয়ার চেষ্টা করলে কী হয় (আশা: এখন সম্ভব নয় — সেটিই ঘাটতি হিসেবে প্রমাণ হবে)।
+2. মডেল ডিজাইন: `SubjectMarkSetting.group` (`blank=True`, `choices=Student.GROUP_CHOICES`) + uniqueness constraint আপডেট — **নতুন migration** (খালি group = সব group-এর default)।
+3. Resolution chain বাস্তবায়ন: group-specific row → খালি-group row → `Subject` global default; এই chain-টি এক ফাংশনে রেখে marks entry ও `result_utils` দুটোতেই ব্যবহার করো (ডুপ্লিকেট logic নয়)।
+4. UI: `mark_evaluation_settings` template-এ group selector + listing; Save-এ validation (parts sum, pass %, duplicate, group rule) ও স্পষ্ট error message।
+5. Marks entry: group-specific config মান্য করে per-part validation; group-mismatch subject দেখাবে না।
+6. টেস্ট: (i) group-specific override কাজ করে, (ii) খালি-group fallback, (iii) inactive subject বাদ, (iv) parts/pass validation negative case, (v) duplicate blocked, (vi) class <9-এ group লাগে না, (vii) institution scoping negative (অন্য institution-এর setting দেখা/বদলানো যায় না)।
+7. চালাও §৫; তারপর PR।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_result_analysis
+python manage.py test students.test_new_subject_result_workflow
+python manage.py test students.test_subject_assignment_office
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EX-03: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০৪-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EX-03.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Parts-এর যোগফল full marks-এর সমান হতে হবে (কঠোর) নাকি ≤ হলে চলবে (নমনীয়)? সুপারিশ: কঠোর সমান, তবে owner নীতি বললে তা-ই।
+- Weekly test কোন exam type-এ লাগবে (বর্তমান help text অনুযায়ী) — এবং group-ভেদে কি আলাদা? owner নিশ্চিত করবে।
+- Group-specific config কি শুধু class 9–12-এ (group থাকা class) সীমাবদ্ধ থাকবে? সুপারিশ: হ্যাঁ।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EX-03.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ০৫ / ২৮ — সেশন EX-04 · নতুন subject / Higher Math workflow
+
+_বিভাগ: Exam · ধরন: যাচাই + উন্নয়ন · নির্ভরতা: প্রম্পট ০৪ (EX-03)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০৫ / ২৮ (prompt 05/28) — সেশন EX-04 · যাচাই + উন্নয়ন · বিভাগ: Exam
+   পূর্ববর্তী: প্রম্পট ০৪ / ২৮ (EX-03 — Group-based Mark Evaluation) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ০৬ / ২৮ (EX-05 — Missing marks → Absent/Fail)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০৫ / ২৮ (prompt 05/28) — সেশন EX-04 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ০৬ / ২৮ (EX-05 — Missing marks → Absent/Fail) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- **তিন-স্তরের Higher Math প্রমাণ আগে থেকেই docs-এ আছে** — এই সেশনে তিনটিই আবার নিজে যাচাই করতে হবে: (১) curriculum: `students/curriculum_data.py`-তে `HMATH`; `SSC_GROUPS['SCI']`-তে MANDATORY, `HSC_GROUPS['SCI']`-তে OPTIONAL (`sci_4th`); (২) DB: migration `0042_higher_math_mandatory_science.py` (SSC 9/09/10 → MANDATORY, reverse → OPTIONAL) + `seed_subjects` / `seed_subject_requirements` কমান্ড; (৩) assigned: `SubjectRequirement` rows + `subject_requirement_list` page (Office CRUD, inline "নতুন subject" তৈরি, quick-type, auto-fill)।
+- Marks path: `mark_evaluation_settings` → `enter_marks` / `import_exam_marks` → `result_utils.build_exam_results` → result views। `Subject` global default (full_marks/CQ/MCQ/practical + pass rule) fallback হিসেবে কাজ করে।
+- টেস্ট: `students/test_new_subject_result_workflow.py`, `students/test_subject_assignment_office.py`, `students/test_result_analysis.py::test_ssc_higher_math_is_mandatory`।
+
+## ২. এই সেশনের চাহিদা
+
+- End-to-end workflow যাচাই করা: নতুন subject তৈরি → class/group-এ assign (MANDATORY/OPTIONAL/CONDITIONAL) → mark evaluation config → marks entry/import → result — প্রতিটি ধাপে প্রমাণসহ।
+- ঘাটতি বন্ধ করা: (ক) যেসব subject-এর `SubjectMarkSetting` row নেই তাদের marks entry/result Subject default-এ fallback করবে এবং **UI-তে স্পষ্ট notice/warning** দেখাবে (silent 0/dash নয়); (খ) assigned subject inactive করার পর তার পুরোনো `ExamMark` কী হবে — owner-নীতিমালা অনুযায়ী block (message) বা exclude, কিন্তু আচরণ স্পষ্ট ও টেস্টে পিন করা; (গ) optional/conditional subject selection (`StudentSubjectChoice`, `optional_set_key`, `religion_condition`) না থাকলে result-এ `not_applicable` আচরণ যাচাই।
+- তিন-স্তরের consistency একটি টেস্টে পিন করা (curriculum ↔ migration ↔ assigned), যাতে ভবিষ্যতে কেউ এক স্তর বদলে দিলে টেস্ট fail করে।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. প্রথমে তিন স্তর যাচাই করে প্রমাণ লেখো (grep + shell-এ `manage.py shell` বা টেস্ট দিয়ে প্রমাণ: curriculum dict, migration 0042-এর data operation, `SubjectRequirement` row)।
+2. নতুন subject-এর জন্য "কোন ধাপগুলো লাগে" walk-through টেস্ট: subject create → assign → mark setting (লাগলে) → marks → result; কোন ধাপ বাদ পড়লে কী হয় তা assert করো।
+3. fallback warning/notice যোগ করো (smallest change — template notice + test), যাতে কাজ না থামিয়ে ব্যবহারকারী জানে।
+4. inactive/capacity/assignment-পরিবর্তনের নিয়ম owner-সিদ্ধান্ত অনুযায়ী কোড+টেস্টে পিন করো (সিদ্ধান্ত না এলে শুধু ডকুমেন্ট + `⛔` নোট)।
+5. HMATH প্রতি স্তরে MANDATORY (SSC SCI 9/09/10) — টেস্ট চলমান রাখো; HSC-তে OPTIONAL আচরণও।
+6. চালাও §৫; রিপোর্টে তিন-স্তরের প্রমাণ টেবিল।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_new_subject_result_workflow
+python manage.py test students.test_subject_assignment_office
+python manage.py test students.test_result_analysis
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EX-04: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০৫-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EX-04.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- ইতিমধ্যে entered `ExamMark` থাকা subject inactive/remove করলে: block + স্পষ্ট message (সুপারিশ) নাকি allow + result থেকে বাদ?
+- Optional subject-এর ক্ষেত্রে ছাত্রের choice না থাকলে: result-এ সম্পূর্ণ বাদ (বর্তমান আচরণ) নাকি "choice pending" warning — owner নিশ্চিত করবে।
+- Class 9-এর নিচে grouping নেই — নতুন subject যোগ করার সময় এ নিয়ম শুধু UI-তে নাকি forms/API-তেও (সুপারিশ: উভয়ই)।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EX-04.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ০৬ / ২৮ — সেশন EX-05 · Missing marks → Absent/Fail
+
+_বিভাগ: Exam · ধরন: নিয়ম সংশোধন (policy) · নির্ভরতা: প্রম্পট ০৫ (EX-04)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০৬ / ২৮ (prompt 06/28) — সেশন EX-05 · নিয়ম সংশোধন (policy) · বিভাগ: Exam
+   পূর্ববর্তী: প্রম্পট ০৫ / ২৮ (EX-04 — নতুন subject / Higher Math workflow) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ০৭ / ২৮ (EX-06 — GPA 4.90–5.00 → 5.00)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০৬ / ২৮ (prompt 06/28) — সেশন EX-05 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ০৭ / ২৮ (EX-06 — GPA 4.90–5.00 → 5.00) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- একক source: `students/result_utils.py::compute_subject_result` + `EXAM_ABSENT_SUBJECT_FAILS` (env, default True) — assigned subject-এ কোনো mark না থাকলে F + 0 counted, cell-এ dash; সব subject blank হলে `overall_gpa=None`, grade `ABSENT`, status `No Marks` (Fail নয়, rank নয়)।
+- Entered `0` আর blank আলাদা জিনিস (`ExamMark.marks_obtained` None vs 0); optional/religion `not_applicable` কখনো count হয় না; TC/DISCONTINUED register থেকে বাদ।
+- ডকুমেন্টেড decision: `docs/TASK_BACKLOG.md` → D-MIS = "blank → F, AB দেখানো, TC/DISCONTINUED বাদ"।
+- টেস্ট: `AbsentSubjectRulesTests` (৫টি), `MarksPartsAndPassRulesTests` (`test_a_student_entered_nowhere_has_no_row`, `test_configured_but_blank_part_is_a_failed_part`)।
+- সন্দেহের জায়গা (এই সেশনে যাচাই): প্রতিটি result view/print/export কি হুবহু একই source ব্যবহার করে, নাকি কোথাও আলাদা হিসাব (duplicate logic) আছে; AB/dash token সব জায়গায় একই কি না।
+
+## ২. এই সেশনের চাহিদা
+
+- নিয়মটি স্পষ্ট ও সর্বত্র অভিন্ন: assigned subject-এ mark না থাকলে = **Absent + Fail (0)**, `EXAM_ABSENT_SUBJECT_FAILS=True` default; সব blank = No Marks (rank-এ নেই); entered 0 = Fail (counted, dash নয়)।
+- সব result surface (result sheet, summary, detail, card, full rank list, top 10, analysis pages, print/PDF, Excel export) একই `result_utils` নিয়ম মানে — কোনো ভিউ নিজে হিসাব করবে না; duplicate logic থাকলে সরিয়ে এক source-এ আনা।
+- Display token consistency: dash / `AB` / `F` কোথায় আসবে তা এক টেবিলে নথিভুক্ত ও টেস্টে পিন করা (একই তথ্যের দুই রকম প্রদর্শন নয়)।
+- `EXAM_ABSENT_SUBJECT_FAILS=False` path-ও টেস্টে থাকবে (excluded + dash), যাতে env বদলালে আচরণ প্রমাণিত থাকে।
+- কোনো মান/নীতি নিজে থেকে বদলানো নয় — শুধু অসঙ্গতি ঠিক করা; নীতি বদলাতে হলে owner-সিদ্ধান্ত।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. প্রতিটি result view/template inventory করে দেখো কে `build_exam_results`/`compute_subject_result` ব্যবহার করে আর কে নিজে mark aggregate করে (grep: `marks_obtained`, `sum(`, `avg`, `gpa` in views/templates)।
+2. একটি ম্যাট্রিক্স টেবিল বানাও: surface × (blank treatment, zero treatment, all-blank, optional, TC) — যেখানে অসঙ্গতি, সেখানে smallest fix।
+3. নিয়ম ও প্রদর্শন টেবিল docs-এ লিখো (`RESULT_PUBLISHING_GUIDE.md` + সংশ্লিষ্ট doc-এ)।
+4. টেস্ট: partially-entered exam (কিছু subject blank) → F + counted; single blank part; blank vs 0; optional/religion not_applicable; TC/DISCONTINUED বাদ; একই exam-এ সব view-তে একই GPA/status; `EXAM_ABSENT_SUBJECT_FAILS=False` regression।
+5. চালাও §৫; স্ট্যাটাস ব্লকে যাচাই করা surface-এর সংখ্যা লেখো।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_result_analysis
+python manage.py test students.test_new_subject_result_workflow
+python manage.py test students.tests -k absent
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EX-05: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০৬-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EX-05.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Cell-এ blank mark দেখানো হবে `AB` নাকি dash (বর্তমান), আর status column-এ কী — owner নীতি নিশ্চিত করে ডকে চূড়ান্ত করা।
+- Partially-entered exam-এ blank subjects GPA-তে 0 হিসেবে ধরা হবে কি না — বর্তমান নিয়ম (হ্যাঁ, F) owner-নিশ্চিত করবে।
+- `EXAM_ABSENT_SUBJECT_FAILS` live production মান P0-7 চেকলিস্টে যাচাই করতে হবে (এই sandbox থেকে সম্ভব নয়)।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EX-05.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ০৭ / ২৮ — সেশন EX-06 · GPA 4.90–5.00 → 5.00
+
+_বিভাগ: Exam · ধরন: নতুন নিয়ম · নির্ভরতা: প্রম্পট ০৬ (EX-05)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০৭ / ২৮ (prompt 07/28) — সেশন EX-06 · নতুন নিয়ম · বিভাগ: Exam
+   পূর্ববর্তী: প্রম্পট ০৬ / ২৮ (EX-05 — Missing marks → Absent/Fail) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ০৮ / ২৮ (EX-07 — Ctrl/Cmd+Click correction)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০৭ / ২৮ (prompt 07/28) — সেশন EX-06 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ০৮ / ২৮ (EX-07 — Ctrl/Cmd+Click correction) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- কোড ইতিমধ্যে আছে বলে দেখা গেছে: `students/result_utils.py` ~L925-930-এ `Decimal('4.90') <= overall_gpa < Decimal('5.00')` হলে overall GPA 5.00, সাথে owner decision (2026-09-17) মন্তব্য; `get_grade`: ≥80% → A+/5.00, ≥70% → A/4.00 …।
+- `build_exam_results`-এ GPA = subject gpa_points-এর গড় `round(2)`; তাই boost ঠিক কোন মানে লাগবে তা rounding-নীতির উপর নির্ভর করে (4.895 → 4.90 না 4.89?)।
+- টেস্ট: GPA/boost-সম্পর্কিত বিদ্যমান টেস্ট `students/tests.py`-এ আছে (PR #29-এর ৫টি নতুন টেস্টের অংশ) — প্রকৃত নাম খুঁজে নাও।
+- doc দাবি: `docs/TASK_BACKLOG.md` → D-GPA "Decided 2026-09-17 — 4.90-4.99 → 5.00 A+ implemented"।
+
+## ২. এই সেশনের চাহিদা
+
+- নতুন নিয়মটি **নির্ভুলভাবে ও সর্বত্র** প্রয়োগ: overall GPA 4.90–4.99 (inclusive lower, exclusive upper) → 5.00/A+; 5.00 ঠিক থাকবে; 4.89 বা তার নিচে boost নয়।
+- Rounding নীতিটি স্পষ্ট ও deterministic করা (recommended: `Decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)`) এবং টেস্টে পিন করা; Python-এর banker's rounding-এর উপর ভরসা নয়।
+- Boost-এর প্রভাবে fail/absent কেস প্রভাবিত হবে না (একটি subject F থাকলে overdue boost নয়); GPA কখনো 5.00 ছাড়াবে না।
+- ফলাফল সব view/print/export/rank/analysis-এ একই মান; `position` নির্ধারণ boost-এর পরে সব ছাত্রের একই নিয়মে হবে (relative order ভাঙবে না)।
+- ডকুমেন্টেশন: নিয়ম, উদাহরণ ও সীমা (`RESULT_PUBLISHING_GUIDE.md` + `docs/` entry)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. বর্তমান implementation পড়ো এবং rounding-এর প্রকৃত আচরণ পরীক্ষা করো (`Decimal`, `round()`, quantize) — boundary মান: 4.894, 4.895, 4.899, 4.90, 4.949, 4.99, 4.999, 5.00।
+2. প্রয়োজন হলে calculation এক ছোট helper-এ নিয়ে সব জায়গায় সেটিই ব্যবহার করো (duplicate নয়)।
+3. Boundary + F/absent case + relative-order case-এর টেস্ট লিখো (একই exam-এ একাধিক ছাত্র: 4.95, 5.00, 4.89 — GPA ও position সঠিক)।
+4. সব result surface (sheet, detail, card, rank, analysis, export) একই GPA দেখায় তা টেস্ট করো।
+5. নিয়মটি গাইডে লিখো: কে পাবে, কখন পাবে না, rounding, উদাহরণ।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.tests -k gpa
+python manage.py test students.test_result_analysis
+python manage.py test students.tests -k grade
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EX-06: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০৭-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EX-06.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- 4.895 → 4.90 (boost) না 4.89 (no boost)? সুপারিশ: ROUND_HALF_UP → 4.90 → boost; owner একবার লিখিতভাবে নিশ্চিত করবেন।
+- GPA display 2 দশমিকেই থাকবে কি না (৫.০০ vs 5.00) — বর্তমান আচরণ রাখার সুপারিশ।
+- এক subject A (4.00) রেখে GPA 4.90–4.99 হলে boost প্রযোজ্য কি না — বর্তমান কোড হ্যাঁ; owner নীতি নিশ্চিত করবে।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EX-06.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ০৮ / ২৮ — সেশন EX-07 · Ctrl/Cmd+Click correction
+
+_বিভাগ: Exam · ধরন: নতুন সুবিধা · নির্ভরতা: প্রম্পট ০৭ (EX-06)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০৮ / ২৮ (prompt 08/28) — সেশন EX-07 · নতুন সুবিধা · বিভাগ: Exam
+   পূর্ববর্তী: প্রম্পট ০৭ / ২৮ (EX-06 — GPA 4.90–5.00 → 5.00) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ০৯ / ২৮ (OF-01 — একটি Guardian Contact)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০৮ / ২৮ (prompt 08/28) — সেশন EX-07 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ০৯ / ২৮ (OF-01 — একটি Guardian Contact) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- কোড আছে: `students/js/result_cell_shortcut.js` + Node টেস্ট `students/js/result_cell_shortcut.test.js`; `result_sheet.html`-এর subject cell-এ `data-subject-pk` (Religion cell তার নিজের paper-এর pk, REL column নয়) ও `data-group`; container-এ `data-enter-marks-base`।
+- Django টেস্ট: `students/test_published_lock_and_cell_shortcut.py`; published-marks lock R1 (PR #30) একই সেশনে এসেছে।
+- Ctrl/Cmd+Click করলে target subject-এর `enter_marks` page **নতুন tab**-এ খোলে; plain click/print আচরণ অপরিবর্তিত রাখা হয়েছে।
+- অজানা/যাচাইযোগ্য বাকি: `full_rank_list`/`student_result_detail`/`result_card`-এ shortcut নেই; permission না থাকলে link খোলা উচিত নয়; unpublished exam-এ behavior; group-less exam-এ group param; mobile/touch আচরণ।
+
+## ২. এই সেশনের চাহিদা
+
+- বৈশিষ্ট্যটি যাচাই করে আরও নির্ভরযোগ্য করা: সঠিক cell → সঠিক subject + group + exam-এর `enter_marks` URL; other exam/institution-এ যেতে পারে না (server-side scoping অপরিবর্তিত)।
+- শর্ত: ব্যবহারকারীর `add_exammark`/`change_exammark` permission থাকলে তবেই target render হবে; না থাকলে cell plain থাকবে (কোনো লুকানো URL নয়)।
+- Published lock: unpublished exam-এ shortcut কাজ করবে না (বা exam-publish page/লবিতে ভদ্র বার্তা) — lock ভাঙা যাবে না।
+- Plain click, Ctrl/Cmd+Click, Shift+Click, middle-click, print — সব কেস স্পষ্টভাবে নির্ধারিত; Ctrl/Cmd+Click ছাড়া normal click কোনো navigation করবে না (register পড়ার অভিজ্ঞতা নষ্ট হবে না)।
+- Accessibility fallback: যারা keyboard shortcut চান না/পারেন না, ওরা যাতে page থেকে enter_marks-এ যেতে পারে (row/cell থেকে visible link বা button) — এটাই আসল নিরাপত্তা নয়, শুধু usability।
+- Mobile/touch: দুর্ঘটনাবশত correction page খুলে না যায়।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. প্রতিটি result template যাচাই করো: কোনটিতে JS আছে, `data-*` attribute ঠিক আছে কি না; কোথাও `data-group` মিলছে কি না (group-less exam-এ group খালি → behavior নির্ধারণ করো)।
+2. permission-gated rendering নিশ্চিত করো (template-এ perms চেক + server-side guard আগে থেকেই আছে কি না দেখো)।
+3. Node টেস্ট সম্প্রসারিত করো: plain click no-op, Ctrl/Cmd খোলে, modifier+other key খোলে না, missing data attribute-এ নিরাপদ (no crash)।
+4. Django টেস্ট: permission ছাড়া cell-এ data/text অনুপস্থিত; unpublished exam-এ behavior; cross-institution URL tamper → server 404/403 (নিরাপত্তা টেস্ট)।
+5. গাইডে শর্টকাটটি লেখো (`RESULT_PUBLISHING_GUIDE.md`): কীভাবে ব্যবহার, কোন পেজে, সীমাবদ্ধতা।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_published_lock_and_cell_shortcut
+python manage.py test students.test_result_analysis
+node --test students/js/result_cell_shortcut.test.js
+node --test students/js/*.test.js
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EX-07: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০৮-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EX-07.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- শর্টকাটটি শুধু register-এ (সুপারিশ) থাকবে, নাকি detail/card/rank page-এও চালু হবে?
+- Mobile-এ আচরণ: বন্ধ রাখা (সুপারিশ) নাকি long-press দিয়ে চালু?
+- Permission সেট: শুধু `add_exammark` নাকি `change_exammark` থাকলেও? (repo-র permission মানচিত্র দেখে সিদ্ধান্ত ও নথিভুক্ত করা)।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EX-07.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ০৯ / ২৮ — সেশন OF-01 · একটি Guardian Contact
+
+_বিভাগ: Office · ধরন: সংশোধন · নির্ভরতা: প্রম্পট ০৮ (EX-07)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ০৯ / ২৮ (prompt 09/28) — সেশন OF-01 · সংশোধন · বিভাগ: Office
+   পূর্ববর্তী: প্রম্পট ০৮ / ২৮ (EX-07 — Ctrl/Cmd+Click correction) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১০ / ২৮ (OF-02 — সর্বোচ্চ ১০০-র pagination)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ০৯ / ২৮ (prompt 09/28) — সেশন OF-01 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১০ / ২৮ (OF-02 — সর্বোচ্চ ১০০-র pagination) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Unification আগের সেশনে হয়েছে (দাবি): migration `0039_unify_guardian_contact` → `0040_drop_legacy_contact_columns` (backfill → AuditLog-এ `legacy_contact_dropped` archive → `Student.contact_no` ও `AdmissionApplication.applicant_contact_no` RemoveField) → `0041_student_guardian_contact_required`।
+- এখন canonical field: `Student.guardian_contact_no` ও `AdmissionApplication.guardian_contact_no` (single, text — leading zero সংরক্ষিত)।
+- টেস্ট: `students/test_guardian_contact.py`।
+- যাচাই বাকি: template/form/view/import/export-এর কোথাও পুরোনো field নাম, দ্বিতীয় contact ইনপুট বা দুই নম্বরের প্রদর্শন আছে কি না (public admission form, internal form, admission sheet download, funnel export, student list/detail/search/export, bulk update, TC/certificate/id-card print, Excel import template ও parsing)।
+
+## ২. এই সেশনের চাহিদা
+
+- পুরো সিস্টেমে **একটি** guardian contact: প্রতিটি screen-এ একবারই ইনপুট/প্রদর্শন; কোথাও dual-write বা খালি পুরোনো column নয়।
+- Excel import: contact ছাড়া row স্পষ্ট row-level error সহ skip (silent নয়); header alias থাকলে তা ডকুমেন্টেড ও এক জায়গায়।
+- Admission → Student enrolment-এ contact ঠিকভাবে transfer হয় (এক field থেকেই), এবং পুরোনো AuditLog archive থেকে পুনরুদ্ধার পথ ডকুমেন্টেড।
+- কোনো migration operation বদলানো যাবে না; শুধু কোড/টেমপ্লেট/ফর্ম/টেস্ট সংশোধন।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. Repo-wide grep: `contact_no`, `applicant_contact_no`, legacy alias যেকোনো রকম (`phone`, `mobile`, `contact_number`) — প্রতিটি hit-কে দেখে ঠিক করা দরকার কি না তা ঠিক করো (`AuditLog` action নাম ও migration ফাইল ব্যতিক্রম, বদলাবে না)।
+2. Public ও internal admission form, `download_admission_sheet`, funnel export, student import (), student list/detail/export, bulk update, TC/certificate/id-card print — প্রতিটিতে single field নিশ্চিত করো।
+3. Import validation: contact খালি/ভুল ফরম্যাট হলে row-level error message; ইনপুট template-এ একটি কলাম।
+4. টেস্ট: (i) ফর্মে একটির বেশি contact field নেই, (ii) খালি contact reject, (iii) enrolment-এ contact সংরক্ষিত, (iv) export-এ এক কলাম, (v) legacy সংখ্যা AuditLog-এ পুনরুদ্ধারযোগ্য।
+5. চালাও §৫; ডকে "single contact — কোথায় কোথায় যাচাই করা হয়েছে" তালিকা লেখো।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_guardian_contact
+python manage.py test students.test_institution_isolation
+python manage.py test students.test_import_capacity
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-01: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ০৯-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-01.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Contact ফরম্যাট validation (১১-ডিজিট BD mobile কঠোর?) — সুপারিশ: নরম validation (spaces/dashes normalize করে 11 digit হলে গ্রহণ), owner নিশ্চিত করবেন।
+- একই নম্বর দুই ছাত্রের জন্য অনুমোদিত কি না (ভাইবোন) — সুপারিশ: অনুমোদিত, তবে duplicate report (management command `contact_conflict_report` আছে কি না দেখো)।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-01.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১০ / ২৮ — সেশন OF-02 · সর্বোচ্চ ১০০-র pagination
+
+_বিভাগ: Office · ধরন: সংশোধন · নির্ভরতা: প্রম্পট ০৯ (OF-01)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১০ / ২৮ (prompt 10/28) — সেশন OF-02 · সংশোধন · বিভাগ: Office
+   পূর্ববর্তী: প্রম্পট ০৯ / ২৮ (OF-01 — একটি Guardian Contact) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১১ / ২৮ (OF-03 — Subject Assignment Office subtab)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১০ / ২৮ (prompt 10/28) — সেশন OF-02 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১১ / ২৮ (OF-03 — Subject Assignment Office subtab) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Pagination ইতিমধ্যে আছে: `student_list` (~L1631), `archived_students` (~L2228), `employee_list` (~L1501), `attendance_report` (~L1250) — সবই `Paginator(..., 100)`।
+- যাচাই করা হয়নি (এবং এই সেশনেই করতে হবে): `money_receipt_list`, `voucher_list`, `salary_sheet_list`, `audit_log_list`, `admission_application_list`, `exam_list`, `subject_requirement_list`, `fee`-সংক্রান্ত list, seat-plan/result-সংক্রান্ত list, `student_exams`, certificate list.
+- Export `download_*` view গুলো ইচ্ছাকৃতভাবে pagination ছাড়া (পুরো ডেটা) — এই আচরণ রাখতে হবে।
+
+## ২. এই সেশনের চাহিদা
+
+- সব high-volume list page-এ প্রতি পেজে **সর্বোচ্চ ১০০** সারি; page controls (first/prev/next/last + count) এবং empty state।
+- Pagination link-এ search/filter/institution/sort param সংরক্ষিত; `?page=` out-of-range বা অ-সংখ্যা হলে নিরাপদ (`get_page`, 500 নয়)।
+- Ordering deterministic (unique tie-breaker সহ) — pagination-এ কোন সারি বাদ পড়ে না বা দুইবার আসে না।
+- Export/list separation: export পূর্ণ ডেটা দেয়, pagination শুধু UI-তে।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. সব list view inventory করো (grep: `Paginator`, `objects.all()`, `order_by`) এবং প্রতিটির বর্তমান আচরণ টেবিলে লেখো।
+2. যেখানে pagination নেই কিন্তু সারি বেশি হতে পারে (receipt/voucher/salary/audit/admission/exam/subject requirement) — 100/পেজ যোগ করো; template-এ pagination nav/partial reuse করো (একই markup বারবার লিখো না)।
+3. Querystring preservation (`?page=2&search=...&institution=...`) টেস্ট করো; filter ফর্মে hidden inputs যোগ করো যেখানে দরকার।
+4. Ordering-এ pk tie-break যোগ করো যেখানে নেই।
+5. টেস্ট: প্রতি list-এ ≤100 rows, page 2-তে বাকি rows, filter + page একসাথে, out-of-range page নিরাপদ, export অপরিবর্তিত।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_navigation
+python manage.py test students.test_fee_schedule
+python manage.py test students.test_audit_log_scoping
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-02: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১০-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-02.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- ছোট reference list (institution, staff) কে paginate হবে? সুপারিশ: না (১০০-এর নিচে এবং সম্পূর্ণ দেখা দরকার)।
+- প্রতি পেজে ৫০/১০০/২০০ — নির্বাচনযোগ্য করা হবে কি? সুপারিশ: এই রিলিজে শুধু ১০০ fixed (simplicity), পরে যোগ করা যাবে।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-02.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১১ / ২৮ — সেশন OF-03 · Subject Assignment Office subtab
+
+_বিভাগ: Office · ধরন: সংশোধন · নির্ভরতা: প্রম্পট ১০ (OF-02)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১১ / ২৮ (prompt 11/28) — সেশন OF-03 · সংশোধন · বিভাগ: Office
+   পূর্ববর্তী: প্রম্পট ১০ / ২৮ (OF-02 — সর্বোচ্চ ১০০-র pagination) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১২ / ২৮ (OF-04 — Admission reports)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১১ / ২৮ (prompt 11/28) — সেশন OF-03 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১২ / ২৮ (OF-04 — Admission reports) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Nav-এ Office flyout-এ "Subject Assignments" → `subject_requirement_list` (`perms.students.view_subjectrequirement` গেট) এবং Mark Evaluation → `mark_evaluation_settings` (`perms.students.change_subject`)।
+- Route: `subject-requirements/` (+ `auto-fill/`, `add/`, `<pk>/edit/`, `<pk>/delete/`, `<pk>/quick-type/`) এবং API `api/subject-requirements/`; `students/urls.py`-তে মন্তব্যে লেখা আছে পুরোনো standalone "Subjects" master-list page সরানো হয়েছে (নতুন subject inline যোগ হয়)।
+- টেস্ট: `students/test_subject_assignment_office.py`, `students/test_navigation.py`।
+
+## ২. এই সেশনের চাহিদা
+
+- Subject Assignment যেন Office-এর একটি পরিষ্কার, খুঁজে পাওয়া যায় এমন **subtab** হয়: Office flyout/landing থেকে দৃশ্যমান entry, active-state সঠিক, permission গেট server-side।
+- Flow যাচাই: inline "নতুন subject" তৈরি (duplicate code/name validation), subject assign (MANDATORY/OPTIONAL/CONDITIONAL, `optional_set_key`, `religion_condition`), quick-type update, curriculum auto-fill — সবই institution-ও class/group-সচেতন।
+- Dead link/404 শূন্য: সরানো পুরোনো Subjects page-এর কোনো অবশিষ্ট link/template/URL নেই; প্রতিটি link `reverse()`।
+- Mark Evaluation-এর সাথে পারস্পরিক cross-link (একই চাহিদার দুই ধাপ)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. Nav + URL + template যাচাই করে বর্তমান অবস্থা লেখো; কোন entry কোন perms-এ দেখা যায় তা টেবিল করো।
+2. "subtab" বাস্তবায়ন: বর্তমান convention অনুযায়ী smallest change (Office flyout-এ grouped links + page-এ tabs/section heading) — নতুন framework/vue নয়।
+3. Inline subject creation flow-এর validation ও error message টেস্ট করো (duplicate, খালি code, group rule class <9, HMATH নিয়ম)।
+4. Permission/scoping negative টেস্ট: unauthorized → 403/302, cross-institution → 404/খালি, direct URL guard server-side।
+5. Cross-link ও nav টেস্ট হালনাগাদ করো; চালাও §৫।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_subject_assignment_office
+python manage.py test students.test_navigation
+python manage.py test students.test_result_analysis
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-03: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১১-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-03.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- "subtab" কী রূপে: Office flyout-এ nested links (সুপারিশ, কম ঝুঁকি) নাকি Office landing page-এ tab strip?
+- Subject master (global `Subject`) তৈরি করার অনুমতি কাদের — Office ও Exam উভয়েই (বর্তমান `change_subject`) নাকি শুধু Office? owner নিশ্চিত করবেন।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-03.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১২ / ২৮ — সেশন OF-04 · Admission reports
+
+_বিভাগ: Office · ধরন: উন্নয়ন · নির্ভরতা: প্রম্পট ১১ (OF-03)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১২ / ২৮ (prompt 12/28) — সেশন OF-04 · উন্নয়ন · বিভাগ: Office
+   পূর্ববর্তী: প্রম্পট ১১ / ২৮ (OF-03 — Subject Assignment Office subtab) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১৩ / ২৮ (OF-05 — Student photos)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১২ / ২৮ (prompt 12/28) — সেশন OF-04 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১৩ / ২৮ (OF-05 — Student photos) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- ইতিমধ্যে আছে: `admission_funnel_report` + `admission_funnel_export` (PR #32 merged), Office flyout-এ Admission Funnel, Admission list page-এ `📊 Reports` button (PR #33 merged), `class_section_summary`, `download_admission_sheet`।
+- Funnel ধাপ: SUBMITTED → OFFICE_APPROVED → ACCOUNT_PENDING → PAYMENT_APPROVED → ENROLLED; REJECTED আলাদা; `?institution=` (bounded) + `?from=`/`?to=` (whole-day inclusive); multi-institution scope হলে export-এ "By Institution" sheet।
+- টেস্ট: `students/test_admission_funnel_report.py` (২০টি দাবি করা)।
+- অপশনাল / এখনো Missing: `ADM-REPORTS-OPT-1` — capacity vs enrolled (class/section), payment-vs-enrolled trend, date-wise trend chart।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) বিদ্যমান report-এর সংখ্যা ও সীমা যাচাই: প্রতিটি status count, date-range boundary (from/to inclusive), institution isolation, empty scope, REJECTED আলাদা থাকা, export sheet-গুলোর বিবরণ।
+- (খ) Owner-অনুমোদিত উন্নয়ন (এই রিলিজে যতটুকু সিদ্ধান্ত হবে): capacity vs enrolled per class/section (`SectionCapacity` vs actual), payment-vs-enrolled ও date-wise trend — **নতুন JS chart লাইব্রেরি ছাড়া** (table/CSS bar/server-rendered SVG), Excel-এ নতুন sheet।
+- (গ) ব্যর্থ/ফাঁকা কেস: কোনো data না থাকলে 0 দেখাবে (500 নয়), বড় range-এও performance যুক্তিসঙ্গত (aggregate query, N+1 নয়)।
+- (ঘ) Access নীতি অপরিবর্তিত (Office/Accounts + permission), মেনু লুকানো নিরাপত্তা নয় — direct URL server-side guard-এ সুরক্ষিত।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. বর্তমান funnel math টেস্ট দিয়ে যাচাই করো (fixture দিয়ে প্রতিটি status-এর সংখ্যা), boundary: একই দিন from=to, from>to, ভবিষ্যতের তারিখ।
+2. Capacity হিসাব: কোন class/section-এ কত আসন vs ভর্তি (`SectionCapacity.has_room` প্যাটার্ন reuse) — নতুন helper + টেস্ট (০ আসন, অতিক্রান্ত, capacity row নেই)।
+3. Trend: date-bucket boundary ও timezone (Asia/Dhaka) টেস্ট; export sheet-এ সারি/কলাম পিন করো।
+4. Empty scope / one-institution / multi-institution — তিন ক্ষেত্রেই render ও export টেস্ট।
+5. Scoping/permission negative টেস্ট (scoped clerk অন্য institution-এর `?institution=` দিয়ে scope বাড়াতে পারবে না)।
+6. চালাও §৫; ফিচার যোগ হলে guide/doc হালনাগাদ (কীভাবে ব্যবহার, কী বোঝায়)।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_admission_funnel_report
+python manage.py test students.test_fee_schedule
+python manage.py test students.test_institution_isolation
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-04: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১২-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-04.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- এই রিলিজে কোন নতুন report লাগবে: (খ১) capacity vs enrolled, (খ২) payment-vs-enrolled trend, (খ৩) date-wise trend — তিনটিই, নাকি শুধু একটি?
+- Accounts কী পুরো funnel দেখবে নাকি payment stage-সীমিত view — এটি আগের থেকেই খোলা decision; সিদ্ধান্ত না হলে বর্তমান নীতি বহাল।
+- Chart না table — সুপারিশ: table + CSS bar (কোনো নতুন dependency নয়)।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-04.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১৩ / ২৮ — সেশন OF-05 · Student photos
+
+_বিভাগ: Office · ধরন: যাচাই + উন্নয়ন · নির্ভরতা: প্রম্পট ১২ (OF-04)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১৩ / ২৮ (prompt 13/28) — সেশন OF-05 · যাচাই + উন্নয়ন · বিভাগ: Office
+   পূর্ববর্তী: প্রম্পট ১২ / ২৮ (OF-04 — Admission reports) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১৪ / ২৮ (OF-06 — Public success page ও progress)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১৩ / ২৮ (prompt 13/28) — সেশন OF-05 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১৪ / ২৮ (OF-06 — Public success page ও progress) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `Student.photo` = `ImageField(upload_to='student_photos/', blank=True, null=True)` (`students/models.py` ~L252); form-এ `clean_photo`: ২MB সীমা, image type, extension চেক; upload widget `accept="image/*"`।
+- Storage: default `MEDIA_ROOT` filesystem; `USE_S3=True` হলে `storages.backends.s3.S3Storage`; checks `E011`/`W010` (`students/checks.py`); management command `copy_media_to_storage`; টেস্ট `students/test_upload_security.py` (৩৩?) ও `test_media_storage.py` (৩৩ দাবি)।
+- Gap (grep করে দেখা): student list template-এ photo দেখানো হয় না; `AdmissionApplication`-এ **কোনো photo field নেই** → admission form-এ ছবি নেওয়া যায় না, enrolment-পরবর্তী ছবি manually।
+- Media cleanup: archive purge-এ photo ফাইল মুছে যায় কি না — যাচাই করা প্রয়োজন (data protection)।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) Upload path যাচাই: add/edit student-এ ছবি দেওয়া/বদলানো/মুছে ফেলা; size/type/extension validation; ফাইলের নাম নিরাপদ (path traversal/unicode ঝুঁকি); S3 মোডে সংরক্ষণ ও PATH; permission/scoping অপরিবর্তিত।
+- (খ) Display: student list-এ thumbnail (fallback avatar সহ), student detail-এ বড় ছবি, id card/result card/print-এ ছবি; server-rendered (নতুন JS library নয়)।
+- (গ) Admission → Student continuity: public/internal admission form-এ optional photo যোগ করা হবে কি না — owner-সিদ্ধান্ত; সমর্থন করলে size/type validation ও rate-limit প্রভাব যাচাই + enrolment-এ transfer + টেস্ট।
+- (ঘ) Data protection: purge/delete-এ ফাইল মুছে ফেলা বা retention নীতি; media backup-এ ছবি পড়ে কি না নিশ্চিত করা।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. বর্তমান upload/list/detail/render paths টেস্ট দিয়ে যাচাই করো; `test_upload_security.py`-এ বিদ্যমান কেসগুলো কী cover করে তা লেখো।
+2. Thumbnail rendering যোগ করো (template + CSS; `object-fit`, lazy loading), fallback avatar; দ্রুত query (N+1 নয়) টেস্ট।
+3. Id card/result card-এ ছবি ঠিকভাবে বসে ও print-এ দেখায় — টেস্ট (rendered HTML-এ img path)।
+4. Purge flow-এ ফাইল মুছে ফেলার নিয়ম যোগ করো (thumbnail/cache সহ) — টেস্ট।
+5. Admission photo (owner চাইলে): form field + validation + enrolment transfer + টেস্ট; না চাইলে ডকে কারণ লিখো।
+6. §৫ চালাও; media storage দুটো মোডে (filesystem + `USE_S3` env, bucket ছাড়া dummy config) টেস্ট।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_upload_security
+python manage.py test students.test_media_storage
+python manage.py test students.test_institution_write_isolation
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-05: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১৩-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-05.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Admission form-এ ছবি নেওয়া হবে কি না (public form-এ upload = rate limit/spam ঝুঁকি) — owner সিদ্ধান্ত।
+- ছবি সর্বোচ্চ আকার (এখন ২MB) ও minimum resolution policy।
+- Purge/TC-এর পর ছবি মুছে ফেলা হবে কি না (audit/legal কারণে রাখতে হতে পারে)।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-05.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১৪ / ২৮ — সেশন OF-06 · Public success page ও progress
+
+_বিভাগ: Office · ধরন: উন্নয়ন · নির্ভরতা: প্রম্পট ১৩ (OF-05)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১৪ / ২৮ (prompt 14/28) — সেশন OF-06 · উন্নয়ন · বিভাগ: Office
+   পূর্ববর্তী: প্রম্পট ১৩ / ২৮ (OF-05 — Student photos) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১৫ / ২৮ (OF-07 — Admission/import integrity)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১৪ / ২৮ (prompt 14/28) — সেশন OF-06 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১৫ / ২৮ (OF-07 — Admission/import integrity) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Public apply flow: `public_admission_apply` (GET form / POST) — POST সফল হলে `students/public_admission_success.html` render (views ~L657-682); rate limit ৫ POST / ১০ মিনিট per IP (`_rate_limit_exceeded`, SEC-IP hardening করা হয়েছে)।
+- Success page-এ application number/পরবর্তী ধাপ + WhatsApp/copy share (দাবি) — যাচাই করে ঝালাই করতে হবে।
+- বর্তমানে কোনো public **status/progress** page নেই (`students/urls.py`-তে tracking route নেই) — progress দেখা যায় শুধু internal funnel/Office-এর কাছে।
+- Admission state machine: SUBMITTED → OFFICE_APPROVED → ACCOUNT_PENDING → PAYMENT_APPROVED → ENROLLED, অথবা REJECTED।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) Success page: application number, জমা দেওয়ার তারিখ, requested class/section/session, পরিষ্কার "পরবর্তী কী হবে", printable slip (print CSS), copy/WhatsApp button — কোনো internal link নেই, কোনো internal remark/PII অন্যের নয়।
+- (খ) নতুন public **progress check** page: application number + (owner-নির্বাচিত যাচাই factor, যেমন guardian contact-এর শেষ ৪ ডিজিট বা DOB) দিয়ে status দেখা; status timeline ধাপে ধাপে; REJECTED-এ শালীন বার্তা ও পরবর্তী যোগাযোগের পথ।
+- (গ) Privacy/safety: ভুল তথ্যে generic error (হুবহু "পাওয়া যায়নি" — enumeration সহজ নয়), response-এ applicant-এর নাম আংশিক mask, internal remarks/actor কখনো নয়, `noindex` meta, rate limit reuse; brute-force ধীর করা।
+- (ঘ) কোনো email/SMS notification সক্রিয় করা যাবে না (owner approval ছাড়া)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. Success page-এর বর্তমান content যাচাই করে উন্নত করা; print CSS টেস্ট (rendered HTML check)।
+2. Progress view + form + URL (`admission/status/` ধরনের নাম, `noindex`) + template; query এমনভাবে লেখা যেন ভুল factor-এ একই generic উত্তর মেলে এবং HTML-এ কোনো PII ফাঁস না হয়।
+3. Rate limit: ভিন্ন key (IP + application number combination) বা বিদ্যমান helper reuse — টেস্ট: একই IP-এ বারবার ভুল চেষ্টা → block, সঠিক তথ্য → দেখায়।
+4. টেস্ট: সঠিক/ভুল credentials, প্রতিটি status-এর বার্তা, mask, no internal link, cross-applicant তথ্য ফাঁস নেই, response size/time মোটামুটি একরকম।
+5. Public page-এ কোনো internal route link বা admin hint নেই — টেস্ট (source/regex) দিয়ে পিন করো।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_rate_limiting
+python manage.py test students.test_admission_funnel_report
+python manage.py test students.test_guardian_contact
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-06: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১৪-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-06.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- যাচাই factor কী হবে: শুধু application number, নাকি + contact/DOB? সুপারিশ: application number + guardian contact (দুটোই)।
+- REJECTED-এ কারণ দেখানো হবে কি না (সাধারণ বার্তা vs নির্দিষ্ট কারণ) — সুপারিশ: সাধারণ বার্তা + অফিসে যোগাযোগ।
+- Progress page-এ কতক্ষণ স্ট্যাটাস lookback (সব পুরোনো application, নাকি চলতি session)?
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-06.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১৫ / ২৮ — সেশন OF-07 · Admission/import integrity
+
+_বিভাগ: Office · ধরন: যাচাই · নির্ভরতা: প্রম্পট ১৪ (OF-06)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১৫ / ২৮ (prompt 15/28) — সেশন OF-07 · যাচাই · বিভাগ: Office
+   পূর্ববর্তী: প্রম্পট ১৪ / ২৮ (OF-06 — Public success page ও progress) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১৬ / ২৮ (OF-08 — Archive/promotion/certificates)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১৫ / ২৮ (prompt 15/28) — সেশন OF-07 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১৬ / ২৮ (OF-08 — Archive/promotion/certificates) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Admission state machine: `office_approve_application`, `office_reject_application`, `office_handoff_application`, `accounts_approve_payment` (payment approve-এ `Student` তৈরি, auto `MoneyReceipt RC-<year>-<code>`, mandatory subject auto-assign, `Fee` pre-fill + warning, capacity `SectionCapacity.has_room`, `next_step`)।
+- Student import: `import_students` + `download_import_template` — capacity skip (P1-7), zero-padding tolerance '09'↔'9' (P1-8), group rule (class <9-এ group নেই), scoped clerk-এর জন্য institution বাধ্যতামূলক (SEC-IMPORT), row-level error report।
+- Marks import: `import_exam_marks` + per-subject template; blank vs 0 পার্থক্য (`ExamMark` part columns)।
+- আগের সেশনগুলোতে অনেক negative টেস্ট (50+ isolation, money validation, rate-limit) আছে — এই সেশনটি **integrity audit** (happy path + boundary + failure), নতুন ফিচার নয়।
+
+## ২. এই সেশনের চাহিদা
+
+- Admission transitions: অবৈধ transition block হয় কি (যেমন office approve ছাড়া payment approve নয়, reject-এর পরে আর পরিবর্তন নয়, দুইবার enrol নয় — `enrolled_student` OneToOne), অংশগ্রহণকারী actor/সময়/remarks সংরক্ষিত, প্রতিটি transition-এ `AuditLog` row।
+- Capacity: শেষ আসন দুজন একসাথে approve করলে কী হয় (race) — transaction/locking আচরণ পরীক্ষা করে স্পষ্ট fault-tolerable নিয়ম (block + message) এবং টেস্ট।
+- Receipt: `RC-…` collision-safety, Payment approve-এর সাথে receipt/student creation-এর atomicity (মাঝপথে fail হলে অর্ধেক ডেটা নয়)।
+- Import: duplicate student id/roll, invalid class/section, capacity, group rule, '09' vs '9', guardian contact খালি, scoped clerk institution, partial failure (transaction) ও row-level error message — সব টেস্ট।
+- Marks import: অজানা ছাত্র, ভুল subject/exam match, full marks ছাড়িয়ে যাওয়া মান, blank vs 0, ভুল file format — প্রতিটি ক্ষেত্রে স্পষ্ট error, silent data loss নয়।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. প্রতিটি flow-এর জন্য একটি matrix বানাও: ধাপ × (happy, boundary, invalid, unauthorized, cross-institution) — কোথায় টেস্ট আছে, কোথায় নেই।
+2. ফাঁকা কেসগুলোর জন্য টেস্ট লিখো; যদি টেস্ট fail করে, root cause বের করে smallest fix করো (transaction/locking/validation)।
+3. Atomicity যাচাই: payment approve-এ exception হলে student/receipt না তৈরি (`transaction.atomic` + টেস্ট)।
+4. Import-এর row-level error message ও report output-এ কত row যোগ হলো/বাদ পড়ল তা assert করো।
+5. ফলাফল `docs/prompts/reports/OF-07.md`-এ ম্যাট্রিক্সসহ লেখো; fix থাকলে PR-এ আলাদা করে উল্লেখ করো।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_import_capacity
+python manage.py test students.test_auto_receipts
+python manage.py test students.test_institution_write_isolation
+python manage.py test students.test_guardian_contact
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-07: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১৫-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-07.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Capacity race: block করে message দেখানো (সুপারিশ) নাকি waitlist? — owner।
+- Duplicate roll/student-id: reject (সুপারিশ) নাকি warn করে allow (school নীতি)?
+- Fee mismatch: বর্তমানে warn; block করতে হবে কি না — পেমেন্ট-প্রবাহ বিবেচনায় owner সিদ্ধান্ত।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-07.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১৬ / ২৮ — সেশন OF-08 · Archive/promotion/certificates
+
+_বিভাগ: Office · ধরন: যাচাই · নির্ভরতা: প্রম্পট ১৫ (OF-07)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১৬ / ২৮ (prompt 16/28) — সেশন OF-08 · যাচাই · বিভাগ: Office
+   পূর্ববর্তী: প্রম্পট ১৫ / ২৮ (OF-07 — Admission/import integrity) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১৭ / ২৮ (DB-01 — Dashboard/navigation)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১৬ / ২৮ (prompt 16/28) — সেশন OF-08 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১৭ / ২৮ (DB-01 — Dashboard/navigation) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Archive: `archived_students`, single/bulk `restore_student`/`bulk_restore_students`, `purge_archived_student`/`bulk_purge_archived_students`; fields `archived_at/by`, `pre_archive_status`, `restored_at`; `Student` status `DISCONTINUED` + `discontinue_student`; audit rows; migration 0023/0025।
+- Promotion: `student_promotion`, `student_promotion_history`, `rollback_student_promotion`, `PromotionBatch.institution` (0037), `StudentPromotionHistory.source_roll_no` (0021), session validation।
+- Certificates: `issue_tc`/`view_tc`, `issue_certificate`/`view_certificate`, `certificate_list`, `student_id_card`, models `TransferCertificate`/`Certificate`; BUG-1 ছিল `student_detail`-এ TC link ভাঙা (ঠিক হয়েছে) — সেই শ্রেণীর bug খুঁজতে হবে।
+- টেস্ট: `students/test_institution_isolation.py`, `test_institution_write_isolation.py`, `test_edit_audit.py`, `students/tests.py`-এর TC/certificate টেস্ট।
+
+## ২. এই সেশনের চাহিদা
+
+- Archive: TC/discontinued ছাত্র archive-এ ঠিকভাবে ধরা পড়ে; restore ঠিক পূর্বাবস্থায় ফেরে (`pre_archive_status`); purge-এর আগে নিয়ম (TC থাকলে block? owner) ও audit; bulk flow-এ partial error স্পষ্ট।
+- Promotion: class/section/roll remap সঠিক, session validation, history-তে সঠিক আগের অবস্থা (`source_roll_no`), rollback হুবহু পূর্বাবস্থায় ফেরায়, দুইবার promotion প্রতিরোধ, institution scoping।
+- Certificates: eligibility guard (status/class), নম্বর unique, print-এ সব field ঠিক (কোনো missing field/500 নয়), cross-institution print 404, audit trail।
+- সব ক্ষেত্রেই institution scoping ও permission negative টেস্ট থাকবে (direct URL hitting)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. `docs/prompts/reports/OF-08.md`-এ flow-ম্যাট্রিক্স বানাও (archive/restore/purge/promotion/rollback/TC/certificate/id-card × happy/negative/scoped)।
+2. প্রতিটি flow-এর বিদ্যমান টেস্ট চালিয়ে প্রমাণ নাও; ফাঁকা negative কেস (যেমন restore purge করা রেকর্ড, rollback দুইবার, TC ছাড়া certificate) যোগ করো।
+3. কোনো 500/HTML missing-field ধরা পড়লে smallest fix + টেস্ট (BUG-1 শ্রেণীর regression)।
+4. Print view গুলো rendered HTML লেভেলে যাচাই করো (eligibility + data + scope)।
+5. রিপোর্টে প্রমাণ টেবিল + বাকি ঝুঁকি লিখো; চালাও §৫।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_institution_isolation
+python manage.py test students.test_institution_write_isolation
+python manage.py test students.test_edit_audit
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-08: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১৬-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-08.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- TC ইস্যু করা ছাত্র purge করা যাবে কি? সুপারিশ: নিষিদ্ধ (audit/legal)।
+- Certificate নম্বর পদ্ধতি ও reset নীতি owner-নিশ্চিত করতে হবে (year-wise sequential?)।
+- Promotion-এ একই session-এ আবার চালালে block নাকি overwrite — সুপারিশ: block + history রক্ষা।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-08.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১৭ / ২৮ — সেশন DB-01 · Dashboard/navigation
+
+_বিভাগ: Dashboard · ধরন: যাচাই + উন্নয়ন · নির্ভরতা: প্রম্পট ১৬ (OF-08)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১৭ / ২৮ (prompt 17/28) — সেশন DB-01 · যাচাই + উন্নয়ন · বিভাগ: Dashboard
+   পূর্ববর্তী: প্রম্পট ১৬ / ২৮ (OF-08 — Archive/promotion/certificates) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১৮ / ২৮ (DB-02 — Developer branding)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১৭ / ২৮ (prompt 17/28) — সেশন DB-01 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১৮ / ২৮ (DB-02 — Developer branding) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `dashboard` view + template override `school_system/templates/students/dashboard.html` (`DIRS` override প্যাটার্ন); quick-links card (P2-6) permission-gated।
+- Sidebar: `students/templates/students/base.html` — ৭টি nav-group (Office, Attendance, Exam, Result Analysis, Accounts, Employees + Dashboard) + flyout + mobile drawer + collapse (Ctrl+B, localStorage) + print-এ hidden; institution selector session-নির্ভর।
+- টেস্ট: `students/test_navigation.py`, কিছু dashboard সংখ্যার টেস্ট `students/tests.py`-এ।
+- যাচাই দরকার: dashboard-এর প্রতিটি সংখ্যা আসল queryset-এর সাথে মেলে কি (active only? scoped?), N+1 query, empty state, nav entry → named URL গুলো ঠিক আছে কি (কোনো 404/NoReverseMatch নেই)।
+
+## ২. এই সেশনের চাহিদা
+
+- Dashboard-এর প্রতিটি stat যাচাই ও পিন করা: active ছাত্র সংখ্যা (archived বাদ), class/gender distribution, admission in-progress, আজকের attendance, month-এর receipt/voucher/salary totals, pending items — সব নির্বাচিত institution-এ scoped (admin unscoped হলে aggregate)।
+- Performance: প্রতি stat-এ aggregate query (Python-এ loop করে গণনা নয়), `select_related`/`annotate` ব্যবহার; পেজে N+1 নেই।
+- Empty state ও zero-division নিরাপদ (কোনো 500 নয়)।
+- Navigation: প্রতিটি nav entry → বিদ্যমান named URL, permission-gated, active state সঠিক, mobile drawer/collapse কাজ করে, print-এ sidebar hidden; EX-01-এর Analysis subtab এখানে সংহত।
+- Cross-link: dashboard → report/analysis পেজে প্রাসঙ্গিক লিংক (permission থাকলে)।
+
+**নোট:** এটি integration-সেশন — নতুন design/theme নয়; বিদ্যমান UI-র নির্ভুলতা ও সংগতি।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. Dashboard view-এর প্রতিটি context value ও template-এর সব সংখ্যা তালিকাভুক্ত করো; প্রতিটির queryset পড়ে সঠিকতা assert করা টেস্ট লেখো (fixture: কিছু archived, দুই institution, মাস-সীমা)।
+2. Scoping যাচাই: scoped clerk-এর dashboard-এ শুধু তার institution-এর সংখ্যা; admin-এ সবার।
+3. Query count মাপো (`assertNumQueries` বা debug toolbar/SQLite log) — স্পষ্ট N+1 থাকলে ঠিক করো।
+4. Nav inventory টেস্ট: প্রতিটি menu entry `reverse()` করে name যাচাই + unauthorized user-এর জন্য লুকানো + direct URL guard (আগের নিয়ম)।
+5. Empty নীতি: institution-এ কোনো ডেটা না থাকলে শূন্য দেখাবে, ভাঙবে না।
+
+**বিশেষ নোট:** এই সেশনে visual redesign নয় — সংখ্যা/লিংক/performance।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_navigation
+python manage.py test students.test_result_analysis
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `DB-01: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১৭-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/DB-01.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Dashboard-এ কোন কার্ডগুলো আগে (priority) — owner পছন্দ; সুপারিশ: Attendance/Admission/Fees।
+- Institution selector-এর default: last selected (session) নাকি first allowed — বর্তমান আচরণ রাখার সুপারিশ।
+- Quick links-এ নতুন entry (Analysis/Reports) যোগ হবে কি না — permission-gated হলে সুপারিশ: হ্যাঁ।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/DB-01.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১৮ / ২৮ — সেশন DB-02 · Developer branding
+
+_বিভাগ: মূল ব্যবস্থা · ধরন: সংশোধন · নির্ভরতা: প্রম্পট ১৭ (DB-01)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১৮ / ২৮ (prompt 18/28) — সেশন DB-02 · সংশোধন · বিভাগ: মূল ব্যবস্থা
+   পূর্ববর্তী: প্রম্পট ১৭ / ২৮ (DB-01 — Dashboard/navigation) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ১৯ / ২৮ (DB-03 — Permissions ও data isolation)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১৮ / ২৮ (prompt 18/28) — সেশন DB-02 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ১৯ / ২৮ (DB-03 — Permissions ও data isolation) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Admin branding: `school_system/urls.py` L8-10 — `site_header = "Principal Kazi Faruky School And College"`, `site_title = "PKFSC Admin"`, `index_title = "Welcome to School Administration"`; `students/admin.py` প্রথম লাইনে মন্তব্য যে branding urls.py-তে থাকে।
+- Template brand: `base.html`-এ `PKFSC`; লগইন পেজে `students/login.html`/template override আছে।
+- README শেষে "Author — Habib" + GitHub profile লিংক (`README.md` ~L148-150)।
+- **একটিমাত্র agent/tooling নাম পাওয়া গেছে committed source-এ:** `students/migrations/0034_subjectmarksetting_is_active.py` L1 মন্তব্য `# Generated by Arena Agent on 2026-09-08`। (বাকি migration-এ Django-এর স্বাভাবিক `# Generated by Django x.y on ...`।)
+- ⚠️ Migration ফাইলের **comment** বদলানো migration state বদলায় না, কিন্তু operations বদলানো নিষিদ্ধ — এই সীমা কঠোরভাবে মানতে হবে।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) committed source-এ কোনো agent/tooling/dev-tool নাম থাকবে না: 0034-এর প্রথম লাইনের মন্তব্য নিরপেক্ষ করা (যেমন "# Generated on 2026-09-08" বা Django-র স্বাভাবিক ফরম্যাট); বাকি সব ফাইলে grep করে শূন্য করা। migrations-এর operations/নাম **অপরিবর্তিত** — `makemigrations --check` ও পূর্ণ suite আগে-পরে একই ফল দেবে।
+- (খ) Site branding সংগতিপূর্ণ: admin header/title, base.html brand ও `<title>`, login page, footer (যদি থাকে) — প্রতিষ্ঠানের নাম একটিই বানানে।
+- (গ) README-র নাম/author তথ্য সঠিক ও owner-confirmed; কোনো ব্যক্তিগত ফোন/ইমেইল/credential branding-এ নয়।
+- (ঘ) টেস্ট-গার্ড: একটি টেস্ট থাকবে যা নিশ্চিত করবে tooling/agent-নাম committed source-এ নেই এবং branding constants এক জায়গায় (`urls.py`) থেকে আসে।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. `grep -rniE "arena|agent|generated by|developed by|powered by"` চালিয়ে সব hit তালিকাভুক্ত করো; কোনটি নিরীহ (Django standard) আর কোনটি সরানো দরকার তা লেখো।
+2. 0034-এর comment ঠিক করো (শুধু comment; `git diff` দিয়ে প্রমাণ করো যে operations-এ এক অক্ষরও বদলায়নি)।
+3. `python manage.py makemigrations --check` + `python manage.py migrate --plan` চালিয়ে নিশ্চিত করো migration state অপরিবর্তিত (প্রমাণ রিপোর্টে)।
+4. Branding consistency: header/title/brand/login — একই নাম; টেস্ট: `admin.site.site_header` মান + rendered login/title-এ সঠিক নাম, ভুল/পুরোনো নাম নেই।
+5. README-তে author তথ্য owner যা বলবেন সেটিই লিখো (নতুন তথ্য বানাবে না)।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py check
+python manage.py test students.test_security_settings
+python manage.py test students.test_navigation
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `DB-02: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১৮-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/DB-02.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- সাইটে developer credit দেখানো হবে কি না, আর হলে কী লেখা হবে (owner নাম? "PKFSC IT Team"?) — owner চূড়ান্ত করবেন; ডিফল্ট: কোনো ব্যক্তিগত credit নয়।
+- README-তে GitHub/লিংক রাখা হবে কি না (public repo-র জন্য ঝুঁকি নেই) — owner সিদ্ধান্ত।
+- Institution নামের সঠিক বানান (বাংলা/ইংরেজি) একবার চূড়ান্ত করে সেটিই সব জায়গায়।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/DB-02.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ১৯ / ২৮ — সেশন DB-03 · Permissions ও data isolation
+
+_বিভাগ: মূল ব্যবস্থা · ধরন: নিরাপত্তা · নির্ভরতা: প্রম্পট ১৮ (DB-02)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ১৯ / ২৮ (prompt 19/28) — সেশন DB-03 · নিরাপত্তা · বিভাগ: মূল ব্যবস্থা
+   পূর্ববর্তী: প্রম্পট ১৮ / ২৮ (DB-02 — Developer branding) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২০ / ২৮ (DB-04 — Settings ও CI)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ১৯ / ২৮ (prompt 19/28) — সেশন DB-03 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২০ / ২৮ (DB-04 — Settings ও CI) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Single source: `students/permissions.py::_group_permission_map()`; `post_migrate → ensure_default_groups()`; `setup_groups` delegate করে (P0-11)।
+- `InstitutionAccess(user, institution, department, is_active)`; department ∈ Office/Exam/Accounts/HR/Audit (Admission → Office alias); `sync_user_department_permissions` login-এ চলে।
+- Scoping helpers: `_institutionally_scoped`, `_scoped_institution_ids`, `_get_scoped_object_or_404`, `_resolve_requested_institution`, `_scope_by_allowed_institutions`, `_scope_institution_qs`, `_visible_institutions`, `_selected_institution_for_request`, `_scope_write_queryset`।
+- টেস্ট: `students/test_institution_isolation.py` (16 read), `test_institution_write_isolation.py` (52 write), `test_audit_log_scoping.py` (11) — মোট ~৬৮ দাবি।
+- খোলা (আগের সেশনের নোট): **SEC-FU-1** — rate-limit counters LocMemCache-এ (per-process, restart-এ হারায়) → shared cache-এ নেওয়া দরকার; **SEC-FU-2** — `sync_user_department_permissions` শুধু Office/Exam/Accounts ম্যাপ করে, তাই HR/Subjects/Audit group InstitutionAccess user-এর কাছে login-এ মুছে যায় (intentional কি না — policy)।
+- `_client_ip` right-most XFF entry-তে key করে (SEC-IP fix) — live behaviour owner যাচাই করবেন (P0-7)।
+
+## ২. এই সেশনের চাহিদা
+
+- একটি **guard matrix** তৈরি করা: প্রতিটি view (read/write/bulk/export/print/API) × (login, permission, department, institution scope) — কোথাও ফাঁক থাকলে smallest fix + negative টেস্ট।
+- গার্ড থাকা টেস্ট দিয়ে শক্তভাবে পিন করা: anonymous → 302 login, permission ছাড়া → 403, wrong department → 302 dashboard, cross-institution → 404/খালি, direct URL দিয়ে menu-bypass কাজ করবে না।
+- **SEC-FU-1** বন্ধ করা: rate-limit counters প্লাগেবল shared cache (env flag, default LocMem = dev, production-এ Redis/DB cache অপশন); lockout থ্রেশহোল্ড অপরিবর্তিত; টেস্টে cache reset/সব worker-এর মতো behaviour।
+- **SEC-FU-2** সিদ্ধান্ত: HR/Subjects/Audit group mapping যোগ করা, নাকি intentional সীমা হিসেবে ডকে লিখে রাখা (login-এ strip হলে স্পষ্ট error?)।
+- `subject_requirements_json` API, export, print — সব surface-এ scope যাচাই (এগুলো প্রায়ই ভুলে যায়)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. `urlpatterns` থেকে প্রতিটি named route-এর view তুলে একটি matrix বানাও; প্রতিটি entry-র জন্য কোন guard/scoping ব্যবহার হচ্ছে তা কোড থেকে যাচাই করো (সন্দেহ হলে টেস্ট লিখে প্রমাণ)।
+2. ফাঁকা গার্ড: fix + negative টেস্ট (জনপ্রতিনিধি নয় — actual HTTP request করে 302/403/404 assert করো)।
+3. SEC-FU-1: `RATE_LIMIT_CACHE`/`CACHE_URL` env flag ডিজাইন; শুধু তখনই যোগ করো যখন default আচরণ অপরিবর্তিত থাকে; টেস্ট: counter persist (cache backend), reset behavior, limit exceeded।
+4. SEC-FU-2: owner সিদ্ধান্ত অনুযায়ী map প্রসারিত করো বা `docs/`-এ "intentional limitation" লিখো + টেস্ট (login-এ strip হলে user যা হবে তাতেই)।
+5. `subject_requirements_json`-সহ প্রতিটি JSON/export endpoint-এ cross-institution request দিয়ে টেস্ট।
+6. ফলাফল ম্যাট্রিক্স `docs/prompts/reports/DB-03.md`-এ (প্রমাণ টেবিল) + `docs/PROJECT_STATUS.md`-এর নিরাপত্তা সেকশন হালনাগাদ।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_institution_isolation
+python manage.py test students.test_institution_write_isolation
+python manage.py test students.test_audit_log_scoping
+python manage.py test students.test_rate_limiting
+python manage.py test students.test_security_settings
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `DB-03: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ১৯-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/DB-03.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- SEC-FU-1-এ production cache backend: Redis (বহিঃসেবা, খরচ) নাকি DB cache (কোনো নতুন সেবা নয়) — সুপারিশ: Redis না থাকলে DB cache অপশন।
+- SEC-FU-2: HR/Subjects/Audit group map করা হবে কি না (HR user login-এর চাহিদা থাকলে হ্যাঁ)?
+- নতুন department-এর permission set চূড়ান্ত (permissions.py-তে এক স্থানে) — owner-নিশ্চিতকরণ।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/DB-03.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২০ / ২৮ — সেশন DB-04 · Settings ও CI
+
+_বিভাগ: মূল ব্যবস্থা · ধরন: নিরাপত্তা · নির্ভরতা: প্রম্পট ১৯ (DB-03)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২০ / ২৮ (prompt 20/28) — সেশন DB-04 · নিরাপত্তা · বিভাগ: মূল ব্যবস্থা
+   পূর্ববর্তী: প্রম্পট ১৯ / ২৮ (DB-03 — Permissions ও data isolation) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২১ / ২৮ (DB-05 — Backup tooling)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২০ / ২৮ (prompt 20/28) — সেশন DB-04 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২১ / ২৮ (DB-05 — Backup tooling) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `school_system/settings.py`: DEBUG default True; DEBUG=False-এ fallback SECRET_KEY নিয়ে boot guard (`ImproperlyConfigured`); `ALLOWED_HOSTS` wildcard থাকলে `students.E016` (check --deploy Error); `CSRF_TRUSTED_ORIGINS`, `TRUST_FORWARDED_PROTO`, `USE_X_FORWARDED_HOST` env parsing; `MAILERS_BACKEND` env-driven (Django 6-এর `mail.E001` fix); `DATABASE_URL` via `dj-database-url`; `EXAM_ABSENT_SUBJECT_FAILS`; `USE_S3` + `E011`/`W010` checks (`students/checks.py`)।
+- CI `.github/workflows/tests.yml`: matrix sqlite + `postgres:16`, তিনটি deploy-guard ধাপ (fallback SECRET_KEY fail, wildcard host fail, production-shaped config pass), Node row-action test, backup smoke test (moto S3 সহ)।
+- টেস্ট: `students/test_security_settings.py` (৫), `test_rate_limiting.py`, `test_upload_security.py`।
+- `.env.example` ও `docs/PRODUCTION_CHECKLIST.md` (৮-দফা live runbook) আছে; live মান এখনো Unverified।
+
+## ২. এই সেশনের চাহিদা
+
+- Settings audit: প্রতিটি env var `.env.example`-এ আছে কি; ভুল/অসম্পূর্ণ মান হলে fail-fast (bool/int parsing নিরাপদ, silent default নয়); কোনো secret log/error message-এ যায় না।
+- Production profile hardening (DEV আচরণ অপরিবর্তিত রেখে env-গেটেড): `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `SECURE_HSTS_SECONDS`/`SECURE_SSL_REDIRECT` (proxy-এর পেছনে) — প্রয়োজন ও ঝুঁকি বিচার করে smallest নিরাপদ ডিফল্ট (DEBUG=False হলে secure cookies on ইত্যাদি)।
+- Logging: DEBUG=False-এ 500 পরিস্থিতিতে stack trace/secret leak হচ্ছে কি না যাচাই; custom error page (405/500) না থাকলে ছোট নিরাপদ page (internal তথ্য ছাড়া)।
+- Upload/size limits: `DATA_UPLOAD_MAX_MEMORY_SIZE`, `FILE_UPLOAD_MAX_MEMORY_SIZE` ও photo-র ২MB নিয়মের সাথে সংগতি; খুব বড় POST প্রত্যাখ্যান।
+- CI শক্ত করা: এই guard গুলোর টেস্ট CI-তে থাকে; ephemeral মান (কোনো আসল host/secret নয়); Node, backup smoke ও moto S3 ধাপ অটুট; version pin।
+- লাইভ Render-এর ৮টি চেক (P0-7) owner-only — এই সেশন সেগুলো শুধু ডকুমেন্ট করবে, লাইভ যাচাই করবে না।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. settings-এর সব env var + guard তালিকাভুক্ত করো; `test_security_settings.py`-এ বিদ্যমান কেসের সাথে তুলনা করে ফাঁকা দিক চিহ্নিত করো।
+2. `.env.example`-এ নতুন var গুলো যোগ করো (উদাহরণ মান ছাড়া আসল secret নয়)।
+3. Production profile hardening যোগ করো env-গেটেড fashion-এ; লোকাল dev (DEBUG=True) আচরণ বদলাবে না — আগে-পরে টেস্ট চালিয়ে প্রমাণ।
+4. Error page/logging যাচাই: `DEBUG=False` পরিস্থিতিতে একটা টেস্ট (allowed host সহ) দিয়ে 500 path-এ internal detail leak হচ্ছে কি না দেখা; থাকলে ছোট ফিক্স।
+5. CI-তে (থাকলে নেই এমন) guard-এর টেস্ট step যোগ করো — শুধু ephemeral মান দিয়ে; PR-এ ৩টি workflow job pass করতে হবে।
+6. `docs/PRODUCTION_CHECKLIST.md` ও `DEPLOY_NOTES.md` হালনাগাদ (নতুন env var, owner-এর live চেক)।
+
+**⚠️ সীমা:** এই সেশনে কোনো live Render env বদলানো যাবে না; কোনো আসল host/secret CI-তে নয়।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_security_settings
+python manage.py test students.test_upload_security
+python manage.py test students.test_media_storage
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `DB-04: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২০-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/DB-04.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- HSTS/SSL-redirect Render free tier-এ চালু করা হবে কি (proxy header trust যাচাই ছাড়া ঝুঁকি)? সুপারিশ: env flag, ডিফল্ট বন্ধ, ডকুমেন্টেড।
+- `DEBUG=False` হলে secure cookies স্বয়ংক্রিয়ভাবে on — হ্যাঁ/না?
+- Logging service (Sentry ইত্যাদি) বাইরে রাখা হচ্ছে — এই রিলিজে না, শুধু নোট।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/DB-04.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২১ / ২৮ — সেশন DB-05 · Backup tooling
+
+_বিভাগ: মূল ব্যবস্থা · ধরন: নতুন ব্যবস্থা · নির্ভরতা: প্রম্পট ২০ (DB-04)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২১ / ২৮ (prompt 21/28) — সেশন DB-05 · নতুন ব্যবস্থা · বিভাগ: মূল ব্যবস্থা
+   পূর্ববর্তী: প্রম্পট ২০ / ২৮ (DB-04 — Settings ও CI) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২২ / ২৮ (DB-06 — Restore drill ও automation)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২১ / ২৮ (prompt 21/28) — সেশন DB-05 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২২ / ২৮ (DB-06 — Restore drill ও automation) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- বিদ্যমান tooling: `manage.py backup_data`, `restore_backup`, `check_backups`, `fetch_backup`, `copy_media_to_storage`; scripts `scripts/backup.sh`, `restore.sh`, `backup_cron.sh` (healthcheck ping), `backup_smoke_test.sh` (`--postgres`, `--s3-endpoint`); `render.cron.yaml`; manifest + SHA; optional openssl/age encryption; optional S3 off-box copy; retention gate।
+- টেস্ট: `students/test_backup_tooling.py` (docs-এ ৭২টি দাবি করা) + CI-তে backup smoke (sqlite + postgres) ও moto S3।
+- Docs: `docs/BACKUP_AND_RESTORE.md`, `docs/BACKUP_RESTORE_GUIDE.md`, `docs/DATA_SAFETY_STATUS.md`, `docs/OWNER_RENDER_OPS_TUTORIAL.md`।
+- Live অজানা (owner-only): Render cron আসলে চলছে কি না, off-box copy ও alert কাজ করে কি না, `P0B_BACKUP_ROOT` persistent কি না — P0-8-live।
+- পরিচিত সীমা: Render cron-এর filesystem ephemeral, এবং cron থেকে web service DB-তে পৌঁছানো যাবে কি না তা live-নির্ভর।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) Tooling local-এ প্রমাণসহ যাচাই: sqlite + postgres (disposable) + moto S3-এ backup creation, encryption, off-box copy, manifest/SHA, restore verify, retention prune।
+- (খ) যা আছে তা সম্পূর্ণ কিনা দেখা: DB snapshot + media archive + manifest (app/migration leaf version, record counts, SHA, timestamp, encryption metadata)।
+- (গ) ঘাটতি বন্ধ (owner-নীতির ভিত্তিতে): retention/prune command বা flag; off-box copy retry + verify; failure-এ alert/healthcheck; freshness threshold configurable; `check_backups` exit code গুলো ডকুমেন্টেড ও টেস্টেড।
+- (ঘ) Render-Backup পথ সিদ্ধান্ত ও ডকুমেন্টেশন: cron FS ephemeral → backup কোথায় যাবে (off-box bucket vs web service-এর মাধ্যমে dump); যে পথটি বেছে নেওয়া হবে, শুধু সেটিই "documented path" হিসেবে থাকবে ও রানবুকে ধাপ থাকবে।
+- (ঙ) Destructive migration-এর আগে "fresh backup বাধ্যতামূলক" নিয়মটি কীভাবে বাস্তবে প্রয়োগ হবে (pre-flight check/runbook step) তা লেখা।
+
+**সীমা:** production DB/backups-এ হাত নয়; সব drill disposable target-এ।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. `./scripts/backup_smoke_test.sh` (sqlite) এবং `--postgres <disposable>` + `--s3-endpoint` (moto) চালিয়ে প্রকৃত ফল লিপিবদ্ধ করো।
+2. Manifest ও verify ধাপ inspect করো: কী কী যাচাই হয়, কী বাদ পড়ে (record counts কোন table-এর, media file count, migration leaf)।
+3. ঘাটতি (retention/retry/alert/threshold) বাস্তবায়ন করো — smallest change, বিদ্যমান CLI/স্ক্রিপ্ট signature ভেঙে নয় (backward compatible flag)।
+4. নতুন/পরিবর্তিত behaviour-এর টেস্ট (fail path সহ: বড়/ক্ষতিগ্রস্ত archive, wrong key, off-box failure)।
+5. runbook আপডেট: `docs/BACKUP_AND_RESTORE.md`-এ ০ থেকে ধাপ (backup → verify → off-box → restore drill → destructive migration gate) + `docs/DATA_SAFETY_STATUS.md`-এ status।
+6. owner-এর জন্য ১ পৃষ্ঠার "করণীয়" তালিকা (Render env var, bucket, cron, alert destination) — কোনো secret নিজে লিখবে না।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_backup_tooling
+bash scripts/backup_smoke_test.sh
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `DB-05: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২১-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/DB-05.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Retention window (daily কত দিন, weekly কত সপ্তাহ) ও disk budget?
+- Encryption key কোথায় থাকবে (owner-এর offline/age key নাকি Render env) — কী হারালে restore অসম্ভব, সেটি স্পষ্ট।
+- Off-box destination: S3/R2/B2 (কোনটি) এবং কে alert পাবে (ইমেইল/Telegram ইত্যাদি)।
+- `P0B_BACKUP_ROOT` persistent disk-এ থাকবে নাকি সম্পূর্ণ bucket-নির্ভর?
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/DB-05.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২২ / ২৮ — সেশন DB-06 · Restore drill ও automation
+
+_বিভাগ: মূল ব্যবস্থা · ধরন: যাচাই · নির্ভরতা: প্রম্পট ২১ (DB-05)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২২ / ২৮ (prompt 22/28) — সেশন DB-06 · যাচাই · বিভাগ: মূল ব্যবস্থা
+   পূর্ববর্তী: প্রম্পট ২১ / ২৮ (DB-05 — Backup tooling) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২৩ / ২৮ (AT-01 — Entry/correction)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২২ / ২৮ (prompt 22/28) — সেশন DB-06 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২৩ / ২৮ (AT-01 — Entry/correction) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `restore_backup --yes --verify` — SHA verify, `migrate --check`, record counts, media refs যাচাই করে (ডকুমেন্টেড)।
+- `scripts/backup_smoke_test.sh --postgres ... --s3-endpoint ...` disposable drill; docs-এ দাবি "sqlite+postgres-এ byte-identical verified (CI)" — এই সেশনে স্বাধীনভাবে প্রমাণ করতে হবে।
+- `check_backups` freshness/retention/encryption gate; `render.cron.yaml` + `backup_cron.sh` (healthcheck ping) automation।
+- `.restore-drill/` `.gitignore`-এ আছে — কিছুই commit হবে না।
+
+## ২. এই সেশনের চাহিদা
+
+- পূর্ণ **restore drill**: disposable target-এ backup → restore → DB snapshot SHA/compare (byte-identical বা সমতুল্য প্রমাণ), media tar integrity ও file count, record counts manifest-এর সাথে মিল, `migrate --check` clean, নমুনা query (students/exams/marks/receipts) সঠিক।
+- **Failure-mode drill**: ক্ষতিগ্রস্ত/truncated archive, ভুল/অনুপস্থিত encryption key, manifest mismatch, media missing, অসমঞ্জস app/migration version — প্রতিটিতে non-zero exit + স্পষ্ট বার্তা (silent partial restore নয়)।
+- **Automation যাচাই**: `render.cron.yaml` যুক্তি/syntax, `backup_cron.sh` healthcheck ping (success), failure-এ alert path, retention pruning, একই দিনে দুইবার চললে কolidি।
+- কোনো production DB বা live Render স্পর্শ নয়; সব প্রমাণ disposable environment-এ।
+- ফল: `docs/prompts/reports/DB-06.md`-এ evidence table + docs হালনাগাদ (backup/restore guides, DATA_SAFETY_STATUS)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. প্রথমে §৫-এর backup smoke test চালিয়ে baseline ফল নাও (কোন environment/DB সহ)।
+2. restore drill স্ক্রিপ্ট/কমান্ড ধাপে ধাপে চালাও; প্রতিটি ধাপের আউটপুট (SHA, counts, media checklist) রিপোর্টে টেবিল আকারে লেখো।
+3. Failure-mode: কৃত্রিমভাবে ক্ষতিগ্রস্ত/truncate/ভুল key দিয়ে restore চালিয়ে exit code ও message assert করো (টেস্টে যোগ করো যদি না থাকে)।
+4. Automation: cron স্ক্রিপ্ট dry-run করে দেখো (কোনো আসল ping যাবে না — stub URL ব্যবহার) এবং retention prune-এর effect ডিসপোজেবল ফাইলে যাচাই।
+5. অটোমেশনের যুক্তি টেস্টে পিন করো (parse cron yaml, ping disabled হলে skip, double-run lock)।
+6. ডক: `docs/BACKUP_AND_RESTORE.md` ও `docs/DATA_SAFETY_STATUS.md`-এ "কীভাবে প্রমাণ করা হলো" সংযুক্ত করো; live cron বাস্তবে চলছে কি না লেখো **Unverified (owner live check)**।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+bash scripts/backup_smoke_test.sh
+python manage.py test students.test_backup_tooling
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `DB-06: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২২-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/DB-06.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- RPO/RTO লক্ষ্য (দৈনিক ব্যাকআপ + কত সময়ে restore) — owner নির্ধারণ করবেন।
+- Failure alert কে/কোথায় পাবে (email/Telegram/webhook)?
+- Cron ও web service DB একই হলে double backup এড়াতে হবে কি (schedule overlap)? owner অপারেশন সিদ্ধান্ত।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/DB-06.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২৩ / ২৮ — সেশন AT-01 · Entry/correction
+
+_বিভাগ: Attendance · ধরন: যাচাই + উন্নয়ন · নির্ভরতা: প্রম্পট ২২ (DB-06)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২৩ / ২৮ (prompt 23/28) — সেশন AT-01 · যাচাই + উন্নয়ন · বিভাগ: Attendance
+   পূর্ববর্তী: প্রম্পট ২২ / ২৮ (DB-06 — Restore drill ও automation) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২৪ / ২৮ (AT-02 — Calendar/report accuracy)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২৩ / ২৮ (prompt 23/28) — সেশন AT-01 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২৪ / ২৮ (AT-02 — Calendar/report accuracy) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Entry flow: `mark_attendance` (form: date, class, section, mark_type student/employee) → `mark_attendance_bulk(date, class, section, type)` — প্রতি student/employee-এর জন্য `update_or_create` + audit + `_require_department(('Office','Exam'))` + institution scope।
+- Model: `AttendanceRecord(institution, student/employee, date, status P/A/L/H, remarks, created_by, created_at)`; unique constraint per institution+student/date এবং per institution+employee/date; `attendance_report` (paginated 100), `attendance_summary` (date range + rates)।
+- টেস্ট: attendance-সম্পর্কিত টেস্ট `students/tests.py`-এ + isolation negative টেস্ট (cross-institution mark refusal)।
+- **Correction workflow নেই** (একবার mark করার পর per-record edit/audit দৃশ্যমান নয়) — এই সেশনের উন্নয়ন।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) Entry যাচাই: student vs employee mode, class/section নিয়ম (`institution.classes`), একই দিনে আবার mark করলে update-in-place (duplicate নয়), remarks, ভবিষ্যতের তারিখ প্রত্যাখ্যান, খালি section হ্যান্ডলিং, cross-institution refusal, permission/anonymous negative — সব টেস্ট।
+- (খ) **Correction workflow**: পূর্বে-marked দিন/শ্রেণির রেকর্ড দেখে সংশোধন করার পথ — কোন ছাত্র/employee-এর কোন দিনের status/remarks বদলাবে তা স্পষ্ট (এক রেকর্ডে inline edit বা নির্বাচিত correction form); কে, কখন, আগের মান কী ছিল — সব `AuditLog`-এ।
+- (গ) Correction-এর সীমা/policy: কত দিন পিছিয়ে সংশোধন করা যাবে, কে করতে পারবে (Office/Exam — যারা mark করতে পারে), holiday-এর দিন) — owner সিদ্ধান্ত অনুযায়ী; নীতি ডকে।
+- (ঘ) ভবিষ্যতের তারিখ/নিষিদ্ধ দিনে mark ব্লক (server-side, UI লুকানো নয়)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. বিদ্যমান entry flow-এর প্রতিটি কেস টেস্ট দিয়ে যাচাই করো (উপরে তালিকাভুক্ত); fail/অস্পষ্ট আচরণ ঠিক করো।
+2. Correction view + form + URL যোগ করো (smallest): একটি রেকর্ড নির্বাচন → status/remarks বদল → `record_audit`-এ আগের/নতুন মান; bulk mark-এর audit প্যাটার্ন অনুসরণ করো।
+3. Report page থেকে প্রতিটি রেকর্ডে "Correct" link (permission-gated) — শুধু দৃশ্যমান নয়, direct URL-এও guard।
+4. টেস্ট: correction audit row, তারিখ-সীমা (policy window) বাইরে block, অন্য institution-এর record-এ 404, permission ছাড়া 403, future date block, correction-এর পর report/summary-তে হালনাগাদ মান।
+5. `attendance_report`-এ filter (date range/class/section/status) ও correction link থাকলে টেস্ট করো; print/CSV থাকলে এই সেশনে না-ও হতে পারে (AT-02-তে)।
+
+**সীমা:** attendance-এর গণিত (rates) AT-02-এর কাজ; এখানে data entry/correction।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.tests -k attendance
+python manage.py test students.test_institution_write_isolation
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `AT-01: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২৩-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/AT-01.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- কে correction করতে পারবে: Office + Exam উভয়ই নাকি যিনি mark করেছিলেন? সুপারিশ: যাদের daily mark permission আছে তারাই, কিন্তু audit সবসময়।
+- Correction window (যেমন ৭/৩০ দিন) — owner নীতি?
+- ভবিষ্যতের তারিখ সম্পূর্ণ নিষিদ্ধ নাকি নির্দিষ্ট role করতে পারবে?
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/AT-01.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২৪ / ২৮ — সেশন AT-02 · Calendar/report accuracy
+
+_বিভাগ: Attendance · ধরন: যাচাই + উন্নয়ন · নির্ভরতা: প্রম্পট ২৩ (AT-01)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২৪ / ২৮ (prompt 24/28) — সেশন AT-02 · যাচাই + উন্নয়ন · বিভাগ: Attendance
+   পূর্ববর্তী: প্রম্পট ২৩ / ২৮ (AT-01 — Entry/correction) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২৫ / ২৮ (EM-01 — Employee/teacher assignment)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২৪ / ২৮ (prompt 24/28) — সেশন AT-02 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২৫ / ২৮ (EM-01 — Employee/teacher assignment) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `attendance_report` (records list, 100/পেজ, `status_choices`) ও `attendance_summary` (date range + rates) দুইটি আলাদা view।
+- মডেল: status P/A/L/H; unique per institution+student+date (employee-এর জন্যও); কোনো কেন্দ্রীয় holiday calendar নেই (শুধু প্রতি-রেকর্ড H)।
+- কোন দিনের রেকর্ড না থাকলে কী হয় (absent ধরা হবে না) — বর্তমান লজিক পরীক্ষা করে নথিবদ্ধ করতে হবে।
+- **Calendar view নেই** — এই সেশনে সেটি যোগ করা হবে (server-rendered, নতুন JS library ছাড়া)।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) Accuracy: rate-এর denominator কী (P+A+L নাকি শুধু P+A? H বাদ?), date range inclusive boundary, class/section-wise ও employee-wise ভাগ, summary vs report একই source/হিসাব ব্যবহার করে কি না, timezone (`Asia/Dhaka`) অনুযায়ী "আজ" সঠিক, archived ছাত্র বাদ।
+- (খ) ভুল/অস্পষ্ট হিসাব থাকলে smallest fix + টেস্ট; সূত্রটি ডকে ও UI-তে লেখা (কে জানে denominator কী)।
+- (গ) নতুন **monthly calendar view**: institution/class/section বেছে মাসের গ্রিড — প্রতিটি দিনে রঙ-কোডেড status (P/A/L/H/রেকর্ড নেই), দিনে ক্লিক করলে সেই দিনের correction (AT-01), print-friendly, server-rendered (নতুন JS dependency নয়)।
+- (ঘ) মাসিক summary/export (Excel বা CSV) — সারি/কলাম পিন করা ও টেস্ট করা।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. নির্ধারিত controlled ডেটা দিয়ে হিসাব টেস্ট করো: শুধু P, P+A+L, কিছু দিন এমট (H সহ), মাসের সীমা, ২৯ ফেব্রুয়ারি, একই দিনে employee+student।
+2. summary vs report মিলিয়ে দেখো — একই filter-এ একই সংখ্যা আসে কি না (না হলে এক source-এ নিয়ে আসো)।
+3. Calendar view + template যোগ করো: মাস/বছর param, invalid param নিরাপদ, empty state, legend, print CSS; দিনের ক্লিক → AT-01-এর correction link (permission থাকলে)।
+4. টেস্ট: boundary date (from=to, মাসের প্রথম/শেষ দিন), month rollover, H-এর প্রভাব, archived ছাত্র বাদ, scoping (অন্য institution-এর class দেখায় না), printed HTML-এ legend/amount সঠিক।
+5. ডকে হিসাবের সূত্র লিখো (`docs/` + page help text)।
+
+**সীমা:** নতুন attendance feature (biometric ইত্যাদি) নয়; শুধু calendar ও accuracy।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.tests -k attendance
+python manage.py test students.test_institution_isolation
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `AT-02: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২৪-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/AT-02.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Rate সূত্র: H বাদ দিয়ে (P+A+L) denominator (সুপারিশ: বাদ), L-কে present হিসেবে গণনা না আলাদা?
+- Holiday কীভাবে ধরা হবে: প্রতি-রেকর্ড H নাকি institution-level holiday list (এই রিলিজে হয়তো শুধু H)?
+- মাসিক summary-তে কোন কলাম লাগবে (owner-সিদ্ধান্ত)? 
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/AT-02.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২৫ / ২৮ — সেশন EM-01 · Employee/teacher assignment
+
+_বিভাগ: Employee · ধরন: যাচাই + উন্নয়ন · নির্ভরতা: প্রম্পট ২৪ (AT-02)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২৫ / ২৮ (prompt 25/28) — সেশন EM-01 · যাচাই + উন্নয়ন · বিভাগ: Employee
+   পূর্ববর্তী: প্রম্পট ২৪ / ২৮ (AT-02 — Calendar/report accuracy) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২৬ / ২৮ (EM-02 — Leave)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২৫ / ২৮ (prompt 25/28) — সেশন EM-01 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২৬ / ২৮ (EM-02 — Leave) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- Employee: `Employee(institution, name, designation, status ACTIVE/INACTIVE/ON_LEAVE, ...)` + `EmployeeStatusLog` + `change_employee_status`/`employee_status_history` + CRUD (`employee_list` paginated, `employee_detail`); টেস্ট: isolation + audit (`test_edit_audit.py`)।
+- Exam signature sheet (`signature_sheet.html`) আছে এবং `class_section_summary` আছে — কিন্তু **শিক্ষক↔শ্রেণি/বিভাগ/বিষয় assignment নেই** (ডকের backlog-এ স্পষ্ট ঘাটতি)।
+- `Student`/`SubjectRequirement` group-নিয়ম class 9–12-এ প্রযোজ্য, `institution.classes` থেকে class choices আসে।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) বিদ্যমান employee flows যাচাই: CRUD, status change + history + audit, scoping/isolation, salary sheet-এর সাথে সম্পর্ক, active/inactive filter — প্রমাণসহ (নতুন কোড না থাকলে শুধু টেস্ট যাচাই করে নথিভুক্ত করা)।
+- (খ) **Teacher assignment registry** যোগ করা: `TeacherAssignment(employee, institution, admission_class, section, subject, session, is_active)` (নাম owner-নিশ্চিত) —
+  - validation: class `institution.classes`-এর মধ্যে, class ≥9 হলে group নিয়ম মানা, subject `SubjectRequirement`-এর সাথে সঙ্গতিপূর্ণ, একই teacher+class+section+subject+session-এ duplicate active নিষিদ্ধ;
+  - UI: assign/unassign(form/list), per-employee তালিকা, per class/section/subject তালিকা;
+  - permission policy (HR এবং/অথবা Office) server-side; institution scoping;
+  - audit: কে কী assignment বদলেছে;
+  - integration: `signature_sheet`/`class_section_summary`-তে assigned teacher প্রদর্শন (উপযোগী হলে), কর্মচারীর detail-এ assignment tab।
+- (গ) Migration + isolation/validation টেস্ট + owner-নির্দেশিত report (কোন teacher কতটা class নিচ্ছে)।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. Employee flows যাচাই টেস্ট চালাও; যেখানে guard/scoping ফাঁকা সেখানে ছোট ফিক্স।
+2. `TeacherAssignment` মডেল + migration design করো (institution FK, session, is_active, unique constraint) — destructive কিছু নয়।
+3. Forms/views/urls/templates: assignment পেজ (filter by class/section/subject), per-employee তালিকা; permission গার্ড + scoping helper ব্যবহার।
+4. Audit `record_audit` যোগ করো; assignment বদলানোর ইতিহাস দেখা যায়।
+5. টেস্ট: duplicate block, class/section নিয়ম, group নিয়ম, cross-institution 404, permission ছাড়া 403, unassign-এর পর result/print-এ হালনাগাদ, migration rollback smoke।
+6. signature sheet / class summary integration: যেখানে teacher নাম দেখানো যুক্তিসঙ্গত, সেখানে যোগ করো (টেস্ট সহ)।
+7. ডকে (HR সেকশন) assignment ধারণা ও ব্যবহার লিখো।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_edit_audit
+python manage.py test students.test_institution_write_isolation
+python manage.py test students.test_navigation
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EM-01: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২৫-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EM-01.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Assignment granularity: class+section+subject (সুপারিশ) নাকি class+section class-teacher ধারণা (আলাদা field)?
+- কে assign করতে পারবে: HR dept না Office না উভয়ই? (permission map-এ কী যোগ হবে)
+- Session-wise retention: পুরোনো session-এর assignment ইতিহাস রাখা হবে? সুপারিশ: হ্যাঁ (`is_active=False`, রেকর্ড মুছে ফেলা নয়)।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EM-01.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২৬ / ২৮ — সেশন EM-02 · Leave
+
+_বিভাগ: Employee · ধরন: শর্তসাপেক্ষ (owner decision) · নির্ভরতা: প্রম্পট ২৫ (EM-01)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২৬ / ২৮ (prompt 26/28) — সেশন EM-02 · শর্তসাপেক্ষ (owner decision) · বিভাগ: Employee
+   পূর্ববর্তী: প্রম্পট ২৫ / ২৮ (EM-01 — Employee/teacher assignment) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২৭ / ২৮ (EM-03 — Payroll controls)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২৬ / ২৮ (prompt 26/28) — সেশন EM-02 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২৭ / ২৮ (EM-03 — Payroll controls) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- বর্তমানে `Employee.status`-এ `ON_LEAVE` আছে এবং `EmployeeStatusLog`-এ status পরিবর্তনের ইতিহাস থাকে, কিন্তু **কোনো leave request/approval/balance/workflow নেই**।
+- Attendance-এ `L` = Late (ছুটি নয়) এবং `H` = Holiday — তাই ছুটির দিন attendance/report-এ কীভাবে আসবে তা এখন অনির্ধারিত।
+- Payroll: `SalarySheet(employee, month, amount, date, status)` — unpaid leave-এর কোনো deduction যুক্তি নেই, এবং থাকলেও সেটি কর্তৃপক্ষের সিদ্ধান্ত ছাড়া স্বয়ংক্রিয় হওয়া উচিত নয়।
+- ⚠️ এই সেশন **শর্তসাপেক্ষ**: owner-এর লিখিত নিয়ম ছাড়া কোনো মডেল/কোড লেখা যাবে না।
+
+## ২. এই সেশনের চাহিদা
+
+- **প্রথম কাজ: owner-সিদ্ধান্ত সংগ্রহ** (প্রশ্নগুলো §৮-এ) — ছুটির ধরন, paid/unpaid, entitlement/balance, approval chain, attendance-এ প্রভাব, payroll-এ প্রভাব, half-day, carry-forward।
+- সিদ্ধান্ত এলে সীমিত (bounded) বাস্তবায়ন:
+  - `LeaveRequest(employee, leave_type, from_date, to_date, days, reason, status PENDING/APPROVED/REJECTED, decided_by, decided_at, decision_remarks)`;
+  - validation: date range, overlap প্রতিরোধ, entitlement/balance (নিয়ম অনুযায়ী), half-day (নিয়ম থাকলে);
+  - UI: apply/approve/reject/list/filter; approver permission (HR/Principal);
+  - integration: approved ছুটির দিন attendance-এ `L`/নির্ধারিত status বা rate-exclusion (owner-নীতি), payroll-এ শুধু **advisory** (silent money change নয়);
+  - audit trail প্রতিটি অবস্থান্তরে; institution scoping; migration + টেস্ট (overlap, balance, approval chain negative, cross-institution 404)।
+- সিদ্ধান্ত না এলে: **কোনো কোড নয়** — শুধু `docs/prompts/reports/EM-02-decision-request.md` (বিকল্প + সুপারিশ + প্রভাব) এবং PROGRESS.md-এ `⛔ ব্লকড (owner decision)`; email/SMS notification কোনো অবস্থাতেই নয়।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. Owner-প্রশ্নগুলো গুছিয়ে (বিকল্প + সুপারিশ + প্রভাব) সেশন-রিপোর্টে লিখে সিদ্ধান্ত চাও।
+2. সিদ্ধান্ত পেলে: মডেল+মাইগ্রেশন → service/validation → forms/views/urls/templates → permission/audit → টেস্ট (happy + negative) → ডক।
+3. Attendance/payroll integration শুধু owner-নীতির সীমার ভেতরে; payroll-এ deduction হলে সেটি আলাদা **সিদ্ধান্ত + টেস্ট + ডকুমেন্টেশন** ছাড়া কোথাও নয়।
+4. সিদ্ধান্ত না পেলে: স্ট্যাটাস ব্লকে `⛔ ব্লকড`, কোনো ফাইল বদল নয় (ডক ছাড়া), পরের প্রম্পট চালানো যাবে কি না owner-এর উপর ছাড়ো।
+5. সবশেষে ডকে "কারা ছুটি অনুমোদন করে, কীভাবে attendance-এ আসে, payroll-এ কী প্রভাব" স্পষ্ট লিখো।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.tests -k attendance
+python manage.py test students.test_edit_audit
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EM-02: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২৬-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EM-02.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Leave type: casual/sick/earned/maternity/others — কোনগুলো এই রিলিজে?
+- Paid/unpaid নীতিমালা ও entitlement/balance (বার্ষিক কত দিন, carry-forward?)
+- Approve কে করবে: HR, Principal নাকি দু'ধাপে?
+- Attendance-এ approved leave কী (status `L`? আলাদা মাত্রা? rate থেকে বাদ?)
+- Payroll-এ unpaid leave-এর প্রভাব: শুধু তথ্য দেখানো, নাকি deduction (কে অনুমোদন করবে)?
+- Half-day ও ছুটির balance-year (ক্যালেন্ডার নাকি জুলাই-জুন) — owner নীতি।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EM-02.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২৭ / ২৮ — সেশন EM-03 · Payroll controls
+
+_বিভাগ: Employee · ধরন: যাচাই + উন্নয়ন · নির্ভরতা: প্রম্পট ২৬ (EM-02)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২৭ / ২৮ (prompt 27/28) — সেশন EM-03 · যাচাই + উন্নয়ন · বিভাগ: Employee
+   পূর্ববর্তী: প্রম্পট ২৬ / ২৮ (EM-02 — Leave) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট ২৮ / ২৮ (FN-01 — পুরো release পরীক্ষা ও নির্দেশিকা)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২৭ / ২৮ (prompt 27/28) — সেশন EM-03 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট ২৮ / ২৮ (FN-01 — পুরো release পরীক্ষা ও নির্দেশিকা) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- `SalarySheet(employee, month, amount, date, status PAID/UNPAID, created_by)`; unique (employee, month); views: `salary_sheet_list`/`add`/`edit`/`delete` (Accounts dept)।
+- Money validation: forms-এ `MinValue(0)` + `MaxValue` (P0-5, `test_money_validation.py`)।
+- `finance_dashboard` receipt/voucher/salary aggregate করে; `test_fee_schedule.py`, `test_auto_receipts.py` আছে।
+- ডকের পরিচিত ঘাটতি: **closed-period control নেই** — PAID sheet-ও edit করা যায় (backlog H4)।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) যাচাই: amount validation (ঋণাত্মক/বিশাল মান block), month format ও duplicate (employee+month) — friendly error, 500 নয়; scoping/permission (Accounts) negative টেস্ট; create/edit/delete-এ audit row; finance dashboard-এর totals সঠিক (receipts − vouchers − paid salaries ইত্যাদি সূত্র ডকে লেখা)।
+- (খ) **Payroll controls** যোগ করা:
+  - closed-period lock: institution + month ভিত্তিক lock (`PayrollPeriod` বা সমতুল্য ছোট design); locked মাসে sheet এই/edit/delete block; unlock করতে নির্দিষ্ট permission + `AuditLog` (কে কখন খুলল);
+  - status transition নিয়ম: UNPAID → PAID; PAID → UNPAID শুধু unlock/অনুমোদিত পথে (audit সহ);
+  - bulk payroll run: active employee-দের জন্য মাসের sheet তৈরি (duplicate skip, amount default/নীতি — owner);
+  - payslip print view (print-friendly, কোনো paid PDF service নয়);
+  - finance dashboard-এ paid vs unpaid মাসিক সারসংক্ষেপ + reconciliation।
+- (গ) সব নতুন আচরণের নিয়ম ডকে (payroll runbook) ও টেস্টে পিন করা; কোনো আসল বেতন/employee ডেটা নয় — fixture।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. বর্তমান payroll flow-এর প্রতিটি কেস যাচাই টেস্ট লিখো (duplicate month, negative amount, অন্য institution, permission ছাড়া edit, audit row)।
+2. Lock design: ছোট, backward-compatible (ডিফল্ট unlock = বর্তমান আচরণ), migration + admin/UI unlock; lock থাকলে edit/delete view POST/GET দুটোতেই block (UI লুকানোই নিরাপত্তা নয়)।
+3. Bulk run ও payslip: সবচেয়ে ছোট সংস্করণ (form + preview + confirm) — যাতে ডেটা ভুল করে বাল্ক তৈরি না হয়; preview-তেও টেস্ট।
+4. Dashboard reconciliation হিসাবের সূত্র ডকে লিখে টেস্টে পিন করো (fixture: ২ মাস, paid/unpaid মিশ্রণ)।
+5. চালাও §৫; রিপোর্টে নিয়ম/সূত্র/টেস্ট টেবিল।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py test students.test_money_validation
+python manage.py test students.test_fee_schedule
+python manage.py test students.test_audit_log_scoping
+python manage.py check
+python manage.py makemigrations --check
+python manage.py test students
+node --test students/js/*.test.js
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `EM-03: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২৭-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/EM-03.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Lock granularity: per institution+month (সুপারিশ) নাকি global month?
+- কে unlock করতে পারবে (Principal/Accounts admin) এবং unlock-এর কারণ লেখা বাধ্যতামূলক হবে কি?
+- Bulk payroll run-এ default amount কোথা থেকে (Employee-এ কোনো base salary নেই — যোগ করা হবে কি না, নাকি প্রতিবার হাতে)?
+- Payslip-এ কী কী তথ্য (bank/contact?) — privacy বিবেচনা।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/EM-03.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।
+
+
+---
+
+# প্রম্পট ২৮ / ২৮ — সেশন FN-01 · পুরো release পরীক্ষা ও নির্দেশিকা
+
+_বিভাগ: সমাপনী · ধরন: যাচাই · নির্ভরতা: প্রম্পট ০১–২৭ (সব)_
+
+> **ব্যবহার:** নীচের সম্পূর্ণ অংশ (এই শিরোনামসহ) কপি করে এজেন্টকে দিন। এজেন্টকে উত্তর শুরুর ও শেষের স্ট্যাটাস ব্লক অবশ্যই দেখাতে হবে, যাতে বোঝা যায় কত নম্বরের প্রম্পট চলছে এবং কত নম্বরের প্রম্পট শেষ হয়েছে।
+
+---
+
+## ০. স্ট্যাটাস ব্লক (বাধ্যতামূলক)
+
+উত্তরের **প্রথম লাইনেই** হুবহু এই কাঠামোয় লিখবে (কোণ-বন্ধনী পূরণ করে):
+
+```
+▶ চলছে: প্রম্পট ২৮ / ২৮ (prompt 28/28) — সেশন FN-01 · যাচাই · বিভাগ: সমাপনী
+   পূর্ববর্তী: প্রম্পট ২৭ / ২৮ (EM-03 — Payroll controls) → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড / ⏭️ চালানো হয়নি>
+   এই প্রম্পট: 🔄 চলমান · পরবর্তী: প্রম্পট — / ২৮ (—)
+```
+
+উত্তরের **একদম শেষে** (সংক্ষিপ্ত ফলাফলের পরে) লিখবে:
+
+```
+✔ শেষ হয়েছে: প্রম্পট ২৮ / ২৮ (prompt 28/28) — সেশন FN-01 → <✅ সম্পন্ন / 🟡 আংশিক / ⛔ ব্লকড>
+   প্রমাণ: <ফোকাসড টেস্ট> · পূর্ণ suite <n> Django + <m> Node · check <result>
+   Commit: <sha> · PR: #<n> (<state>) · ডক আপডেট: <files>
+   পরের প্রম্পট: প্রম্পট — / ২৮ (—) — এক লাইনে কী বাকি
+```
+
+## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
+
+- এটি চূড়ান্ত সেশন: প্রথম production release-এর আগে সম্পূর্ণ যাচাই + owner-এর জন্য ধাপে ধাপে নির্দেশিকা।
+- আগের ২৭টি সেশনের ফলাফল, doc আপডেট ও `docs/prompts/PROGRESS.md` ledger এখন প্রমাণের মূল ভিত্তি — তবে **প্রতিটি দাবি নিজে যাচাই করবে**, ledger-কে সত্য ধরে নেবে না।
+- live-only অজানা (যা এই sandbox থেকে যাচাই করা অসম্ভব, owner-এর করণীয়): P0-7 live Render env/config, P0-8-live backup cron/off-box/alert, P1-11-live S3 bucket, D-8 live DB engine।
+- পরিচিত ইচ্ছাকৃত বাদ: i18n/Bengali UI strings (P2-3), legacy `StudentSubject` drop (P2-7), Accounts full fee engine / guardian portal / online payment (future backlog), SSC restore (নিষিদ্ধ)।
+
+## ২. এই সেশনের চাহিদা
+
+- (ক) **Fresh environment থেকে পুরো যাচাই**: নতুন venv (Python 3.12 হলে `requirements.txt` / নাহলে documented fallback) → `pip install` → ফাঁকা DB-তে `migrate` → `loaddata institutions.json` → `check` → prod-shaped `check --deploy` (DEBUG=False + real-length SECRET_KEY + আসল host + proxy flags) → `makemigrations --check` → পূর্ণ `test students` → `node --test students/js/*.test.js`।
+- (খ) **Route smoke test**: প্রতিটি named route-এ (permission-protected সহ) authenticated/anonymous client দিয়ে GET — কোনো 500 নেই; expected 200/302/403/404 লিপিবদ্ধ; route inventory টেবিল।
+- (গ) **Upgrade path drill**: পূর্ববর্তী release-এর DB snapshot (ডিসপোজেবল কপি) → `migrate` → পূর্ণ suite/pass; backup+restore drill-এর সর্বশেষ প্রমাণ সংযুক্ত।
+- (ঘ) **Security dark-spot checklist**: isolation matrix (সব read/write/export/print/API), upload limits, rate limits/lockout, headers/cookies, DEBUG leak, repo-তে secret/PII নেই, `git grep` দিয়ে প্রমাণ।
+- (ঙ) **Docs consistency audit**: README, PROJECT_STATUS, TASK_BACKLOG, WORK_TRACKER, HANDOFF, prompts PROGRESS — সবাই একই যাচাই করা অবস্থা বলে; কোনো পুরোনো/ভুল দাবি নেই; প্রতিটি দাবির পাশে প্রমাণ।
+- (চ) **Owner runbook**: release day-এর ধাপ (backup → owner PR অনুমোদন/merge → Render deploy → live check তালিকা → rollback plan) সহ `docs/RELEASE_CHECKLIST.md`; যেখানে live যাচাই দরকার সেখানে exact steps (concrete URL/command/env var)।
+- (ছ) **Risk register**: খোলা decision/ঝুঁকি (i18n, legacy drop, SEC-FU-*, owner-only live items) এক টেবিলে।
+- (জ) শেষে পুরো ২৮-প্রম্পট ledger-এর সাপেক্ষে চূড়ান্ত স্ট্যাটাস: কোনটি ✅, কোনটি 🟡, কোনটি ⛔ — এবং release go/no-go সুপারিশ।
+
+## ৩. যা করতে হবে (ক্রমে)
+
+1. §৫-এর সব কমান্ড ক্রমে চালাও (fresh venv, empty DB, migrate, tests); প্রতিটি কমান্ড + ফল + সময় রিপোর্টে লিপিবদ্ধ করো।
+2. Route smoke: `students/urls.py` থেকে named URL তালিকা নিয়ে Django test client দিয়ে লুপ; 500 থাকলে root cause ও fix (এই সেশনেই ছোট fix করা যায়, বড় হলে আলাদা সেশন-প্রস্তাব)।
+3. Upgrade path: সর্বশেষ snapshot/backup থেকে ডিসপোজেবল DB-তে migrate; migration reverse/rollback ঝুঁকি যাচাই (ইতিমধ্যেই migration rollback টেস্ট আছে — চালাও)।
+4. Security checklist: আগের সেশনগুলোর টেস্ট modules একসঙ্গে চালিয়ে (isolation, audit scoping, upload, rate-limit, security settings) + `git grep` secret/PII scan + `git status` clean প্রমাণ।
+5. Docs audit: প্রতিটি doc-এর দাবির সাথে প্রমাণ মিলিয়ে অমিল থাকলে সংশোধন (evidence ছাড়া দাবি মুছে ফেলা/Unverified হিসেবে লেখা)।
+6. `docs/RELEASE_CHECKLIST.md` (নতুন) + `docs/prompts/reports/FN-01.md` (evidence table, test counts, risk register, go/no-go) তৈরি করো; PROGRESS.md-এ সব সারির চূড়ান্ত অবস্থা হালনাগাদ করো (owner-সিদ্ধান্ত বাকি থাকলে ⛔)।
+7. শেষ স্ট্যাটাস ব্লকে লেখো: `✔ শেষ হয়েছে: প্রম্পট ২৮ / ২৮ — সেশন FN-01` + ২৮টির সারসংক্ষেপ (সম্পন্ন/আংশিক/ব্লকড)।
+
+## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
+
+- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
+- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
+- **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
+- **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
+- **migration:** বিদ্যমান migration ফাইলের operations কখনো edit নয়; দরকার হলে **নতুন** append-only migration + `makemigrations --check` clean। destructive migration-এর আগে backup gate (DEVELOPMENT_GUIDE §7)।
+- **secret/PII:** `.env`, `db.sqlite3`, `media/`, `backups/`, `.restore-drill/`, আসল কোনো ব্যক্তিগত ডেটা — commit/log/template-এ নয় (`.gitignore` মান্য)। টেস্টে শুধু বানানো (synthetic) ডেটা।
+- **smallest coherent change:** এই প্রম্পটের scope-এর বাইরে refactor বা নতুন UI redesign নয়, নাম-পরিবর্তন নয়। নতুন paid service, SMS/email/payment activation, নতুন JS chart লাইব্রেরি — owner approval ছাড়া নয়।
+- **প্রমাণ ছাড়া দাবি নিষেধ:** শুধু চালানো টেস্ট/check-এর ফলই "সম্পন্ন" হিসেবে লেখা যাবে; যাচাই না হলে `Unverified` / `Partial` লিখবে (repo নিয়ম: `docs/WORK_TRACKER.md`)।
+- **ডকুমেন্টেশন:** প্রতিটি সেশনে সংশ্লিষ্ট doc entry (PROJECT_STATUS / TASK_BACKLOG / HANDOFF) যাচাই করা অবস্থা অনুযায়ী হালনাগাদ, এবং শেষে `docs/prompts/PROGRESS.md`-এ এই প্রম্পটের সারি (স্ট্যাটাস, তারিখ, commit, PR, টেস্ট প্রমাণ) আপডেট।
+
+## ৫. যাচাই ও প্রমাণ (এই সেশনে চালাতে হবে)
+
+**Isolated env (নতুন shell — স্যান্ডবক্সে ডিফল্টভাবে Django নেই):**
+
+```bash
+python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3
+# Python 3.12+ হলে সরাসরি: pip install -r requirements.txt   (Django 6.1)
+# টেস্ট DB = throwaway SQLite; কখনো production DB নয়।
+```
+
+**Commands (এগুলো চালিয়ে প্রকৃত ফল রিপোর্ট করবে):**
+
+```bash
+python manage.py check
+SECRET_KEY=$(python3 -c 'import secrets;print(secrets.token_urlsafe(64))') DEBUG=False ALLOWED_HOSTS='school-management-system-27mn.onrender.com' python manage.py check --deploy
+python manage.py test students
+node --test students/js/*.test.js
+bash scripts/backup_smoke_test.sh
+python manage.py makemigrations --check
+```
+
+- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
+- **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
+
+## ৬. commit, push ও PR
+
+- প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `FN-01: <সংক্ষিপ্ত>`)।
+- `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
+- `git push origin arena/01a0b7f7-school-management-system`।
+- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+
+## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
+
+1. `docs/prompts/PROGRESS.md` → প্রম্পট ২৮-এর সারিতে `স্ট্যাটাস / তারিখ / Commit / PR / টেস্ট প্রমাণ / নোট` পূরণ।
+2. সংশ্লিষ্ট doc entry হালনাগাদ — সাধারণত `docs/PROJECT_STATUS.md` (entry row), `docs/TASK_BACKLOG.md` (remaining list), `docs/HANDOFF.md` (নতুন সেশন-নোট)।
+3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/FN-01.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
+4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+
+- Release go/no-go ও তারিখ — owner।
+- কোন খোলা decision ছাড়া release আটকাবে (EM-02 leave, OF-04 chart scope, EM-03 lock নিয়ম, DB-03 SEC-FU-2) — তালিকা করে owner-এর কাছে পেশ করা।
+- Live Render-এ ৮-দফা চেক (P0-7) ও backup cron (P0-8-live) কে, কখন করবে — owner-এর অপারেশন সিদ্ধান্ত; agent কখনো নিজে production ছোঁবে না।
+> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/FN-01.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+
+## ৯. আউটপুট ফরম্যাট
+
+১–২ বাক্যে ফলাফল → **পরিবর্তিত ফাইল** (তালিকা) → **যাচাই কমান্ড ও ফল** (সংখ্যা/ফলাফল) → **কী যাচাই হয়নি / বাকি ঝুঁকি** → **owner-এর করণীয় (যদি থাকে)** → **PR লিংক** → §০-এর সমাপ্তি স্ট্যাটাস ব্লক।

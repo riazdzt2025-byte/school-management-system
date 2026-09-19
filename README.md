@@ -145,6 +145,30 @@ a CSRF 403. See [`.env.example`](.env.example).
 - [x] Fees and payment workflow enhancements (fee schedule, auto receipts, server-side `MinValue(0)` validation, rate limiting)
 - [ ] Switch to PostgreSQL for production — code ready (`DATABASE_URL` via `dj-database-url`), **CI proven on `postgres:16`**; live `DATABASE_URL` switch still owner-only (see `docs/PRODUCTION_CHECKLIST.md`)
 
+## 📋 Release work plan — 28 session prompts
+
+এই রিলিজের কাজ ২৮টি ক্রমিক সেশন-প্রম্পটে ভাগ করা আছে (যাচাই → Exam → Office → Dashboard/security → Attendance → Employee → final verification)।
+
+| দরকার | ফাইল |
+|---|---|
+| সব প্রম্পটের ক্লিকযোগ্য লিংক (md · copy-paste text · START block · Word) | [`docs/prompts/LINKS.md`](docs/prompts/LINKS.md) |
+| কোন প্রম্পট চলছে / শেষ হয়েছে | [`docs/prompts/PROGRESS.md`](docs/prompts/PROGRESS.md) |
+| নতুন সেশনে শুরু করার নিয়ম (মাত্র ২টি জিনিস পাঠাতে হয়) | [`docs/prompts/HANDOFF-START.md`](docs/prompts/HANDOFF-START.md) |
+| PDF (কভার + সূচি + ২৮টি, ৮৯ পৃষ্ঠা) | [`docs/prompts/export/School-Prompts-28-BN.pdf`](docs/prompts/export/School-Prompts-28-BN.pdf) |
+| Word (সব একসাথে / প্রতি সেশনের আলাদা ফাইল) | [`docs/prompts/export/`](docs/prompts/export/) |
+
+```bash
+python3 scripts/show_prompt.py        # ২৮টির তালিকা
+python3 scripts/show_prompt.py 4      # START-ব্লক + পুরো প্রম্পট ০৪, কপি-রেডি
+```
+
+**লোকালি নামানো (git ছাড়াও চলে):**
+
+```bash
+git fetch origin arena/01a0b7f7-school-management-system   # আগে থেকেই clone থাকলে
+bash scripts/fetch_prompts.sh                              # শুধু docs/prompts → ./prompts-bundle/
+```
+
 ## Author
 **Habib** — Learning full-stack web development while building real-world projects.
 [GitHub Profile](https://github.com/riazdzt2025-byte)

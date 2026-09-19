@@ -1,0 +1,26 @@
+▶ নতুন সেশন — প্রম্পট ০৫ / ২৮ (সেশন EX-04 · নতুন subject / Higher Math workflow)
+
+আমি একটি নতুন agent-সেশনে আছি; তোমার আগের কথোপকথনের কিছু মনে নেই। নিয়ম:
+
+১. আগে শুধু পড়ো (কোনো ফাইল বদলানোর আগে):
+   - `docs/prompts/PROGRESS.md` — কোন প্রম্পট শেষ (✅/🟡/⛔), তাদের commit/PR ও নোট
+   - `docs/prompts/README.md` §৭ — owner-সিদ্ধান্তের সারি
+   - `docs/prompts/reports/EX-03.md` — আগের সেশনের প্রকৃত ফল, ঝুঁকি ও যাচাই-না-হওয়া অংশ
+   - `docs/prompts/reports/০০.md` — baseline verdict (কোনটি ইতিমধ্যেই আছে)
+   - `docs/prompts/prompt-05-*.md` — এটাই তোমার কাজের স্পেক (ধাপ, সীমা, কমান্ড, PR, ডক)
+২. তারপর যাচাই করো (দাবি নয়, প্রমাণ): `git log --oneline -12`, `git status -sb`,
+   `git rev-parse HEAD origin/main`। প্রম্পট ০১…০৪ ✅ হলে তাদের কাজ এই branch-এ আছে কি না দেখো।
+   → ⚠️ আগের প্রম্পট 🟡/⛔ হলে বা commit না থাকলে **কাজ শুরু করবে না**; এক লাইনে জানাও কী অনুপস্থিত।
+   → (ব্যতিক্রম: নিচে আমি লিখে দিলে) —
+৩. owner-সিদ্ধান্ত: নিচে আমি যা লিখেছি সেটাই চূড়ান্ত। খালি থাকলে prompt-এর §৮-এর প্রশ্নগুলোর উত্তর
+   আগে repo-তে খোঁজো (README §৭, reports) — না পেলে সংক্ষেপে প্রশ্ন করো, বানিয়ে কিছু ধরে নিও না।
+   --- owner-সিদ্ধান্ত (থাকলে এখানে লিখুন; না থাকলে ফাঁকা রাখুন): __DECISIONS__
+   ---
+৪. এরপর prompt-এর §০ অনুযায়ী শুরু করো — প্রথম লাইনে স্ট্যাটাস ব্লক:
+   `▶ চলছে: প্রম্পট 05 / ২৮ (prompt 05/28) — সেশন EX-04 · ...`
+   এবং prompt-এর §৩–§৯ হুবহু মানো (ধাপ, টেস্ট কমান্ড, PR+CI, ডক/ledger আপডেট, আউটপুট ফরম্যাট)।
+৫. শেষে: `docs/prompts/PROGRESS.md`-এ প্রম্পট ০৫-এর সারি আপডেট (স্ট্যাটাস · তারিখ · commit · PR ·
+   টেস্ট সংখ্যা) + `docs/prompts/reports/EX-04.md` লিখো + `✔ শেষ হয়েছে: প্রম্পট ০৫ / ২৮ …` ব্লক দেখাও।
+৬. নিষেধ (prompt-এর §৪-এ বিস্তারিত): branch `arena/01a0b7f7-school-management-system` ছাড়া অন্য কোথাও নয় ·
+   `main`-এ push নয় · owner অনুমোদন ছাড়া merge নয় · production DB/live Render/credential ছোঁবা না ·
+   SSC Registration পুনরুদ্ধার নয় · migration-এর operations edit নয় · `.env`/`db.sqlite3`/`media/`/`backups/` commit নয়।
