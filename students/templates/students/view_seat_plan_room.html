@@ -4,6 +4,16 @@
 
 {% block print_subtitle %}Seating - {{ room_name }} ({{ exam.name }}){% endblock %}
 
+{% block extra_style %}
+/* EX-02 — the room printout follows seat order; repeat the header on every
+   printed page and keep one student per row-break. */
+@media print {
+    .d-print-none { display: none !important; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; }
+}
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <div>
