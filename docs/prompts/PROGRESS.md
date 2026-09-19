@@ -16,7 +16,7 @@ _এই ফাইলটিই একমাত্র সত্য: **কত ন�
 
 | # | সেশন | বিভাগ | ধরন | শিরোনাম | নির্ভরতা | স্ট্যাটাস | তারিখ | Commit / PR | টেস্ট প্রমাণ | নোট |
 |---|------|-------|------|---------|----------|-----------|-------|-------------|---------------|------|
-| ০১ | ০০ | প্রাথমিক | যাচাই | সর্বশেষ checkout থেকে বাকি কাজ নির্ধারণ (baseline) | — | ✅ সম্পন্ন | ২০২৬-০৯-১৯ | baseline doc update / PR #TBD | 625 Django + 14 Node pass · check 0 · check --deploy 6 warn · makemigrations clean · leaf 0043 · HEAD 8b7aa62 = origin/main | যাচাই: EX-02/EX-04/EX-06/OF-01/OF-02/OF-03/OF-04/DB-03/DB-05 ইতিমধ্যে সম্পন্ন → পরের প্রম্পট শুধু regression যাচাই করবে। বিস্তারিত `reports/০০-baseline.md`। |
+| ০১ | ০০ | প্রাথমিক | যাচাই | সর্বশেষ checkout থেকে বাকি কাজ নির্ধারণ (baseline) | — | ✅ সম্পন্ন | ২০২৬-০৯-১৯ | `7c2a0a5` / PR #37 (open — CI running, Node pass) | 625 Django + 14 Node pass (local) · check 0 · check --deploy 6 warn · makemigrations clean · leaf 0043 · HEAD 8b7aa62 = origin/main | যাচাই: EX-02/EX-04/EX-06/OF-01/OF-02/OF-03/OF-04/DB-03/DB-05 ইতিমধ্যে সম্পন্ন → পরের প্রম্পট শুধু regression যাচাই করবে। বিস্তারিত `reports/০০-baseline.md`। |
 | ০২ | EX-01 | Exam | সংশোধন | Import redirect ও Analysis subtab | প্রম্পট ০১ (baseline) | ⏳ অপেক্ষমাণ | — | — | — | — |
 | ০৩ | EX-02 | Exam | সংশোধন | Result/Register roll-order | প্রম্পট ০২ (EX-01) | ⏳ অপেক্ষমাণ | — | — | — | — |
 | ০৪ | EX-03 | Exam | উন্নয়ন | Group-based Mark Evaluation | প্রম্পট ০৩ (EX-02) | ⏳ অপেক্ষমাণ | — | — | — | — |
