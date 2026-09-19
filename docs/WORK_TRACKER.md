@@ -6,7 +6,8 @@ _একটিমাত্র পরিষ্কার tracker। প্রতি
 **নিয়ম:** এই ফাইলে শুধু যাচাই করা অবস্থাই লেখা হয়। কোনো কাজ নিজের যাচাই ছাড়া
 "সম্পন্ন" ধরে ভরা হয় না — অন্য সেশনের দাবি এখানে অনুলিপি হয় না, প্রমাণসহ উদ্ধৃত হয়।
 
-_Last updated: 2026-09-18 · branch `arena/01a0b574-school-management-system` · base `11cd35d` (Merge PR #32) = `origin/main`_
+_Last updated: 2026-09-19 · branch `arena/01a0b9da-school-management-system` · base `8b7aa62` (Merge PR #35) = `origin/main`_
+_2026-09-19 baseline re-check (prompt 01/28): PR #33 এখন **MERGED** (gh pr list-এ যাচাই করা) — এই ফাইলের "PR #33 OPEN" লেখা সারিগুলো ঐতিহাসিক; সব funnel code `main`-এ আছে (`docs/prompts/reports/০০-baseline.md` §৪ OF-04)._
 
 ---
 
@@ -23,7 +24,7 @@ _Last updated: 2026-09-18 · branch `arena/01a0b574-school-management-system` ·
 | দিক | অবস্থা |
 |---|---|
 | মূল requirement (funnel/report) | **Complete** — code `main`-এ merged + navigation চাহিদা পূরণকারী follow-up PR খোলা |
-| Code merge status | PR #32 **MERGED** · PR #33 **OPEN (merge হয়নি — অনুমোদনের অপেক্ষায়)** |
+| Code merge status | PR #32 **MERGED** · PR #33 **MERGED** (2026-09-19-এ `gh pr list` দিয়ে পুনঃযাচাই; baseline report §৪ OF-04) |
 | Live deployment status | **Unverified** |
 | Optional enhancement (capacity/trend chart) | **Not started** — মূল কাজের অংশ নয়, নিচে আলাদা করা |
 

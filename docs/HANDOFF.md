@@ -1,5 +1,33 @@
 # Handoff — School Management System
 
+## সেশন ০০ — 2026-09-19 · নতুন baseline যাচাই (প্রম্পট ০১/২৮)
+
+**Session:** `arena/01a0b9da-school-management-system` · **Base:** `8b7aa62` = `origin/main` (Merge PR #35) ·
+**Branch:** session-branch, clean working tree, কোনো checkout/reset/clean নয় ·
+**Scope:** শুধু যাচাই + ডক (prompt §২) — **কোনো feature code, migration, template, JS, policy বা live কাজ নেই**।
+
+**Bengali TL;DR:** এই checkout-এ (base `8b7aa62`) isolated venv (Django 5.2.17 fallback) দিয়ে নিজে চালানো —
+**`Ran 625 tests` → OK (231.4s)**, **Node 14 pass / 0 fail**, `check` 0 issue, `check --deploy` ৬টি প্রত্যাশিত dev warning,
+`makemigrations --check` clean (leaf `0043`), `backup_smoke_test.sh` sqlite **১৫/০** ও moto-S3 off-box **২৮/০** pass।
+২৮-সেশনের প্রতিটি আইটেমের verdict matrix: **`docs/prompts/reports/০০-baseline.md`** (সংক্ষিপ্ত রিপোর্ট `reports/০০.md`)।
+**ইতিমধ্যে সম্পন্ন (শুধু regression):** EX-04, EX-05, EX-06, EX-07, OF-01, OF-03, OF-04, DB-01, DB-04, DB-05, DB-06
+(+ EX-01-এর import redirect, OF-02-এর ৪টি view)। **আসল বাকি:** EX-01 Analysis subtab, EX-02 বাকি output-order,
+EX-03 `SubjectMarkSetting.group`, OF-02 ১১টি list view, OF-05 তিনটি ছবির গ্যাপ, OF-06 public progress page,
+OF-07/OF-08 audit, DB-02 `0034` comment, DB-03 SEC-FU-1/2, AT-01 correction, AT-02 calendar, EM-01 assignment,
+EM-03 closed-period, FN-01 final। **⛔ owner-policy ছাড়া কোড নয়:** EM-02 (leave)।
+⚠️ ২৭টি prompt-এর প্রেক্ষাপট base `f64194a` ধরে লেখা — আসল base এখন `8b7aa62`; baseline report-ই সংশোধক।
+⚠️ সমান্তরাল PR **#36 / #37** (একই "প্রম্পট ০১" স্কোপ, ভিন্ন branch) খোলা — merge-এ কোনটি রাখবেন সেটি owner-সিদ্ধান্ত।
+
+**Docs updated this session:** `docs/prompts/reports/০০-baseline.md` (নতুন), `docs/prompts/reports/০০.md` (নতুন),
+`docs/prompts/PROGRESS.md` (সারি ০১ + ২৭টি সারির baseline নোট), `docs/PROJECT_STATUS.md` (§২০ + header/§6 সংখ্যা),
+`docs/TASK_BACKLOG.md` (O2/O5 সংশোধন + update-log), `docs/HANDOFF.md` (এই নোট)।
+
+**Live (এখনো UNKNOWN — owner-only):** P0-7 Render env/config, P0-8-live backup cron/off-box/alert,
+P1-11-live S3 bucket, P1-10-live Postgres switch, D-8 live DB engine। postgres:16-এ suite শুধু CI-তে যাচাই হবে।
+
+---
+
+
 **Session:** `arena/01a0ad5e-school-management-system` (সেশন ০১ — বর্তমান অবস্থা যাচাই, test baseline এবং চূড়ান্ত backlog)
 **Date:** 2026-09-17 · **Base:** `origin/main` @ `44cbcc3` (Merge PR #27, parents `4fc4c3e` + `79c0921`)
 **Branch:** `arena/01a0ad5e-school-management-system` — নির্ধারিত branch, clean working tree, no switch, no reset --hard, no git clean
