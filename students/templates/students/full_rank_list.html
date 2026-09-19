@@ -52,6 +52,7 @@
         <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-table me-1"></i> Full Mark Sheet</a>
         <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-bar-chart-line me-1"></i> Published Result</a>
         <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-trophy me-1"></i> Top 10</a>
+        {% if can_result_analysis %}<a href="{% url 'result_analysis_merit_slides' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-easel me-1"></i> Merit Slides</a>{% endif %}
         <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
         <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Back to Exams</a>
     </div>

@@ -2933,3 +2933,36 @@ class GPAPaginationAndAbsentDisplayTests(TestCase):
         self.assertIn(f'subject={subj.pk}', resp.url)
         self.assertNotEqual(resp.url, reverse('exam_list'))
 
+    def test_import_stay_on_page_preserves_subject_and_group(self):
+        # E1: for a class-9 exam created without a fixed group the teacher picks
+        # the group on the import page; a successful import must redirect back
+        # keeping BOTH subject and group so the next upload needs no re-picking.
+        from .models import SubjectRequirement
+        subj = Subject.objects.create(code='IMP2', name='ImportGrpSub', full_marks=100)
+        SubjectRequirement.objects.create(
+            institution=self.institution, admission_class='9', group='SCI',
+            subject=subj, requirement_type='MANDATORY',
+        )
+        exam = Exam.objects.create(
+            name='Import Stay Group Exam', exam_type='SECOND_TERM',
+            institution=self.institution, admission_class='9', session='2026',
+        )
+        Student.objects.create(
+            institution=self.institution, student_id='IMP002', name='Group Kid',
+            admission_class='9', section='A', roll_no=1, group='SCI', admission_year=2026,
+        )
+        from io import BytesIO
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook
+        wb = Workbook()
+        sh = wb.active
+        sh.append(['Roll', 'ID', 'Name', 'Marks'])
+        sh.append([1, 'IMP002', 'Group Kid', 77])
+        out = BytesIO()
+        wb.save(out)
+        resp = self.client.post(reverse('import_exam_marks', args=[exam.pk]), {'subject': str(subj.pk), 'group': 'SCI', 'excel_file': SimpleUploadedFile('imp2.xlsx', out.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(reverse('import_exam_marks', args=[exam.pk]), resp.url)
+        self.assertIn(f'subject={subj.pk}', resp.url)
+        self.assertIn('group=SCI', resp.url)
+

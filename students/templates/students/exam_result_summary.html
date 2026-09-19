@@ -50,6 +50,7 @@
         <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
         <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm">Full Rank List</a>
         <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm">Top 10</a>
+        {% if can_result_analysis %}<a href="{% url 'result_analysis_result_cards' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-card-list me-1"></i> Result Cards (Class)</a>{% endif %}
         <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back to Exams</a>
     </div>
 

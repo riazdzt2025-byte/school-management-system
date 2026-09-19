@@ -13,6 +13,17 @@
         {% endif %}
     </div>
 
+    {% if can_result_analysis %}
+    <div class="mb-3 d-flex flex-wrap align-items-center gap-2 analysis-entry">
+        <span class="text-muted small me-1"><i class="bi bi-graph-up me-1"></i> Result Analysis:</span>
+        <a href="{% url 'result_analysis_subject_fail' %}" class="btn btn-sm btn-outline-navy">Subject Fail List</a>
+        <a href="{% url 'result_analysis_multi_term' %}" class="btn btn-sm btn-outline-navy">Multi-term Results</a>
+        <a href="{% url 'result_analysis_merit_slides' %}" class="btn btn-sm btn-outline-navy">Merit Slides</a>
+        <a href="{% url 'result_analysis_result_cards' %}" class="btn btn-sm btn-outline-navy">Result Cards (Class)</a>
+        <a href="{% url 'section_arrangement' %}" class="btn btn-sm btn-outline-navy">Section Arrangement</a>
+    </div>
+    {% endif %}
+
     {% if messages %}
         {% for message in messages %}
         <div class="alert alert-{{ message.tags }}">{{ message }}</div>

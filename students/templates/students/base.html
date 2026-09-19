@@ -61,6 +61,7 @@
         .nav-group:hover .flyout { display: block; }
         .flyout a { padding: 10px 18px; font-size: 0.9rem; border-left: none; }
         .flyout a:hover { background: var(--navy-light); }
+        .flyout .flyout-subhead { padding: 8px 18px 2px; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.14); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.55); }
 
         .main { margin-left: var(--sidebar-w); padding: 32px 40px; transition: margin-left 0.2s ease; }
 
@@ -227,6 +228,14 @@
             {% if perms.students.add_exammark %}<a href="{% url 'start_entering_marks' %}"><i class="bi bi-pencil-fill"></i> Enter Marks</a>{% endif %}
             <a href="{% url 'exam_list' %}"><i class="bi bi-journal-check"></i> Exam List</a>
             {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>{% endif %}
+            {% if can_result_analysis %}
+            <div class="flyout-subhead">Analysis</div>
+            <a href="{% url 'result_analysis_subject_fail' %}"><i class="bi bi-exclamation-triangle"></i> Subject Fail List</a>
+            <a href="{% url 'result_analysis_multi_term' %}"><i class="bi bi-layout-three-columns"></i> Multi-term Results</a>
+            <a href="{% url 'result_analysis_merit_slides' %}"><i class="bi bi-easel"></i> Merit Slides</a>
+            <a href="{% url 'result_analysis_result_cards' %}"><i class="bi bi-card-list"></i> Result Cards (Class)</a>
+            <a href="{% url 'section_arrangement' %}"><i class="bi bi-diagram-3"></i> Section Arrangement</a>
+            {% endif %}
         </div>
     </div>
 
