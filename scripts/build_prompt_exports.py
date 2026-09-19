@@ -760,15 +760,187 @@ def load_prompts(prompts_dir: Path, covered: set[int], substitutions: list[str])
         for b in blocks:
             b.text = sanitize(b.text, covered, substitutions)
             b.lines = [sanitize(l, covered, substitutions) for l in b.lines]
+        dep_match = re.search(r"নির্ভরতা:\s*(.+)$", meta)
         prompts.append({
             "num": num, "total": total, "title": sanitize(title, covered, substitutions),
             "meta": sanitize(meta, covered, substitutions),
             "note": sanitize(note, covered, substitutions),
             "sid": sid,
+            "depends": dep_match.group(1).strip() if dep_match else "",
             "blocks": blocks,
             "slug": path.stem,
         })
     return prompts
+
+
+
+# --------------------------------------------------------------------------------------
+# START blocks — what to paste into a *new* agent session
+# --------------------------------------------------------------------------------------
+
+KICKOFF = """▶ নতুন সেশন — প্রম্পট __NNB__ / ২৮ (সেশন __SID__ · __TITLE__)
+
+আমি একটি নতুন agent-সেশনে আছি; তোমার আগের কথোপকথনের কিছু মনে নেই। নিয়ম:
+
+১. আগে শুধু পড়ো (কোনো ফাইল বদলানোর আগে):
+   - `docs/prompts/PROGRESS.md` — কোন প্রম্পট শেষ (✅/🟡/⛔), তাদের commit/PR ও নোট
+   - `docs/prompts/README.md` §৭ — owner-সিদ্ধান্তের সারি
+   - __DEP_REPORTS__ — আগের সেশনের প্রকৃত ফল, ঝুঁকি ও যাচাই-না-হওয়া অংশ
+   - `docs/prompts/reports/০০.md` — baseline verdict (কোনটি ইতিমধ্যেই আছে)
+   - `docs/prompts/prompt-__NN__-*.md` — এটাই তোমার কাজের স্পেক (ধাপ, সীমা, কমান্ড, PR, ডক)
+২. তারপর যাচাই করো (দাবি নয়, প্রমাণ): `git log --oneline -12`, `git status -sb`,
+   `git rev-parse HEAD origin/main`। প্রম্পট ০১…__PREVB__ ✅ হলে তাদের কাজ এই branch-এ আছে কি না দেখো।
+   → ⚠️ আগের প্রম্পট 🟡/⛔ হলে বা commit না থাকলে **কাজ শুরু করবে না**; এক লাইনে জানাও কী অনুপস্থিত।
+   → (ব্যতিক্রম: নিচে আমি লিখে দিলে) __OVERRIDE__
+৩. owner-সিদ্ধান্ত: নিচে আমি যা লিখেছি সেটাই চূড়ান্ত। খালি থাকলে prompt-এর §৮-এর প্রশ্নগুলোর উত্তর
+   আগে repo-তে খোঁজো (README §৭, reports) — না পেলে সংক্ষেপে প্রশ্ন করো, বানিয়ে কিছু ধরে নিও না।
+   --- owner-সিদ্ধান্ত (থাকলে এখানে লিখুন; না থাকলে ফাঁকা রাখুন): __DECISIONS__
+   ---
+৪. এরপর prompt-এর §০ অনুযায়ী শুরু করো — প্রথম লাইনে স্ট্যাটাস ব্লক:
+   `▶ চলছে: প্রম্পট __NN__ / ২৮ (prompt __NN__/28) — সেশন __SID__ · ...`
+   এবং prompt-এর §৩–§৯ হুবহু মানো (ধাপ, টেস্ট কমান্ড, PR+CI, ডক/ledger আপডেট, আউটপুট ফরম্যাট)।
+৫. শেষে: `docs/prompts/PROGRESS.md`-এ প্রম্পট __NNB__-এর সারি আপডেট (স্ট্যাটাস · তারিখ · commit · PR ·
+   টেস্ট সংখ্যা) + `docs/prompts/reports/__SID__.md` লিখো + `✔ শেষ হয়েছে: প্রম্পট __NNB__ / ২৮ …` ব্লক দেখাও।
+৬. নিষেধ (prompt-এর §৪-এ বিস্তারিত): branch `arena/01a0b7f7-school-management-system` ছাড়া অন্য কোথাও নয় ·
+   `main`-এ push নয় · owner অনুমোদন ছাড়া merge নয় · production DB/live Render/credential ছোঁবা না ·
+   SSC Registration পুনরুদ্ধার নয় · migration-এর operations edit নয় · `.env`/`db.sqlite3`/`media/`/`backups/` commit নয়।
+"""
+
+HANDOFF_INTRO = """# কীভাবে একটি নতুন সেশনে প্রম্পট শুরু করবেন (START-গাইড)
+
+_উদ্দেশ্য: আগের কথোপকথন মনে নেই এমন নতুন agent-সেশনে যেকোনো নম্বরের প্রম্পট ঠিক জায়গা থেকে শুরু করা।_
+
+## ১. মাত্র দুইটি জিনিস পাঠাবেন
+
+1. **START-ব্লক** — `docs/prompts/copy-paste/kickoff/prompt-<NN>-START.txt` (সংখ্যা-ভরা, তৈরি করা)। জেনেরিক সংস্করণ §৩-এ।
+2. **প্রম্পট ফাইল** — `docs/prompts/copy-paste/prompt-<NN>-*.txt` (বা `docs/prompts/prompt-<NN>-*.md`) — এটাই কাজের স্পেক: চাহিদা, ধাপ, সীমা, টেস্ট কমান্ড, PR+CI, ডক আপডেট, owner-প্রশ্ন।
+
+> ব্যস। আর কিছু লিখতে/বুঝিয়ে দিতে হয় না — বাকি সব **repo-তেই আছে**, এজেন্ট নিজে পড়ে ও যাচাই করে।
+
+## ২. কেন এতটুকুই যথেষ্ট (তিন-ভাগের চুক্তি)
+
+| কী | কোথায় থাকে | কে দেয় |
+|---|---|---|
+| কাজের স্পেক (কী করতে হবে) | `docs/prompts/prompt-NN-*.md` | আপনি (কপি-পেস্ট) |
+| অবস্থা (কোন প্রম্পট শেষ, commit/PR, কী যাচাই হয়েছে, কী বাকি) | `docs/prompts/PROGRESS.md` + `docs/prompts/reports/*.md` | repo — এজেন্ট পড়ে **নিজে প্রমাণ করে** |
+| owner-সিদ্ধান্ত (নীতি/সংখ্যা/অনুমোদন) | `docs/prompts/README.md` §৭ + reports + আপনার মেসেজের ফাঁকা ঘর | আপনি (থাকলে) |
+
+তিনটিই থাকলে নতুন সেশনে "কোথায় আছি" হারায় না।
+
+## ৩. জেনেরিক START-ব্লক (যেকোনো প্রম্পটে ব্যবহারযোগ্য)
+
+`<NN>`, `<SID>`, `<TITLE>`, `<PREV>` পূরণ করলেই চলে; `copy-paste/kickoff/`-এ প্রতিটি প্রম্পটের **আগেই পূরণ করা** সংস্করণ আছে।
+
+```text
+__GENERIC__
+```
+
+## ৪. প্রতিটি প্রম্পটের START ফাইল ও আগে-পড়ার তালিকা
+
+| # | সেশন | START ফাইল | আগের যে রিপোর্টগুলো পড়া দরকার | §৮-এ owner-প্রশ্ন |
+|---|---|---|---|---|
+__TABLE__
+
+## ৫. উদাহরণ: প্রম্পট ০৪ (EX-03) পুরো START-ব্লক
+
+```text
+__P04__
+```
+
+## ৬. বাস্তবে যা ঘটবে
+
+1. এজেন্ট `PROGRESS.md` পড়ে দেখবে প্রম্পট ০১–০৩-এর অবস্থা; `git log` দিয়ে commit মিলিয়ে নেবে।
+2. `reports/০০.md`, `reports/EX-01.md`, `reports/EX-02.md` পড়ে বুঝবে আগের সেশনে কী বদলেছে (আপনার লিখে দেওয়ার দরকার নেই)।
+3. prompt-০৪-এর §০ স্ট্যাটাস ব্লক দিয়ে শুরু করবে, §৩ ধাপ ধরে কাজ করবে, §৫-এর কমান্ড চালাবে।
+4. শেষে `PROGRESS.md`-এ প্রম্পট ০৪-এর সারি + `reports/EX-03.md` + PR আপডেট করে `✔ শেষ হয়েছে…` ব্লক দেখাবে।
+
+## ৭. যদি আগের প্রম্পট শেষ না থাকে / আংশিক থাকে
+
+- **আগের প্রম্পট অন্য সেশনে শেষ হয়েছে, কিন্তু PROGRESS.md-এ লেখা হয়নি:** START-ব্লকের ২ নম্বর ধাপের ব্যতিক্রম-লাইনে লিখুন — “প্রম্পট ০১–০৩ আমি অন্য সেশনে করেছি; branch-এ কাজগুলো যাচাই করে PROGRESS.md-এ স্ট্যাটাস বসাও, নতুন করে কোরো না।”
+- **আগের প্রম্পট আংশিক/ব্লকড:** আগে সেটিই শেষ করুন, নাহলে এই প্রম্পটের নির্ভরতা ভাঙবে। (নাহলে START-ব্লকের owner-সিদ্ধান্তে লিখে দিন “০৩ আংশিক; বাকি ছিল X — সেটা এড়িয়ে এগোও” এবং ঝুঁকি মেনে নিন।)
+- **জরুরি কিছু জানাতে চান (নীতি, সংখ্যা, নাম):** START-ব্লকের ৩ নম্বর ধাপের ফাঁকা ঘরে ২–৪ লাইন লিখুন।
+
+## ৮. এজেন্টকে থামানোর শর্ত (START-ব্লকে আগেই লেখা থাকে)
+
+- আগের নির্ভরতা ✅ নয় বা commit অনুপস্থিত → **শুরু করবে না**, জানাবে।
+- owner-সিদ্ধান্ত ছাড়া কিছু "ধরে নেওয়া" নিষেধ → প্রশ্ন করবে।
+- টেস্ট fail / CI fail → স্ট্যাটাস 🟡, লুকাবে না।
+"""
+
+
+def _dep_report_list(prompts, p):
+    """Return the statement about which previous session reports to read."""
+    total = len(prompts)
+    nums = []
+    for m in re.finditer(r"প্রম্পট\s+([০-৯\d]+)", p["depends"]):
+        nums.append(int(m.group(1).translate(str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789"))))
+    if "সব" in p["depends"]:
+        nums = list(range(1, total))
+    if p["num"] - 1 not in nums and p["num"] > 1:
+        nums.append(p["num"] - 1)
+    nums = sorted({n for n in nums if 1 <= n <= total})
+    labels = [f"`docs/prompts/reports/{prompts[n - 1]['sid']}.md`" for n in nums]
+    if not labels:
+        return "`docs/prompts/reports/` (আগের কোনো সেশন নেই)"
+    if len(labels) > 4:
+        return (f"`docs/prompts/reports/` — বিশেষভাবে {labels[0]} … {labels[-1]} "
+                f"({len(labels)}টি রিপোর্ট: সব আগের সেশন)")
+    return " ও ".join(labels)
+
+
+def build_handoff(prompts, root, copy_paste_dir):
+    total = len(prompts)
+
+    kickoff_dir = copy_paste_dir / "kickoff"
+    kickoff_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for p in prompts:
+        dep_reports = _dep_report_list(prompts, p)
+        bn = str(p['num']).translate(str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯"))
+        bn2 = f"{p['num']:02d}".translate(str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯"))
+        prev_bn = (f"{p['num'] - 1:02d}".translate(str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯"))
+                   if p["num"] > 1 else "—")
+        block = (KICKOFF
+                 .replace("__NNB__", bn2)
+                 .replace("__PREVB__", prev_bn)
+                 .replace("__NN__", f"{p['num']:02d}")
+                 .replace("__SID__", p["sid"])
+                 .replace("__TITLE__", p["title"])
+                 .replace("__PREV__", f"{p['num'] - 1:02d}" if p["num"] > 1 else "—")
+                 .replace("__DEP_REPORTS__", dep_reports)
+                 .replace("__OVERRIDE__", "—"))
+        (kickoff_dir / f"prompt-{p['num']:02d}-START.txt").write_text(block, encoding="utf-8")
+
+        text = (root / f"{p['slug']}.md").read_text(encoding="utf-8")
+        section = text.split("## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে", 1)
+        count = 0
+        if len(section) == 2:
+            body = section[1].split("## ৯.", 1)[0]
+            count = len(re.findall(r"^- ", body, flags=re.M))
+        rows.append("| {n:02d} | {sid} | `copy-paste/kickoff/prompt-{n:02d}-START.txt` | {dep} | {c}টি |"
+                    .format(n=p["num"], sid=p["sid"], dep=dep_reports, c=count))
+
+    generic = (KICKOFF
+               .replace("__NNB__", "<০N>").replace("__PREVB__", "<আগের নম্বর>")
+               .replace("__NN__", "<NN>").replace("__SID__", "<সেশন আইডি>")
+               .replace("__TITLE__", "<শিরোনাম>").replace("__PREV__", "<আগের প্রম্পটের নম্বর>")
+               .replace("__DEP_REPORTS__", "`docs/prompts/reports/` — আগের সব সেশনের রিপোর্ট")
+               .replace("__OVERRIDE__", "<থাকলে লিখুন: আগের প্রম্পট আমি অন্য সেশনে করেছি — যাচাই করে স্ট্যাটাস বসাও>"))
+
+    p04 = prompts[3]
+    p04_block = (KICKOFF
+                 .replace("__NNB__", "০৪").replace("__PREVB__", "০৩")
+                 .replace("__NN__", "04").replace("__SID__", p04["sid"])
+                 .replace("__TITLE__", p04["title"]).replace("__PREV__", "03")
+                 .replace("__DEP_REPORTS__", _dep_report_list(prompts, p04))
+                 .replace("__OVERRIDE__", "—"))
+
+    doc = (HANDOFF_INTRO
+           .replace("__GENERIC__", generic)
+           .replace("__P04__", p04_block)
+           .replace("__TABLE__", "\n".join(rows)))
+    (root / "HANDOFF-START.md").write_text(doc, encoding="utf-8")
+    print(f"handoff written: HANDOFF-START.md + {total} START files")
 
 
 def main():
@@ -812,6 +984,7 @@ def main():
             parts.append(path.read_text(encoding="utf-8").rstrip() + "\n")
         (cp / "ALL_PROMPTS.txt").write_text("".join(parts), encoding="utf-8")
         print("copy-paste txt written (28 + ALL_PROMPTS.txt)")
+        build_handoff(prompts, root, cp)
 
 
 if __name__ == "__main__":

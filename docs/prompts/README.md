@@ -8,6 +8,10 @@ _তৈরি: ২০২৬-০৯-১৯ · branch `arena/01a0b7f7-school-manag
 
 ## ১. কীভাবে ব্যবহার করবেন
 
+0. **নতুন সেশনে শুরু করতে হলে** `docs/prompts/HANDOFF-START.md` পড়ুন — মাত্র **দুইটি** জিনিস পাঠাতে হয়:
+   (১) `docs/prompts/copy-paste/kickoff/prompt-<NN>-START.txt` (সংখ্যা-ভরা, তৈরি করা) এবং
+   (২) `docs/prompts/copy-paste/prompt-<NN>-*.txt` (বা `docs/prompts/prompt-<NN>-*.md`)।
+   বাকিটা repo (PROGRESS.md + reports) থেকেই নতুন এজেন্ট নিজে পড়ে ও যাচাই করে — আগের কথোপকথন মনে না থাকলেও সমস্যা নেই।
 1. **ক্রম ভাঙবেন না।** ০১ → EX-01…EX-07 → OF-01…OF-08 → DB-01…DB-06 → AT-01…AT-02 → EM-01…EM-03 → FN-01 (সর্বশেষ)।
 2. একবারে **একটি** prompt কপি করে এজেন্টকে দিন (file-এর পুরোটা, শিরোনামসহ)।
 3. এজেন্ট উত্তরের **প্রথম লাইনে** লিখবে `▶ চলছে: প্রম্পট ০N / ২৮ …` এবং **শেষে** `✔ শেষ হয়েছে: প্রম্পট ০N / ২৮ …` — এই দুই ব্লক দেখেই বুঝবেন কত নম্বরের prompt চলছে/শেষ হয়েছে।
@@ -94,6 +98,8 @@ _তৈরি: ২০২৬-০৯-১৯ · branch `arena/01a0b7f7-school-manag
 |---|---|
 | `PROGRESS.md` | ২৮ সারির ledger — কত নম্বর চলছে/শেষ, স্ট্যাটাস, commit, PR, টেস্ট সংখ্যা |
 | `reports/<সেশন>.md` | সেশন-রিপোর্ট: আগের→এখনকার অবস্থা, কমান্ড ও ফল, যাচাই হয়নি এমন অংশ, ঝুঁকি, owner-সিদ্ধান্ত |
+| `HANDOFF-START.md` + `copy-paste/kickoff/prompt-NN-START.txt` | নতুন সেশনে প্রম্পট শুরু করার START-ব্লক ও গাইড |
+| `copy-paste/` (২৯টি .txt) · `export/` (PDF · DOCX) | কপি-পেস্ট ও প্রিন্ট/সম্পাদনার সংস্করণ |
 | `docs/PROJECT_STATUS.md` / `docs/TASK_BACKLOG.md` / `docs/HANDOFF.md` | repo-র প্রচলিত doc entry হালনাগাদ |
 | `reports/০০-baseline.md` | প্রম্পট ০১-এর পূর্ণ baseline matrix (২৮ আইটেমের verdict) |
 
