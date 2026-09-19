@@ -162,6 +162,13 @@ python3 scripts/show_prompt.py        # ২৮টির তালিকা
 python3 scripts/show_prompt.py 4      # START-ব্লক + পুরো প্রম্পট ০৪, কপি-রেডি
 ```
 
+**লোকালি নামানো (git ছাড়াও চলে):**
+
+```bash
+git fetch origin arena/01a0b7f7-school-management-system   # আগে থেকেই clone থাকলে
+bash scripts/fetch_prompts.sh                              # শুধু docs/prompts → ./prompts-bundle/
+```
+
 ## Author
 **Habib** — Learning full-stack web development while building real-world projects.
 [GitHub Profile](https://github.com/riazdzt2025-byte)

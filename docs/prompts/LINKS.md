@@ -98,7 +98,30 @@ python3 scripts/show_prompt.py 4 --out /tmp/p4.txt   # ফাইলে লিখ
 > **কপি করার সহজ পথ:** `কপি-টেক্সট` / `raw` লিংকটা সাদা টেক্সট — খুলে Ctrl+A → Ctrl+C করলেই পুরো প্রম্পট কপি হয়ে যায়।
 > (⚠️ `raw.githubusercontent.com` কিছু নেটওয়ার্কে ব্লক থাকতে পারে; তখন `📄 md` বা `📋 কপি-টেক্সট` লিংকটি ব্যবহার করুন।)
 
-## ৫. লিংক ঠিক রাখা
+## ৫. লোকালি আনা (pull / download)
+
+```bash
+# (ক) git দিয়ে — branch থেকে (main-এ merge হওয়ার আগে এটাই কাজ করে)
+git clone https://github.com/riazdzt2025-byte/school-management-system.git
+cd school-management-system
+git fetch origin arena/01a0b7f7-school-management-system
+git checkout arena/01a0b7f7-school-management-system          # অথবা: git switch -c prompts origin/arena/01a0b7f7-school-management-system
+git pull origin arena/01a0b7f7-school-management-system       # আগে থেকেই clone থাকলে
+
+# (খ) git ছাড়া — শুধু প্রম্পট ফাইলগুলো (৩.৪ MB, পুরো repo নয়)
+bash scripts/fetch_prompts.sh                    # → ./prompts-bundle/docs/prompts/…
+bash scripts/fetch_prompts.sh arena/01a0b7f7-school-management-system out       # branch ও destination বদলে
+
+# (গ) ব্রাউজার থেকে ZIP (পুরো repo)
+https://github.com/riazdzt2025-byte/school-management-system/archive/refs/heads/arena/01a0b7f7-school-management-system.zip
+
+# (ঘ) একটা ফাইল দরকার হলে — LINKS.md-এর `⬇ raw` বা `📋 কপি-টেক্সট` লিংক খুলে
+#      Ctrl+S (Save as) বা Ctrl+A → Ctrl+C
+```
+
+> **merge-এর পরে:** PR #34 merge হলে `arena/01a0b7f7-school-management-system`-এর বদলে `main` লিখলেই সরাসরি `git pull` কাজ করবে।
+
+## ৬. লিংক ঠিক রাখা
 
 - এই তালিকার লিংকগুলোর branch হলো **`arena/01a0b7f7-school-management-system`**। owner PR merge করার পরে সব লিংক স্থায়ী করতে:
   `python3 scripts/prompt_links.py --branch main`

@@ -15,6 +15,7 @@ _তৈরি: ২০২৬-০৯-১৯ · branch `arena/01a0b7f7-school-manag
 | নতুন সেশনে শুরু (মাত্র ২টি জিনিস) | `docs/prompts/HANDOFF-START.md` |
 | নম্বর/সেশন/শব্দ দিয়ে প্রম্পট বের করা (এজেন্ট বা টার্মিনাল) | `python3 scripts/show_prompt.py 4` (বা `EX-03`, `gpa`) |
 | লিংক তালিকা হালনাগাদ (merge-এর পরে `main`) | `python3 scripts/prompt_links.py --branch main` |
+| **লোকালি নামানো (git বা git ছাড়া)** | `bash scripts/fetch_prompts.sh` → `./prompts-bundle/docs/prompts/…` · git: `git fetch origin arena/01a0b7f7-school-management-system && git checkout arena/01a0b7f7-school-management-system` · ZIP: [branch archive](https://github.com/riazdzt2025-byte/school-management-system/archive/refs/heads/arena/01a0b7f7-school-management-system.zip) |
 
 > এজেন্টকে শুধু বললেই হবে: **“প্রম্পট ০৪ দাও”** — সে `LINKS.md`/`show_prompt.py` দিয়ে এক ধাপে সঠিক প্রম্পট + START-ব্লক বের করে দেবে।
 

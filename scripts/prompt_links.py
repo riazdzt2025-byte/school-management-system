@@ -145,7 +145,30 @@ python3 scripts/show_prompt.py 4 --out /tmp/p4.txt   # ফাইলে লিখ
 > **কপি করার সহজ পথ:** `কপি-টেক্সট` / `raw` লিংকটা সাদা টেক্সট — খুলে Ctrl+A → Ctrl+C করলেই পুরো প্রম্পট কপি হয়ে যায়।
 > (⚠️ `raw.githubusercontent.com` কিছু নেটওয়ার্কে ব্লক থাকতে পারে; তখন `📄 md` বা `📋 কপি-টেক্সট` লিংকটি ব্যবহার করুন।)
 
-## ৫. লিংক ঠিক রাখা
+## ৫. লোকালি আনা (pull / download)
+
+```bash
+# (ক) git দিয়ে — branch থেকে (main-এ merge হওয়ার আগে এটাই কাজ করে)
+git clone https://github.com/{repo}.git
+cd school-management-system
+git fetch origin {branch}
+git checkout {branch}          # অথবা: git switch -c prompts origin/{branch}
+git pull origin {branch}       # আগে থেকেই clone থাকলে
+
+# (খ) git ছাড়া — শুধু প্রম্পট ফাইলগুলো (৩.৪ MB, পুরো repo নয়)
+bash scripts/fetch_prompts.sh                    # → ./prompts-bundle/docs/prompts/…
+bash scripts/fetch_prompts.sh {branch} out       # branch ও destination বদলে
+
+# (গ) ব্রাউজার থেকে ZIP (পুরো repo)
+https://github.com/{repo}/archive/refs/heads/{branch}.zip
+
+# (ঘ) একটা ফাইল দরকার হলে — LINKS.md-এর `⬇ raw` বা `📋 কপি-টেক্সট` লিংক খুলে
+#      Ctrl+S (Save as) বা Ctrl+A → Ctrl+C
+```
+
+> **merge-এর পরে:** PR #34 merge হলে `{branch}`-এর বদলে `main` লিখলেই সরাসরি `git pull` কাজ করবে।
+
+## ৬. লিংক ঠিক রাখা
 
 - এই তালিকার লিংকগুলোর branch হলো **`{branch}`**। owner PR merge করার পরে সব লিংক স্থায়ী করতে:
   `python3 scripts/prompt_links.py --branch main`
