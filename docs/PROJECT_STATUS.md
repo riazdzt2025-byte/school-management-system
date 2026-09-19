@@ -1,10 +1,10 @@
 # Project Status — School Management System
 
-_Last updated: 2026-09-17 (সেশন ০১ — বর্তমান অবস্থা যাচাই, test baseline এবং চূড়ান্ত backlog)_
-_Base commit: `44cbcc3` (Merge PR #27) on branch `arena/01a0ad5e-school-management-system` — equals `origin/main`_
-_Working tree: clean, no local overwrite, no reset --hard, no git clean_
+_Last updated: 2026-09-19 (সেশন ০০ — ২৮-সেশন baseline যাচাই, 625+14 pass, docs/prompts plan #34)_
+_Base commit: `ec6604b` (Merge PR #34 docs/prompts) on branch `arena/01a0b835-school-management-system` — `origin/main` = `ec6604b`; prior base `f64194a` (PR #33)_
+_Working tree: clean, no local overwrite, no reset --hard, no git clean — merged `origin/main` prompts docs (docs only)_
 
-**Bengali TL;DR (সর্বশেষ — 2026-09-17 implement):** এই সেশন P0-9 (README tick) + O2 (Paginator 100) + E1 (import stay-on-page) + D-GPA (4.90→5.00) + D-MIS (AB/F + TC exclusion) implement করেছে — শুধু সর্বশেষ checkout (`44cbcc3` = `origin/main`, PR #27 merge) যাচাই করা হয়েছে। Isolated env-এ `requirements.txt` fallback (Django 5.2.17 / Python 3.11) দিয়ে **550 students test + 6 Node row-action test সব pass**, `manage.py check` 0 issue, `makemigrations --check` clean, migrations 0001–0042 synced। আগের P0–P2 backlog-এর প্রায় সব কাজ (isolation, money validation, voucher/promotion institution column, fee/auto-receipt, media S3, backup tooling incl. encryption/off-box) code-এ আছে; guardian contact unification (0039-0042), result analysis isolation, Full Rank List, row-action gating সব cover আছে। SSC Registration/Result Summary **restore করা হয়নি** (migration 0035 irreversible, regression test pass)। Live Render/DB/backup অবস্থা এই sandbox থেকে **UNKNOWN** — docs ছাড়া নিশ্চিত দাবি করা হয়নি। কোনো production DB/credential ব্যবহার করা হয়নি, ব্যক্তিগত তথ্যবিহীন test data ব্যবহৃত।
+**Bengali TL;DR (সর্বশেষ — 2026-09-19 baseline):** Isolated env (Python 3.11.2 + Django 5.2.17 fallback + Node 22.22.3, sqlite) দিয়ে **625 Django + 14 Node সব pass** (`check` 0, `check --deploy` 6 dev warnings, `makemigrations --check` clean, migrations 0001–0043 synced). 28-সেশন পরিকল্পনার প্রতিটি আইটেম `Complete/Partial/Missing` শ্রেণীতে ফেলা — **Complete 17, Partial 7, Missing 3 (+1 owner-decision), Unverified 1 (FN-01)** — বিস্তারিত `docs/prompts/reports/০০-baseline.md`। বাকি মূল কাজ: EX-01 Analysis subtab (Exam-এ 5 links), EX-03 Group field (`SubjectMarkSetting.group`), OF-05 photo continuity, AT-02 calendar grid, EM-01 teacher assignment, EM-03 payroll lock, EM-02 Leave (owner decision pending), DB-01/02/06 ও live ops (P0-7/8-live, P1-11-live) — সব Unverified live। SSC `0035` restore করা হয়নি, কোনো production DB/credential ছোঁয়া হয়নি।
 
 ---
 
@@ -210,3 +210,52 @@ Owner-only live ops (P0-7, P0-8-live, P1-11-live) + quick fixes (pagination 100,
 
 **No feature code, no migration, no grading/policy change, no destructive command, no live deploy in this session.**
 
+
+---
+
+## 20. Session 00 — 2026-09-19 · ২৮-সেশন baseline যাচাই (প্রম্পট ০১/২৮)
+
+**Scope (অনুমোদিত):** শুধু যাচাই ও ডকুমেন্টেশন — কোনো ফিচার কোড, migration বা live কাজ নয়। `git merge origin/main` শুধু docs/prompts plan (#34) আনার জন্য (docs-only), no feature code.
+
+### 20.1 Checks (see docs/prompts/reports/০০-baseline.md §1)
+
+- **Branch/commit/working tree/base/remote:** `arena/01a0b835-...` @ `f64194a` (= origin/main PR #33) → merged `ec6604b` (PR #34 prompts plan) → `git rev-parse HEAD` = `ec6604b` = `origin/main`; `git status` clean (1 untracked `docs/PROMPT_01.md` from prior turn, not committed); `git fetch` ok; no `reset --hard`/`clean`/force-push.
+- **Dependencies (isolated):** `/tmp/audit_venv` Django 5.2.17 (fallback, README documented), `openpyxl Pillow python-dotenv dj-database-url whitenoise psycopg2-binary django-storages boto3` — `check` 0 issues, `check --deploy` 6 dev warnings (`W004 W008 W009 W012 W016 W018`), `makemigrations --check` clean, leaf `0043_auditlog_institution`.
+- **Tests (isolated, disposable sqlite):** `manage.py test students` **625 pass in 226.131s — OK**, `node --test students/js/*.test.js` **14 pass (8 shortcut + 6 row-actions)** — matches prior claim (now verified on this checkout, rule 7 compliant).
+- **SSC retirement:** `0035_remove_ssc_registration_and_board_result.py` not restored, `RetiredBoardFeatureTests` pass.
+
+### 20.2 28-session verdict (summary from reports/০০-baseline.md §3)
+
+| Category | Count | IDs |
+|----------|-------|-----|
+| **Complete** | 17 | ০১, EX-02, EX-04, EX-05, EX-06, EX-07, OF-01, OF-02, OF-03, OF-04, OF-06, OF-08, DB-03, DB-04, DB-05, AT-01 + baseline itself |
+| **Partial** | 7 | EX-01 (Analysis subtab), OF-05 (photo continuity), OF-07 (edge hardening), DB-01/02 (nav/branding polish), DB-06 (live automation), AT-02 (calendar), EM-01 (teacher link), EM-03 (payroll lock) — counted as 7 distinct sessions (DB-01/02 share, AT-02 etc) |
+| **Missing** | 3 | EX-03 (`SubjectMarkSetting.group`), EM-02 Leave (owner decision), plus teacher-assignment portion of EM-01 counted in Partial |
+| **Unverified** | 1 | FN-01 (blocked until 01-27) + live-only P0-7/8-live/P1-11-live/DB-engine not counted as missing |
+
+Full matrix with file:line / view / test evidence in `docs/prompts/reports/০০-baseline.md` §3-§5. “Already complete” items note `যাচাই করা: ইতিমধ্যে সম্পন্ন — পরের প্রম্পট শুধু regression যাচাই করবে` in `PROGRESS.md`.
+
+### 20.3 Docs updated this session
+
+- `docs/prompts/reports/০০-baseline.md` — নতুন, detailed inventory + 28-session verdict + three lists (done / remaining / blocked) + gap table.
+- `docs/prompts/PROGRESS.md` — row ০১ `✅ সম্পন্ন` (2026-09-19, 625+14) + every other row's baseline verdict (`✅/🟡/⛔/⏳`) so next agents don't rebuild.
+- `docs/PROJECT_STATUS.md` — header to `ec6604b`, new §20, TL;DR synced to 625+14.
+- `docs/TASK_BACKLOG.md` — remaining list synced to baseline (see §20.4), Complete backlog at `ec6604b` noted.
+- `docs/HANDOFF.md` — new § for 2026-09-19 (next is EX-01).
+- No feature code, no migration, no grading/policy change, no production touch.
+
+### 20.4 Remaining work (for TASK_BACKLOG §Remaining — synced)
+
+1. **EX-01 remainder (Partial):** Exam flyout-এ Result Analysis 5 links + `exam_list` cross-link (same named URLs, no new view).
+2. **EX-03 (Missing):** `SubjectMarkSetting.group` + migration 0044 + form/template + UniqueConstraint update.
+3. **OF-05 remainder (Partial):** `AdmissionApplication.photo` + carry to `Student.photo` on enroll + S3 polish.
+4. **OF-07 remainder:** duplicate admission fingerprint hardening (if prompt 15 chooses).
+5. **DB-01/02 polish:** nav/branding consistency.
+6. **AT-02 remainder:** calendar grid view + accuracy fixture.
+7. **EM-01 remainder:** teacher/class assignment (M2M).
+8. **EM-03 remainder:** payroll closed-period lock (edit/delete guard when PAID/locked).
+9. **EM-02 (Missing, ⛔ owner decision):** Leave workflow — policy needed before build.
+10. **DB-06 (Partial) + live Unverified:** cron/bucket/health ping (owner Render dashboard).
+11. **FN-01 (⛔ blocked):** full release verification after 01-27.
+
+**No feature code in this session — only verification, so `WORK_TRACKER.md` rule satisfied (proof vs claim).**

@@ -1,10 +1,10 @@
 # Task Backlog — first production release scope
 
-_Last updated: 2026-09-17 (সেশন ০১ — বর্তমান অবস্থা যাচাই, test baseline এবং চূড়ান্ত backlog, base `44cbcc3` = `origin/main`)_
+_Last updated: 2026-09-19 (সেশন ০০ — ২৮-সেশন baseline, base `ec6604b` = `origin/main` docs/prompts plan #34; prior `44cbcc3`)_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
-_Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
+_Status values verified this session (baseline 2026-09-19): **Complete** / **Partial** / **Missing** / **Unverified** — 28-session verdicts in `docs/prompts/reports/০০-baseline.md` (Complete 17, Partial 7, Missing 3, Unverified 1) + live-only Unverified. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 
-**Bengali TL;DR:** 2026-09-09 পর্যন্ত P0 isolation/validation/voucher/promotion/backup প্রায় সব শেষ; 2026-09-17 যাচাইয়ে **550 Django + 6 Node সব pass** → 2026-09-17 implement P0-9/O2/E1/D-GPA/D-MIS শেষে **555 Django + 6 Node সব pass** (backup 72 test, media 33, isolation 50). Guarded contact unification, result analysis, Full Rank List, numeric roll-order, row gating সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + quick fixes (pagination 100, import stay-on-page, Ctrl+Click) + subject/result gaps (GPA 4.90→5.00 decision + missing-marks decision — দুটোই দুই PR করে) + Office gaps (উন্নত Reports, photo continuity) + Attendance calendar + Employee (teacher assignment, leave, closed-period) + দুটো বড় deferral (i18n, legacy drop) + doc tick (P0-9)। SSC restore করা হয়নি, live backup চালু হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ — এখন implementation scope-এর বাইরে।
+**Bengali TL;DR (2026-09-19 baseline):** Isolated env (Python 3.11.2 + Django 5.2.17 + Node 22.22.3, sqlite) দিয়ে **625 Django + 14 Node সব pass** (`check` 0, `makemigrations --check` clean, 0001–0043). 28-সেশন plan-এর True status: **Complete 17** (EX-02/04/05/06/07, OF-01/02/03/04/06/08, DB-03/04/05, AT-01 etc) · **Partial 7** (EX-01 Analysis subtab, OF-05 photo continuity, OF-07 edge hardening, DB-01/02 polish, DB-06 live, AT-02 calendar, EM-01 teacher link, EM-03 lock) · **Missing 3** (EX-03 `group` field, EM-02 Leave owner-decision, teacher assignment portion) · **Unverified 1** (FN-01) + live ops (P0-7 env, P0-8-live cron/bucket, P1-11-live S3, DB engine). SSC `0035` irreversible not restored. Bigger expansions (full fee engine / guardian portal / online payment, i18n P2-3, drop legacy P2-7) still future backlog — not in 01–28 implementation scope beyond noted polish.
 
 ---
 
@@ -418,3 +418,31 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 3. **SEC-FU-3 (P1):** P0-7/P0-8-live remain the highest *real-world* risks (mis-set prod env, no durable backup) — owner checklist `docs/PRODUCTION_CHECKLIST.md`.
 4. Quirk noted: other unguarded `archived_by`-style lookups may exist in templates (DEBUG-only crash, silent in prod); sweep is P2.
 
+
+---
+
+## Update — 2026-09-19 · সেশন ০০ — ২৮-সেশন baseline (প্রম্পট ০১/২৮)
+
+**Base:** `ec6604b` = `origin/main` (Merge PR #34 docs/prompts plan). Prior base `f64194a` (PR #33). This session **শুধু যাচাই ও ডক** — কোনো ফিচার কোড, migration, live কাজ নয়। Isolated env (Python 3.11.2 + Django 5.2.17 fallback + Node 22.22.3) দিয়ে যাচাই:
+
+- `manage.py check` → 0 issues
+- `manage.py check --deploy` (DEBUG=True) → 6 expected dev warnings (`W004 W008 W009 W012 W016 W018`)
+- `manage.py makemigrations --check` → No changes detected, leaf `0043_auditlog_institution`
+- `manage.py test students` → **Ran 625 tests in 226.131s — OK**
+- `node --test students/js/*.test.js` → **14 pass (8+6)**
+- No prod DB/secret touched, throwaway sqlite.
+
+**28-session verdicts (detailed evidence in `docs/prompts/reports/০০-baseline.md` §3):**
+
+| Verdict | Sessions |
+|---------|----------|
+| ✅ Complete (17) | ০০ baseline, EX-02, EX-04, EX-05, EX-06, EX-07, OF-01, OF-02, OF-03, OF-04, OF-06, OF-08, DB-03, DB-04, DB-05, AT-01 (+ ০১ itself) |
+| 🟡 Partial (7) | EX-01 (Analysis subtab remain), OF-05 (photo continuity), OF-07 (edge hardening), DB-01/02 (nav/branding polish), DB-06 (live automation), AT-02 (calendar), EM-01 (teacher link), EM-03 (payroll lock) |
+| ⛔ Missing (3) | EX-03 `SubjectMarkSetting.group` field, EM-02 Leave (owner decision ⛔), teacher-assignment M2M portion of EM-01 |
+| ⏳ Unverified (1) | FN-01 (blocked until 01-27) + live-only P0-7/8-live/P1-11-live/DB-engine remain Unverified per rule 7 |
+
+**Three lists (baseline §4):** ইতিমধ্যে সম্পন্ন → regression only; আসলে বাকি 9 items (EX-01 remainder, EX-03, OF-05, OF-07, DB-01/02 polish, AT-02, EM-01/03, DB-06 live) + owner-decision EM-02 + FN-01; owner-decision pending: EM-02 Leave policy, live ops choices, FN-01 go/no-go.
+
+**Docs updated:** `docs/prompts/reports/০০-baseline.md` (new) + `docs/prompts/PROGRESS.md` row 01 ✅ + 02–28 baseline verdicts + `docs/PROJECT_STATUS.md` header → `ec6604b` + §20 + `docs/HANDOFF.md` new § + this `TASK_BACKLOG.md` header sync.
+
+**No feature code, no migration, no grading/policy change, no destructive command, no live deploy — SSC `0035` not restored.**

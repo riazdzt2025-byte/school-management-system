@@ -163,3 +163,34 @@ Useful: `grant_institution_access --list-users`, `merge_duplicate_subjects` (dry
 
 Nothing else modified (no code/template/migration, no `requirements.txt`); working tree clean apart from these docs (plus ignored `/tmp/audit_venv`).
 
+
+---
+
+## সেশন ০০ — ২৮-সেশন baseline (প্রম্পট ০১/২৮) — 2026-09-19
+
+**Branch:** `arena/01a0b835-school-management-system` (prompt asks `arena/01a0b7f7...`; this session's tied branch is `arena/01a0b835...` per Arena session rule — content identical, merged `origin/main` ec6604b). **Base:** `f64194a` (PR #33) → merged `ec6604b` (PR #34 docs/prompts) for baseline plan. **Date:** 2026-09-19T06:30Z · **Scope:** শুধু যাচাই ও ডক — কোনো ফিচার কোড/migration/live নয়.
+
+**Checks (isolated, this checkout, disposable sqlite, no prod):**
+- `git fetch origin --prune` ok → `origin/main` = `ec6604b` (was `f64194a`, now 8 commits ahead with prompts)
+- `git status` clean (plus 1 untracked `docs/PROMPT_01.md` from prior turn, not committed)
+- `/tmp/audit_venv` Django 5.2.17 fallback: `check` 0, `check --deploy` 6 warnings (`W004 W008 W009 W012 W016 W018`), `makemigrations --check` clean (leaf 0043), `test students` **625 OK (226.131s)**, `node --test` **14 pass**
+
+**Audit (28-session verdicts — file:line evidence in `docs/prompts/reports/০০-baseline.md`):**
+- Complete 17 (baseline itself + EX-02/04/05/06/07, OF-01/02/03/04/06/08, DB-03/04/05, AT-01)
+- Partial 7 (EX-01 Analysis subtab remain, OF-05 photo continuity, OF-07 edge hardening, DB-01/02 polish, DB-06 live, AT-02 calendar, EM-01 teacher link, EM-03 lock)
+- Missing 3 (EX-03 `SubjectMarkSetting.group`, EM-02 Leave owner-decision, teacher M2M)
+- Unverified 1 (FN-01) + live-only P0-7/8-live/P1-11-live/DB-engine Unverified per rule 7
+- SSC `0035` irreversible not restored, `RetiredBoardFeatureTests` still pass.
+
+**Docs this session:**
+- `docs/prompts/reports/০০-baseline.md` (new — detailed matrix + proof)
+- `docs/prompts/PROGRESS.md` row ০১ → `✅ সম্পন্ন` + rows 02–28 baseline verdicts (`✅/🟡/⛔`)
+- `docs/PROJECT_STATUS.md` header `ec6604b` + §20 baseline
+- `docs/TASK_BACKLOG.md` header sync + Update 2026-09-19
+- `docs/HANDOFF.md` this section
+- No feature code/migration; smallest coherent change (docs only).
+
+**Perer prompt:** `০২ / ২৮ (EX-01 — Import redirect ও Analysis subtab)` — import redirect already ✅ (regression guard only), Exam flyout-এ 5 Analysis links + exam_list cross-link বাকি (same named URLs, no new view). Owner decision pending only for EM-02 Leave and live ops.
+
+**Owner করণীয়:** PR #35 (this baseline) approve; then ক্রমে ০২→২৮ চালানো — কোনো skip নয়, প্রতিটি নিজের যাচাই প্রথমে। Live ops (Render env, cron, bucket) owner dashboard-এ, chat-এ secret নয়.
+
