@@ -238,7 +238,7 @@ Owner-only live ops (P0-7, P0-8-live, P1-11-live) + quick fixes (pagination 100,
 | `./scripts/backup_smoke_test.sh` | **১৫ step pass / ০ fail** (disposable sqlite, plaintext + encrypted, SHA verify, wrong-passphrase reject) |
 | `moto_server` + `backup_smoke_test.sh --s3-endpoint …` | **২৮ step pass / ০ fail** (off-box upload → `--check-remote` → `fetch_backup` → restore → retention ২) |
 
-**CI (সর্বশেষ PR #41, `gh pr checks 41`):** `test (sqlite, 3.12)` **pass** 6m19s · `test (postgres, 3.12)` **pass** 6m39s · `Node` **pass** 5s — postgres:16-এও suite সবুজ। **EX-03 (পরবর্তী PR)** একই ৩টি check প্রত্যাশিত (local ৬৬৮ pass, migration উভয় backend-এ valid)।
+**CI (PR #42, `gh pr checks 42`):** `test (sqlite, 3.12)` **pass** 5m22s · `test (postgres, 3.12)` **pass** 7m24s · `Node` **pass** 5s — postgres:16-এও suite সবুজ (run 35490969199, 7m28s)। **PR #41**-ও একইভাবে pass (sqlite 6m19s / postgres 6m39s / Node 5s)।
 
 `RetiredBoardFeatureTests` সহ পুরো suite pass ⇒ SSC Registration/BoardResult পুনরুদ্ধার হয়নি।
 কোনো production DB/credential/Render/S3 আসল bucket ছোঁয়া হয়নি; `.restore-drill/` নিজেই পরিষ্কার হয়েছে।
