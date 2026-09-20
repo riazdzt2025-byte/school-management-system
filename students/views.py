@@ -20,7 +20,7 @@ from .models import (
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
     StudentSubjectChoice, SectionCapacity,
     MARK_PARTS, GROUPED_CLASS_LABELS,
-    normalize_guardian_contact, validate_guardian_contact,
+    class_supports_group, normalize_guardian_contact, validate_guardian_contact,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -2631,6 +2631,10 @@ def mark_evaluation_settings(request):
     exam_type = request.GET.get('exam_type') or request.POST.get('exam_type') or ''
     group = request.GET.get('group') or request.POST.get('group') or ''
 
+    # Normalise group for non-group classes: force blank
+    if admission_class and not class_supports_group(admission_class):
+        group = ''
+
     class_variants = class_filter_variants(admission_class)
     subjects_with_settings = []
     group_choices = []
@@ -2653,7 +2657,7 @@ def mark_evaluation_settings(request):
         ]
         from types import SimpleNamespace
         exam_like = SimpleNamespace(
-            institution_id=institution_id,
+            institution_id=int(institution_id),
             admission_class=admission_class,
             group=group,
             section='',
@@ -2674,18 +2678,31 @@ def mark_evaluation_settings(request):
             if row['group']:
                 note.add(group_labels.get(row['group'], row['group']))
 
-        existing = {
-            s.subject_id: s
-            for s in SubjectMarkSetting.objects.filter(
-                institution_id=institution_id,
-                admission_class__in=class_variants,
-                exam_type=exam_type,
-            )
-        }
+        # Existing rows keyed by subject for the effective group: prefer exact group, then blank default.
+        # Fetch both exact and default rows, then pick prevailing.
+        raw_settings = list(SubjectMarkSetting.objects.filter(
+            institution_id=institution_id,
+            admission_class__in=class_variants,
+            exam_type=exam_type,
+            group__in=[group, ''] if group else [''],
+        ))
+        # Build map: subject_id -> setting that prevails for this group
+        existing = {}
+        # Rank: exact group first, then blank; and class spelling preference (exam_like.admission_class first)
+        preferred_class = str(admission_class).strip()
+        class_rank = {preferred_class: 0}
+        for v in class_variants:
+            class_rank.setdefault(v, len(class_rank))
+        def group_rank(g):
+            return 0 if g == group else 1 if g == '' else 2
+        for s in sorted(raw_settings, key=lambda x: (group_rank(x.group), class_rank.get(x.admission_class, 99))):
+            existing.setdefault(s.subject_id, s)
 
         if request.method == 'POST':
             saved, mismatched = 0, []
             part_fields = ('cq_marks', 'mcq_marks', 'practical_marks', 'weekly_test_marks')
+            # Owner decisions (2026-09-20): exact sum, MID only weekly test, 9-12 only groups
+            MID_TYPES = {'MID_TERM_1', 'MID_TERM_2', 'MID_TERM_3'}
 
             def raw_value(field, subject_id):
                 return (request.POST.get(f'{field}_{subject_id}', '') or '').strip()
@@ -2699,6 +2716,17 @@ def mark_evaluation_settings(request):
                     pass_percentage = int(raw_value('pass_percentage', subject.id) or 40)
                 except ValueError:
                     messages.error(request, f'{subject.name}: Full Marks and Pass % must be whole numbers. Skipped.')
+                    continue
+
+                # Validation: full_marks >0, pass 0-100, group rule already normalised
+                if full_value <= 0:
+                    messages.error(request, f'{subject.name}: Full Marks must be greater than 0. Skipped.')
+                    continue
+                if not (0 <= pass_percentage <= 100):
+                    messages.error(request, f'{subject.name}: Pass % must be between 0 and 100. Skipped.')
+                    continue
+                if not class_supports_group(admission_class) and group:
+                    messages.error(request, f'{subject.name}: Group must be blank for classes below 9. Skipped.')
                     continue
 
                 parts, invalid = {}, []
@@ -2717,6 +2745,13 @@ def mark_evaluation_settings(request):
                         f'{subject.name}: {" / ".join(invalid)} must be a whole number or left blank. Skipped.'
                     )
                     continue
+                # Weekly Test only for MID exams
+                if parts.get('weekly_test_marks') is not None and exam_type not in MID_TYPES:
+                    messages.error(
+                        request,
+                        f'{subject.name}: Weekly Test is only allowed for Mid Term exams. Skipped.'
+                    )
+                    continue
                 over = [field for field, value in parts.items() if value is not None and value > full_value]
                 if over:
                     messages.error(
@@ -2728,22 +2763,41 @@ def mark_evaluation_settings(request):
 
                 configured = [value for value in parts.values() if value]
                 if configured and sum(configured) != full_value:
-                    mismatched.append(
-                        f'{subject.name}: parts add up to {sum(configured)}, Full Marks says {full_value}'
+                    # Owner chose exact equality (2026-09-20)
+                    messages.error(
+                        request,
+                        f'{subject.name}: parts add up to {sum(configured)}, Full Marks says {full_value} (must be equal). Skipped.'
                     )
-                SubjectMarkSetting.objects.update_or_create(
-                    institution_id=institution_id,
-                    admission_class=admission_class,
-                    subject=subject,
-                    exam_type=exam_type,
-                    defaults={
-                        'is_active': f'is_active_{subject.id}' in request.POST,
-                        'full_marks': full_value,
-                        'pass_percentage': pass_percentage,
-                        'require_all_parts_pass': f'require_all_parts_pass_{subject.id}' in request.POST,
-                        **parts,
-                    },
-                )
+                    continue
+
+                # Save with group awareness (blank for default, exact code for override)
+                save_group = group if class_supports_group(admission_class) else ''
+                # Validate duplicate via model clean is covered by unique constraint; update_or_create handles it as update.
+                try:
+                    setting, created = SubjectMarkSetting.objects.update_or_create(
+                        institution_id=institution_id,
+                        admission_class=admission_class,
+                        subject=subject,
+                        exam_type=exam_type,
+                        group=save_group,
+                        defaults={
+                            'is_active': f'is_active_{subject.id}' in request.POST,
+                            'full_marks': full_value,
+                            'pass_percentage': pass_percentage,
+                            'require_all_parts_pass': f'require_all_parts_pass_{subject.id}' in request.POST,
+                            **parts,
+                        },
+                    )
+                except Exception as exc:
+                    messages.error(request, f'{subject.name}: Could not save — {exc}. Skipped.')
+                    continue
+                # Audit trail for config change
+                try:
+                    record_audit(request.user, 'mark_setting_saved' if created else 'mark_setting_updated', setting,
+                                 snapshot={'group': save_group, 'full_marks': full_value, 'pass_percentage': pass_percentage, 'parts': parts},
+                                 details={'subject': subject.code, 'exam_type': exam_type, 'admission_class': admission_class})
+                except Exception:
+                    pass
                 saved += 1
 
             messages.success(request, f'Mark evaluation settings updated ({saved} subject(s)).')
@@ -2762,15 +2816,20 @@ def mark_evaluation_settings(request):
         for subject in subjects:
             setting = existing.get(subject.id)
             config = setting if setting else subject
+            # For display, weekly_test only shown for MID types; otherwise hide value (model clears it)
+            weekly_val = getattr(config, 'weekly_test_marks', None)
+            if exam_type not in {'MID_TERM_1', 'MID_TERM_2', 'MID_TERM_3'}:
+                # Keep stored None for non-MID, but show blank for clarity
+                pass
             subjects_with_settings.append({
                 'subject': subject,
-                'groups_note': ', '.join(sorted(groups_note.get(subject.id, ()))),
+                'groups_note': ', '.join(sorted(groups_note.get(subject.id, ()))), 
                 'is_active': setting.is_active if setting else True,
                 'full_marks': config.full_marks,
                 'cq_marks': config.cq_marks,
                 'mcq_marks': config.mcq_marks,
                 'practical_marks': config.practical_marks,
-                'weekly_test_marks': getattr(config, 'weekly_test_marks', None),
+                'weekly_test_marks': weekly_val,
                 'pass_percentage': config.pass_percentage,
                 'pass_marks': config.pass_marks,
                 'require_all_parts_pass': config.require_all_parts_pass,
@@ -2824,6 +2883,7 @@ def mark_evaluation_settings(request):
         'affected_exams': affected_exams,
         'institutions_data_json': _institutions_data_json(request),
     })
+
 
 def _subject_requirement_list_redirect(request):
     """Redirect back to the Subject Assignments list, preserving whatever
@@ -3757,7 +3817,7 @@ def import_exam_marks(request, pk):
             return redirect(url)
 
     form = ExamExcelImportForm(request.POST or None, request.FILES or None)
-    marks_config = get_subject_marks(exam, subject) if subject else None
+    marks_config = get_subject_marks(exam, subject, group=selected_group or None) if subject else None
     template_url = ''
     if subject:
         template_url = reverse('download_marks_import_template', kwargs={'pk': exam.pk})
@@ -3802,7 +3862,7 @@ def import_exam_marks(request, pk):
         try:
             workbook = openpyxl.load_workbook(request.FILES['excel_file'], data_only=True)
             validated_rows, skipped_count, errors = parse_subject_marks_workbook(
-                workbook, exam, subject, students,
+                workbook, exam, subject, students, group=selected_group or None,
             )
             if errors:
                 messages.error(request, 'Import rejected: ' + ' | '.join(errors[:10]))
@@ -3941,7 +4001,7 @@ def enter_marks(request, pk, subject_pk):
             )
         return redirect('select_marks_subject', pk=exam.pk)
 
-    marks_config = get_subject_marks(exam, subject)
+    marks_config = get_subject_marks(exam, subject, group=selected_group or None)
     parts = marks_config.parts
     # Disable the input only for students who did not select this subject at
     # admission. Religion papers still follow the student's own religion; all
@@ -4123,9 +4183,9 @@ def result_sheet(request, pk):
     sheet_columns = []
     for column in columns:
         if getattr(column, 'is_religion_column', False):
-            marks_config = column.header_marks_config(exam)
+            marks_config = column.header_marks_config(exam, group=selected_group or None)
         else:
-            marks_config = get_subject_marks(exam, column)
+            marks_config = get_subject_marks(exam, column, group=selected_group or None)
         sheet_columns.append({
             'subject': column,
             'full_marks': marks_config.full_marks if marks_config else None,
@@ -4286,7 +4346,7 @@ def _exam_result(request, exam, student_pk):
     student = _get_scoped_object_or_404(
         request, Student, student_pk, lambda s: s.institution,
     )
-    _, results = build_exam_results(exam)
+    _, results = build_exam_results(exam, group=exam.group or None)
     return student, next((r for r in results if r['student'].pk == student.pk), None)
 
 
@@ -5001,7 +5061,7 @@ def result_analysis_multi_term(request):
     result_maps = []
     students = {}
     for exam in selected:
-        _columns, results = build_exam_results(exam)
+        _columns, results = build_exam_results(exam, group=request.GET.get('group') or request.POST.get('group') or None)
         result_map = {row['student'].pk: row for row in results}
         result_maps.append(result_map)
         students.update({row['student'].pk: row['student'] for row in results})

@@ -66,7 +66,7 @@ def build_subject_marks_workbook(exam, subject, group=None):
     from openpyxl.styles import Font, Protection
     from openpyxl.utils import get_column_letter
 
-    marks_config = get_subject_marks(exam, subject)
+    marks_config = get_subject_marks(exam, subject, group=group)
     students = list(get_exam_students(exam, group=group))
     # A religion paper is only sat by the students whose religion it is, so
     # the template lists just those — no empty rows for anyone else. The map
@@ -169,8 +169,8 @@ def pick_marks_sheet(workbook):
     return workbook.active
 
 
-def parse_subject_marks_workbook(workbook, exam, subject, students):
-    return parse_subject_marks_sheet(pick_marks_sheet(workbook), exam, subject, students)
+def parse_subject_marks_workbook(workbook, exam, subject, students, group=None):
+    return parse_subject_marks_sheet(pick_marks_sheet(workbook), exam, subject, students, group=group)
 
 
 def _norm_name(value):
@@ -243,7 +243,7 @@ def _parse_number(raw, label, maximum):
     return number
 
 
-def parse_subject_marks_sheet(sheet, exam, subject, students):
+def parse_subject_marks_sheet(sheet, exam, subject, students, group=None):
     """Return (validated_rows, skipped_count, errors).
 
     Each validated row is (student, defaults_dict) ready for ExamMark.update_or_create.
@@ -254,12 +254,12 @@ def parse_subject_marks_sheet(sheet, exam, subject, students):
     if 'id' not in columns and 'roll' not in columns:
         raise ValueError('The first row must contain Roll and ID columns (or Student ID).')
 
-    marks_config = get_subject_marks(exam, subject)
+    marks_config = get_subject_marks(exam, subject, group=group)
     parts = marks_config.parts
     # Only students assigned this subject during admission are importable.
     # Religion papers add the student's own-paper check on top of that map.
-    all_subjects, _filtered = get_exam_subjects(exam)
-    student_subject_ids = get_student_subject_ids(exam, students, subjects=all_subjects)
+    all_subjects, _filtered = get_exam_subjects(exam, group=group)
+    student_subject_ids = get_student_subject_ids(exam, students, subjects=all_subjects, group=group)
     religion_by_pk = religion_subject_map(exam, all_subjects)
     if subject.pk in religion_by_pk:
         students = [

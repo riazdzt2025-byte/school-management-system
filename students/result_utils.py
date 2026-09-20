@@ -99,7 +99,7 @@ def get_exam_subjects(exam, group=None):
     subject_ids = list(requirements.values_list('subject_id', flat=True).distinct())
     if not subject_ids:
         return [], False
-    subject_ids = list(active_exam_subject_ids(exam, subject_ids))
+    subject_ids = list(active_exam_subject_ids(exam, subject_ids, group=effective_group))
     if not subject_ids:
         return [], True
     # The printed register follows the examination subject serial/code
@@ -109,13 +109,17 @@ def get_exam_subjects(exam, group=None):
     return list(Subject.objects.filter(pk__in=subject_ids).order_by('code', 'name')), True
 
 
-def active_exam_subject_ids(exam, subject_ids):
+def active_exam_subject_ids(exam, subject_ids, group=None):
     """Subject ids still enabled in Mark Evaluation for this exam type.
 
     Mark Evaluation has an Active/Count checkbox per Institution + Class +
-    Subject + Exam Type. A missing row means the subject remains active so old
+    Subject + Exam Type + Group. A missing row means the subject remains active so old
     data behaves exactly as before; only an explicit unchecked setting disables
     a subject for marks entry/import/result calculation.
+
+    Group-aware (EX-03): the resolution is group-specific -> blank-group
+    default. For an exam in group SCI, the SCI row decides; otherwise the
+    blank-group row; otherwise active.
     """
     from .models import SubjectMarkSetting
 
@@ -128,21 +132,34 @@ def active_exam_subject_ids(exam, subject_ids):
     if not exam_type or not institution_id or not admission_class:
         return set(subject_ids)
 
+    effective_group = (group if group is not None else getattr(exam, 'group', '')) or ''
     preferred_class = str(admission_class).strip()
     class_variants = class_filter_variants(preferred_class)
+    # Build rank for class and group priority
     class_rank = {preferred_class: 0}
     for value in class_variants:
         class_rank.setdefault(value, len(class_rank))
+    # Group priority: exact group (0) then blank (1)
+    def group_rank(g):
+        if effective_group and g == effective_group:
+            return 0
+        if g == '':
+            return 1
+        return 2
 
+    # Fetch all candidate rows (exact group + blank fallback)
+    group_filter = [effective_group, ''] if effective_group else ['']
     settings = SubjectMarkSetting.objects.filter(
         institution_id=institution_id,
         admission_class__in=class_variants,
         subject_id__in=subject_ids,
         exam_type=exam_type,
-    ).values('subject_id', 'admission_class', 'is_active')
+        group__in=group_filter,
+    ).values('subject_id', 'admission_class', 'group', 'is_active')
 
+    # Sort by group priority then class rank, so the prevailing row is first.
     active_by_subject = {}
-    for row in sorted(settings, key=lambda item: class_rank.get(item['admission_class'], 99)):
+    for row in sorted(settings, key=lambda item: (group_rank(item['group']), class_rank.get(item['admission_class'], 99))):
         active_by_subject.setdefault(row['subject_id'], row['is_active'])
 
     return {subject_id for subject_id in subject_ids if active_by_subject.get(subject_id, True)}
@@ -218,7 +235,7 @@ def subject_availability_diagnosis(exam, students=None, group=None):
         return SUBJECTS_NOT_ASSIGNED, no_subjects_assigned_message(exam)
 
     assigned_ids = list({row['subject_id'] for row in requirement_rows})
-    active_ids = set(active_exam_subject_ids(exam, assigned_ids))
+    active_ids = set(active_exam_subject_ids(exam, assigned_ids, group=effective_group))
     if not active_ids:
         return SUBJECTS_ALL_DISABLED, (
             f"All {len(assigned_ids)} subject(s) assigned to Class {exam.admission_class}"
@@ -502,31 +519,72 @@ def get_exam_group_choices(exam):
     return [(code, label) for code, label in Student.GROUP_CHOICES if code in codes]
 
 
-def get_subject_marks(exam, subject):
+def get_subject_marks(exam, subject, group=None):
     """
     Returns the marks configuration for this exam+subject combination — the
     specific SubjectMarkSetting if one exists, otherwise the subject's own
     global defaults. Both expose the same interface (see ``MarksConfigMixin``):
     full_marks, the part columns, pass_marks, parts.
 
-    The setting's class is matched zero-padding tolerant ('9' = '09'), with the
-    exam's own spelling preferred, so a setting saved under either form is
-    found and the same one wins every time.
+    Resolution chain (group-aware, EX-03):
+      1) group-specific row (institution+class+subject+exam_type+group)
+      2) blank-group default (group='')
+      3) Subject global defaults
+
+    ``group`` overrides ``exam.group`` when the exam was created without a
+    group (the marks pages let the user pick a group). The setting's class is
+    matched zero-padding tolerant ('9' = '09'), with the exam's own spelling
+    preferred, so a setting saved under either form is found and the same one
+    wins every time.
     """
     from .models import SubjectMarkSetting
 
+    effective_group = (group if group is not None else getattr(exam, 'group', '')) or ''
     exam_class = str(exam.admission_class)
-    for cls in [exam_class] + [v for v in class_filter_variants(exam_class) if v != exam_class]:
-        setting = SubjectMarkSetting.objects.filter(
-            institution=exam.institution,
-            admission_class=cls,
-            subject=subject,
-            exam_type=exam.exam_type,
-        ).first()
-        if setting:
-            return setting
-
+    class_candidates = [exam_class] + [v for v in class_filter_variants(exam_class) if v != exam_class]
+    # Group candidates in priority order: exact group first, then blank fallback.
+    if effective_group:
+        group_candidates = [effective_group, '']
+    else:
+        group_candidates = ['']
+    for grp in group_candidates:
+        for cls in class_candidates:
+            setting = SubjectMarkSetting.objects.filter(
+                institution=exam.institution,
+                admission_class=cls,
+                subject=subject,
+                exam_type=exam.exam_type,
+                group=grp,
+            ).first()
+            if setting:
+                return setting
     return subject
+
+def resolve_mark_setting(institution, admission_class, subject, exam_type, group=''):
+    """Low-level helper for the resolution chain used by bulk queries.
+
+    Returns the SubjectMarkSetting that applies for (institution, class,
+    subject, exam_type, group) or None when only the Subject defaults apply.
+    Mirrors :func:`get_subject_marks` without needing an Exam object.
+    """
+    from .models import SubjectMarkSetting
+
+    group = (group or '').strip()
+    admission_class = str(admission_class).strip()
+    class_candidates = [admission_class] + [v for v in class_filter_variants(admission_class) if v != admission_class]
+    group_candidates = [group, ''] if group else ['']
+    for grp in group_candidates:
+        for cls in class_candidates:
+            setting = SubjectMarkSetting.objects.filter(
+                institution=institution,
+                admission_class=cls,
+                subject=subject,
+                exam_type=exam_type,
+                group=grp,
+            ).first()
+            if setting:
+                return setting
+    return None
 
 
 def get_grade(percentage):
@@ -683,7 +741,7 @@ class ReligionColumn:
     def paper_for_label(self, label):
         return self.papers_by_label.get(label)
 
-    def header_marks_config(self, exam):
+    def header_marks_config(self, exam, group=None):
         """Full Marks for the column header: prefer the Islam paper's exam
         setting, then any other assigned paper — the papers share the same
         marks structure in every real curriculum."""
@@ -691,7 +749,7 @@ class ReligionColumn:
             self.paper_for_label('Islam')
             or next(iter(self.papers_by_label.values()), None)
         )
-        return get_subject_marks(exam, paper) if paper else None
+        return get_subject_marks(exam, paper, group=group) if paper else None
 
     def __str__(self):
         return self.name
@@ -877,7 +935,7 @@ def build_exam_results(exam, group=None):
                         'failed_parts': [], 'parts': [], 'pass_marks': None,
                     })
                     continue
-                marks_config = get_subject_marks(exam, paper)
+                marks_config = get_subject_marks(exam, paper, group=group)
                 result = compute_subject_result(student_marks.get(paper.pk), marks_config)
                 result['subject'] = column
                 result['religion_column'] = True
@@ -895,7 +953,7 @@ def build_exam_results(exam, group=None):
                         'failed_parts': [], 'parts': [], 'pass_marks': None,
                     })
                     continue
-                marks_config = get_subject_marks(exam, column)
+                marks_config = get_subject_marks(exam, column, group=group)
                 result = compute_subject_result(student_marks.get(column.pk), marks_config)
                 result['subject'] = column
 

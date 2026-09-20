@@ -535,7 +535,7 @@ class MarksConfigMixin(models.Model):
     """
     pass_percentage = models.PositiveIntegerField(
         default=40,
-        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text='Pass mark as a percentage of Full Marks. SSC rule is 40.',
     )
     require_all_parts_pass = models.BooleanField(
@@ -779,15 +779,28 @@ class Exam(models.Model):
 class SubjectMarkSetting(MarksConfigMixin):
     """
     Full Marks / CQ / MCQ / Practical / Weekly Test for a specific
-    Institution + Class + Subject + Exam Type. If no row exists for a given
+    Institution + Class + Subject + Exam Type + Group. If no row exists for a given
     exam, the system falls back to the Subject's own global defaults
     (full_marks/cq_marks/mcq_marks/practical_marks and their pass rules).
+
+    ``group`` is blank for the default that applies to every group of the
+    class. When a group-specific row exists (e.g. SCI), it overrides the
+    blank-group default for students of that group. See
+    :func:`students.result_utils.get_subject_marks` for the resolution chain:
+    group-specific -> blank-group -> Subject defaults.
     """
     institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='mark_settings')
     admission_class = models.CharField(max_length=10, help_text="e.g. 6, 9, 10")
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='mark_settings')
     exam_type = models.CharField(max_length=15, choices=Exam.EXAM_TYPE_CHOICES)
-    full_marks = models.PositiveIntegerField(default=100)
+    group = models.CharField(
+        max_length=3,
+        choices=Student.GROUP_CHOICES,
+        blank=True,
+        default='',
+        help_text="Leave blank for the default that applies to every group; pick a group (e.g. Science) for a group-specific override. Groups only apply to classes 9-12.",
+    )
+    full_marks = models.PositiveIntegerField(default=100, validators=[MinValueValidator(1)])
     cq_marks = models.PositiveIntegerField(null=True, blank=True)
     mcq_marks = models.PositiveIntegerField(null=True, blank=True)
     practical_marks = models.PositiveIntegerField(null=True, blank=True)
@@ -803,13 +816,41 @@ class SubjectMarkSetting(MarksConfigMixin):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['institution', 'admission_class', 'subject', 'exam_type'],
-                name='unique_institution_class_subject_examtype',
+                fields=['institution', 'admission_class', 'subject', 'exam_type', 'group'],
+                name='unique_institution_class_subject_examtype_group',
             ),
         ]
 
+    def clean(self):
+        super().clean()
+        # Groups only exist from class 9 upwards.
+        if not class_supports_group(self.admission_class) and self.group:
+            raise ValidationError({'group': 'Group must be blank for classes below 9 (no group applies).'})
+        if self.group and self.group not in dict(Student.GROUP_CHOICES):
+            raise ValidationError({'group': f'Invalid group code: {self.group}.'})
+        if self.full_marks is not None and self.full_marks <= 0:
+            raise ValidationError({'full_marks': 'Full Marks must be greater than 0.'})
+        if self.pass_percentage is not None and not (0 <= self.pass_percentage <= 100):
+            raise ValidationError({'pass_percentage': 'Pass % must be between 0 and 100.'})
+        # Note: parts sum (exact vs <=) and weekly_test exam-type restriction are
+        # enforced in the Mark Evaluation view (owner decision 2026-09-20: exact
+        # sum and MID-only weekly test). The model stays permissive so legacy
+        # mismatched rows and the MarksParts tests that deliberately create
+        # mismatched configs remain valid at the DB layer; the mismatch is
+        # surfaced as a warning on the entry pages, not a hard DB rejection.
+
+    def save(self, *args, **kwargs):
+        # Enforce group blank for non-group classes at save time as well (forms may bypass clean).
+        if not class_supports_group(self.admission_class):
+            self.group = ''
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.institution} - Class {self.admission_class} - {self.subject.name} - {self.get_exam_type_display()}"
+        base = f"{self.institution} - Class {self.admission_class} - {self.subject.name} - {self.get_exam_type_display()}"
+        if self.group:
+            base += f" - {self.get_group_display()}"
+        return base
 
 class ExamMark(models.Model):
     """One student's mark in one subject of one exam.
