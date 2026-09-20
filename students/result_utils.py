@@ -8,7 +8,7 @@ here so there is exactly one implementation of each.
 from collections import defaultdict
 from decimal import Decimal
 
-from django.db.models import Q
+from django.db.models import Q, F
 
 
 def class_filter_variants(value):
@@ -49,7 +49,12 @@ def get_exam_students(exam, group=None):
     effective_group = (group if group is not None else exam.group) or ''
     if effective_group:
         students = students.filter(group=effective_group)
-    return students.order_by('roll_no', 'name')
+    # Register order (EX-02 rule): numeric roll — ``roll_no`` is an
+    # IntegerField, so SQL sorts it numerically — with name and pk as stable
+    # tie-breaks, and students *without* a roll always last (``nulls_last``;
+    # a plain ``order_by('roll_no')`` would put NULLs first). Seat plans,
+    # signature sheets and the marks-entry list all follow this order.
+    return students.order_by(F('roll_no').asc(nulls_last=True), 'name', 'pk')
 
 
 def get_exam_subjects(exam, group=None):
@@ -994,6 +999,7 @@ def failed_subject_rows(exam, group=None):
         row['student'].roll_no is None,
         row['student'].roll_no or 0,
         row['student'].name.lower(),
+        row['student'].pk,
     ))
 
 
@@ -1001,8 +1007,8 @@ def section_arrangement_rows(exam, group=None):
     """Rank all candidates for merit-based section arrangement.
 
     Fewer failed subjects always comes first; ties are decided by higher total
-    marks, then the existing roll and name for deterministic previews.  This
-    ranking intentionally does not use or alter ``roll_no``.
+    marks, then the existing roll, name and pk for deterministic previews.
+    This ranking intentionally does not use or alter ``roll_no``.
     """
     _columns, results = build_exam_results(exam, group=group)
     rows = []
@@ -1025,4 +1031,5 @@ def section_arrangement_rows(exam, group=None):
         row['student'].roll_no is None,
         row['student'].roll_no or 0,
         row['student'].name.lower(),
+        row['student'].pk,
     ))
