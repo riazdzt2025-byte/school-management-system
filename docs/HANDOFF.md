@@ -9,7 +9,7 @@
 **Bengali TL;DR:** আনুষ্ঠানিক নিয়ম বসানো হলো — **register/roll output = numeric roll (None সবার শেষে, tie name→pk); merit output = position (অপরিবর্তিত)**। ঠিক হলো: `student_list` + `download_student_list` + `get_exam_students`-এ **NULL-first** ফাঁক (`nulls_last` — SQLite/Postgres ASC-তে NULL আগে আসত) ও pk tie-break; attendance class-wise list **name → roll**; class result-cards print run **merit → roll** (owner সিদ্ধান্ত); multi-term/subject-fail/section-arrangement-এ pk tie-break। Merit pin: `exam_result_summary`, `full_rank_list`, `top_10`, merit slides; `section_arrangement` merit+tie-break; attendance log `-date`; attendance summary name। পূর্ণ ordering matrix `docs/prompts/reports/EX-02.md`-এ ও সংশ্লিষ্ট view docstring-এ।
 **owner-সিদ্ধান্ত (সেশনের শুরুতে জিজ্ঞেস করে নেওয়া):** download_student_list/Excel = roll · roll None = শেষে।
 **যাচাই (লোকাল, Django 5.2.17 fallback):** পূর্ণ suite **653 Django test OK** (638+১৫ নতুন `test_register_roll_order.py`) · ফোকাসড ৬৯ OK · `check` 0 · `makemigrations --check` clean (migration নেই) · Node **14/0**।
-**CI (PR #41, Django 6.1/py3.12):** sqlite ✅ · postgres:16 ✅ · Node ✅।
+**CI (PR #41, Django 6.1/py3.12):** sqlite ✅ 6m19s · postgres:16 ✅ 6m39s · Node ✅ 5s।
 
 **Docs updated this session:** `docs/prompts/reports/EX-02.md` (নতুন — ordering matrix সহ), `docs/prompts/PROGRESS.md` (সারি ০৩ + header),
 `docs/PROJECT_STATUS.md` (E3 হালনাগাদ), `docs/TASK_BACKLOG.md` (বাকি-তালিকা হালনাগাদ), `docs/HANDOFF.md` (এই নোট)।
