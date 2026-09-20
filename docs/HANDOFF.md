@@ -3,13 +3,13 @@
 ## সেশন EX-03 — ২০২৬-০৯-২০ · প্রম্পট ০৪/২৮ · Group-based Mark Evaluation
 
 **Session branch:** `arena/01a0bd0d-school-management-system` · **Base:** `7a13e33` = `origin/main` (PR #41 MERGED) ·
-**Commit:** (পরবর্তী) · **PR:** (পরবর্তী — owner merge-অনুমোদন বাকি; এজেন্ট merge করবে না) ·
+**Commit:** `c738e47` · **PR:** #42 (OPEN — owner merge-অনুমোদন বাকি; এজেন্ট merge করবে না) ·
 **Scope:** শুধু EX-03 — group-aware mark evaluation + tests + docs; **কোনো SSC restore / live deploy / paid service নয়**।
 
 **Bengali TL;DR:** `SubjectMarkSetting`-এ **group field** যোগ হলো (0044 migration: `group` blank=default, unique `institution+class+subject+exam_type+group`); একই class+exam_type-এ SCI/ARTS আলাদা full marks/parts/pass % এখন সম্ভব। Resolution chain এক ফাংশনে: **group-specific → blank-group → Subject defaults** (`get_subject_marks(..., group)` + `active_exam_subject_ids(..., group)` + `resolve_mark_setting`). Marks entry/import/result সব group-aware; mark_evaluation_settings UI-এ group selector + per-group listing, Save-এ validation (full>0, pass 0-100, parts exact sum, weekly MID-only, group rule <9 blank, duplicate) + স্পষ্ট error message + `record_audit`। Backward compat: পুরোনো blank-group rows সব group-এ default।
 **owner-সিদ্ধান্ত (সেশনের শুরুতে জিজ্ঞেস করে নেওয়া):** parts exact (=), weekly শুধু MID_TERM_1/2/3, group শুধু 9-12 (নিচে blank)।
 **যাচাই (লোকাল, Django 5.2.17 fallback):** পূর্ণ suite **৬৬৮ Django test OK** (৬৫৩+১৫ নতুন `test_group_based_mark_evaluation.py`) · ফোকাসড `test_group_based_mark_evaluation` ১৫/১৫ + `test_result_analysis`/`test_new_subject_result_workflow` ৮৫ + `MarksParts` ৯ + `MarkEvaluationActive` ৩ OK · `check` 0 · `makemigrations --check` clean (migration 0044) · Node **14/0**।
-**CI (PR পরবর্তী, Django 6.1/py3.12):** sqlite + postgres:16 + Node — তিনটি check pass প্রত্যাশিত (local ৬৬৮ pass প্রমাণিত, migration উভয় backend-এ valid)।
+**CI (PR #42, Django 6.1/py3.12):** ⏳ pending — sqlite + postgres:16 + Node (local ৬৬৮ pass প্রমাণিত, migration উভয় backend-এ valid) — `gh pr checks 42` দেখুন।
 
 **Docs updated this session:** `docs/prompts/reports/EX-03.md` (নতুন — group-aware chain + validation matrix), `docs/prompts/PROGRESS.md` (সারি ০৪ + header),
 `docs/PROJECT_STATUS.md` (E4 হালনাগাদ, §20), `docs/TASK_BACKLOG.md` (EX-03 Complete), `docs/HANDOFF.md` (এই নোট)।
