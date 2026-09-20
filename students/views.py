@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.core.paginator import Paginator
-from django.db.models import Sum, Q, Count
+from django.db.models import Sum, Q, Count, F
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from .curriculum_data import curriculum_for_class
@@ -967,6 +967,9 @@ def class_section_summary(request):
             **counts,
         })
 
+    # Aggregate view: rows are (class, section) counts — no per-student rows,
+    # so the register roll-order rule has nothing to sort here. Classes and
+    # sections keep their natural string order for a deterministic table.
     summary_rows.sort(key=lambda r: (r['admission_class'], r['section']))
 
     grand_total = students_qs.count()
@@ -1240,6 +1243,9 @@ def admission_funnel_export(request):
 
 @login_required
 def attendance_report(request):
+    """Attendance record log (EX-02 matrix: a date-descending *log*, not a
+    class register — rows are records, so the register roll-order rule does
+    not apply; the class-wise student list lives in mark_attendance_bulk)."""
     institution = _selected_institution_for_request(request)
     records = AttendanceRecord.objects.select_related('student', 'employee', 'institution').order_by('-date', '-created_at')
     if institution is not None:
@@ -1305,8 +1311,12 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
             students = students.filter(institution=institution)
         else:
             students = _scope_by_allowed_institutions(request, students)
-        students = students.order_by('name')
-        
+        # Class register order (EX-02 rule): numeric roll, name/pk tie-breaks,
+        # students without a roll last — same list the paper register follows.
+        students = students.order_by(
+            F('roll_no').asc(nulls_last=True), 'name', 'pk',
+        )
+
         if request.method == 'POST':
             records_created = 0
             for student in students:
@@ -1479,6 +1489,8 @@ def attendance_summary(request):
     return render(request, 'students/attendance_summary.html', {
         'start_date': start_date,
         'end_date': end_date,
+        # Analytics page spanning classes (and employees, who have no roll):
+        # rows stay alphabetical by name — not a register list (EX-02 matrix).
         'student_summary': sorted(student_summary.values(), key=lambda x: x['student'].name),
         'employee_summary': sorted(employee_summary.values(), key=lambda x: x['employee'].name),
         'institution': institution,
@@ -1607,7 +1619,13 @@ def student_list(request):
         if group:
             qs = qs.filter(group=group)
     qs = apply_student_text_search(qs, search_q)
-    students = list(qs.order_by('admission_class', 'section', 'roll_no', 'name', 'pk'))
+    # Register order (EX-02 rule): class → section → numeric roll → name → pk.
+    # roll_no is an IntegerField so SQL sorts numerically; nulls_last keeps
+    # students without a roll at the end instead of the SQL NULLS-first default.
+    students = list(qs.order_by(
+        'admission_class', 'section',
+        F('roll_no').asc(nulls_last=True), 'name', 'pk',
+    ))
 
     # ---- Duplicate detection ----
     exact_key_count = defaultdict(int)
@@ -1690,7 +1708,12 @@ def download_student_list(request):
             qs = qs.filter(group=group)
     qs = apply_student_text_search(qs, search_q)
 
-    qs = qs.order_by('admission_class', 'section', 'roll_no', 'name')
+    # Same register order as the Student List page (owner decision 2026-09-20):
+    # class → section → numeric roll → name → pk, students without a roll last.
+    qs = qs.order_by(
+        'admission_class', 'section',
+        F('roll_no').asc(nulls_last=True), 'name', 'pk',
+    )
 
     headers = [
         "Student ID", "Name", "Class", "Section", "Roll No", "Gender", "Religion",
@@ -4161,6 +4184,14 @@ def result_sheet(request, pk):
 
 @login_required
 def result_summary(request, pk):
+    """Published Result page for one exam.
+
+    Ordering rule (EX-02 matrix): this is a *ranking* output — rows stay in
+    merit position order (ties share a position), with unranked Fail / No
+    Marks students following in register roll order (numeric roll, None
+    last). The Position column is the page's first column on purpose; the
+    register-style view is result_sheet.
+    """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
@@ -4183,6 +4214,8 @@ def result_summary(request, pk):
 
 @login_required
 def top_10(request, pk):
+    """Top-10 list — merit position order, intentionally (EX-02 rule:
+    ranking output). Rolls never decide this order."""
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
@@ -4212,6 +4245,9 @@ def full_rank_list(request, pk):
     result sheet / summary / top-10, but lists the entire cohort instead of
     just the top 10. Supports the group picker for exams created without a
     group, matching result_sheet / result_summary.
+
+    Ordering rule (EX-02 matrix): merit position order — intentional. The
+    unranked tail (Fail / No Marks) follows in register roll order.
     """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
@@ -4362,6 +4398,9 @@ def generate_seat_plan(request, pk):
 @login_required
 def view_seat_plan_room(request, pk, room_name):
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    # SeatPlan.Meta orders by (room_name, seat_no); seat numbers are handed
+    # out in register roll order by generate_seat_plan (get_exam_students —
+    # numeric roll, None last), so this print follows the class register.
     seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
@@ -4374,6 +4413,8 @@ def view_seat_plan_room(request, pk, room_name):
 @login_required
 def signature_sheet(request, pk, room_name):
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    # Register order: SeatPlan.Meta (room_name, seat_no); seats are assigned
+    # in get_exam_students order (numeric roll, None last) at generation time.
     seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
@@ -4965,7 +5006,9 @@ def result_analysis_multi_term(request):
         result_maps.append(result_map)
         students.update({row['student'].pk: row['student'] for row in results})
     rows = []
-    for student in sorted(students.values(), key=lambda s: (s.roll_no is None, s.roll_no or 0, s.name.lower())):
+    # Register order across the multi-term comparison (EX-02 rule): numeric
+    # roll, name, then pk so two students sharing a roll still sort stably.
+    for student in sorted(students.values(), key=lambda s: (s.roll_no is None, s.roll_no or 0, s.name.lower(), s.pk)):
         rows.append({'student': student, 'results': [mapping.get(student.pk) for mapping in result_maps]})
     context = _analysis_base_context(request, exams)
     context.update({'selected_exams': selected, 'selected_exam_ids': [e.pk for e in selected], 'rows': rows})
@@ -4988,6 +5031,13 @@ def result_analysis_merit_slides(request):
 
 @login_required
 def result_analysis_result_cards(request):
+    """Result Cards (Class) — print the whole class in one run.
+
+    Ordering rule (EX-02 matrix, owner decision 2026-09-20): the print run
+    follows the class register — numeric roll order with name/pk tie-breaks
+    and students without a roll last — so the stack can be filed/distributed
+    by roll. Each card still shows the computed merit position.
+    """
     _require_result_analysis_department(request)
     exams = _analysis_exam_queryset(request)
     exam = _selected_analysis_exam(request, exams)
@@ -4995,6 +5045,12 @@ def result_analysis_result_cards(request):
     if exam:
         _columns, results = build_exam_results(exam, request.GET.get('group') or None)
         results = [row for row in results if row['has_marks']]
+        results = sorted(results, key=lambda row: (
+            row['student'].roll_no is None,
+            row['student'].roll_no or 0,
+            row['student'].name.lower(),
+            row['student'].pk,
+        ))
     context = _analysis_base_context(request, exams)
     context.update({'exam': exam, 'results': results})
     return render(request, 'students/result_analysis_result_cards.html', context)
