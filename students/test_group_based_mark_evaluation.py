@@ -283,3 +283,26 @@ class GroupAwareMarkEvaluationTests(TestCase):
         s2 = SubjectMarkSetting.objects.create(institution=self.institution, admission_class='10', subject=self.chemistry, exam_type='FIRST_TERM', group='BUS', full_marks=100)
         self.assertNotEqual(s1.full_marks, s2.full_marks)
         self.assertEqual(SubjectMarkSetting.objects.filter(admission_class='10', subject=self.chemistry, exam_type='FIRST_TERM').count(), 2)
+
+    # (viii) Weekly Test column hidden for non-MID exam types (finishing item of EX-03)
+    def test_weekly_test_column_hidden_for_non_mid_exam_type(self):
+        # Legacy weekly value stored on a non-MID row (model is permissive) must
+        # not be displayed once the column is hidden.
+        SubjectMarkSetting.objects.create(
+            institution=self.institution, admission_class='9', subject=self.physics,
+            exam_type='FIRST_TERM', group='', full_marks=100, weekly_test_marks=20,
+        )
+        resp = self.client.get(reverse('mark_evaluation_settings'), {
+            'institution': self.institution.pk, 'admission_class': '9', 'exam_type': 'FIRST_TERM',
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'weekly_test_marks_')
+        self.assertNotContains(resp, 'Weekly Test')
+
+    def test_weekly_test_column_shown_for_mid_exam_type(self):
+        resp = self.client.get(reverse('mark_evaluation_settings'), {
+            'institution': self.institution.pk, 'admission_class': '9', 'exam_type': 'MID_TERM_1',
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Weekly Test')
+        self.assertContains(resp, f'weekly_test_marks_{self.physics.pk}')

@@ -1,5 +1,19 @@
 # Handoff — School Management System
 
+## সেশন EX-03 বাকি কাজ (finishing) — ২০২৬-০৯-২০ · প্রম্পট ০৪/২৮ · Group-based Mark Evaluation
+
+**Session branch:** `arena/01a0bd3f-school-management-system` · **Base:** PR #42-এর head `3690ea8` (commits `c738e47`+`afaf9dc`+`3690ea8` fast-forward merge করে আনা; মূল base `7a13e33` = `origin/main`) ·
+**Commit:** (নিচে) · **PR:** (নিচে — এই branch-এর নিজস্ব PR; PR #42-এর সম্পূর্ণ উপসেট) ·
+**Scope:** শুধু EX-03-এর প্রমিত **বাকি কাজ** — `mark_evaluation_settings`-এ **weekly_test column non-MID exam_type-এ hide** (PR #42-এ "Owner করণীয়" + `reports/EX-03.md` §3-এ লেখা এক-লাইনের বদল) + 2 regression test + docs; **কোনো model/migration নতুন নেই, কোনো SSC restore / live deploy / paid service নেই**।
+
+**Bengali TL;DR:** view-এ `MID_TYPES`/`show_weekly_test` flag view-শুরুতে hoist (POST validation + GET context একই constant), template-এ Weekly Test `<th>`/`<td>` + help-text mention conditional, GET display-এর dead `if …: pass` block সরিয়ে `weekly_val = … if show_weekly_test else None`। ফলে non-MID exam_type-এ (FIRST_TERM/FINAL/…) Weekly Test column/input নেই; legacy non-MID row-এ saved weekly value DB-এ থাকে কিন্তু display হয় না; MID_TERM_1/2/3-এ সব আগের মতো + POST rejection (already there) এখন double-guard।
+**যাচাই (লোকাল, Django 5.2.17 fallback venv, SQLite):** ফোকাসড `test_group_based_mark_evaluation` **17/17 OK** (15+2 নতুন) · ফোকাসড regression (`MarksParts`+`MarkEvaluationActive`+`test_result_analysis`+`test_new_subject_result_workflow`+`test_subject_assignment_office`) **125 OK** · পূর্ণ suite **`Ran 670 tests — OK`** (~247s, 668+2) · `check` 0 · `makemigrations --check` clean (leaf 0044) · Node **14/0**।
+**Docs updated this session:** `docs/prompts/reports/EX-03.md` (finishing নোট + §2 evidence + §3 resolved + §6 files), `docs/prompts/PROGRESS.md` (সারি ০৪ + header), `docs/PROJECT_STATUS.md` (header/TL;DR/E4/§6/§20), `docs/TASK_BACKLOG.md`, `docs/HANDOFF.md` (এই নোট)।
+
+**Owner করণীয়:** merge-অনুমোদন — এই branch-এর PR-ই EX-03-এর পুরো কাজ (PR #42-এর সব commit + finishing) ধারণ করে; PR #42 close করলে অথবা আগে merge করলে ও কনফ্লিক্ট নেই (subset/FF)। পরের প্রম্পট ০৫/২৮ (EX-04) baseline Complete — কেউ নিজে থেকে শুরু করবে না।
+
+---
+
 ## সেশন EX-03 — ২০২৬-০৯-২০ · প্রম্পট ০৪/২৮ · Group-based Mark Evaluation
 
 **Session branch:** `arena/01a0bd0d-school-management-system` · **Base:** `7a13e33` = `origin/main` (PR #41 MERGED) ·

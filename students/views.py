@@ -2631,6 +2631,13 @@ def mark_evaluation_settings(request):
     exam_type = request.GET.get('exam_type') or request.POST.get('exam_type') or ''
     group = request.GET.get('group') or request.POST.get('group') or ''
 
+    # Owner decision (2026-09-20): Weekly Test is only relevant for Mid Term
+    # exams. The UI therefore hides the Weekly Test column for every other
+    # exam type, and the POST handler below rejects weekly marks for
+    # non-MID types as well (legacy rows keep their stored value, hidden).
+    MID_TYPES = {'MID_TERM_1', 'MID_TERM_2', 'MID_TERM_3'}
+    show_weekly_test = exam_type in MID_TYPES
+
     # Normalise group for non-group classes: force blank
     if admission_class and not class_supports_group(admission_class):
         group = ''
@@ -2702,7 +2709,7 @@ def mark_evaluation_settings(request):
             saved, mismatched = 0, []
             part_fields = ('cq_marks', 'mcq_marks', 'practical_marks', 'weekly_test_marks')
             # Owner decisions (2026-09-20): exact sum, MID only weekly test, 9-12 only groups
-            MID_TYPES = {'MID_TERM_1', 'MID_TERM_2', 'MID_TERM_3'}
+            # (MID_TYPES defined at the top of this view)
 
             def raw_value(field, subject_id):
                 return (request.POST.get(f'{field}_{subject_id}', '') or '').strip()
@@ -2816,11 +2823,10 @@ def mark_evaluation_settings(request):
         for subject in subjects:
             setting = existing.get(subject.id)
             config = setting if setting else subject
-            # For display, weekly_test only shown for MID types; otherwise hide value (model clears it)
-            weekly_val = getattr(config, 'weekly_test_marks', None)
-            if exam_type not in {'MID_TERM_1', 'MID_TERM_2', 'MID_TERM_3'}:
-                # Keep stored None for non-MID, but show blank for clarity
-                pass
+            # The Weekly Test column only renders for MID exam types
+            # (show_weekly_test); any weekly value stored on a legacy non-MID
+            # row stays in the DB but is not displayed.
+            weekly_val = getattr(config, 'weekly_test_marks', None) if show_weekly_test else None
             subjects_with_settings.append({
                 'subject': subject,
                 'groups_note': ', '.join(sorted(groups_note.get(subject.id, ()))), 
@@ -2874,6 +2880,7 @@ def mark_evaluation_settings(request):
         'selected_exam_type': exam_type,
         'selected_group': group,
         'group_choices': group_choices,
+        'show_weekly_test': show_weekly_test,
         'subjects_with_settings': subjects_with_settings,
         'empty_reason': empty_reason,
         'empty_message': empty_message,
