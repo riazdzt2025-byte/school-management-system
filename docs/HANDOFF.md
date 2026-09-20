@@ -1,5 +1,24 @@
 # Handoff — School Management System
 
+## সেশন EX-02 — 2026-09-20 · প্রম্পট ০৩/২৮ · Result/Register roll-order
+
+**Session branch:** `arena/01a0bcdd-school-management-system` · **Base:** `cf70109` = `origin/main` (PR #39 merge-পরবর্তী) ·
+**Commit:** e36f7e1 · **PR:** #41 (OPEN — owner merge-অনুমোদন বাকি; এজেন্ট merge করবে না) ·
+**Scope:** শুধু EX-02 — ordering fixes + tests + docstring; **কোনো model/migration/JS/settings নেই**।
+
+**Bengali TL;DR:** আনুষ্ঠানিক নিয়ম বসানো হলো — **register/roll output = numeric roll (None সবার শেষে, tie name→pk); merit output = position (অপরিবর্তিত)**। ঠিক হলো: `student_list` + `download_student_list` + `get_exam_students`-এ **NULL-first** ফাঁক (`nulls_last` — SQLite/Postgres ASC-তে NULL আগে আসত) ও pk tie-break; attendance class-wise list **name → roll**; class result-cards print run **merit → roll** (owner সিদ্ধান্ত); multi-term/subject-fail/section-arrangement-এ pk tie-break। Merit pin: `exam_result_summary`, `full_rank_list`, `top_10`, merit slides; `section_arrangement` merit+tie-break; attendance log `-date`; attendance summary name। পূর্ণ ordering matrix `docs/prompts/reports/EX-02.md`-এ ও সংশ্লিষ্ট view docstring-এ।
+**owner-সিদ্ধান্ত (সেশনের শুরুতে জিজ্ঞেস করে নেওয়া):** download_student_list/Excel = roll · roll None = শেষে।
+**যাচাই (লোকাল, Django 5.2.17 fallback):** পূর্ণ suite **653 Django test OK** (638+১৫ নতুন `test_register_roll_order.py`) · ফোকাসড ৬৯ OK · `check` 0 · `makemigrations --check` clean (migration নেই) · Node **14/0**।
+**CI (PR #41, Django 6.1/py3.12):** sqlite ✅ · postgres:16 ✅ · Node ✅।
+
+**Docs updated this session:** `docs/prompts/reports/EX-02.md` (নতুন — ordering matrix সহ), `docs/prompts/PROGRESS.md` (সারি ০৩ + header),
+`docs/PROJECT_STATUS.md` (E3 হালনাগাদ), `docs/TASK_BACKLOG.md` (বাকি-তালিকা হালনাগাদ), `docs/HANDOFF.md` (এই নোট)।
+
+**Owner করণীয়:** PR #41 merge-অনুমোদন · `exam_result_summary` (merit) ও `attendance_summary` (name) ক্রম অপরিবর্তিত — ভিন্ন পছন্দ হলে জানালে এক-লাইনের বদল।
+**পরের প্রম্পট:** ০৪/২৮ (EX-03 — Group-based Mark Evaluation) — `SubjectMarkSetting`-এ group field নেই ⇒ নতুন field + append-only migration + UI + test; **owner-সিদ্ধান্ত ৩টি আগে দরকার** (prompt-04 §৮)। কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
+
+---
+
 ## সেশন EX-01 — 2026-09-19 · প্রম্পট ০২/২৮ · Import redirect ও Analysis subtab
 
 **Session branch:** `arena/01a0ba60-school-management-system` · **Base:** `f03a16d` = `origin/main` (PR #38 merge-পরবর্তী) ·
