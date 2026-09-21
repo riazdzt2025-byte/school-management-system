@@ -4622,6 +4622,7 @@ def employee_status_history(request, pk):
 # ---------------- Accounts Views ----------------
 
 @login_required
+@permission_required('students.view_moneyreceipt', raise_exception=True)
 def money_receipt_list(request):
     receipts = MoneyReceipt.objects.select_related('student', 'created_by').all()
     receipts = _filter_by_selected_institution(request, receipts, 'student__institution')
@@ -4673,6 +4674,7 @@ def delete_money_receipt(request, pk):
 
 
 @login_required
+@permission_required('students.view_voucher', raise_exception=True)
 def voucher_list(request):
     vouchers = Voucher.objects.select_related('institution', 'created_by').all()
     # Per-institution isolation (D-3/P1-1): a scoped clerk sees only vouchers of
@@ -4728,6 +4730,7 @@ def delete_voucher(request, pk):
 
 
 @login_required
+@permission_required('students.view_salarysheet', raise_exception=True)
 def salary_sheet_list(request):
     salaries = SalarySheet.objects.select_related('employee', 'created_by').all()
     salaries = _filter_by_selected_institution(request, salaries, 'employee__institution')
@@ -4779,6 +4782,7 @@ def delete_salary_sheet(request, pk):
 
 
 @login_required
+@permission_required('students.view_moneyreceipt', raise_exception=True)
 def finance_dashboard(request):
     institution = _selected_institution_for_request(request)
     receipts_qs = MoneyReceipt.objects.select_related('student')

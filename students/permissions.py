@@ -90,9 +90,14 @@ def _group_permission_map():
         'Accounts': [
             (Student, ['view']),
             (AdmissionApplication, ['change', 'view']),
-            (MoneyReceipt, ['add', 'change', 'delete']),
-            (Voucher, ['add', 'change', 'delete']),
-            (SalarySheet, ['add', 'change', 'delete']),
+            # 'view' added (DB-03/SEC-FU-3): money_receipt_list, voucher_list,
+            # salary_sheet_list and finance_dashboard are now gated by these
+            # view perms, so only Accounts can open them — Office/Exam/HR
+            # clerks used to be able to read salary and receipt data through
+            # any department login. See docs/prompts/reports/DB-03.md.
+            (MoneyReceipt, ['add', 'change', 'delete', 'view']),
+            (Voucher, ['add', 'change', 'delete', 'view']),
+            (SalarySheet, ['add', 'change', 'delete', 'view']),
             (Exam, ['add', 'change']),
             (ExamMark, ['add', 'change', 'delete']),
             # Read-only: Accounts also enters marks, so its "Go to Subject

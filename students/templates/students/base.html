@@ -254,15 +254,17 @@
     </div>
     {% endif %}
 
+    {% if perms.students.view_moneyreceipt or perms.students.view_voucher or perms.students.view_salarysheet %}
     <div class="nav-group">
         <div class="group-label"><span><i class="bi bi-cash-coin"></i><span class="nav-text">Accounts</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">
-            <a href="{% url 'money_receipt_list' %}"><i class="bi bi-receipt"></i> Money Receipts</a>
-            <a href="{% url 'voucher_list' %}"><i class="bi bi-file-earmark-ruled-fill"></i> Vouchers</a>
-            <a href="{% url 'salary_sheet_list' %}"><i class="bi bi-wallet-fill"></i> Salary Sheets</a>
-            <a href="{% url 'finance_dashboard' %}"><i class="bi bi-graph-up-arrow"></i> Finance Dashboard</a>
+            {% if perms.students.view_moneyreceipt %}<a href="{% url 'money_receipt_list' %}"><i class="bi bi-receipt"></i> Money Receipts</a>{% endif %}
+            {% if perms.students.view_voucher %}<a href="{% url 'voucher_list' %}"><i class="bi bi-file-earmark-ruled-fill"></i> Vouchers</a>{% endif %}
+            {% if perms.students.view_salarysheet %}<a href="{% url 'salary_sheet_list' %}"><i class="bi bi-wallet-fill"></i> Salary Sheets</a>{% endif %}
+            {% if perms.students.view_moneyreceipt %}<a href="{% url 'finance_dashboard' %}"><i class="bi bi-graph-up-arrow"></i> Finance Dashboard</a>{% endif %}
         </div>
     </div>
+    {% endif %}
 
     <div class="nav-group">
         <div class="group-label"><span><i class="bi bi-person-badge-fill"></i><span class="nav-text">Employees</span></span><i class="bi bi-chevron-right"></i></div>

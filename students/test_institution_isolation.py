@@ -38,6 +38,15 @@ class InstitutionReadIsolationTests(TestCase):
         # Clerk scoped to institution A only (Office).
         self.clerk = get_user_model().objects.create_user(username='clerk_a', password='password')
         InstitutionAccess.objects.create(user=self.clerk, institution=self.institution, department='Office')
+        # DB-03/SEC-FU-3 gated money_receipt_list/finance_dashboard behind
+        # students.view_moneyreceipt (Accounts-only); granted directly here so
+        # this file keeps testing institution scoping, not department access.
+        self.clerk.user_permissions.add(
+            Permission.objects.get(
+                content_type=ContentType.objects.get_for_model(MoneyReceipt),
+                codename='view_moneyreceipt',
+            )
+        )
 
         # Authorized cross-institution administrator (superuser).
         self.admin = get_user_model().objects.create_superuser(
