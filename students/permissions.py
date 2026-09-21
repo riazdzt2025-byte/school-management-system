@@ -125,7 +125,15 @@ def ensure_default_groups():
 
 
 def sync_user_department_permissions(user):
-    """Mirror the user's active institution access into Django groups."""
+    """Mirror the user's active institution access into Django groups.
+
+    Intentional limit (SEC-FU-2): a non-admin clerk signs in through one of the
+    three login departments (Office, Exam, Accounts), so only those access rows
+    are mirrored (Office also brings Admission). Membership of the HR, Subjects
+    and Audit groups is never granted here and is removed at the next login.
+    Admin/staff accounts are skipped and may use those groups directly. See
+    students/test_department_group_sync.py.
+    """
     if user is None or getattr(user, 'is_anonymous', True):
         return
 
