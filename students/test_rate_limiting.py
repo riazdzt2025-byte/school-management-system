@@ -4,14 +4,14 @@ The limits are per-IP counters in the Django cache, so tests clear the cache in
 setUp to avoid cross-test leakage.
 """
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
+from django.core.cache import caches
 from django.test import TestCase
 from django.urls import reverse
 
 
 class RateLimitTests(TestCase):
     def setUp(self):
-        cache.clear()
+        caches['ratelimit'].clear()
         self.user = get_user_model().objects.create_user(
             username='alice', password='correct-password',
         )

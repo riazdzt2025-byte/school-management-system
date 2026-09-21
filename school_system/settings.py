@@ -364,3 +364,43 @@ SCHOOL_INFO = {
 # fallback used until that row exists.
 DEVELOPER_NAME = 'riOn Dev'
 COPYRIGHT_HOLDER = 'PKFSC'
+
+# ---------------------------------------------------------------------------
+# Cache for the rate-limit and login-lockout counters (SEC-FU-1)
+#
+#   RATE_LIMIT_CACHE=locmem  (default) counters live in each server process's
+#                            memory: fine for one worker, lost on restart.
+#   RATE_LIMIT_CACHE=db      counters live in the database table
+#                            "django_cache": shared by every worker and kept
+#                            across restarts. The table is created by the
+#                            normal `migrate`; no extra service is needed.
+#
+# Set it as an environment variable (for example in the Render dashboard).
+# Lockout thresholds are unchanged; only where the counters are stored differs.
+# ---------------------------------------------------------------------------
+RATE_LIMIT_CACHE = os.environ.get('RATE_LIMIT_CACHE', 'locmem').strip().lower()
+
+_RATE_LIMIT_CACHE_BACKENDS = {
+    'locmem': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'ratelimit',
+    },
+    'db': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+        # Keep far more entries than the default 300 so an attack from many
+        # addresses cannot push live lockout counters out of the table.
+        'OPTIONS': {'MAX_ENTRIES': 20000, 'CULL_FREQUENCY': 4},
+    },
+}
+
+if RATE_LIMIT_CACHE not in _RATE_LIMIT_CACHE_BACKENDS:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        "RATE_LIMIT_CACHE must be 'locmem' or 'db', got %r." % RATE_LIMIT_CACHE
+    )
+
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
+    'ratelimit': _RATE_LIMIT_CACHE_BACKENDS[RATE_LIMIT_CACHE],
+}

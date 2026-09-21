@@ -116,3 +116,24 @@ including their navigation, student-profile tabs/actions and admin entries.
 Regular school exam results, exam summaries and class 9–10 curriculum remain
 unchanged. Historical migrations are intentionally retained so both existing
 and fresh databases can migrate correctly.
+
+---
+
+## Shared rate-limit counters (SEC-FU-1)
+
+The login lockout (5 failed attempts, 15 minutes) and the public admission
+throttle keep their counters in a cache. By default that cache is the memory of
+each server process, so several workers do not share it and a restart clears it.
+
+To keep the counters in the database instead:
+
+1. Deploy this version and let `python manage.py migrate` run (it creates the
+   table `django_cache`).
+2. In the Render dashboard open **Environment** and add
+   `RATE_LIMIT_CACHE` = `db`, then save (Render redeploys).
+3. Check a few wrong logins still lock the account out after 5 attempts.
+
+To go back, delete the variable or set it to `locmem`. Any other value stops the
+app at startup with a clear error. If the counter store is ever unreachable,
+the site keeps working and a warning is written to the log.
+

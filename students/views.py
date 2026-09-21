@@ -3,7 +3,9 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse, Http404
-from django.core.cache import cache
+import logging
+
+from django.core.cache import caches
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.core.paginator import Paginator
@@ -781,8 +783,9 @@ def _matching_fee(application):
 
 
 # ---------------- rate limiting (P1-9 public admission, P2-2 login) ----------------
-# A lightweight per-IP counter backed by the Django cache (no new dependency,
-# works on LocMem and Redis alike). It is a throttle, not a hard identity store:
+# A lightweight per-IP counter backed by the Django cache alias "ratelimit"
+# (in-memory by default, database table with RATE_LIMIT_CACHE=db; no new
+# dependency). It is a throttle, not a hard identity store:
 # behind NAT a whole office shares one IP, so the limiter is deliberately
 # generous and intended to blunt spam/brute-force, not to be a per-user quota.
 
@@ -806,27 +809,59 @@ def _client_ip(request):
     return request.META.get('REMOTE_ADDR', '')
 
 
+logger = logging.getLogger(__name__)
+
+
+def _rl_cache():
+    """The cache that holds the counters (settings.RATE_LIMIT_CACHE decides where)."""
+    return caches['ratelimit']
+
+
+# If the counter store is unreachable the site must keep working: the helpers
+# below log a warning and behave as "no limit reached" instead of raising.
+def _rl_get(key, default=0):
+    try:
+        return _rl_cache().get(key, default)
+    except Exception:
+        logger.warning('Rate-limit cache read failed for %s', key.split(':')[0], exc_info=True)
+        return default
+
+
+def _rl_set(key, value, timeout):
+    try:
+        _rl_cache().set(key, value, timeout)
+    except Exception:
+        logger.warning('Rate-limit cache write failed for %s', key.split(':')[0], exc_info=True)
+
+
+def _rl_delete(key):
+    try:
+        _rl_cache().delete(key)
+    except Exception:
+        logger.warning('Rate-limit cache delete failed for %s', key.split(':')[0], exc_info=True)
+
+
 def _rate_limit_exceeded(request, scope, limit, window_seconds):
     """True when this IP has already recorded `limit` requests in the window."""
     ck = f'rl:{scope}:{_client_ip(request)}'
-    count = cache.get(ck, 0)
+    count = _rl_get(ck, 0)
     if count >= limit:
         return True
-    cache.set(ck, count + 1, window_seconds)
+    _rl_set(ck, count + 1, window_seconds)
     return False
 
 
 def _login_fail_count(request):
-    return cache.get(f'loginfail:{_client_ip(request)}', 0)
+    return _rl_get(f'loginfail:{_client_ip(request)}', 0)
 
 
 def _login_fail_increment(request):
     ck = f'loginfail:{_client_ip(request)}'
-    cache.set(ck, _login_fail_count(request) + 1, LOGIN_LOCKOUT_SECONDS)
+    _rl_set(ck, _login_fail_count(request) + 1, LOGIN_LOCKOUT_SECONDS)
 
 
 def _login_fail_reset(request):
-    cache.delete(f'loginfail:{_client_ip(request)}')
+    _rl_delete(f'loginfail:{_client_ip(request)}')
 
 
 # 5 failed attempts -> 15 minute lockout (P2-2).

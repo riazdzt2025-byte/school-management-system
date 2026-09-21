@@ -1105,3 +1105,19 @@ class SiteBranding(models.Model):
         developer = (row.developer_name if row else '') or settings.DEVELOPER_NAME
         holder = (row.copyright_holder if row else '') or settings.COPYRIGHT_HOLDER
         return developer, holder
+
+
+class RateLimitCacheEntry(models.Model):
+    """Storage table for the database cache used by the rate-limit counters.
+
+    It has exactly the columns Django's DatabaseCache expects and is only read
+    and written by that cache backend (RATE_LIMIT_CACHE=db). It exists as a
+    model so a normal `migrate` creates it; nothing else touches it.
+    """
+    cache_key = models.CharField(max_length=255, primary_key=True)
+    value = models.TextField()
+    expires = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = 'django_cache'
+        default_permissions = ()
