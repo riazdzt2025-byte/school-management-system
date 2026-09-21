@@ -1,0 +1,46 @@
+▶ নতুন সেশন — প্রম্পট ১৯ / ২৮ (সেশন DB-03) · ধাপ ৪ (শেষ) · পূর্ণ যাচাই, ডক, push, PR
+
+আমি Habib। school-management-system প্রজেক্ট, নতুন এজেন্ট-সেশন, আগের কথোপকথনের কিছু মনে নেই।
+
+১. প্রথমে পড়ো: docs/claude-rules.md, docs/prompts/prompt-19-db-03-permissions-data-isolation.md
+   (§৩.৬, §৫, §৬, §৭, §৯ বিশেষভাবে), docs/prompts/reports/DB-03.md (এতদিনে ধাপ ১ক-১চ, ২, ৩ সব
+   থাকা উচিত)।
+
+২. সেটআপ: git clone --depth 1 -b feature/riondev-branding <repo-url>, তারপর
+   arena/01a0b7f7-school-management-system branch checkout করো। git log --oneline দিয়ে যাচাই করো
+   ধাপ ১ক-১চ, ২, ৩ সবগুলোর commit আছে কি না। কোনোটা অনুপস্থিত/⛔ blocked থাকলে থামো, আমাকে
+   জানাও (বাদ দিয়ে এগিয়ো না)।
+
+৩. পূর্ণ যাচাই (prompt-19 §৫, isolated venv-এ):
+   python3 -m venv /tmp/audit_venv && . /tmp/audit_venv/bin/activate
+   pip install "Django>=5.2,<6" openpyxl Pillow python-dotenv dj-database-url whitenoise \
+     psycopg2-binary django-storages boto3
+   python manage.py test students.test_institution_isolation
+   python manage.py test students.test_institution_write_isolation
+   python manage.py test students.test_audit_log_scoping
+   python manage.py test students.test_rate_limiting
+   python manage.py test students.test_security_settings
+   python manage.py check
+   python manage.py makemigrations --check
+   python manage.py test students   (baseline ≈৬২৫+নতুন — প্রকৃত সংখ্যা রিপোর্ট করো)
+   node --test students/js/*.test.js
+
+৪. যেকোনো command fail করলে root cause-সহ লিখো, ঠিক করার চেষ্টা করো; না পারলে স্ট্যাটাস
+   🟡 আংশিক (লুকাবে না)।
+
+৫. ডক আপডেট (prompt-19 §৭):
+   - docs/prompts/PROGRESS.md → প্রম্পট ১৯-এর সারি (status/date/commit/PR/test proof)
+   - docs/PROJECT_STATUS.md → নিরাপত্তা সেকশন
+   - docs/TASK_BACKLOG.md, docs/HANDOFF.md → প্রাসঙ্গিক entry
+   - docs/prompts/reports/DB-03.md → চূড়ান্ত ১-পাতার সারাংশ (আগে/এখন, প্রমাণ, যাচাই-না-হওয়া অংশ,
+     ঝুঁকি, owner-সিদ্ধান্ত)
+
+৬. commit ছোট ছোট (session ID সহ, "DB-03: ..."), git status দিয়ে .env/db.sqlite3/media/backups/
+   ঢুকছে না তা নিশ্চিত করে, তারপর:
+   git push origin arena/01a0b7f7-school-management-system
+   gh pr create --base main --head arena/01a0b7f7-school-management-system
+   (title-এ session ID, body-তে কী বদলেছে/কী যাচাই হয়েছে/কী হয়নি/owner করণীয়)
+   gh pr checks <PR> দিয়ে CI ফলাফল যাচাই করে PROGRESS.md-এ লিখো। merge কোরো না।
+
+৭. আউটপুট ফরম্যাট prompt-19 §৯ অনুযায়ী, শেষে §০-এর সমাপ্তি স্ট্যাটাস ব্লক ("✔ শেষ হয়েছে: প্রম্পট
+   ১৯ / ২৮ ...")।

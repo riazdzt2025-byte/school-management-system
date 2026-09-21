@@ -1,0 +1,35 @@
+▶ নতুন সেশন — প্রম্পট ১৯ / ২৮ (সেশন DB-03) · ধাপ ২ · SEC-FU-1 (rate-limit shared cache)
+
+আমি Habib। school-management-system প্রজেক্ট, নতুন এজেন্ট-সেশন, আগের কথোপকথনের কিছু মনে নেই।
+
+১. প্রথমে পড়ো: docs/claude-rules.md, docs/prompts/prompt-19-db-03-permissions-data-isolation.md
+   (§১-এর SEC-FU-1 বিবরণ, §৩.৩, §৮), docs/prompts/reports/DB-03.md (ধাপ ১ক-১চ সম্পূর্ণ কি না
+   দেখে নাও)।
+
+২. সেটআপ: git clone --depth 1 -b feature/riondev-branding <repo-url>, তারপর
+   arena/01a0b7f7-school-management-system branch checkout করো। git log দিয়ে যাচাই করো ধাপ
+   ১ক-১চ-এর commit আছে কি না। **না থাকলে থামো, আমাকে জানাও — এই ধাপ শুরু করার আগে গার্ড matrix
+   ধাপ শেষ হওয়া দরকার নেই তবে ভালো, তাই শুধু সতর্ক করে এগোও।**
+
+৩. প্রেক্ষাপট: rate-limit (login lockout) counter এখন LocMemCache-এ — per-process, restart-এ
+   হারায়, multi-worker-এ কাজ করে না।
+
+৪. কাজ:
+   - env flag ডিজাইন করো (যেমন RATE_LIMIT_CACHE বা CACHE_URL) — default থাকলে dev behaviour
+     (LocMem) অপরিবর্তিত থাকতে হবে। production-এ Redis বা Django DB cache backend সেট করা
+     যাবে (owner সুপারিশ: Redis না থাকলে DB cache, নতুন paid service নয়)।
+   - lockout threshold অপরিবর্তিত রাখো।
+   - students/test_rate_limiting.py-তে (না থাকলে existing rate-limit টেস্ট ফাইল খুঁজে বের করে
+     সেখানে) টেস্ট যোগ করো: counter persist হয় cache backend অনুযায়ী, reset behavior ঠিক,
+     limit exceeded হলে lock হয়।
+
+৫. সীমা: prompt-19 §৪ হুবহু। নতুন paid service activate কোরো না (শুধু কোড/config অপশন তৈরি
+   করবে, Redis সত্যিকারে চালু করবে না)।
+
+৬. যাচাই: python manage.py test students.test_rate_limiting
+   python manage.py test students.test_security_settings
+   python manage.py check
+
+৭. শেষে: docs/prompts/reports/DB-03.md-এ "### ২. SEC-FU-1" সেকশন যোগ করো (append)। patch
+   বানিয়ে present_files দিয়ে দেখাও, push কোরো না। পরের ধাপ DB-03-3 (SEC-FU-2 — owner decision)
+   — নিজে থেকে শুরু কোরো না।

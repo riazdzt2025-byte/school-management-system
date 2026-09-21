@@ -1,0 +1,38 @@
+▶ নতুন সেশন — প্রম্পট ১৯ / ২৮ (সেশন DB-03) · ধাপ ৩ · SEC-FU-2 (HR/Subjects/Audit mapping)
+
+আমি Habib। school-management-system প্রজেক্ট, নতুন এজেন্ট-সেশন, আগের কথোপকথনের কিছু মনে নেই।
+
+১. প্রথমে পড়ো: docs/claude-rules.md, docs/prompts/prompt-19-db-03-permissions-data-isolation.md
+   (§১-এর SEC-FU-2 বিবরণ, §৩.৪, §৮), docs/prompts/reports/DB-03.md।
+
+২. সেটআপ: git clone --depth 1 -b feature/riondev-branding <repo-url>, তারপর
+   arena/01a0b7f7-school-management-system branch checkout করো, আগের commit ধরে এগোও।
+
+৩. **প্রথমেই owner-কে (আমাকে) প্রশ্ন করো, code বদলিয়ো না:**
+   sync_user_department_permissions শুধু Office/Exam/Accounts ম্যাপ করে — HR/Subjects/Audit
+   group-এর InstitutionAccess user login করলে সেই permission গুলো silently strip হয়ে যায়।
+   সিদ্ধান্ত লাগবে:
+   ক) HR/Subjects/Audit-ও ম্যাপ করা হবে (যদি সেই department-এর user login-এর বাস্তব প্রয়োজন থাকে), নাকি
+   খ) এটা intentional limitation হিসেবে docs-এ লিখে রাখা হবে (আর login-এ strip হলে user-কে
+      স্পষ্ট বার্তা/আচরণ দেওয়া হবে)।
+
+   --- owner-এর উত্তর (আমি লিখে দিলে এখানে থাকবে, খালি থাকলে সরাসরি প্রশ্ন করো): __ANSWER__ ---
+
+৪. উত্তর পাওয়ার পর:
+   - (ক) হলে: permissions.py-এর group mapping-এ HR/Subjects/Audit যোগ করো, নতুন migration নয়
+     (যদি শুধু Python dict/logic হয়), টেস্ট যোগ করো (login করলে সেই department-এর permission
+     থেকে যায়)।
+   - (খ) হলে: docs/-এ (যেমন docs/PROJECT_STATUS.md বা একটা নতুন note) "intentional limitation"
+     হিসেবে লিখে রাখো, আর টেস্টে বর্তমান strip-হওয়া আচরণ পিন করো (যাতে ভবিষ্যতে অনিচ্ছাকৃতভাবে
+     বদলে না যায়)।
+
+৫. সীমা: prompt-19 §৪ হুবহু। permissions.py-এর single source (_group_permission_map)
+   ছাড়া অন্য কোথাও নতুন permission logic ছড়িয়ে দিয়ো না।
+
+৬. যাচাই: python manage.py test students
+   python manage.py check
+   python manage.py makemigrations --check
+
+৭. শেষে: docs/prompts/reports/DB-03.md-এ "### ৩. SEC-FU-2" সেকশন যোগ করো (append, decision +
+   ফলাফল লিখে)। patch বানিয়ে present_files দিয়ে দেখাও, push কোরো না। পরের ধাপ DB-03-4
+   (final report, doc update, push, PR) — নিজে থেকে শুরু কোরো না।

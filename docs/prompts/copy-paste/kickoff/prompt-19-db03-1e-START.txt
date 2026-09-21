@@ -1,0 +1,37 @@
+▶ নতুন সেশন — প্রম্পট ১৯ / ২৮ (সেশন DB-03) · উপ-ধাপ ১ঙ · Admission guard matrix
+
+আমি Habib। school-management-system প্রজেক্ট, নতুন এজেন্ট-সেশন, আগের কথোপকথনের কিছু মনে নেই।
+
+১. প্রথমে পড়ো: docs/claude-rules.md, docs/prompts/prompt-19-db-03-permissions-data-isolation.md,
+   docs/prompts/reports/DB-03.md (আগের ধাপগুলো দেখে নাও)।
+
+২. সেটআপ: git clone --depth 1 -b feature/riondev-branding <repo-url>, তারপর
+   arena/01a0b7f7-school-management-system branch checkout করো, আগের commit ধরে এগোও (git log
+   দিয়ে যাচাই করো; না থাকলে থামো)।
+
+৩. স্কোপ (শুধু "Admission" route-গুলো):
+   public_admission_apply, admission, admission_application_list, admission_application_detail,
+   admission_dropdown_options, admission_funnel_report, admission_funnel_export,
+   download_admission_sheet, office_approve_application, office_reject_application,
+   office_handoff_application, accounts_admission_queue।
+
+   বিশেষ মনোযোগ:
+   - public_admission_apply ইচ্ছাকৃতভাবে anonymous-accessible (login guard থাকা উচিত নয়) —
+     এটা confirm করে টেস্টে স্পষ্টভাবে পিন করো ("public by design"), ভুলে permission guard বসিয়ে
+     দিয়ো না।
+   - বাকি সব admission route-এ institution scope + department guard (Office/Accounts) ঠিকমতো
+     আছে কি না, বিশেষত admission_funnel_export/download_admission_sheet-এর মতো export route
+     (cross-institution data leak হওয়ার ঝুঁকি বেশি)।
+
+   ফাঁক পেলে smallest fix + negative test (test_institution_isolation.py বা
+   test_institution_write_isolation.py-তে যোগ করো)।
+
+৪. সীমা: prompt-19 §৪ হুবহু।
+
+৫. যাচাই: python manage.py test students.test_institution_isolation
+   python manage.py test students.test_institution_write_isolation
+   python manage.py check
+
+৬. শেষে: docs/prompts/reports/DB-03.md-এ "### ১ঙ. Admission" সেকশন যোগ করো (append)। patch
+   বানিয়ে present_files দিয়ে দেখাও, push কোরো না। পরের ধাপ DB-03-1f (Audit log ও বাকি সব) —
+   নিজে থেকে শুরু কোরো না।

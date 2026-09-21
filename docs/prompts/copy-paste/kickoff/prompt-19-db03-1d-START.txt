@@ -1,0 +1,32 @@
+▶ নতুন সেশন — প্রম্পট ১৯ / ২৮ (সেশন DB-03) · উপ-ধাপ ১ঘ · HR guard matrix
+
+আমি Habib। school-management-system প্রজেক্ট, নতুন এজেন্ট-সেশন, আগের কথোপকথনের কিছু মনে নেই।
+
+১. প্রথমে পড়ো: docs/claude-rules.md, docs/prompts/prompt-19-db-03-permissions-data-isolation.md
+   (বিশেষভাবে §১-এর SEC-FU-2 নোট), docs/prompts/reports/DB-03.md (আগের ধাপগুলো দেখে নাও)।
+
+২. সেটআপ: git clone --depth 1 -b feature/riondev-branding <repo-url>, তারপর
+   arena/01a0b7f7-school-management-system branch checkout করো, আগের commit ধরে এগোও (git log
+   দিয়ে যাচাই করো; না থাকলে থামো)।
+
+৩. স্কোপ (শুধু "HR" route-গুলো):
+   add_employee, edit_employee, delete_employee, employee_list, employee_detail,
+   change_employee_status, employee_status_history।
+
+   প্রতিটার জন্য login/permission/department/institution-scope guard কোড থেকে যাচাই করো।
+
+   গুরুত্বপূর্ণ: SEC-FU-2 অনুযায়ী sync_user_department_permissions শুধু Office/Exam/Accounts
+   ম্যাপ করে — HR group InstitutionAccess user-এর জন্য কী হয় (login-এ silently strip হয়ে যায় কি
+   না) তা টেস্ট দিয়ে **পিন করো বর্তমান আচরণ অনুযায়ী** (code বদলিয়ো না — এটা owner decision-এর
+   অপেক্ষায়, DB-03-3 ধাপে হবে)। matrix-এ স্পষ্ট করে "SEC-FU-2 — owner decision pending" লিখে
+   রাখো।
+
+৪. সীমা: prompt-19 §৪ হুবহু।
+
+৫. যাচাই: python manage.py test students.test_institution_isolation
+   python manage.py test students.test_institution_write_isolation
+   python manage.py check
+
+৬. শেষে: docs/prompts/reports/DB-03.md-এ "### ১ঘ. HR" সেকশন যোগ করো (append)। patch বানিয়ে
+   present_files দিয়ে দেখাও, push কোরো না। পরের ধাপ DB-03-1e (Admission) — নিজে থেকে শুরু কোরো
+   না।

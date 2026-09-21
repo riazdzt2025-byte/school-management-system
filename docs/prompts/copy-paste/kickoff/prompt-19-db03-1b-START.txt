@@ -1,0 +1,46 @@
+▶ নতুন সেশন — প্রম্পট ১৯ / ২৮ (সেশন DB-03) · উপ-ধাপ ১খ · Exam ও Result guard matrix
+
+আমি Habib। school-management-system প্রজেক্ট, নতুন এজেন্ট-সেশন, আগের কথোপকথনের কিছু মনে নেই।
+
+১. প্রথমে পড়ো:
+   - docs/claude-rules.md
+   - docs/prompts/prompt-19-db-03-permissions-data-isolation.md
+   - docs/prompts/reports/DB-03.md — ধাপ ১ক (Student core) কী পাওয়া গেছে তা দেখে নাও
+
+২. সেটআপ: git clone --depth 1 -b feature/riondev-branding <repo-url> তারপর
+   arena/01a0b7f7-school-management-system branch checkout করো (আগের উপ-ধাপের commit থাকলে
+   সেটাই ধরে এগোও, যাচাই করো git log দিয়ে)। commit না থাকলে থামো, আমাকে জানাও।
+
+৩. স্কোপ (শুধু "Exam ও Result" route-গুলো):
+   exam CRUD: add_exam, edit_exam, delete_exam, exam_list, toggle_publish_exam
+   marks: enter_marks, start_entering_marks, select_marks_subject, import_exam_marks,
+   download_marks_import_template, auto_populate_subject_requirements
+   seat plan: generate_seat_plan, view_seat_plan_room, clear_seat_plan, seat_plan_list,
+   section_arrangement
+   rank/result: rank_list, full_rank_list, top_10, result_card, result_sheet,
+   result_analysis_merit_slides, result_analysis_multi_term, result_analysis_result_cards,
+   result_analysis_subject_fail, exam_result_summary, class_section_summary,
+   attendance_report, attendance_summary, mark_attendance, mark_attendance_bulk
+   certificate/TC: issue_certificate, view_certificate, issue_tc, view_tc, certificate_list,
+   signature_sheet
+   subject requirement JSON/API (prompt-19 §৩.৫ বিশেষভাবে বলে এগুলো ভুলে যাওয়া হয়):
+   subject_requirements_json, subject_requirement_list, add_subject_requirement,
+   edit_subject_requirement, delete_subject_requirement, quick_update_requirement_type
+   mark_evaluation_settings
+
+   প্রতিটার জন্য login/permission/department/institution-scope guard কোড থেকে যাচাই করো (DB-03-1a-এর
+   মতোই চেকলিস্ট)। JSON endpoint-গুলোতে বিশেষভাবে cross-institution request পাঠিয়ে টেস্ট করো —
+   এগুলো template-based view-এর মতো সহজে scope নাও হতে পারে।
+
+   ফাঁক পেলে smallest fix + negative test (students/test_institution_isolation.py বা
+   test_institution_write_isolation.py-তে, নতুন ফাইল নয়)।
+
+৪. সীমা: prompt-19 §৪ হুবহু (DB-03-1a-এর prompt দ্রষ্টব্য, একই নিয়ম)।
+
+৫. যাচাই: python manage.py test students.test_institution_isolation
+   python manage.py test students.test_institution_write_isolation
+   python manage.py check
+
+৬. শেষে: docs/prompts/reports/DB-03.md-এ "### ১খ. Exam ও Result" সেকশন যোগ করো (append, আগের
+   সেকশন অক্ষত রেখে)। patch বানিয়ে present_files দিয়ে দেখাও, push কোরো না। পরের ধাপ DB-03-1c
+   (Accounts/Finance) — নিজে থেকে শুরু কোরো না।

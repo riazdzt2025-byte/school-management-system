@@ -1,0 +1,54 @@
+▶ নতুন সেশন — প্রম্পট ১৯ / ২৮ (সেশন DB-03) · উপ-ধাপ ১ক · Student core guard matrix
+
+আমি Habib। school-management-system প্রজেক্ট, নতুন এজেন্ট-সেশন, আগের কথোপকথনের কিছু মনে নেই।
+
+১. প্রথমে পড়ো:
+   - docs/claude-rules.md (repo root) — কাজের সাধারণ নিয়ম (ভাষা, patch, test policy)
+   - docs/prompts/prompt-19-db-03-permissions-data-isolation.md — DB-03-এর পূর্ণ স্পেক
+   - docs/prompts/reports/DB-03.md (থাকলে) — আগের উপ-ধাপে কী হয়েছে তা দেখে নাও
+
+২. সেটআপ:
+   git clone --depth 1 -b feature/riondev-branding https://github.com/riazdzt2025-byte/school-management-system.git
+   তারপর নতুন branch তৈরি করো: arena/01a0b7f7-school-management-system
+   (base: feature/riondev-branding@head, commit 77e3a60 বা তার পরে)।
+   এই branch এখনো GitHub-এ push করা নাও হতে পারে — git log/status দিয়ে যাচাই করো, যদি আগের কোনো
+   উপ-ধাপ (DB-03-1a নিজেই যদি আগে চলে থাকে) ইতিমধ্যে commit করা থাকে সেটা ধরে রেখে এগোও, নতুন করে
+   শুরু কোরো না।
+
+৩. স্কোপ (শুধু আজকের কাজ, পুরো DB-03 নয় — "Student core" route-গুলো):
+   add_student, edit_student, delete_student, student_list, student_detail, archived_students,
+   bulk_delete_students, bulk_update_students, bulk_update_select, restore_student,
+   bulk_purge_archived_students, purge_archived_student, discontinue_student,
+   download_student_list, import_students, download_import_template, auto_register_students,
+   student_promotion, student_promotion_history, rollback_student_promotion, student_by_id,
+   student_exams, student_result_detail, student_id_card।
+
+   প্রতিটা route-এর জন্য কোড থেকে (অনুমান নয়) যাচাই করো:
+   - login guard আছে কি (anonymous হলে 302 login)?
+   - permission guard আছে কি (permission ছাড়া হলে 403)?
+   - department guard আছে কি (ভুল department হলে 302 dashboard)?
+   - institution scope guard আছে কি (students/permissions.py-এর কোন helper ব্যবহার হচ্ছে —
+     _institutionally_scoped/_scoped_institution_ids/_get_scoped_object_or_404/
+     _scope_by_allowed_institutions/_scope_institution_qs/_scope_write_queryset ইত্যাদি;
+     cross-institution হলে 404/খালি ফলাফল)?
+
+   ফাঁক পেলে smallest coherent fix + negative test যোগ করো — actual HTTP request দিয়ে
+   302/403/404 assert করে, students/test_institution_isolation.py বা
+   test_institution_write_isolation.py-তে (নতুন টেস্ট ফাইল বানিয়ো না, existing-এ যোগ করো)।
+
+৪. সীমা (prompt-19 §৪ হুবহু মানো): শুধু arena/01a0b7f7-school-management-system branch-এ কাজ,
+   main-এ push নয়, force-push/reset --hard/git clean নয়, migration ফাইলের operations edit নয়,
+   production/live Render/credential ছোঁয়া যাবে না, .env/db.sqlite3/media/backups/ commit নয়,
+   SSC Registration/BoardResult পুনরুদ্ধারের চেষ্টা নয়।
+
+৫. যাচাই কমান্ড: python manage.py test students.test_institution_isolation
+   python manage.py test students.test_institution_write_isolation
+   python manage.py check
+
+৬. শেষে:
+   - এই অংশের matrix docs/prompts/reports/DB-03.md-এ "### ১ক. Student core" সেকশন হিসেবে যোগ করো
+     (ফাইল না থাকলে তৈরি করো, থাকলে append করো — অন্য সেকশন মুছো না)।
+   - git add -A && git diff --cached --binary > .patch বানিয়ে present_files দিয়ে দেখাও
+     (এখনই push কোরো না, আমি বলার পর করবে)।
+   - এই ধাপের নাম DB-03-1a হিসেবে PROGRESS.md-তে নোট করো।
+   - পরের ধাপ DB-03-1b (Exam ও Result) — নিজে থেকে শুরু কোরো না, আমি নতুন সেশনে দেব।

@@ -1,0 +1,32 @@
+▶ নতুন সেশন — প্রম্পট ১৯ / ২৮ (সেশন DB-03) · উপ-ধাপ ১চ · Audit log + leftover + matrix একত্রীকরণ
+
+আমি Habib। school-management-system প্রজেক্ট, নতুন এজেন্ট-সেশন, আগের কথোপকথনের কিছু মনে নেই।
+
+১. প্রথমে পড়ো: docs/claude-rules.md, docs/prompts/prompt-19-db-03-permissions-data-isolation.md,
+   docs/prompts/reports/DB-03.md (ধাপ ১ক-১ঙ পুরোটা পড়ে নাও, এখানেই সব একত্র হবে)।
+
+২. সেটআপ: git clone --depth 1 -b feature/riondev-branding <repo-url>, তারপর
+   arena/01a0b7f7-school-management-system branch checkout করো, আগের সব commit ধরে এগোও (git log
+   দিয়ে যাচাই করো; না থাকলে থামো)।
+
+৩. স্কোপ:
+   ক) audit_log_list, audit_log_detail, dashboard — guard যাচাই + test_audit_log_scoping.py-এ
+      যদি ফাঁক থাকে যোগ করো।
+   খ) students/urls.py সম্পূর্ণ ঘেঁটে নিশ্চিত করো ১ক-১ঙ-এ (student core, exam/result,
+      accounts/finance, HR, admission) কোনো named route বাদ পড়েনি। বাদ পড়া কিছু পেলে সেটারও
+      guard matrix বানাও + দরকার হলে fix + test।
+   গ) ধাপ ১ক থেকে ১চ পর্যন্ত সব matrix docs/prompts/reports/DB-03.md-এ একটাই পূর্ণ টেবিলে একত্র
+      করো (route | view | login | permission | department | institution scope | status)।
+
+৪. সীমা: prompt-19 §৪ হুবহু।
+
+৫. যাচাই (পুরো students app, কারণ এটাই সব উপ-ধাপের সমষ্টি):
+   python manage.py test students.test_institution_isolation
+   python manage.py test students.test_institution_write_isolation
+   python manage.py test students.test_audit_log_scoping
+   python manage.py check
+   python manage.py makemigrations --check
+
+৬. শেষে: docs/prompts/reports/DB-03.md চূড়ান্ত matrix টেবিলসহ আপডেট করো। patch বানিয়ে
+   present_files দিয়ে দেখাও, push কোরো না। পরের ধাপ DB-03-2 (SEC-FU-1 — rate limit shared
+   cache) — নিজে থেকে শুরু কোরো না।
