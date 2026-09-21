@@ -6,7 +6,7 @@ from .models import (
     Exam, ExamMark, SeatPlan, Employee, EmployeeStatusLog,
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog,
-    SubjectRequirement, StudentSubjectChoice, SectionCapacity, Fee,
+    SubjectRequirement, StudentSubjectChoice, SectionCapacity, Fee, SiteBranding,
 )
 
 
@@ -81,3 +81,15 @@ class SectionCapacityAdmin(admin.ModelAdmin):
     list_display = ('institution', 'admission_class', 'section', 'capacity')
     list_filter = ('institution', 'admission_class')
     search_fields = ('admission_class', 'section')
+
+
+@admin.register(SiteBranding)
+class SiteBrandingAdmin(admin.ModelAdmin):
+    """Developer name and copyright holder: one row, edit only, never delete."""
+    list_display = ('__str__', 'developer_name', 'copyright_holder')
+
+    def has_add_permission(self, request):
+        return not SiteBranding.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -172,5 +172,7 @@ bash scripts/fetch_prompts.sh     # অথবা git ছাড়া: শুধ�
 ## Author
 **Habib** — Learning full-stack web development while building real-world projects.
 [GitHub Profile](https://github.com/riazdzt2025-byte)
+
+Developed by **riOn Dev**.
 ```
 

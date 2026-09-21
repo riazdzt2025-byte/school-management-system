@@ -1025,3 +1025,42 @@ class Fee(models.Model):
 
     def __str__(self):
         return f"{self.institution} / Class {self.admission_class} / {self.purpose} — {self.amount}"
+
+
+def default_developer_name():
+    return settings.DEVELOPER_NAME
+
+
+def default_copyright_holder():
+    return settings.COPYRIGHT_HOLDER
+
+
+class SiteBranding(models.Model):
+    """One-row table: developer credit and copyright holder shown site-wide.
+
+    Edited by a super admin in the Django admin ("Site branding"). The row is
+    always pk=1, so there can never be two of them.
+    """
+    developer_name = models.CharField(max_length=100, default=default_developer_name)
+    copyright_holder = models.CharField(max_length=100, default=default_copyright_holder)
+
+    class Meta:
+        verbose_name = 'Site branding'
+        verbose_name_plural = 'Site branding'
+
+    def __str__(self):
+        return 'Site branding'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        self.developer_name = (self.developer_name or '').strip()
+        self.copyright_holder = (self.copyright_holder or '').strip()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def current(cls):
+        """Return (developer_name, copyright_holder), falling back to settings."""
+        row = cls.objects.filter(pk=1).first()
+        developer = (row.developer_name if row else '') or settings.DEVELOPER_NAME
+        holder = (row.copyright_holder if row else '') or settings.COPYRIGHT_HOLDER
+        return developer, holder

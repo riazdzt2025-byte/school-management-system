@@ -538,7 +538,7 @@
         <footer class="result-footer">
             <span>Print date: <strong>{% now "d-M-Y · g:i a" %}</strong></span>
             <span><strong>Print user:</strong> {{ request.user.username }}</span>
-            <span>Copyright © 2025 PKFSC · Software by ITOxide</span>
+            <span>Copyright © {% now "Y" %} {{ COPYRIGHT_HOLDER }} · Software by {{ DEVELOPER_NAME }}</span>
         </footer>
     </div>
 </div>

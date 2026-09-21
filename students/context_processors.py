@@ -1,4 +1,14 @@
 from django.conf import settings
+from django.db.utils import OperationalError, ProgrammingError
+
+
+def _branding():
+    """Developer name and copyright holder; settings values if the table is not ready."""
+    from .models import SiteBranding
+    try:
+        return SiteBranding.current()
+    except (OperationalError, ProgrammingError):
+        return settings.DEVELOPER_NAME, settings.COPYRIGHT_HOLDER
 
 
 def school_info(request):
@@ -21,7 +31,10 @@ def school_info(request):
                     and (user.has_perm('students.view_student') or
                          user.has_perm('students.add_exammark'))
                 )
+    developer_name, copyright_holder = _branding()
     return {
         'SCHOOL_INFO': settings.SCHOOL_INFO,
+        'DEVELOPER_NAME': developer_name,
+        'COPYRIGHT_HOLDER': copyright_holder,
         'can_result_analysis': can_result_analysis,
     }

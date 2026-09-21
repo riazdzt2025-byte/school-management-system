@@ -108,6 +108,15 @@
         .alert-danger {
             margin-bottom: 16px;
         }
+        .developer-credit {
+            padding: 14px 20px 18px;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #5a6b7d;
+        }
+        .developer-credit strong {
+            color: #0f2d52;
+        }
     </style>
 </head>
 <body>
@@ -166,6 +175,10 @@
                 <label for="saveUsername">Save username</label>
             </div>
         </form>
+
+        <div class="developer-credit">
+            Developed by <strong>{{ DEVELOPER_NAME }}</strong>
+        </div>
     </div>
 
     <script>
