@@ -206,6 +206,94 @@ class InstitutionReadIsolationTests(TestCase):
         response = self.client.get(reverse('edit_exam', args=[self.exam_b.pk]))
         self.assertEqual(response.status_code, 404)
 
+    def test_select_marks_subject_404_for_other_institution_exam(self):
+        self.login_as_clerk()
+        response = self.client.get(reverse('select_marks_subject', args=[self.exam_b.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_exam_list_does_not_leak_other_institution(self):
+        """exam_list is session-bound only (no ?institution= override), but a
+        clerk switched into A must never see B's exam in the list either."""
+        self.login_as_clerk()
+        response = self.client.get(reverse('exam_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'A Exam')
+        self.assertNotContains(response, 'B Exam')
+
+    def test_seat_plan_room_reads_404_for_other_institution_exam(self):
+        """view_seat_plan_room and signature_sheet scope the exam before ever
+        looking at SeatPlan rows, so a room name guess never gets past 404."""
+        self.login_as_clerk()
+        for url in (
+            reverse('view_seat_plan_room', args=[self.exam_b.pk, 'Room-1']),
+            reverse('signature_sheet', args=[self.exam_b.pk, 'Room-1']),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_result_analysis_pages_404_for_other_institution_exam(self):
+        """Result Analysis (subject-fail, multi-term, merit slides, result
+        cards) and Section Arrangement all resolve ?exam= through the same
+        Office/Exam-scoped queryset — an out-of-scope exam id 404s."""
+        self.login_as_clerk()
+        for name in (
+            'result_analysis_subject_fail', 'result_analysis_merit_slides',
+            'result_analysis_result_cards', 'section_arrangement',
+        ):
+            with self.subTest(name=name):
+                response = self.client.get(reverse(name), {'exam': self.exam_b.pk})
+                self.assertEqual(response.status_code, 404)
+
+    def test_result_analysis_multi_term_404_for_other_institution_exam(self):
+        """The multi-select variant takes exams=<id>&exams=<id> — a B exam in
+        the list must 404 exactly like the single-exam analysis pages."""
+        self.login_as_clerk()
+        response = self.client.get(
+            reverse('result_analysis_multi_term'),
+            {'exams': [self.exam_a.pk, self.exam_b.pk]},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_class_section_summary_ignores_other_institution_param(self):
+        """?institution=<B> falls back to the clerk's own session institution
+        instead of ever exposing B's class/section counts."""
+        self.login_as_clerk()
+        response = self.client.get(
+            reverse('class_section_summary'), {'institution': self.other.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['institution'], self.institution)
+        self.assertEqual(response.context['grand_total'], 1)
+
+    def test_subject_requirement_list_ignores_other_institution_param(self):
+        from .models import SubjectRequirement
+        subject = Subject.objects.create(code='ENG', name='English', full_marks=100)
+        SubjectRequirement.objects.create(
+            institution=self.institution, admission_class='6', subject=subject,
+            requirement_type='MANDATORY',
+        )
+        req_b = SubjectRequirement.objects.create(
+            institution=self.other, admission_class='6', subject=subject,
+            requirement_type='MANDATORY',
+        )
+        self.clerk.user_permissions.add(
+            Permission.objects.get(
+                content_type=ContentType.objects.get_for_model(SubjectRequirement),
+                codename='view_subjectrequirement',
+            )
+        )
+        self.login_as_clerk()
+        response = self.client.get(
+            reverse('subject_requirement_list'), {'institution': self.other.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        shown = [
+            requirement
+            for bucket in response.context['grouped_requirements'].values()
+            for requirement in bucket
+        ]
+        self.assertNotIn(req_b, shown)
+
     # ------------------------------------------------------------------ JSON
     def test_subject_requirements_json_does_not_leak_other_institution(self):
         subject = Subject.objects.create(code='BAN', name='Bangla', full_marks=100)

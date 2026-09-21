@@ -361,6 +361,69 @@ class InstitutionWriteIsolationTests(TestCase):
         response = self.client.get(reverse('edit_exam', args=[self.exam_b.pk]))
         self.assertEqual(response.status_code, 404)
 
+    def test_delete_exam_blocked_for_non_admin_clerk(self):
+        """delete_exam has no permission_required and looks the exam up
+        unscoped (get_object_or_404) — it relies entirely on `_is_admin()` to
+        keep non-admins out, matching every other `_is_admin` bypass in this
+        codebase. Pin that a non-admin clerk is redirected before the object
+        is ever touched, for either their own exam or another institution's."""
+        self.login_as_clerk()
+        for exam in (self.exam_a, self.exam_b):
+            with self.subTest(exam=exam.name):
+                response = self.client.post(reverse('delete_exam', args=[exam.pk]))
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(Exam.objects.filter(pk=exam.pk).exists())
+
+    def test_select_marks_subject_404_for_other_institution_exam(self):
+        self.grant((ExamMark, 'add_exammark'))
+        self.login_as_clerk()
+        response = self.client.get(reverse('select_marks_subject', args=[self.exam_b.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_start_entering_marks_rejects_other_institution_in_post(self):
+        self.grant((ExamMark, 'add_exammark'))
+        self.login_as_clerk()
+        before = Exam.objects.filter(institution=self.other, admission_class='7').count()
+        response = self.client.post(reverse('start_entering_marks'), {
+            'institution': self.other.pk, 'admission_class': '7', 'group': '',
+            'exam_type': 'FIRST_TERM', 'session': '2026', 'subject': self.subject.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            Exam.objects.filter(institution=self.other, admission_class='7').count(), before,
+        )
+
+    def test_auto_populate_subject_requirements_rejects_other_institution(self):
+        self.login_as_clerk()
+        before = SubjectRequirement.objects.filter(institution=self.other).count()
+        response = self.client.post(reverse('auto_populate_subject_requirements'), {
+            'institution': self.other.pk, 'admission_class': '9', 'group': '',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            SubjectRequirement.objects.filter(institution=self.other).count(), before,
+        )
+
+    def test_issue_tc_and_certificate_404_for_other_institution_student(self):
+        from .models import Certificate, TransferCertificate
+        self.grant(
+            (TransferCertificate, 'add_transfercertificate'),
+            (Certificate, 'add_certificate'),
+        )
+        self.login_as_clerk()
+        response = self.client.post(
+            reverse('issue_tc', args=[self.student_b.pk]), {'tc_number': 'TC-B-1'},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(TransferCertificate.objects.filter(student=self.student_b).exists())
+
+        response = self.client.post(
+            reverse('issue_certificate', args=[self.student_b.pk]),
+            {'certificate_type': 'STUDY'},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Certificate.objects.filter(student=self.student_b).exists())
+
     # ------------------------------------------------------------- admission approve
     def test_office_approve_rejects_other_institution_application(self):
         self.login_as_clerk(department='Office')
