@@ -199,6 +199,58 @@ class InstitutionWriteIsolationTests(TestCase):
         self.assertFalse(self.student_a.is_archived)
         self.assertFalse(self.student_b.is_archived)
 
+    def test_bulk_update_students_rejects_other_institution_student(self):
+        self.login_as_clerk()
+        response = self.client.post(reverse('bulk_update_students'), {
+            'student_ids': [self.student_a.pk, self.student_b.pk],
+            'new_class': '7',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.student_a.refresh_from_db()
+        self.student_b.refresh_from_db()
+        self.assertEqual(self.student_a.admission_class, '6')
+        self.assertEqual(self.student_b.admission_class, '6')
+
+    def test_bulk_update_select_rejects_other_institution_student(self):
+        self.login_as_clerk()
+        response = self.client.post(reverse('bulk_update_select'), {
+            'student_ids': [self.student_a.pk, self.student_b.pk],
+        })
+        self.assertEqual(response.status_code, 302)
+
+    def test_bulk_update_select_rejects_other_institution_in_post_field(self):
+        self.login_as_clerk()
+        response = self.client.post(reverse('bulk_update_select'), {
+            'student_ids': [self.student_a.pk],
+            'institution': self.other.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+
+    def test_auto_register_students_rejects_other_institution_student(self):
+        self.login_as_clerk()
+        response = self.client.post(reverse('auto_register_students'), {
+            'student_ids': [self.student_a.pk, self.student_b.pk],
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('student_list'), fetch_redirect_response=False)
+
+    def test_discontinue_student_404_for_other_institution(self):
+        self.login_as_clerk()
+        response = self.client.get(reverse('discontinue_student', args=[self.student_b.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.student_b.refresh_from_db()
+        self.assertNotEqual(self.student_b.status, 'DISCONTINUED')
+
+    def test_discontinue_student_post_404_for_other_institution(self):
+        self.login_as_clerk()
+        response = self.client.post(
+            reverse('discontinue_student', args=[self.student_b.pk]),
+            {'reason': 'Sneaky discontinue'},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.student_b.refresh_from_db()
+        self.assertNotEqual(self.student_b.status, 'DISCONTINUED')
+
     def test_import_students_rejects_other_institution_row(self):
         """An Excel import that names another institution's school must not
         create rows there for a scoped clerk."""
