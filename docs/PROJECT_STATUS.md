@@ -1,12 +1,12 @@
 # Project Status — School Management System
 
-_Last updated: 2026-09-19 (সেশন ০০ — নতুন baseline যাচাই, প্রম্পট ০১/২৮)_
-_Base commit: `8b7aa62` (Merge PR #35) on branch `arena/01a0b9da-school-management-system` — equals `origin/main`_
+_Last updated: ২০২৬-০৯-২০ (EX-03 — Group-based Mark Evaluation + বাকি কাজ সম্পন্ন, ৬৭০ Django + ১৪ Node)_\
+_Base: `7a13e33` (Merge PR #41) + PR #42 commits (`c738e47`→`3690ea8`) on branch `arena/01a0bd3f-school-management-system`_\
 _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 
-> **২০২৬-০৯-১৯ baseline (প্রম্পট ০১/২৮, সেশন ০০):** এই checkout-এ নিজে চালিয়ে যাচাই — **৬২৫ Django + ১৪ Node test pass**, `check` 0 issue, `check --deploy` ৬টি dev warning, `makemigrations --check` clean (leaf `0043`), backup drill sqlite ১৫/০ ও moto-S3 ২৮/০ pass। ২৮-সেশনের পূর্ণ verdict matrix: **`docs/prompts/reports/০০-baseline.md`** (§20-এ সারসংক্ষেপ)। নিচের ২০২৬-০৯-১৭-এর section-গুলো ঐতিহাসিক রেকর্ড; যেখানে সংখ্যা বা verdict ভিন্ন, §20-ই সত্য।
+> **২০২৬-০৯-২০ EX-03 বাকি কাজ সম্পন্ন (প্রম্পট ০৪/২৮):** EX-03-এর প্রমিত বাকি আইটেম — `mark_evaluation_settings`-এ **weekly_test column non-MID exam_type-এ hide** — এই সেশনে করা হলো (view-এ `show_weekly_test` context flag + template-এ conditional column + help-text; POST-এ rejection আগে থেকেই ছিল, এখন UI-তেও input নেই) + ২ নতুন regression test। এই checkout-এ নিজে চালিয়ে যাচাই — **৬৭০ Django + ১৪ Node test pass** (৬২৫→৬৩৮→৬৫৩→৬৬৮→৬৭০ ক্রমে EX-01/02/03+finishing), `check` 0 issue, `check --deploy` ৬টি dev warning, `makemigrations --check` clean (leaf **0044** — EX-03 group migration), backup drill sqlite ১৫/০ ও moto-S3 ২৮/০ pass। EX-01/EX-02/EX-03 সব Complete — প্রমাণ `docs/prompts/reports/০০-baseline.md` + `EX-01.md`/`EX-02.md`/`EX-03.md` (§20-এ সারসংক্ষেপ)। নিচের ২০২৬-০৯-১৭-এর section-গুলো ঐতিহাসিক রেকর্ড; যেখানে সংখ্যা বা verdict ভিন্ন, §20-ই সত্য।
 
-**Bengali TL;DR (সর্বশেষ — 2026-09-17 implement):** এই সেশন P0-9 (README tick) + O2 (Paginator 100) + E1 (import stay-on-page) + D-GPA (4.90→5.00) + D-MIS (AB/F + TC exclusion) implement করেছে — শুধু সর্বশেষ checkout (`44cbcc3` = `origin/main`, PR #27 merge) যাচাই করা হয়েছে। Isolated env-এ `requirements.txt` fallback (Django 5.2.17 / Python 3.11) দিয়ে **550 students test + 6 Node row-action test সব pass**, `manage.py check` 0 issue, `makemigrations --check` clean, migrations 0001–0042 synced। আগের P0–P2 backlog-এর প্রায় সব কাজ (isolation, money validation, voucher/promotion institution column, fee/auto-receipt, media S3, backup tooling incl. encryption/off-box) code-এ আছে; guardian contact unification (0039-0042), result analysis isolation, Full Rank List, row-action gating সব cover আছে। SSC Registration/Result Summary **restore করা হয়নি** (migration 0035 irreversible, regression test pass)। Live Render/DB/backup অবস্থা এই sandbox থেকে **UNKNOWN** — docs ছাড়া নিশ্চিত দাবি করা হয়নি। কোনো production DB/credential ব্যবহার করা হয়নি, ব্যক্তিগত তথ্যবিহীন test data ব্যবহৃত।
+**Bengali TL;DR (সর্বশেষ — ২০২৬-০৯-২০ EX-03 + finishing):** EX-03 **Group-based Mark Evaluation** implement হয়েছিল — `SubjectMarkSetting.group` (migration **0044**, blank=default, 9-12 only, exact/MID owner সিদ্ধান্ত) + resolution chain **group→blank→Subject** (marks entry/import/result group-aware) + `mark_evaluation_settings` UI group selector/per-group listing+validation+audit। বাকি কাজ হিসেবে এখন **weekly_test column শুধু MID_TERM_1/2/3-এ দেখায়** (অন্য exam_type-এ column + input + help-text mention সব hidden; legacy saved value DB-এ থাকে, display হয় না)। এর আগে EX-02 (roll-order ৬৫৩) ও EX-01 (Analysis subtab+import preserve ৬৩৮) merge হয়েছে। পূর্ণ suite এখন **৬৭০ Django + ১৪ Node pass**, `check` 0, `makemigrations --check` clean (0044), `RetiredBoardFeatureTests` pass (SSC restore নয়)। Live Render/DB/backup এই sandbox থেকে **UNKNOWN** — docs ছাড়া নিশ্চিত দাবি নয়; কোনো production DB/credential ছোঁয়া হয়নি।
 
 ---
 
@@ -47,7 +47,7 @@ _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 | E1 | Marks import শেষে একই exam-এর import page-এ থাকা | **Complete** | `views.py:3803-3810 import_exam_marks` — সফল import-এর পর `redirect(reverse('import_exam_marks', kwargs={'pk': exam.pk}) + '?subject=…&group=…')` (কমেন্ট "Stay on the same import page … (E1)"); POST-redirect-GET হওয়ায় refresh-এ double-import নেই। Regression pin: `tests.py::test_import_stay_on_page_redirects_to_same_page` + **`test_import_stay_on_page_preserves_subject_and_group`** (EX-01, PR #39 — group param সংরক্ষণও pinned)। ⚠️ ২০২৬-০৯-১৯-এর আগের Partial-ভিত্তি (`return redirect('exam_list')`, L3295/`:3391-3392`) এখন বাসি। পুরোনো PR #23 একই আচরণের প্রস্তাব — owner চাইলে superseded বন্ধ করতে পারেন। |
 | E2 | Result Analysis Exam subtab | **Complete** | `views.py::_require_result_analysis_department` + 5 views: `result_analysis_subject_fail`, `multi_term`, `merit_slides`, `result_cards`, `section_arrangement` + `result_analysis_subject_fail_list` helper + templates `result_analysis_*.html` + sidebar `Result Analysis` flyout guarded by `can_result_analysis` context. Institution-scoped, permission-gated. Tests: `students/test_result_analysis.py` (curriculum, isolation, helpers)। **EX-01 (PR #39, 2026-09-19):** এখন Exam flyout-এও nested **Analysis subtab** (একই ৫টি named URL — দুটি entry point), `exam_list`-এ দৃশ্যমান `analysis-entry`, এবং ৫টি result পেজের হেডারে প্রাসঙ্গিক cross-link (`analysis-jump`) — সবই `can_result_analysis` gate-এ; per-view guard অপরিবর্তিত (anonymous 302 / no-perm 403 / Accounts 403 — `test_navigation.py::ExamAnalysisSubtabTests`-এ pinned)। |
 | E3 | Class Performance Register সহ result lists/print/export-এ numeric roll-order | **Complete** | **আনুষ্ঠানিক নিয়ম (EX-02, PR #41, 2026-09-20):** register/roll output = numeric roll — `F('roll_no').asc(nulls_last=True)` + tie name→pk; merit/rank output = position (ইচ্ছাকৃত)। `result_sheet` Python sort-key (None last, name→pk — c17a45a, re-pinned); `student_list` + `download_student_list` (Excel, owner সিদ্ধান্ত: roll) class→section→roll→name→pk (আগে NULL **প্রথমে** আসত — ঠিক); attendance class-wise list `mark_attendance_bulk` name→roll; seat-plan/signature `SeatPlan.Meta (room_name, seat_no)` + `generate_seat_plan` register ক্রমে seat বরাদ্দ; class result-cards print run merit→roll (প্রতিটি card-এ position মুদ্রিত); multi-term/subject-fail/section-arrangement-এ pk tie-break। **Merit অপরিবর্তিত:** `exam_result_summary` (position-first table), `full_rank_list`, `top_10`, merit slides; unranked tail register order। `attendance_report` = record log (-date), `attendance_summary` = analytics (name) — পূর্ণ matrix: `docs/prompts/reports/EX-02.md`। Print CSS reorder করে না (template dictsort/JS-sort = 0)। Tests: `test_register_roll_order.py` (১৫ — rolls 2/10/100/None, duplicate-roll tie, দুই-পেজ pagination) + `test_sheet_defaults_to_numeric_roll_order_without_changing_merit`। |
-| E4 | Group-based Mark Evaluation | **Complete** | `mark_evaluation_settings` (URL `mark-evaluation/`) per `Institution + admission_class + exam_type + group` — `SubjectMarkSetting` (`is_active`, parts CQ/MCQ/PT/WT, pass %). Group-aware via `_exam_group_selection`, linked from Office(perm `change_subject`) and Exam flyouts. Tests: `MarkEvaluationActiveSubjectTests`, `MarksPartsAndPassRulesTests`। |
+| E4 | Group-based Mark Evaluation | **Complete** | EX-03 (2026-09-20, migration **0044**): `SubjectMarkSetting.group` (`''`=default, `choices=CLASS_GROUPS` must be blank for classes <9 — 9-12 only) + unique `institution+class+subject+exam_type+group` (append-only). Resolution এক ফাংশনে: `get_subject_marks(..., group)` / `active_exam_subject_ids(..., group)` / `resolve_mark_setting` **group→blank→Subject** fallback (marks entry/import/result সব group-aware). `mark_evaluation_settings` (URL `mark-evaluation/`) per `institution+class+exam_type+group` — `is_active`, parts CQ/MCQ/PT/WT, pass % + group selector + per-group listing; POST validation: full>0, pass 0-100, parts **exact** sum (=full — owner সিদ্ধান্ত), weekly_test **MID_TERM_* only** (owner সিদ্ধান্ত), <9 blank, duplicate via `update_or_create` + `record_audit`, institution-scoped, `change_subject` perm (অপরিবর্তিত). Inactive group-aware; backward compat blank=default (all groups). **weekly_test column এখন শুধু MID_TERM_1/2/3-এ render হয়** (2026-09-20 finishing: view `show_weekly_test` flag + template conditional; non-MID-এ save-এও reject — legacy stored value DB-এ থাকে, display হয় না)। Tests: `test_group_based_mark_evaluation.py` ১৭ (১৫ +২ column hide/show pin) + `MarksPartsAndPassRulesTests` ৯ + `MarkEvaluationActiveSubjectTests` ৩ (full 670)। Reports: `docs/prompts/reports/EX-03.md`। |
 | E5 | নতুন subject / Higher Math assign / configure করে marks / result দেওয়ার workflow | **Complete** | তিনটি আলাদা যাচাই (নির্দেশ ৩): (1) **Curriculum-এ থাকা:** `curriculum_data.py:42 HMATH`, `SSC_GROUPS['SCI']` = `HMATH MANDATORY` (line 132-136), `HSC_GROUPS['SCI']` = `HMATH OPTIONAL sci_4th`; (2) **Database-এ থাকা:** migration `0042_higher_math_mandatory_science.py` (SSC SCI 9/09/10 → MANDATORY, reverse → OPTIONAL), `Subject` row via `seed_subjects`; (3) **Class/group-এ assigned থাকা:** `SubjectRequirement(institution, admission_class, group, subject, requirement_type)` + `subject_requirement_list` (Office CRUD) + `get_applicable_subjects()` + `auto_populate_subject_requirements`. New subject inline “or add a new subject below” restored (`bd1bd2c`), then marks via `enter_marks` / `import_exam_marks` per-subject, then `build_exam_results` → result views. Tests: `test_new_subject_result_workflow.py`, `test_result_analysis.py::test_ssc_higher_math_is_mandatory`, `ExamScopeConsistencyTests`। |
 | E6 | Missing/null marks, entered zero, all-blank, optional/exempt subjects-এর আচরণ | **Complete** | Single source `result_utils.compute_subject_result` + `ABSENT='-'` + `EXAM_ABSENT_SUBJECT_FAILS` (default True, env). **All-blank (no row):** `mark is None` → if `True` → `F/0` counted as 0/full (absent True, `failed_parts=[]`) but cell shows dash; if `False` → `ABSENT` excluded from total/GPA. **All subjects blank:** `build_exam_results` → `overall_gpa=None, grade=ABSENT, status='No Marks'` (not Fail, not ranked). **Entered zero:** `marks_obtained=0` → `percentage 0` → `F/0.00` passed=False, counted toward total/GPA (distinct from absent). **Optional/exempt:** `ReligionColumn` single REL column per student's religion + `StudentSubjectChoice` optional_set_key + `not_applicable`/`religion_unassigned` (dash, never counted, not absent). Tests: `AbsentSubjectRulesTests` (5), `MarksPartsAndPassRulesTests` (including `test_a_student_entered_nowhere_has_no_row`, `test_configured_but_blank_part_is_a_failed_part`)। |
 | E7 | Final GPA 4.90–5.00-কে 5.00 করার কোনো নিয়ম আছে কি না | **Missing (intentionally — no rule exists)** | `result_utils.get_grade`: `>=80 → A+/5.00`, `>=70 → A/4.00` etc. No boost. `build_exam_results`: `overall_gpa = round(sum(gpa_points)/len, 2)` → 4.90 stays 4.90, 4.99 stays 4.99, only 5.00 when average is exactly 5.00. Verified no `if gpa >=4.90: gpa=5.00` anywhere (`grep -r "4.90\|4.9"` zero). **Decision required:** keep current (accurate avg) vs add boost rule — two separate PRs planned per instruction (current vs proposed documented in TASK_BACKLOG D-GPA)। |
@@ -153,14 +153,13 @@ _Working tree: clean, no local overwrite, no reset --hard, no git clean_
 - `students_data.json`: 254 students (2026), 251 in pk 2 (School).
 - **Unknown live:** production DB content, years, volume — fixtures are example data only (rule 7).
 
-## 6. Test suite map (৬২৫ Django + ১৪ Node — re-verified 2026-09-19, §20)
+## 6. Test suite map (৬৭০ Django + ১৪ Node — re-verified ২০২৬-০৯-২০, §20)
 
-**Python (`manage.py test students`): 625 pass in 231.4s** (৬২৫ = এই checkout-এ ২০২৬-০৯-১৯-এ নিজে চালানো ফল;
-নিচের ২০২৬-০৯-১৭-এর breakdown ঐতিহাসিক — module-ভিত্তিক সংখ্যা বদলেছে, মোট ৬২৫)।
-Isolation: 16 + 34 tests; Students/Admission/Exams/Attendance/HR/Finance/Backup/Media/SSC retirement as in previous §6 plus 72 backup tests (encryption/file modes/off-box stub/SHA/retention/health-gate) and 33 media tests.
+**Python (`manage.py test students`): 670 pass in ~247s** (৬২৫ baseline +১৩ EX-01 +১৫ EX-02 +১৫ EX-03 +২ EX-03-finishing; এই checkout `7a13e33`+0044·Δ=৬৭০, ২০২৬-০৯-২০-এ নিজে চালানো)।
+Isolation: 16 + 34 tests; Students/Admission/Exams/Attendance/HR/Finance/Backup/Media/SSC retirement as in previous §6 plus 72 backup tests (encryption/file modes/off-box stub/SHA/retention/health-gate), 33 media tests, +১৫ EX-01 `test_navigation`, +১৫ `test_register_roll_order`, +১৭ `test_group_based_mark_evaluation` (১৫ +২ weekly-column pin)।
 
 **Node: 14 pass** — `student_row_actions.test.js` (৬) + `result_cell_shortcut.test.js` (৮) — `node --test students/js/*.test.js`,
-২০২৬-০৯-১৯-এ re-verified।
+২০২৬-০৯-২০-এ re-verified।
 
 **Not yet automated (intentional deferrals):** `P2-3` i18n, `P2-7` drop `StudentSubject`.
 
@@ -221,25 +220,25 @@ Owner-only live ops (P0-7, P0-8-live, P1-11-live) + quick fixes (pagination 100,
 
 ---
 
-## 20. Session 00 — 2026-09-19 · নতুন baseline যাচাই (প্রম্পট ০১/২৮)
+## 20. Sessions 00–03 — ২০২৬-০৯-১৯→২০২৬-০৯-২০ · baseline + EX-01/EX-02/EX-03
 
 **Scope:** শুধু যাচাই + ডকুমেন্টেশন (prompt §২) — **কোনো feature code, migration, template বা live কাজ নয়**।
 **Branch:** `arena/01a0b9da-school-management-system` · **Base:** `8b7aa62` = `origin/main` (Merge PR #35) · working tree clean।
 **পূর্ণ matrix + প্রমাণ (file:line, view, test নাম):** `docs/prompts/reports/০০-baseline.md`।
 
-### 20.1 যাচাই কমান্ড ও ফল (isolated venv, Django 5.2.17 fallback)
+### 20.1 যাচাই কমান্ড ও ফল — সর্বশেষ EX-03 (isolated venv, Django 5.2.17 fallback)
 
 | কমান্ড | ফল |
 |---|---|
 | `python manage.py check` | `0 issues` |
 | `python manage.py check --deploy` | ৬ warning (`W004 W008 W009 W012 W016 W018`) — প্রত্যাশিত dev expectation |
-| `python manage.py makemigrations --check` | `No changes detected` — models ⇄ migrations `0001`–**`0043`** synced |
-| `python manage.py test students` | **`Ran 625 tests in 231.431s` → `OK`** |
+| `python manage.py makemigrations --check` | `No changes detected` — models ⇄ migrations `0001`–**`0044`** synced (EX-03 `group` migration) |
+| `python manage.py test students` | **`Ran 670 tests in ~247s` → `OK`** (৬২৫ +১৩ EX-01 +১৫ EX-02 +১৫ EX-03 +২ EX-03-finishing) |
 | `node --test students/js/*.test.js` | **14 pass / 0 fail** (৮ shortcut + ৬ row-action) |
 | `./scripts/backup_smoke_test.sh` | **১৫ step pass / ০ fail** (disposable sqlite, plaintext + encrypted, SHA verify, wrong-passphrase reject) |
 | `moto_server` + `backup_smoke_test.sh --s3-endpoint …` | **২৮ step pass / ০ fail** (off-box upload → `--check-remote` → `fetch_backup` → restore → retention ২) |
 
-**CI (PR #38, `gh pr checks 38`):** `test (sqlite, 3.12)` **pass** 6m21s · `test (postgres, 3.12)` **pass** 6m36s · `Node row-action button tests` **pass** 10s — অর্থাৎ postgres:16-এও suite সবুজ (লোকালে Postgres ছিল না)।
+**CI (PR #42, `gh pr checks 42`):** `test (sqlite, 3.12)` **pass** 5m22s · `test (postgres, 3.12)` **pass** 7m24s · `Node` **pass** 5s — postgres:16-এও suite সবুজ (run 35490969199, 7m28s)। **PR #41**-ও একইভাবে pass (sqlite 6m19s / postgres 6m39s / Node 5s)।
 
 `RetiredBoardFeatureTests` সহ পুরো suite pass ⇒ SSC Registration/BoardResult পুনরুদ্ধার হয়নি।
 কোনো production DB/credential/Render/S3 আসল bucket ছোঁয়া হয়নি; `.restore-drill/` নিজেই পরিষ্কার হয়েছে।
@@ -248,26 +247,26 @@ Owner-only live ops (P0-7, P0-8-live, P1-11-live) + quick fixes (pagination 100,
 
 | Verdict | সেশন |
 |---|---|
-| **Complete** (যাচাই করা: ইতিমধ্যে সম্পন্ন — শুধু regression) | **EX-04, EX-05, EX-06, EX-07, OF-01, OF-03, OF-04, DB-01, DB-04, DB-05, DB-06** (+ EX-01-এর import redirect, + OF-02-এর ৪টি view) |
-| **Partial** (মূল অংশ আছে, নির্দিষ্ট কাজ বাকি) | **EX-01** (Analysis subtab), **EX-02** (বাকি output-এর নিয়ম), **EX-03** (group field), **OF-02** (১১টি list view), **OF-05** (ছবি), **OF-06** (progress page), **DB-02** (agent নামের comment), **DB-03** (SEC-FU-1/2), **AT-01** (correction), **EM-03** (closed-period) |
+| **Complete** (যাচাই করা: ইতিমধ্যে সম্পন্ন — শুধু regression + EX-01/02/03) | **EX-01** (Analysis subtab + import preserve, PR #39), **EX-02** (register/roll order, PR #41), **EX-03** (group-aware marks, 0044, PR পরবর্তী), **EX-04, EX-05, EX-06, EX-07, OF-01, OF-03, OF-04, DB-01, DB-04, DB-05, DB-06** (+ OF-02-এর ৪টি view pagination আগেই ছিল) |
+| **Partial** (মূল অংশ আছে, নির্দিষ্ট কাজ বাকি) | **OF-02** (বাকি ৭টি list view pagination), **OF-05** (ছবি continuity), **OF-06** (progress page), **DB-02** (agent নামের comment), **DB-03** (SEC-FU-1/2), **AT-01** (per-record correction), **EM-03** (closed-period lock) |
 | **Missing** | **AT-02** (calendar view), **EM-01** (teacher assignment), **EM-02** (leave — ⛔ owner-policy ছাড়া কোড নয়) |
 | **Unverified** | **OF-07 / OF-08** (audit-সেশন এখনো চালানো হয়নি), **FN-01** (২৭টির পরে), + সব live-only অংশ |
 
-### 20.3 বাকি কাজ (সংশোধিত তালিকা)
+### 20.3 বাকি কাজ (সংশোধিত — ২০২৬-০৯-২০, EX-03-পরবর্তী)
 
-১. EX-01 Analysis subtab ও ২. EX-02 বাকি output-order নিয়ম · ৩. EX-03 `SubjectMarkSetting.group`
-(+ append-only migration) · ৪. OF-02 ১১টি list view-এ pagination · ৫. OF-05 admission photo +
-list photo + purge-এ ফাইল মুছে ফেলা · ৬. OF-06 public progress/status page · ৭. OF-07/OF-08 audit ·
-৮. DB-02 `migrations/0034`-এর agent-নামের comment · ৯. DB-03 SEC-FU-1/2 · ১০. AT-01 per-record
-correction · ১১. AT-02 calendar view · ১২. EM-01 assignment · ১৩. EM-03 closed-period · ১৪. FN-01 release যাচাই।
+~~১. EX-01 Analysis subtab~~ ✅ · ~~২. EX-02 বাকি output-order~~ ✅ · ~~৩. EX-03 `SubjectMarkSetting.group`~~ ✅ (0044) ·
+৪. OF-02 বাকি ৭টি list view-এ pagination · ৫. OF-05 admission photo + list photo + purge-এ ফাইল মুছে ফেলা ·
+৬. OF-06 public progress/status page · ৭. OF-07/OF-08 audit · ৮. DB-02 `migrations/0034`-এর agent-নামের comment ·
+৯. DB-03 SEC-FU-1/2 · ১০. AT-01 per-record correction · ১১. AT-02 calendar view · ১২. EM-01 assignment · ১৩. EM-03 closed-period · ১৪. FN-01 release যাচাই।
 
-বিস্তারিত ও priority: `docs/TASK_BACKLOG.md` §Remaining (২০২৬-০৯-১৯ update-log সহ)।
+বিস্তারিত ও priority: `docs/TASK_BACKLOG.md` §Remaining (২০২৬-০৯-২০ update-log সহ)।
 
-### 20.4 owner-সিদ্ধান্ত (এই সেশনে নতুন নিয়ম নয়, শুধু তালিকা)
+### 20.4 owner-সিদ্ধান্ত (সর্বশেষ)
 
-- OPEN **PR #36 / #37** — সমান্তরাল "প্রম্পট ০১" সেশন; কোনটি merge হবে (একটির বেশি merge করলে ডকে পরস্পরবিরোধী verdict)।
-- **EM-02 leave নীতি** — শুধু এই সেশনটিই সত্যিকারের blocked (লিখিত কোড-পূর্ব নীতি ছাড়া নয়)।
+- ~~OPEN PR #36/37/38~~ — EX-01 PR #39 ✅ ও EX-02 PR #41 ✅ MERGED (৭a13e33); EX-03 PR পরবর্তী — owner merge-অনুমোদন বাকি।
+- **EX-03 owner-সিদ্ধান্ত ৩টি (সেশনের শুরুতে জিজ্ঞেস করে নেওয়া):** parts **exact** (=full), weekly **MID_TERM_* only**, group **9-12 only** (<৯ blank) — প্রয়োগ করা, পরীক্ষা করা।
+- **EM-02 leave নীতি** — এখনো ⛔ blocked (লিখিত কোড-পূর্ব নীতি ছাড়া নয়)।
 - DB-04-এর HSTS/SSL-redirect/secure-cookie (live) — `check --deploy`-এর ৬ warning-এর মূল কারণ।
-- README §৭-এর বাকি সারি (EX-01/EX-03/EX-06/EX-07/OF-02/OF-05/OF-06/OF-07/OF-08/AT-01/AT-02/EM-01/EM-03)।
+- README §৭-এর বাকি সারি (EX-06/EX-07/OF-02/OF-05/OF-06/OF-07/OF-08/AT-01/AT-02/EM-01/EM-03) + weekly_test column hide (ভবিষ্যতে)।
 
-**এই সেশনে কোনো feature code, migration, policy change, destructive command বা live deploy নেই।**
+**এই সেশন (EX-03):** code+migration+tests+docs — single append-only migration 0044, no destructive command, no live deploy (owner merge-অনুমোদন বাকি)।
