@@ -98,3 +98,24 @@ class SiteBrandingEditTests(TestCase):
         self.client.force_login(user)
         response = self.client.get(reverse('admin:students_sitebranding_change', args=[1]))
         self.assertIn(response.status_code, (302, 403))
+
+
+class NoToolingNamesInSourceTests(TestCase):
+    """Committed code must not carry the name of an AI/agent tool."""
+
+    def test_no_agent_tool_name_in_python_or_templates(self):
+        needle = 'arena' + ' agent'
+        base = Path(settings.BASE_DIR)
+        offenders = []
+        for folder in (base / 'students', base / 'school_system'):
+            for pattern in ('*.py', '*.html'):
+                for path in folder.rglob(pattern):
+                    if needle in path.read_text(encoding='utf-8').lower():
+                        offenders.append(str(path.relative_to(base)))
+        self.assertEqual(offenders, [])
+
+    def test_migration_0034_header_is_neutral(self):
+        path = Path(settings.BASE_DIR) / 'students' / 'migrations' / '0034_subjectmarksetting_is_active.py'
+        first_line = path.read_text(encoding='utf-8').splitlines()[0]
+        self.assertEqual(first_line, '# Generated on 2026-09-08')
+
