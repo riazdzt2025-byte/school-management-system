@@ -136,37 +136,46 @@ The one exception is a student with **no marks in any subject**: they are listed
 `No Marks`, left unranked and not counted as Fail — nobody sat the exam, nobody
 should get a fabricated GPA 0.00 in the position list.
 
-### Final GPA: 4.90–4.99 benefit (D-GPA)
+### Final GPA and the fourth subject (D-GPA)
 
-**Owner-confirmed 2026-09-23:** a student who passes every counted subject and
-whose **rounded** overall GPA is from **4.90 inclusive to below 5.00** receives
-**GPA 5.00 and grade A+**. This is a final-result benefit; it does not alter the
-per-subject grade or point. A student may have one or more **A (4.00)** subjects
-and still receive it if the final rule is met.
+**Owner-corrected policy, 2026-09-23:** the old automatic **4.90–4.99 → 5.00**
+benefit does **not** apply. A student is graded on their main subjects, with at
+most one selected **fourth subject** giving a bonus. A fourth subject is a
+selected paper whose Subject category is **FOURTH** (for example *Agriculture
+Studies (4th Subject)*); an ordinary `OPTIONAL` subject remains a main subject.
 
-The result service first averages the subject GPA points, then uses decimal
-`ROUND_HALF_UP` to two places — never Python's banker's rounding — and only then
-checks the range. GPA is displayed with exactly two decimal places on every
-result page and printout. The calculated value is always capped at **5.00**.
+For **N main subjects**, the calculation is:
 
-| Raw average | Two-place `ROUND_HALF_UP` | Published final GPA / grade |
-|---:|---:|---|
-| 4.894 | 4.89 | 4.89 (no benefit) |
-| 4.895 | 4.90 | **5.00 / A+** |
-| 4.899 | 4.90 | **5.00 / A+** |
-| 4.90 | 4.90 | **5.00 / A+** |
-| 4.949 | 4.95 | **5.00 / A+** |
-| 4.99 | 4.99 | **5.00 / A+** |
-| 4.999 | 5.00 | 5.00 / A+ (already at the cap) |
-| 5.00 | 5.00 | 5.00 / A+ (unchanged) |
+```
+final GPA = min(5.00, (sum(main subject GPA points) + max(0, fourth point - 2.00)) / N)
+```
 
-A Fail is always GPA **0.00**, and `No Marks` has no GPA; neither reaches this
-benefit. With the default absent policy, an **AB** subject is F and therefore
-also blocks it. Positions are calculated **after** this final GPA rule for every
-student, then use total marks as the existing tie-breaker. This keeps the
-register, detail, result card, rank lists and analysis on the same result value.
-There is no separate GPA/result Excel-export route at present; browser print / Save
-as PDF uses these same rendered result pages.
+The fourth paper is **not** an extra denominator: 10 main papers plus
+Agriculture are still graded over 10 main papers, never 11. Decimal
+`ROUND_HALF_UP` makes the final two-place display deterministic, and the final
+GPA is always capped at **5.00** — no result can display 5.10 or 5.20.
+
+| Main point sum / N | Fourth-subject point | Calculation | Published GPA / grade |
+|---|---:|---|---|
+| 49 / 10 | none | 49 / 10 | 4.90 |
+| 49 / 10 | F = 0.00 | (49 + 0) / 10 | 4.90 — Pass if all main papers pass |
+| 48 / 10 | A+ = 5.00 | (48 + 3) / 10 = 5.10 | **5.00 / A+** |
+| 50 / 10 | A+ = 5.00 | (50 + 3) / 10 = 5.30 | **5.00 / A+** |
+
+A fourth-subject **F** (including an AB under the default absent policy) earns
+zero bonus but **does not make the main result Fail**. A failed or absent **main
+subject** still makes the whole result Fail with GPA 0.00. Result totals,
+percentage, main GPA denominator, and the total-mark rank tie-break all use
+only the main subjects; the fourth paper remains visible on the sheet/card with
+its own mark and grade. When its bonus brings final GPA to 5.00, the published
+overall grade is A+.
+
+A school can offer several FOURTH papers so pupils can choose, but each student
+may select **at most one**. Publishing is blocked with the named student and
+subject list if a pupil has two or more fourth-subject choices; correct the
+student's subject choices before publishing. There is no separate GPA/result
+Excel-export route at present; browser print / Save as PDF uses these same
+rendered result pages.
 
 ## 3. Create the exam
 

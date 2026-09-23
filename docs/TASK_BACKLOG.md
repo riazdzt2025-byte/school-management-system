@@ -169,13 +169,13 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 #### D-HM · Higher Math — no code task (verified complete, doc for traceability)
 - **Status:** **Complete** — see `PROJECT_STATUS.md` §2.1 E5 (curriculum mandatory in SCI 9/10, migration 0042, assigned via SubjectRequirement). No new task; future change would be `curriculum_data` edit + data migration.
 
-#### D-GPA · Final GPA 4.90–5.00 → 5.00 নিয়ম — ✅ DONE (EX-06, 2026-09-23)
-- **Formal rule:** only a passing result enters `calculate_passing_gpa()`.  The average of subject GPA points is rounded with `Decimal.quantize(Decimal('0.01'), ROUND_HALF_UP)`; the rounded interval **[4.90, 5.00)** is promoted to **5.00 / A+**, and the final value is capped at 5.00.  Fail remains 0.00 and No Marks remains without a GPA.
-- **Owner confirmation (2026-09-23):** raw `4.895 → 4.90 → boost`; display exactly two decimal places; a passing student who has an A/4.00 subject is eligible.  Default-policy AB is F and cannot receive the benefit.
-- **Evidence:** `students/result_utils.py::calculate_passing_gpa` is the single implementation used by `build_exam_results`; no migration/model/UI redesign.  Ranking runs after this helper, so all students use the same final GPA before position and the existing total-mark tie-break.
-- **Tests:** `students/test_gpa_boost.py` covers the requested 4.894/4.895/4.899/4.90/4.949/4.99/4.999/5.00 boundaries, a half-even-differing 4.885 guard, 5.00 cap, F/AB exclusion, and a same-exam raw 5.00/4.95/4.89 cohort with positions 1/2/3.  It also checks sheet, detail, printable card, summary, rank, top-10, and Result Analysis contexts.  There is no result-specific GPA export endpoint; browser print uses those result contexts.
-- **Documentation:** `RESULT_PUBLISHING_GUIDE.md` §2 gives the policy, table, limits and examples; `PROJECT_STATUS.md` E7 records the verified state.
-- **Migration/data risk:** none.  Existing published results are rendered from marks, so the newly explicit rounding rule can change a boundary display when a result is next read/reprinted; production data was not accessed in this session.
+#### D-GPA · চতুর্থ/অতিরিক্ত বিষয় GPA — ✅ DONE (EX-06 policy correction, 2026-09-23)
+- **Owner-corrected rule:** the automatic 4.90–4.99→5.00 benefit is removed. For N main subjects: `final = min(5.00, (sum(main points) + max(0, fourth point−2.00)) / N)`, then deterministic `ROUND_HALF_UP` to two places. A fourth F/AB earns 0 bonus but does not fail the result; a main F/AB still gives Fail/0.00.
+- **Scope:** only a selected `Subject.category='FOURTH'` paper (such as `AGRI4`) is fourth. An ordinary `OPTIONAL` paper stays a main subject. One fourth choice per student; publishing blocks and names a student with multiple selected FOURTH papers. No migration/model/UI redesign.
+- **Evidence:** `students/result_utils.py::calculate_final_gpa` is the one calculation source for `build_exam_results`; totals, percentage, denominator and rank tie-break use main subjects, while the fourth paper remains printed. A cap-reached 5.00 is A+.
+- **Tests:** `students/test_fourth_subject_gpa.py` covers formula/cap (no 5.10/5.20), old no-fourth 4.90 behaviour, fourth F versus main F, selected-category scope, all existing sheet/detail/card/rank/analysis surfaces, and the publish block. `students/tests.py` retains no-fourth 4.90 regression.
+- **Documentation:** `RESULT_PUBLISHING_GUIDE.md` §2 gives formula/examples/limits; `PROJECT_STATUS.md` E7 records the verified state.
+- **Migration/data risk:** none. Existing published marks are calculated on read, so a result with a selected FOURTH paper may change when reprinted; production data was not accessed.
 
 #### D-MIS · Missing/null marks policy — ✅ DONE (decision 2026-09-17: blank = F, AB display, TC/inactive exclusion)
 - **Background (current vs proposed — decision needed before code):**
@@ -370,7 +370,7 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 | D-8 | Production DB: SQLite on persistent disk or Postgres? | **Partial** — CI Postgres proven; live engine **UNKNOWN** (P0-7) → P1-10-live |
 | D-9 | Promotion scoping: query-only vs column? | **Resolved — column added (0037)** |
 | D-10 | Legacy `StudentSubject` data: keep forever, migrate, or drop? | **Resolved — keep admin-only, stop rendering (P1-5); drop deferred to P2-7** |
-| **D-GPA** | **Final GPA 4.90–5.00 → 5.00 boost** | **✅ Decided 2026-09-17 — 4.90-4.99 →5.00 A+ implemented** |
+| **D-GPA** | **Final GPA / fourth-subject bonus** | **✅ Owner-corrected 2026-09-23 — old 4.90–4.99→5.00 boost removed; one selected FOURTH subject uses the documented bonus formula** |
 | **D-MIS** | **Missing/null marks: blank = F (keep `EXAM_ABSENT_SUBJECT_FAILS=True`)** | **✅ Decided 2026-09-17 — keep blank=F, show AB, exclude TC/DISCONTINUED from register** |
 
 ---
@@ -422,7 +422,7 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 - `O5` — status `Partial`: admission photo field অনুপস্থিত + student list-এ ছবি নেই + purge-এ ছবির ফাইল মুছে ফেলা হয় না — তিনটি গ্যাপ entry-তে যোগ করা হলো।
 - `E1` / `D-GPA` / `D-MIS` / `E8` / `O4` / `R1` — baseline-এ যাচাই করে **সঠিক** পাওয়া গেছে (কোনো পরিবর্তন দরকার হয়নি)।
 
-**নতুনভাবে Baseline-এ Complete প্রমাণিত (backlog-এ আলাদা কাজ দরকার নেই):** EX-01 (PR #39) + EX-02 (PR #41) + EX-03 (0044 group-aware — `reports/EX-03.md`) + EX-04 (Higher Math — curriculum 0042 + seeds + ৪৭+ test) + EX-05 (missing marks → AB/F — `EXAM_ABSENT_SUBJECT_FAILS=True` + টেস্ট) + EX-06 (GPA 4.90–4.99 → 5.00 boost + টেস্ট) + EX-07 (Ctrl/Cmd+Click — Node ৮ + Django ৩) + OF-01 (guardian contact 0039–0041 + ৩৯ test) + OF-03 (Subject Assignment subtab + ২৮ test) + DB-01 (dashboard scoping + nav টেস্ট) + DB-04/DB-05/DB-06 (settings/CI/backup tooling + drill এই সেশনে হাতে চালিয়ে pass)।
+**নতুনভাবে Baseline-এ Complete প্রমাণিত (backlog-এ আলাদা কাজ দরকার নেই):** EX-01 (PR #39) + EX-02 (PR #41) + EX-03 (0044 group-aware — `reports/EX-03.md`) + EX-04 (Higher Math — curriculum 0042 + seeds + ৪৭+ test) + EX-05 (missing marks → AB/F — `EXAM_ABSENT_SUBJECT_FAILS=True` + টেস্ট) + EX-06 (তৎকালীন GPA 4.90–4.99 → 5.00 boost + টেস্ট; **2026-09-23-এ fourth-subject policy দিয়ে superseded**) + EX-07 (Ctrl/Cmd+Click — Node ৮ + Django ৩) + OF-01 (guardian contact 0039–0041 + ৩৯ test) + OF-03 (Subject Assignment subtab + ২৮ test) + DB-01 (dashboard scoping + nav টেস্ট) + DB-04/DB-05/DB-06 (settings/CI/backup tooling + drill এই সেশনে হাতে চালিয়ে pass)।
 
 **অপরিবর্তিত বাকি কাজ (এই baseline-এও খোলা):** EX-01 Analysis subtab · EX-02 বাকি output-এর roll-order নিয়ম · EX-03 `SubjectMarkSetting.group` · OF-02 বাকি list views · OF-05 তিন গ্যাপ · OF-06 public progress page + share · OF-07/OF-08 integrity audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification। পূর্ণ matrix: `docs/prompts/reports/০০-baseline.md`।
 **২০২৬-০৯-২০ হালনাগাদ (EX-03 + বাকি কাজ সম্পন্ন):** EX-01 ✅ (PR #39) · EX-02 ✅ (PR #41) · **EX-03 ✅** (PR পরবর্তী — `SubjectMarkSetting.group` 0044 + group-aware chain + ১৭ test (১৫+২) + **weekly_test column non-MID-এ hide** finishing — `reports/EX-03.md`)। **এখন খোলা:** OF-02 বাকি ৭টি list views · OF-05 তিন গ্যাপ · OF-06 public progress page + share · OF-07/OF-08 integrity audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification।

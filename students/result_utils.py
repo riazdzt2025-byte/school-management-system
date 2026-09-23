@@ -605,27 +605,60 @@ def get_grade(percentage):
 
 
 GPA_QUANTUM = Decimal('0.01')
-GPA_BOOST_FLOOR = Decimal('4.90')
 GPA_MAXIMUM = Decimal('5.00')
+FOURTH_SUBJECT_BONUS_FLOOR = Decimal('2.00')
 
 
-def calculate_passing_gpa(raw_gpa):
-    """Return a passing GPA rounded and boosted by the single D-GPA rule.
+def calculate_final_gpa(main_gpa_points, fourth_subject_point=None):
+    """Return the capped, two-place GPA for the main + fourth-subject policy.
 
-    The average of subject GPA points is quantized to two decimal places with
-    ``ROUND_HALF_UP`` before the benefit is considered.  Thus raw 4.895 becomes
-    4.90 and is promoted, while raw 4.894 remains 4.89.  The returned value is
-    capped at 5.00 even if a malformed future input exceeds the grade scale.
+    A student is graded on their main subjects only.  One selected
+    ``Subject.category == 'FOURTH'`` paper can add the part of its point above
+    2.00 to the *main* point total before division by the number of main
+    subjects.  A fourth-subject F has point 0.00, therefore earns no bonus but
+    never fails the main result.  The published GPA is always capped at 5.00.
 
-    This helper is deliberately for an already-passing result only.  The caller
-    must keep Fail and No Marks results on their separate 0.00 / no-GPA paths.
-    It returns ``(gpa, was_boosted)`` so the caller can make the accompanying
-    overall grade A+ without duplicating the range check.
+    Decimal ``ROUND_HALF_UP`` makes the two-place display deterministic.  This
+    helper deliberately contains no 4.90-to-5.00 benefit: that former rule was
+    replaced by the owner-confirmed fourth-subject policy on 2026-09-23.
     """
-    rounded_gpa = Decimal(str(raw_gpa)).quantize(GPA_QUANTUM, rounding=ROUND_HALF_UP)
-    capped_gpa = min(rounded_gpa, GPA_MAXIMUM)
-    was_boosted = GPA_BOOST_FLOOR <= rounded_gpa < GPA_MAXIMUM
-    return (GPA_MAXIMUM if was_boosted else capped_gpa), was_boosted
+    main_gpa_points = [Decimal(str(point)) for point in main_gpa_points]
+    if not main_gpa_points:
+        return Decimal('0.00')
+    fourth_point = Decimal(str(fourth_subject_point or 0))
+    fourth_bonus = max(Decimal('0.00'), fourth_point - FOURTH_SUBJECT_BONUS_FLOOR)
+    raw_gpa = (sum(main_gpa_points) + fourth_bonus) / len(main_gpa_points)
+    return min(
+        raw_gpa.quantize(GPA_QUANTUM, rounding=ROUND_HALF_UP),
+        GPA_MAXIMUM,
+    )
+
+
+def fourth_subject_configuration_errors(exam, group=None):
+    """Describe students who selected more than one fourth subject for an exam.
+
+    There may be several FOURTH papers in a school's catalogue so pupils can
+    choose between them, but the approved policy permits exactly one per
+    student.  Publishing calls this helper and refuses a bad configuration
+    before a result could be issued with an arbitrary double bonus.
+    """
+    students = list(get_exam_students(exam, group=group))
+    subjects, _is_filtered = get_exam_subjects(exam, group=group)
+    selected_ids = get_student_subject_ids(exam, students, subjects=subjects, group=group)
+    fourth_names = {
+        subject.pk: subject.name for subject in subjects
+        if subject.category == 'FOURTH'
+    }
+    errors = []
+    for student in students:
+        selected_fourth = sorted(
+            fourth_names[subject_id]
+            for subject_id in selected_ids.get(student.pk, set())
+            if subject_id in fourth_names
+        )
+        if len(selected_fourth) > 1:
+            errors.append(f"{student.name} (roll {student.roll_no or '—'}): {', '.join(selected_fourth)}")
+    return errors
 
 
 ABSENT = '-'
@@ -861,8 +894,10 @@ def build_exam_results(exam, group=None):
     """Compute every student's result for one exam.
 
     Returns (columns, results). The printed columns are the union of subjects
-    assigned to at least one student during admission; only the subjects each
-    student actually takes count towards that student's total and GPA.
+    assigned to at least one student during admission; only the main subjects
+    each student actually takes count towards that student's total and GPA
+    denominator. A selected ``FOURTH``-category paper remains visible and can
+    add its points above 2.00 as the one approved fourth-subject bonus.
 
     A subject the exam holds **no mark for at all** is not a column (see
     :func:`marked_subject_ids_for_exam`): assignments are keyed to the class and
@@ -938,9 +973,13 @@ def build_exam_results(exam, group=None):
     for student in students:
         student_marks = marks.get(student.pk, {})
         subject_results = []
+        # Totals, percentage and result status are based on the main papers.
+        # A selected FOURTH-category paper remains visible in subject_results,
+        # but contributes only its approved GPA bonus below.
         total_obtained = Decimal('0')
         total_full = Decimal('0')
-        gpa_points = []
+        main_gpa_points = []
+        fourth_subject_result = None
         has_fail = False
 
         for column in columns:
@@ -954,6 +993,7 @@ def build_exam_results(exam, group=None):
                         'subject': column, 'religion_column': True,
                         'not_applicable': True, 'absent': True,
                         'religion_unassigned': True,
+                        'is_fourth_subject': False, 'counts_toward_result': False,
                         'obtained': None, 'full': None, 'percentage': None,
                         'grade': ABSENT, 'point': None, 'passed': False,
                         'failed_parts': [], 'parts': [], 'pass_marks': None,
@@ -972,6 +1012,8 @@ def build_exam_results(exam, group=None):
                     subject_results.append({
                         'subject': column, 'subject_unassigned': True,
                         'not_applicable': True, 'absent': True,
+                        'is_fourth_subject': column.category == 'FOURTH',
+                        'counts_toward_result': column.category != 'FOURTH',
                         'obtained': None, 'full': None, 'percentage': None,
                         'grade': ABSENT, 'point': None, 'passed': False,
                         'failed_parts': [], 'parts': [], 'pass_marks': None,
@@ -981,17 +1023,36 @@ def build_exam_results(exam, group=None):
                 result = compute_subject_result(student_marks.get(column.pk), marks_config)
                 result['subject'] = column
 
-            counted = not result['absent'] or result['obtained'] is not None
-            if counted:
-                # An absent subject arrives here as 0 / Full Marks and fails,
-                # which is what drags the result down to F + GPA 0.00.
-                total_obtained += result['obtained']
-                total_full += Decimal(str(result['full']))
-                has_fail = has_fail or not result['passed']
-                gpa_points.append(result['point'])
+            is_fourth_subject = (
+                not isinstance(column, ReligionColumn)
+                and getattr(column, 'category', None) == 'FOURTH'
+            )
+            result['is_fourth_subject'] = is_fourth_subject
+            result['counts_toward_result'] = not is_fourth_subject
+            if is_fourth_subject:
+                # Publishing prevents more than one selected FOURTH paper.  If
+                # legacy/unpublished data reaches this path anyway, retain the
+                # first applicable paper rather than awarding an accidental
+                # double bonus. An unselected optional paper is not a fourth
+                # subject for that student at all.
+                if not result.get('not_applicable'):
+                    fourth_subject_result = fourth_subject_result or result
+            else:
+                counted = not result['absent'] or result['obtained'] is not None
+                if counted:
+                    # An absent main subject arrives here as 0 / Full Marks and
+                    # fails the result. A fourth-subject AB/F is deliberately
+                    # outside this branch and only earns zero bonus.
+                    total_obtained += result['obtained']
+                    total_full += Decimal(str(result['full']))
+                    has_fail = has_fail or not result['passed']
+                    main_gpa_points.append(result['point'])
             subject_results.append(result)
 
-        attempted = [row for row in subject_results if not row['absent']]
+        attempted = [
+            row for row in subject_results
+            if not row['is_fourth_subject'] and not row['absent']
+        ]
         overall_percentage = (total_obtained / total_full * 100) if total_full else Decimal('0')
         if not attempted:
             # No mark entered anywhere: the student did not sit this exam at
@@ -1006,11 +1067,16 @@ def build_exam_results(exam, group=None):
             overall_gpa, overall_grade, status = Decimal('0.00'), 'F', 'Fail'
             overall_percentage = None
         else:
-            raw_gpa = sum(gpa_points) / len(gpa_points) if gpa_points else Decimal('0.00')
-            overall_gpa, gpa_was_boosted = calculate_passing_gpa(raw_gpa)
+            fourth_subject_point = (
+                fourth_subject_result['point'] if fourth_subject_result is not None else None
+            )
+            overall_gpa = calculate_final_gpa(main_gpa_points, fourth_subject_point)
             overall_grade, _ = get_grade(float(overall_percentage))
             status = 'Pass'
-            if gpa_was_boosted:
+            # A fourth-subject bonus may reach the statutory cap even when the
+            # main-paper percentage alone is below 80. GPA 5.00 is published as
+            # A+ consistently in that case.
+            if overall_gpa == GPA_MAXIMUM:
                 overall_grade = 'A+'
 
         results.append({
@@ -1018,6 +1084,10 @@ def build_exam_results(exam, group=None):
             'total_obtained': total_obtained, 'total_full': total_full,
             'percentage': round(float(overall_percentage), 2) if overall_percentage is not None else None,
             'gpa': overall_gpa,
+            'fourth_subject_point': (
+                fourth_subject_result['point'] if fourth_subject_result is not None else None
+            ),
+            'main_subject_count': len(main_gpa_points),
             'grade': overall_grade, 'status': status,
             # "has marks" means there is something to print: a student whose only
             # rows sit in subjects outside this exam still counts as No Marks.

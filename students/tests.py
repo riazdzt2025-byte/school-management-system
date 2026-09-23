@@ -2819,24 +2819,24 @@ class RetiredBoardFeatureTests(TestCase):
                 self.assertNotContains(response, 'Register for SSC')
 
 class GPAPaginationAndAbsentDisplayTests(TestCase):
-    """D-GPA (4.90-4.99->5.00) + O2 pagination (100/page) + D-MIS AB display + TC exclusion."""
+    """Fourth-subject GPA + O2 pagination (100/page) + D-MIS AB display + TC exclusion."""
 
     def setUp(self):
         self.institution = Institution.objects.create(name='New Feature School', classes='6,9')
         self.user = get_user_model().objects.create_superuser(username='newfeat-admin', password='password')
         self.client.force_login(self.user)
 
-    def test_gpa_490_to_499_boosted_to_500(self):
+    def test_gpa_490_stays_490_without_a_fourth_subject(self):
         from .models import SubjectRequirement
-        # 10 subjects to get average 4.90 exactly: 9 at 5.00 (80 marks) + 1 at 4.00 (70 marks)
+        # The former 4.90 -> 5.00 benefit was replaced by the fourth-subject
+        # rule: without a selected FOURTH paper, the ten-paper average stays 4.90.
         subjects = []
         for i in range(10):
             subj = Subject.objects.create(code=f'GP{i}', name=f'GpaSub{i}', full_marks=100)
             SubjectRequirement.objects.create(institution=self.institution, admission_class='6', subject=subj, requirement_type='MANDATORY')
             subjects.append(subj)
-        exam = Exam.objects.create(name='GPA Boost Exam', exam_type='SECOND_TERM', institution=self.institution, admission_class='6', session='2026', is_published=True)
+        exam = Exam.objects.create(name='GPA Main Subjects Exam', exam_type='SECOND_TERM', institution=self.institution, admission_class='6', session='2026', is_published=True)
         student = Student.objects.create(institution=self.institution, student_id='GPA001', name='GPA Kid', admission_class='6', section='A', roll_no=1, admission_year=2026)
-        # 9 subjects 80 marks (A+ 5.00), 1 subject 70 marks (A 4.00) -> avg 4.90 -> should boost to 5.00
         for idx, subj in enumerate(subjects):
             marks = 80 if idx < 9 else 70
             ExamMark.objects.create(exam=exam, student=student, subject=subj, marks_obtained=marks)
@@ -2844,12 +2844,13 @@ class GPAPaginationAndAbsentDisplayTests(TestCase):
         _, results = build_exam_results(exam)
         result = results[0]
         self.assertEqual(result['status'], 'Pass')
-        self.assertEqual(str(result['gpa']), '5.00')
-        self.assertEqual(result['grade'], 'A+')
-        # Control: exactly 5.00 stays 5.00
+        self.assertEqual(str(result['gpa']), '4.90')
+        self.assertEqual(result['grade'], 'A')
+        # Control: ten A+ main papers still remain exactly 5.00.
         ExamMark.objects.filter(student=student).update(marks_obtained=85)
         _, results2 = build_exam_results(exam)
         self.assertEqual(str(results2[0]['gpa']), '5.00')
+        self.assertEqual(results2[0]['grade'], 'A+')
 
     def test_pagination_limits_to_100(self):
         # Create 105 students
