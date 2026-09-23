@@ -46,6 +46,7 @@ from .result_utils import (
     SUBJECTS_ALL_DISABLED,
     SUBJECTS_NOT_ASSIGNED,
     SUBJECTS_NO_STUDENT,
+    absent_subject_fails_result,
     build_exam_results,
     class_filter_variants,
     get_exam_group_choices,
@@ -4267,6 +4268,7 @@ def result_sheet(request, pk):
     ).removesuffix('0/')
     return render(request, 'students/result_sheet.html', {
         'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
+        'absent_subject_fails': absent_subject_fails_result(),
         'enter_marks_base_url': enter_marks_base_url,
         'ignored_subjects': ignored,
         'missing_mark_subjects': missing_mark_subjects,
@@ -4402,7 +4404,10 @@ def student_result_detail(request, pk, student_pk):
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)
-    return render(request, 'students/student_result_detail.html', {'exam': exam, 'result': result})
+    return render(request, 'students/student_result_detail.html', {
+        'exam': exam, 'result': result,
+        'absent_subject_fails': absent_subject_fails_result(),
+    })
 
 
 @login_required

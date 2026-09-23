@@ -1,5 +1,12 @@
 # Handoff — School Management System
 
+## সেশন EX-05 — ২০২৬-০৯-২৩ · প্রম্পট ০৬/২৮ · Missing marks → Absent/Fail
+
+- **নীতি অপরিবর্তিত (D-MIS, ২০২৬-০৯-১৭):** blank assigned subject = **F + 0 counted** (`EXAM_ABSENT_SUBJECT_FAILS=True` default); all-blank = `No Marks` (unranked); entered 0 = counted Fail; optional/religion `not_applicable` = blank, never counted; TC/DISCONTINUED register-এ নেই।
+- **এই সেশনে যা বদলেছে:** absent-সেলের display token সব cell-প্রিন্টিং surface-এ **`AB`** একক token (`result_card.html` `– absent` → `AB`, `student_result_detail.html` `—` → `AB`, `result_analysis_result_cards.html` ও `result_analysis_subject_fail.html` `Absent` → `AB`)। `EXAM_ABSENT_SUBJECT_FAILS=False` হলে result_sheet-এর absent badge/tooltip/ফুটনোট ও detail-এর ফুটনোট এখন truthfully "not counted" বলে (আগে হার্ডকোডেড F + "counted as 0")। `RESULT_PUBLISHING_GUIDE.md` §2-তে প্রদর্শন-টেবিল।
+- **যাচাই:** ১০ surface-ই `build_exam_results` single source (duplicate নেই)। নতুন `students/test_absent_token_consistency.py` (৬ test)। পূর্ণ suite **৭২১ Django + ১৪ Node pass**, `check` 0, `makemigrations --check` clean (0046), migration নেই। রিপোর্ট: `docs/prompts/reports/EX-05.md`।
+- **পরবর্তী:** প্রম্পট ০৭/২৮ (EX-06 — GPA 4.90–5.00 → 5.00; rounding নীতিতে owner-নিশ্চিতকরণ বাকি, `result_utils.py` D-GPA block ও `tests.py:2829` দেখুন)।
+
 ## সেশন EX-03 বাকি কাজ (finishing) — ২০২৬-০৯-২০ · প্রম্পট ০৪/২৮ · Group-based Mark Evaluation
 
 **Session branch:** `arena/01a0bd3f-school-management-system` · **Base:** PR #42-এর head `3690ea8` (commits `c738e47`+`afaf9dc`+`3690ea8` fast-forward merge করে আনা; মূল base `7a13e33` = `origin/main`) ·

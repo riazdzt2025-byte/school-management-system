@@ -85,12 +85,33 @@ That is the difference between "student did not sit the practical" and "we forgo
 enter the practical": both are missing marks, and neither may be read as a pass.
 
 **A subject with no mark entered *for that student* fails them** (the NCTB/SSC
-reading): the result sheet prints a dash, never a 0, but the subject is graded
-**F** and counted as 0 out of its Full Marks, so the student's result becomes
-**Fail with GPA 0.00**. Not sitting a paper is not the same as scoring nothing
-on it — the dash keeps that visible on paper — but it is not an exemption
+reading): the result sheet prints **AB** (Absent), never a 0, but the subject is
+graded **F** and counted as 0 out of its Full Marks, so the student's result
+becomes **Fail with GPA 0.00**. Not sitting a paper is not the same as scoring
+nothing on it — the AB keeps that visible on paper — but it is not an exemption
 either. This applies as soon as the subject holds a mark for *anyone* in the
 exam: 40 marks entered and one box empty means that one student did not sit it.
+
+**One token everywhere (D-MIS, decision 2026-09-17).** Every surface that
+prints subject cells uses the same tokens — the same data never wears two
+faces, and no view recomputes a result on its own (they all read the one
+`build_exam_results` source):
+
+| Cell content | Token on the page | Counted in total/GPA? |
+|---|---|---|
+| Assigned subject, nothing entered for this student | **AB** (+ grade **F** badge) | Yes — 0 out of Full Marks, result becomes Fail |
+| Same blank, with `EXAM_ABSENT_SUBJECT_FAILS=False` | **AB** (grade shows `–`) | No — left out of the total and the GPA |
+| A real entered 0 | **0** | Yes — a genuine zero, fails like any 0 |
+| Optional subject this student did not select | *(blank cell)* | No |
+| Religion paper not assigned for this student | *(blank cell)* | No |
+| Subject with no marks for *anyone* in the exam | no column at all — named in the notice | No |
+
+`AB` is what the register (Result Sheet), the student Result Detail, the Result
+Card print, and Result Analysis (Subject Fail, class Result Cards) all print.
+The ranking outputs (Result Summary, Top 10, Full Rank List, merit slides,
+multi-term) print no subject cells — they show the same status/GPA and a
+"(N absent)" count. A student with *no* marks anywhere prints `No Marks`, is
+left unranked, and TC/DISCONTINUED students are not in the register at all.
 
 **A subject the exam holds no mark for at all is not a column.** It is left out
 of the register, the totals and the GPA entirely, and the result sheet names it
@@ -109,7 +130,7 @@ in a notice instead. Two reasons this matters:
 
 To go back to leaving un-entered subjects out of the total for individual
 students as well, set `EXAM_ABSENT_SUBJECT_FAILS=False` in the environment;
-nothing else about the dash/zero distinction changes.
+nothing else about the AB/zero distinction changes.
 
 The one exception is a student with **no marks in any subject**: they are listed as
 `No Marks`, left unranked and not counted as Fail — nobody sat the exam, nobody
@@ -138,9 +159,10 @@ Two routes, same screens:
 Rules that matter:
 
 - **Leave a box empty when the student did not sit that paper. Never type 0.**
-  A blank is stored as "nothing entered" and prints a dash (—) on the result, while a
-  0 is a real mark of zero. Both fail the subject (see the pass rules), but only the
-  0 claims the student sat the paper and scored nothing — keep the record truthful.
+  A blank is stored as "nothing entered" and prints **AB** (Absent) on the result,
+  while a 0 is a real mark of zero. Both fail the subject (see the pass rules), but
+  only the 0 claims the student sat the paper and scored nothing — keep the record
+  truthful.
 - Boxes are per configured part (CQ / MCQ / Practical / Weekly Test) and the
   total is added up for you. Re-saving a row overwrites it; nothing is appended.
 - Invalid entries are reported per student and skipped, the rest still saves.
@@ -174,7 +196,7 @@ stores a total.
 
 Read them in this order:
 
-1. **Result Sheet** (`Exam List → Result Sheet`) — the grid: dashes for absent,
+1. **Result Sheet** (`Exam List → Result Sheet`) — the grid: **AB** for absent,
    `*` and red for a failed subject, hover any cell for the part breakdown and the
    pass mark. A yellow notice at the top lists marks held in **subjects that are
    not assigned to this exam** (they are deliberately excluded from the numbers —
@@ -187,7 +209,7 @@ Read them in this order:
 
 A student with no entered marks at all shows `No Marks` and is left unranked. A
 student who sat some subjects but not others shows `Fail` with the missed subjects as
-dashes — read those dashes before publishing, because a box left empty by mistake costs
+**AB** — read those before publishing, because a box left empty by mistake costs
 a student their whole result.
 
 ## 6. Publish
