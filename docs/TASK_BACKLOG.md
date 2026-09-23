@@ -202,7 +202,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Decision needed:** **Owner MUST choose** current vs proposed (and whether switch is global env vs per-subject). Affects all `Fail` vs `Pass` boundaries.
 - **Small session scope:** Yes — decision doc only.
 
-- **Follow-up PR 1 (if current kept):** keep `True`, add docs/notice for “unmarked_subjects / missing_mark_subjects” warnings already in `result_sheet.html`, test `test_unentered_subject_is_graded_f_and_makes_the_result_fail` already exists — reinforce.
+- **Follow-up PR 1 (if current kept):** keep `True`, add docs/notice for “unmarked_subjects / missing_mark_subjects” warnings already in `result_sheet.html`, test `test_unentered_subject_is_graded_f_and_makes_the_result_fail` already exists — reinforce. **✅ EX-05 (২০২৬-০৯-২৩) সম্পন্ন:** absent-সেল token সব cell-প্রিন্টিং surface-এ `AB` একক token-এ একীভূত (result_card `– absent`, detail `— (no mark entered)`, analysis `Absent` → `AB`), `EXAM_ABSENT_SUBJECT_FAILS=False` display path truthfully render হয়, `RESULT_PUBLISHING_GUIDE.md` §2-তে প্রদর্শন-টেবিল, ৬টি cross-view consistency test (`students/test_absent_token_consistency.py`) — রিপোর্ট `docs/prompts/reports/EX-05.md`।
 - **Follow-up PR 2 (if proposed adopted):** set env `EXAM_ABSENT_SUBJECT_FAILS=False` (or per-subject exempt) + adjust `compute_subject_result` → ABSENT excluded + `build_exam_results` avg ignores absent + tests (`test_absent_rule_can_be_switched_off` exists) — **published results will flip from Fail to Pass** for blanks, so own session + backup.
 
 #### R1 · Published/historical result — closed-period lock — ✅ DONE (2026-09-17)
@@ -438,3 +438,12 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 **২০২৬-০৯-২০ হালনাগাদ (EX-03 + বাকি কাজ সম্পন্ন):** EX-01 ✅ (PR #39) · EX-02 ✅ (PR #41) · **EX-03 ✅** (PR পরবর্তী — `SubjectMarkSetting.group` 0044 + group-aware chain + ১৭ test (১৫+২) + **weekly_test column non-MID-এ hide** finishing — `reports/EX-03.md`)। **এখন খোলা:** OF-02 বাকি ৭টি list views · OF-05 তিন গ্যাপ · OF-06 public progress page + share · OF-07/OF-08 integrity audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification।
 
 **⚠️ Note:** এই ফাইলের `44cbcc3`-ভিত্তিক section-গুলোর সংখ্যা (৫৫০/৬০৫ test) ঐতিহাসিক; সর্বশেষ verified সংখ্যা **৬৭০ Django + ১৪ Node** (EX-03 + finishing পর্যন্ত)। `P0-9` entry-র heading (✅ DONE) ও body (Partial) পরস্পরবিরোধী — ২০২৬-০৯-২০-এও README-তে `[ ]` থাকতে পারে; DB-04/FN-01 সেশনে যাচাইযোগ্য।
+
+## Update — 2026-09-23 · সেশন EX-05 — Missing marks → Absent/Fail (প্রম্পট ০৬/২৮)
+
+- **D-MIS follow-up সম্পন্ন:** baseline-এ Complete থাকা নীতির (blank = F + counted 0, `EXAM_ABSENT_SUBJECT_FAILS=True` default; all-blank = `No Marks` unranked; entered 0 = counted Fail; optional/religion `not_applicable` = blank ও never counted; TC/DISCONTINUED register-এ নেই) একমাত্র খোলা অসঙ্গতি দূর করা হলো — absent-সেলের **display token সব জায়গায় `AB`** (আগে: result_sheet `AB`, result_card `– absent`, student_result_detail `— (no mark entered)`, analysis result_cards/subject_fail `Absent`)।
+- **`EXAM_ABSENT_SUBJECT_FAILS=False` path:** result_sheet-এর হার্ডকোডেড F-badge → আসল grade (`–` + muted badge), tooltip/ফুটনোট "counted as 0" → "left out of the total and the GPA"; student_result_detail-এর ফুটনোটও policy-aware।
+- **Single source যাচাই:** ১০টি result surface (register, summary, top 10, full rank list, detail, card, subject-fail, class cards, multi-term, merit slides) সবই `build_exam_results` পড়ে — কোনো view নিজে হিসাব করে না (grep-verified)।
+- **Docs:** `RESULT_PUBLISHING_GUIDE.md` §2-তে প্রদর্শন-token টেবিল (কোন অবস্থায় `AB` / `0` / blank / no column) + পুরনো "dash" শব্দগুলো `AB`-তে সংশোধন।
+- **Tests:** নতুন `students/test_absent_token_consistency.py` (৬ — cross-view GPA/status একমুখ, AB token সব surface-এ, entered-0 ≠ AB, False-path display, TC/DISCONTINUED বাদ)। **পূর্ণ suite ৭২১ Django + ১৪ Node pass** (৭১৫+৬), `check` 0, `makemigrations --check` clean (leaf 0046), কোনো migration নেই।
+- রিপোর্ট: `docs/prompts/reports/EX-05.md`। পরবর্তী খোলা কাজ অপরিবর্তিত (OF-02/OF-05/OF-06/OF-07/OF-08/DB-02/DB-03/AT-01/AT-02/EM-01/EM-03/FN-01)।

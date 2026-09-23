@@ -35,7 +35,7 @@
             <tr{% if not sr.passed %} class="table-danger"{% endif %}>
                 <td>{% if sr.religion_column %}Religion{% else %}{{ sr.subject.name }}{% endif %}{% if sr.religion_column and sr.paper %} <span class="text-muted small">({{ sr.paper.name }})</span>{% endif %}</td>
                 <td>{{ sr.full }}</td>
-                <td>{% if sr.absent %}&mdash; <span class="text-muted small">(no mark entered)</span>{% else %}{{ sr.obtained }}{% endif %}</td>
+                <td>{% if sr.absent %}<strong>AB</strong> <span class="text-muted small">(no mark entered)</span>{% else %}{{ sr.obtained }}{% endif %}</td>
                 <td class="small">
                     {% for part in sr.parts %}
                     <span class="{% if not part.passed %}text-danger fw-semibold{% endif %}">
@@ -67,8 +67,8 @@
         <strong>Position:</strong> {{ result.position|default:'—' }}
         {% if result.absent_subject_count %}&nbsp; <strong>Absent subjects:</strong> {{ result.absent_subject_count }}{% endif %}
     </p>
-    <p class="text-muted small">A subject left blank shows as &mdash; rather than 0, but it is still graded F and
-    counted as 0 out of its Full Marks &mdash; a candidate who did not sit a subject has not passed it.
+    <p class="text-muted small">A subject left blank shows as <strong>AB</strong> (Absent) rather than 0{% if absent_subject_fails %}, but it is still graded F and
+    counted as 0 out of its Full Marks &mdash; a candidate who did not sit a subject has not passed it{% else %} and is left out of the total and the GPA (EXAM_ABSENT_SUBJECT_FAILS is off){% endif %}.
     A result is Pass only when every subject is passed individually; a failed result gets no percentage and no position.
     Religion is a single row: each student is graded on their own paper (Hindu students sit Hindu Religion
     &amp; Moral Education, everyone else Islam &amp; Moral Education). When the student's own paper is not
