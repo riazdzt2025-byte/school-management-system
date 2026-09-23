@@ -6,7 +6,7 @@ screen: who belongs to an exam, and how a mark turns into a grade. Both live
 here so there is exactly one implementation of each.
 """
 from collections import defaultdict
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Q, F
 
@@ -604,6 +604,30 @@ def get_grade(percentage):
     return 'F', Decimal('0.00')
 
 
+GPA_QUANTUM = Decimal('0.01')
+GPA_BOOST_FLOOR = Decimal('4.90')
+GPA_MAXIMUM = Decimal('5.00')
+
+
+def calculate_passing_gpa(raw_gpa):
+    """Return a passing GPA rounded and boosted by the single D-GPA rule.
+
+    The average of subject GPA points is quantized to two decimal places with
+    ``ROUND_HALF_UP`` before the benefit is considered.  Thus raw 4.895 becomes
+    4.90 and is promoted, while raw 4.894 remains 4.89.  The returned value is
+    capped at 5.00 even if a malformed future input exceeds the grade scale.
+
+    This helper is deliberately for an already-passing result only.  The caller
+    must keep Fail and No Marks results on their separate 0.00 / no-GPA paths.
+    It returns ``(gpa, was_boosted)`` so the caller can make the accompanying
+    overall grade A+ without duplicating the range check.
+    """
+    rounded_gpa = Decimal(str(raw_gpa)).quantize(GPA_QUANTUM, rounding=ROUND_HALF_UP)
+    capped_gpa = min(rounded_gpa, GPA_MAXIMUM)
+    was_boosted = GPA_BOOST_FLOOR <= rounded_gpa < GPA_MAXIMUM
+    return (GPA_MAXIMUM if was_boosted else capped_gpa), was_boosted
+
+
 ABSENT = '-'
 
 
@@ -982,14 +1006,11 @@ def build_exam_results(exam, group=None):
             overall_gpa, overall_grade, status = Decimal('0.00'), 'F', 'Fail'
             overall_percentage = None
         else:
-            overall_gpa = round(sum(gpa_points) / len(gpa_points), 2) if gpa_points else Decimal('0.00')
+            raw_gpa = sum(gpa_points) / len(gpa_points) if gpa_points else Decimal('0.00')
+            overall_gpa, gpa_was_boosted = calculate_passing_gpa(raw_gpa)
             overall_grade, _ = get_grade(float(overall_percentage))
             status = 'Pass'
-            # D-GPA (owner decision 2026-09-17): 4.90–4.99 is lifted to 5.00/A+ so a
-            # near-perfect student is not left at 4.99 just because one subject
-            # slipped by a point. Only for passing results; Fail/No Marks stay 0/—.
-            if overall_gpa is not None and Decimal('4.90') <= overall_gpa < Decimal('5.00'):
-                overall_gpa = Decimal('5.00')
+            if gpa_was_boosted:
                 overall_grade = 'A+'
 
         results.append({
