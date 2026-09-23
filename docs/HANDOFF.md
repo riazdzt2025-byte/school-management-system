@@ -1,5 +1,13 @@
 # Handoff — School Management System
 
+## সেশন EX-06 — ২০২৬-০৯-২৩ · প্রম্পট ০৭/২৮ · GPA 4.90–4.99 → 5.00
+
+- **Owner confirmation:** 2026-09-23 — `ROUND_HALF_UP` (`4.895 → 4.90 → boost`), two-decimal GPA display, and an otherwise passing result with an A/4.00 subject remains eligible.
+- **Rule:** `students.result_utils.calculate_passing_gpa()` is the one final-GPA helper. It rounds the raw average to 0.01 with `ROUND_HALF_UP`, caps at 5.00, and promotes rounded `[4.90, 5.00)` to **5.00/A+**. It is only called after Pass is determined; Fail (including default-policy AB/F) stays 0.00 and No Marks remains unranked/no GPA. Position is calculated afterward for every passing student using the existing GPA-then-total order.
+- **Regression coverage:** `students/test_gpa_boost.py` pins all requested boundaries, an explicit half-even guard (`4.885 → 4.89`), cap, F/AB non-eligibility, the 5.00/4.95/4.89 relative-order cohort, and every existing result/view/print/analysis output. There is no result-specific GPA export route; browser print reads the same computed result context.
+- **Proof / PR:** focused GPA 3/3; `students.tests -k gpa` 2; result analysis 38; grade 2; full **724 Django** + **14 Node** pass; `check` 0; `makemigrations --check` clean. PR [#47](https://github.com/riazdzt2025-byte/school-management-system/pull/47) is OPEN; GitHub SQLite/Postgres/Node CI is running, so ledger status stays 🟡 until verified. Policy/examples/limits are in `RESULT_PUBLISHING_GUIDE.md` §2; status in `PROJECT_STATUS.md` E7 and `TASK_BACKLOG.md` D-GPA. No migration, production database, live Render, credential or SSC feature was touched.
+- **Next:** prompt 08/28 (EX-07 — Ctrl/Cmd+Click correction) remains `⏳ অপেক্ষমাণ`; owner must provide that prompt's page/mobile/permission scope before code.
+
 ## সেশন EX-05 — ২০২৬-০৯-২৩ · প্রম্পট ০৬/২৮ · Missing marks → Absent/Fail
 
 - **নীতি অপরিবর্তিত (D-MIS, ২০২৬-০৯-১৭):** blank assigned subject = **F + 0 counted** (`EXAM_ABSENT_SUBJECT_FAILS=True` default); all-blank = `No Marks` (unranked); entered 0 = counted Fail; optional/religion `not_applicable` = blank, never counted; TC/DISCONTINUED register-এ নেই।

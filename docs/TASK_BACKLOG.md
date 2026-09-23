@@ -169,23 +169,13 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 #### D-HM · Higher Math — no code task (verified complete, doc for traceability)
 - **Status:** **Complete** — see `PROJECT_STATUS.md` §2.1 E5 (curriculum mandatory in SCI 9/10, migration 0042, assigned via SubjectRequirement). No new task; future change would be `curriculum_data` edit + data migration.
 
-#### D-GPA · Final GPA 4.90–5.00 → 5.00 নিয়ম — ✅ DONE (decision 2026-09-17: 4.90-4.99 → 5.00 A+)
-- **Background (current vs proposed — decision needed before code):**
-  - **Current (verified code, 2026-09-17):** `result_utils.get_grade` thresholds (80+ =5.00, 70+ =4.00 …), `build_exam_results` `overall_gpa = round(avg(gpa_points),2)` — no boost. Example: 4.90 stays 4.90, 4.97 stays 4.97, 5.00 only if avg exactly 5.00. **No `if gpa >=4.90: gpa=5.00` anywhere.** Tests use accurate avg.
-  - **Proposed (per request to decide):** “Final GPA 4.90–5.00-কে 5.00 করার নিয়ম” — if implemented, `overall_gpa` in [4.90, 5.00) would be promoted to 5.00 (and grade to A+ if not already). School must decide if GPA is a mathematical avg or a rounding benefit.
-- **Task ID & Purpose:** D-GPA-0 — Owner decision: keep current (accurate) vs adopt proposed boost.
-- **Current status:** **Missing (decision pending)**
-- **Evidence:** `students/result_utils.py:525 get_grade`, `:920 overall_gpa = round(...,2)` — no boost.
-- **Priority:** **P1** (policy, affects all results; do not code without approval)
-- **Dependencies:** —
-- **Acceptance (decision):** ✅ Owner decided 2026-09-17: **(b) 4.90–4.99 → 5.00 (A+)** inclusive of 4.90, <5.00 — implemented in `result_utils.py` Pass branch (Fail/No Marks unchanged).
-- **Tests:** —
-- **Migration/data risk:** none for decision.
-- **Decision needed:** **Owner MUST choose** current vs proposed (and whether grade also becomes A+). No implementation until answered.
-- **Small session scope:** Yes — decision doc only.
-
-- **Follow-up PR 1 (if current chosen):** lock current behavior with regression test `test_gpa_4_90_not_rounded_to_5` and document “no boost” in `RESULT_PUBLISHING_GUIDE.md`.
-- **Follow-up PR 2 (if proposed chosen):** add `if overall_gpa >= Decimal('4.90') and overall_gpa < 5.00: overall_gpa=5.00; overall_grade='A+'` + boundary tests (4.89→4.89, 4.90→5.00, 5.00→5.00) + migration not needed, but **all published historical results change** — requires fresh backup + reprint notice, so own session.
+#### D-GPA · Final GPA 4.90–5.00 → 5.00 নিয়ম — ✅ DONE (EX-06, 2026-09-23)
+- **Formal rule:** only a passing result enters `calculate_passing_gpa()`.  The average of subject GPA points is rounded with `Decimal.quantize(Decimal('0.01'), ROUND_HALF_UP)`; the rounded interval **[4.90, 5.00)** is promoted to **5.00 / A+**, and the final value is capped at 5.00.  Fail remains 0.00 and No Marks remains without a GPA.
+- **Owner confirmation (2026-09-23):** raw `4.895 → 4.90 → boost`; display exactly two decimal places; a passing student who has an A/4.00 subject is eligible.  Default-policy AB is F and cannot receive the benefit.
+- **Evidence:** `students/result_utils.py::calculate_passing_gpa` is the single implementation used by `build_exam_results`; no migration/model/UI redesign.  Ranking runs after this helper, so all students use the same final GPA before position and the existing total-mark tie-break.
+- **Tests:** `students/test_gpa_boost.py` covers the requested 4.894/4.895/4.899/4.90/4.949/4.99/4.999/5.00 boundaries, a half-even-differing 4.885 guard, 5.00 cap, F/AB exclusion, and a same-exam raw 5.00/4.95/4.89 cohort with positions 1/2/3.  It also checks sheet, detail, printable card, summary, rank, top-10, and Result Analysis contexts.  There is no result-specific GPA export endpoint; browser print uses those result contexts.
+- **Documentation:** `RESULT_PUBLISHING_GUIDE.md` §2 gives the policy, table, limits and examples; `PROJECT_STATUS.md` E7 records the verified state.
+- **Migration/data risk:** none.  Existing published results are rendered from marks, so the newly explicit rounding rule can change a boundary display when a result is next read/reprinted; production data was not accessed in this session.
 
 #### D-MIS · Missing/null marks policy — ✅ DONE (decision 2026-09-17: blank = F, AB display, TC/inactive exclusion)
 - **Background (current vs proposed — decision needed before code):**

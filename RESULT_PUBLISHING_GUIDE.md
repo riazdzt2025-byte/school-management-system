@@ -136,6 +136,38 @@ The one exception is a student with **no marks in any subject**: they are listed
 `No Marks`, left unranked and not counted as Fail — nobody sat the exam, nobody
 should get a fabricated GPA 0.00 in the position list.
 
+### Final GPA: 4.90–4.99 benefit (D-GPA)
+
+**Owner-confirmed 2026-09-23:** a student who passes every counted subject and
+whose **rounded** overall GPA is from **4.90 inclusive to below 5.00** receives
+**GPA 5.00 and grade A+**. This is a final-result benefit; it does not alter the
+per-subject grade or point. A student may have one or more **A (4.00)** subjects
+and still receive it if the final rule is met.
+
+The result service first averages the subject GPA points, then uses decimal
+`ROUND_HALF_UP` to two places — never Python's banker's rounding — and only then
+checks the range. GPA is displayed with exactly two decimal places on every
+result page and printout. The calculated value is always capped at **5.00**.
+
+| Raw average | Two-place `ROUND_HALF_UP` | Published final GPA / grade |
+|---:|---:|---|
+| 4.894 | 4.89 | 4.89 (no benefit) |
+| 4.895 | 4.90 | **5.00 / A+** |
+| 4.899 | 4.90 | **5.00 / A+** |
+| 4.90 | 4.90 | **5.00 / A+** |
+| 4.949 | 4.95 | **5.00 / A+** |
+| 4.99 | 4.99 | **5.00 / A+** |
+| 4.999 | 5.00 | 5.00 / A+ (already at the cap) |
+| 5.00 | 5.00 | 5.00 / A+ (unchanged) |
+
+A Fail is always GPA **0.00**, and `No Marks` has no GPA; neither reaches this
+benefit. With the default absent policy, an **AB** subject is F and therefore
+also blocks it. Positions are calculated **after** this final GPA rule for every
+student, then use total marks as the existing tie-breaker. This keeps the
+register, detail, result card, rank lists and analysis on the same result value.
+There is no separate GPA/result Excel-export route at present; browser print / Save
+as PDF uses these same rendered result pages.
+
 ## 3. Create the exam
 
 `Exam → Add Exam`. Class, Section and Group are dropdowns; the exam **name is
