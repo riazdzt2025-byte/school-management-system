@@ -136,6 +136,55 @@ The one exception is a student with **no marks in any subject**: they are listed
 `No Marks`, left unranked and not counted as Fail — nobody sat the exam, nobody
 should get a fabricated GPA 0.00 in the position list.
 
+### Final GPA and the fourth subject (D-GPA)
+
+**Owner-corrected policy, 2026-09-23:** the old automatic **4.90–4.99 → 5.00**
+benefit does **not** apply. A student is graded on their main subjects, with at
+most one selected **fourth subject** giving a bonus. A fourth subject is a
+selected paper whose Subject category is **FOURTH** (for example *Agriculture
+Studies (4th Subject)*); an ordinary `OPTIONAL` subject remains a main subject.
+
+For **N main subjects**, the calculation is:
+
+```
+final GPA = min(5.00, (sum(main subject GPA points) + max(0, fourth point - 2.00)) / N)
+```
+
+The fourth paper is **not** an extra denominator: 10 main papers plus
+Agriculture are still graded over 10 main papers, never 11. Decimal
+`ROUND_HALF_UP` makes the final two-place display deterministic, and the final
+GPA is always capped at **5.00** — no result can display 5.10 or 5.20.
+
+| Main point sum / N | Fourth-subject point | Calculation | Published GPA / grade |
+|---|---:|---|---|
+| 49 / 10 | none | 49 / 10 | 4.90 |
+| 49 / 10 | F = 0.00 | (49 + 0) / 10 | 4.90 — Pass if all main papers pass |
+| 48 / 10 | A+ = 5.00 | (48 + 3) / 10 = 5.10 | **5.00 / A+** |
+| 50 / 10 | A+ = 5.00 | (50 + 3) / 10 = 5.30 | **5.00 / A+** |
+
+A fourth-subject **F** (including an AB under the default absent policy) earns
+zero bonus but **does not make the main result Fail**. A failed or absent **main
+subject** still makes the whole result Fail with GPA 0.00. The selected fourth
+paper is included in displayed **total marks, full marks and percentage**; an
+AB therefore adds 0 obtained out of its full marks, but does not fail the main
+result. It remains outside the main GPA denominator and main pass/fail decision.
+When its bonus brings final GPA to 5.00, the published overall grade is A+.
+
+**Merit / position rule:** every passing student receives a unique position,
+ordered by **letter grade** (A+ before A, then A-, B, C, D), then the exact
+**uncapped** fourth-subject formula GPA, then displayed total marks (including
+the fourth paper), then the **lowest numeric roll**. The uncapped GPA is an
+internal tie-break only; published GPA remains two-decimal and capped at 5.00.
+If a duplicate/missing roll needs a final stable fallback, name then record ID
+are used; failed and `No Marks` students are unranked.
+
+A school can offer several FOURTH papers so pupils can choose, but each student
+may select **at most one**. Publishing is blocked with the named student and
+subject list if a pupil has two or more fourth-subject choices; correct the
+student's subject choices before publishing. There is no separate GPA/result
+Excel-export route at present; browser print / Save as PDF uses these same
+rendered result pages.
+
 ## 3. Create the exam
 
 `Exam → Add Exam`. Class, Section and Group are dropdowns; the exam **name is

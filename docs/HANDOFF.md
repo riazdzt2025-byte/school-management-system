@@ -1,5 +1,13 @@
 # Handoff — School Management System
 
+## সেশন EX-06 — ২০২৬-০৯-২৩ · নীতি-সংশোধন · চতুর্থ/অতিরিক্ত বিষয় GPA
+
+- **Owner correction:** আগের 4.90–4.99→5.00 ধারণাটি বাতিল। শুধুমাত্র selected `Subject.category='FOURTH'` (যেমন Agriculture 4th Subject) bonus পায়; ordinary OPTIONAL মূল বিষয়ই থাকে। এক ছাত্রের সর্বোচ্চ একটি fourth subject; একাধিক হলে publish বন্ধ হয়।
+- **Rule:** `calculate_final_gpa()` = `min(5.00, (main-points + max(0, fourth-point−2.00)) / main-subject-count)`, followed by `ROUND_HALF_UP` two-decimal display. Fourth F/AB gives 0 bonus but main result Fail করে না; main F/AB still Fail/0.00. Fourth marks/full marks **displayed total ও percentage-এ যুক্ত** হয়, কিন্তু GPA denominator/pass-fail-এ নয়; cap-hit 5.00 overall grade A+। Merit = grade → uncapped formula GPA → total (fourthসহ) → ছোট numeric roll; position unique।
+- **Regression coverage:** `students/test_fourth_subject_gpa.py` formula/cap, old no-fourth 4.90, fourth F/main F difference, total/percentage inclusion, grade→raw-GPA→total→roll merit tie-break, all existing result/view/print/analysis output and publish-block configuration test cover করে। কোনো result-specific GPA export route নেই; browser print একই result context নেয়。
+- **Proof / PR:** 2026-09-24 scope update: focused fourth-subject 6/6 + legacy GPA 2/2, register/analysis 53/53, full **727 Django** + **14 Node** pass; `check` 0; `makemigrations --check` clean. PR [#47](https://github.com/riazdzt2025-byte/school-management-system/pull/47) updated-policy CI passed: sqlite ✅, postgres:16 ✅, Node ✅ (`cbc7095`, run 35952497142). Policy/examples/limits are in `RESULT_PUBLISHING_GUIDE.md` §2; status in `PROJECT_STATUS.md` E7 and `TASK_BACKLOG.md` D-GPA. No migration, production database, live Render, credential or SSC feature was touched.
+- **Next:** prompt 08/28 (EX-07 — Ctrl/Cmd+Click correction) remains `⏳ অপেক্ষমাণ`; owner must provide that prompt's page/mobile/permission scope before code.
+
 ## সেশন EX-05 — ২০২৬-০৯-২৩ · প্রম্পট ০৬/২৮ · Missing marks → Absent/Fail
 
 - **নীতি অপরিবর্তিত (D-MIS, ২০২৬-০৯-১৭):** blank assigned subject = **F + 0 counted** (`EXAM_ABSENT_SUBJECT_FAILS=True` default); all-blank = `No Marks` (unranked); entered 0 = counted Fail; optional/religion `not_applicable` = blank, never counted; TC/DISCONTINUED register-এ নেই।
@@ -170,7 +178,7 @@ Verification → নিরাপত্তা & backup (P0-7/P0-8-live/P1-11-live
 
 **আংশিক (Partial):** Marks import redirect (stay-on-page নয়), Admission Share+Reports (share done, advanced funnel নেই), Photo continuity (application photo নেই), Salary closed-period (unique done, lock নেই), Attendance calendar (list/summary done, grid নেই), Published lock (view guard done, marks entry still allowed after publish)।
 
-**অনুপস্থিত (Missing):** Student pagination 100 (no Paginator), Result Ctrl+Click shortcut, GPA 4.90→5.00 boost (no rule, decision pending), Teacher-class-subject assignment, Leave workflow, Higher Math-এর বাইরে বিষয় নয়, i18n (P2-3), legacy `StudentSubject` drop (P2-7) — large/destructive deferrals।
+**অনুপস্থিত (Missing, 2026-09-17-এর historical snapshot):** Student pagination 100 (no Paginator), Result Ctrl+Click shortcut, GPA 4.90→5.00 boost (তখন no rule, decision pending; **পরে বাতিল ও fourth-subject policy দিয়ে superseded**), Teacher-class-subject assignment, Leave workflow, Higher Math-এর বাইরে বিষয় নয়, i18n (P2-3), legacy `StudentSubject` drop (P2-7) — large/destructive deferrals।
 
 **যাচাই করা যায়নি (Unverified, live access ছাড়া):** Production DB engine + persistent disk, Render env (DEBUG/SECRET_KEY/ALLOWED_HOSTS/CSRF/TRUST_FORWARDED), `EXAM_ABSENT_SUBJECT_FAILS` live match, group permissions live, backup scheduling/off-box/health alert, voucher/promotion live data, media bucket durability, migration 0035 already ran, data volume — সব `docs/PRODUCTION_CHECKLIST.md` runbook অনুযায়ী owner-only (P0-7/P0-8-live/P1-11-live)। Production data health/backup/migration status sandbox থেকে নিশ্চিত বলা হয়নি।
 
@@ -187,7 +195,7 @@ Verification → নিরাপত্তা & backup (P0-7/P0-8-live/P1-11-live
 ### আমার কাছ থেকে প্রয়োজনীয় সিদ্ধান্ত (owner decisions)
 | ID | Question | Options |
 |---|---|---|
-| D-GPA | Final GPA 4.90–5.00 কি 5.00 করবেন? | (a) রাখুন accurate avg (4.90=4.90) — recommended, or (b) 4.90–4.99→5.00 (+A+) |
+| D-GPA | Historical question (now settled) | 2026-09-23-এ automatic 4.90–4.99→5.00 বাতিল; current answer = selected FOURTH-only bonus formula (top EX-06 handoff দেখুন) |
 | D-MIS | Missing/null marks: blank = F (current, `True`) vs blank = exempt (`False`) বা per-subject exempt? | (a) keep `True` (did not sit = Fail, current), or (b) global `False`, or (c) per-subject exempt flag — specify |
 | D-HOL | Attendance Holiday: holiday কি absent percentage থেকে বাদ যাবে auto? | Confirm |
 | P0-7 choose | `EXAM_ABSENT_SUBJECT_FAILS` live value, how many institutions live, `DATABASE_URL` engine? | Confirm 3 values |

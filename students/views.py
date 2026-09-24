@@ -63,6 +63,7 @@ from .result_utils import (
     subject_availability_diagnosis,
     unassigned_mark_subjects,
     failed_subject_rows,
+    fourth_subject_configuration_errors,
     section_arrangement_rows,
 )
 
@@ -3663,6 +3664,15 @@ def delete_exam(request, pk):
 def toggle_publish_exam(request, pk):
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     previous_status = exam.is_published
+    if not previous_status:
+        fourth_errors = fourth_subject_configuration_errors(exam)
+        if fourth_errors:
+            messages.error(
+                request,
+                'Cannot publish: each student may select at most one fourth subject. '
+                + ' | '.join(fourth_errors),
+            )
+            return redirect('exam_list')
     exam.is_published = not exam.is_published
     exam.save(update_fields=['is_published'])
     record_audit(request.user, 'exam_published' if exam.is_published else 'exam_unpublished', exam,
