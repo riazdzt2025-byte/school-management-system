@@ -114,10 +114,16 @@ TEMPLATES = [
 WSGI_APPLICATION = 'school_system.wsgi.application'
 
 # Database
+#
+# DATABASE_URL accepts both a normal PostgreSQL URL and Neon's pooled URL. A
+# Neon compute can suspend when idle, so a connection retained by a web worker
+# may have gone away by the next request. Django checks a reused connection once
+# per request and transparently opens a new one when needed.
 DATABASES = {
     'default': dj_database_url.config(
         default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
         conn_max_age=600,
+        conn_health_checks=True,
     )
 }
 
