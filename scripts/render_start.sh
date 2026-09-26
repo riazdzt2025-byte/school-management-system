@@ -20,6 +20,13 @@ set -euo pipefail
 echo "==> Applying database migrations"
 python manage.py migrate --noinput
 
+echo "==> Ensuring baseline data (institutions fixture + superuser)"
+# Safe on every boot: only loads the fixture into an EMPTY institution table
+# and only creates DJANGO_SUPERUSER_USERNAME when that user does not exist.
+# This is what lets a free-tier deployment (no Shell access) recover from a
+# reset/expired Postgres without any manual commands.
+python manage.py ensure_baseline_data
+
 # Static files are normally collected in the Build Command. Collect here too
 # only if the manifest is missing, so the app still boots if the build step was
 # skipped. Safe to run repeatedly.
