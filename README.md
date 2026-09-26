@@ -55,6 +55,9 @@ A web-based Student Management System built with Python and Django, inspired by 
 - **Deployment:** Render.com (Gunicorn)
 - **Version Control:** Git & GitHub
 
+Render uses the committed `.python-version` file (`3.12`) because Django 6.1
+requires Python 3.12 or newer.
+
 ## Screenshots
 ### Dashboard
 ![Dashboard](dashboard.png)

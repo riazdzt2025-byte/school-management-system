@@ -113,6 +113,12 @@ Make every deploy apply migrations automatically. In the Render dashboard set:
   ./scripts/render_start.sh
   ```
 
+The repository includes `.python-version` with `3.12`; keep the Render
+`PYTHON_VERSION` setting at Python 3.12 or newer because Django 6.1 does not
+install on Python 3.11. If the log says `Django==6.1 ... requires Python
+>=3.12`, set `PYTHON_VERSION` to a fully qualified 3.12.x version in Render
+and redeploy.
+
 `scripts/render_start.sh` (added in this repo) runs `migrate --noinput` **and
 `ensure_baseline_data`** (institutions fixture + superuser from
 `DJANGO_SUPERUSER_*` env vars — see Option B above) before launching gunicorn.
