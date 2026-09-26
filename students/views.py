@@ -8,6 +8,7 @@ import logging
 from django.core.cache import caches
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
+from django.db.utils import OperationalError, ProgrammingError
 from django.core.paginator import Paginator
 from django.db.models import Sum, Q, Count, F
 from django.urls import reverse
@@ -478,8 +479,26 @@ def institution_login(request):
     # granted a row yet rendered an empty grid, posted an empty
     # institution_id, and the "choose your institution" step meant nothing —
     # even for the admin, who is allowed in with any institution.
-    institutions = list(Institution.objects.order_by('name'))
+    # Reading the institution list is the first thing this page does that
+    # touches an application table. If the database has not been migrated yet
+    # (e.g. a fresh/reset Postgres on Render where `manage.py migrate` never
+    # ran), that query raises and the page would otherwise return an opaque
+    # HTTP 500. Surface a clear, actionable message instead — the same
+    # defensive posture context_processors._branding already takes.
     departments = [label for label, _ in InstitutionAccess.DEPARTMENT_CHOICES]
+    try:
+        institutions = list(Institution.objects.order_by('name'))
+    except (OperationalError, ProgrammingError):
+        logging.getLogger(__name__).exception(
+            'Login page could not read the Institution table — the database is '
+            'likely not migrated. Run "python manage.py migrate".'
+        )
+        return render(request, 'students/login.html', {
+            'institutions': [],
+            'departments': departments,
+            'default_institution_id': '',
+            'db_not_ready': True,
+        }, status=503)
     if request.method == 'POST':
         # P2-2: lock out after too many failed attempts from one IP.
         if _login_fail_count(request) >= LOGIN_MAX_ATTEMPTS:

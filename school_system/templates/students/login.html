@@ -126,6 +126,15 @@
             <p>Choose your institution and department to continue.</p>
         </div>
 
+        {% if db_not_ready %}
+            <div class="alert alert-warning m-3 mb-0">
+                <strong>The application is still starting up.</strong>
+                The database has not been initialised yet. If you are the
+                administrator, run <code>python manage.py migrate</code> on the
+                server (and load the institution data), then reload this page.
+            </div>
+        {% endif %}
+
         {% if messages %}
             {% for message in messages %}
                 <div class="alert alert-danger m-3 mb-0">{{ message }}</div>
