@@ -362,7 +362,7 @@ SCHOOL_INFO = {
 # Default branding shown in footers and printed sheets. A super admin can
 # override both from the Django admin ("Site branding"); these values are the
 # fallback used until that row exists.
-DEVELOPER_NAME = 'riOn Dev'
+DEVELOPER_NAME = 'riOn Dev.'
 COPYRIGHT_HOLDER = 'PKFSC'
 
 # ---------------------------------------------------------------------------
