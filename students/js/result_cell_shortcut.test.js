@@ -161,6 +161,7 @@ test('Ctrl+Click on a subject cell opens that subject\'s marks entry in a new ta
     t.assert.equal(opened.length, 1, 'exactly one window is opened');
     t.assert.equal(opened[0].url, `${ENTER_MARKS_BASE}23/?group=SCI`);
     t.assert.equal(opened[0].target, '_blank', 'opens a new tab, never replaces the register');
+    t.assert.equal(opened[0].features, 'noopener');
     t.assert.equal(event.defaultPrevented, true);
 });
 
@@ -218,11 +219,11 @@ test('a cell with no group in view builds the URL without a querystring', (t) =>
 });
 
 test('a Full Rank List row opens the exam\'s marks entry from its own URL', (t) => {
-    const { document, link } = buildRankList();
+    const { document, rankRow } = buildRankList();
     const { opened } = loadScript(document);
 
-    // The click lands on the nested link, so the row has to be found by walking up.
-    document.emit('click', { ctrlKey: true, target: link });
+    // A non-link cell finds its containing row. Links retain native behavior.
+    document.emit('click', { ctrlKey: true, target: rankRow.children[0] });
 
     t.assert.equal(opened.length, 1);
     t.assert.equal(opened[0].url, '/students/exams/7/select-subject/?group=SCI');
@@ -238,4 +239,87 @@ test('buildEnterMarksUrl normalises the base and encodes both parts', (t) => {
     t.assert.equal(api.buildEnterMarksUrl('/students/exams/7/marks/', '11', 'B&S'), '/students/exams/7/marks/11/?group=B%26S');
     t.assert.equal(api.buildEnterMarksUrl('', '11', 'SCI'), '', 'no base means no shortcut');
     t.assert.equal(api.buildEnterMarksUrl('/students/exams/7/marks/', '', 'SCI'), '', 'no subject means no shortcut');
+});
+
+
+for (const [label, flags] of [
+    ['Shift only', { shiftKey: true }],
+    ['Ctrl+Shift', { ctrlKey: true, shiftKey: true }],
+    ['Cmd+Alt', { metaKey: true, altKey: true }],
+    ['middle-click', { ctrlKey: true, button: 1 }],
+    ['right-click', { metaKey: true, button: 2 }],
+    ['keyboard activation', { ctrlKey: true, detail: 0 }],
+    ['touch click', { ctrlKey: true, pointerType: 'touch' }],
+    ['pen click', { ctrlKey: true, pointerType: 'pen' }],
+    ['legacy synthetic touch click', { ctrlKey: true, sourceCapabilities: { firesTouchEvents: true } }],
+    ['already handled click', { ctrlKey: true, defaultPrevented: true }],
+]) {
+    test(`${label} never opens correction`, () => {
+        const { document, cells } = buildResultSheet();
+        const { opened } = loadScript(document);
+        const event = document.emit('click', { target: cells.physicsCell, ...flags });
+        assert.equal(opened.length, 0);
+        assert.equal(event.defaultPrevented, Boolean(flags.defaultPrevented));
+    });
+}
+
+test('nested subject text opens correction, while existing links/controls remain native', () => {
+    const { document, cells } = buildResultSheet();
+    const { opened } = loadScript(document);
+    document.emit('click', { ctrlKey: true, target: cells.physicsCell.children[0] });
+    assert.equal(opened.length, 1);
+    for (const tag of ['a', 'button', 'input', 'select', 'textarea', 'label']) {
+        const control = cells.physicsCell.appendChild(new Element(tag));
+        const text = control.appendChild(new Element('span'));
+        const event = document.emit('click', { ctrlKey: true, target: text });
+        assert.equal(event.defaultPrevented, false);
+    }
+    assert.equal(opened.length, 1);
+});
+
+test('rank-row result links retain plain, Ctrl, Shift and middle-click navigation', () => {
+    const { document, link } = buildRankList();
+    const { opened } = loadScript(document);
+    for (const flags of [{}, { ctrlKey: true }, { shiftKey: true }, { button: 1 }]) {
+        const event = document.emit('click', { target: link, ...flags });
+        assert.equal(event.defaultPrevented, false);
+    }
+    assert.equal(opened.length, 0);
+});
+
+test('missing subject/base/URL/event attributes fail safely without cancelling a click', () => {
+    const { document } = buildResultSheet();
+    const { api, opened } = loadScript(document);
+    for (const target of [null, {}, new Element('td'),
+        new Element('td', { 'data-subject-pk': '11' }),
+        new Element('tr', { 'data-shortcut-url': '' })]) {
+        const event = document.emit('click', { ctrlKey: true, target });
+        assert.equal(event.defaultPrevented, false);
+    }
+    const controller = api.createController(null);
+    controller.attach();
+    assert.equal(controller.handleClick(null), false);
+    assert.equal(api.urlFor(null), '');
+    assert.equal(opened.length, 0);
+});
+
+test('touchstart blocks a synthetic click; a subsequent mouse pointerdown restores shortcut', () => {
+    const { document, cells } = buildResultSheet();
+    const { opened } = loadScript(document);
+    document.emit('touchstart', { target: cells.physicsCell });
+    document.emit('click', { ctrlKey: true, target: cells.physicsCell });
+    assert.equal(opened.length, 0);
+    document.emit('pointerdown', { pointerType: 'mouse', target: cells.physicsCell });
+    document.emit('click', { ctrlKey: true, pointerType: 'mouse', button: 0, detail: 1, target: cells.physicsCell });
+    assert.equal(opened.length, 1);
+});
+
+test('auxclick and long-press contextmenu have no shortcut handler', () => {
+    const { document, cells } = buildResultSheet();
+    const { opened } = loadScript(document);
+    for (const type of ['auxclick', 'contextmenu']) {
+        const event = document.emit(type, { ctrlKey: true, target: cells.physicsCell });
+        assert.equal(event.defaultPrevented, false);
+    }
+    assert.equal(opened.length, 0);
 });

@@ -1,5 +1,13 @@
 # Handoff — School Management System
 
+## সেশন EX-07 — ২০২৬-১০-০১ · প্রম্পট ০৮/২৮ · Ctrl/Cmd+Click correction
+
+- **Owner scope:** Result Sheet + Full Rank List; mobile/touch বন্ধ; permission শুধু `students.add_exammark`।
+- **বদল:** permission বা published না থাকলে correction-সংক্রান্ত কিছুই render হয় না (আগে `data-subject-pk`/URL/JS যেত); JS শুধু primary-button Ctrl/Cmd mouse click নেয় (Shift/Alt/middle/right/keyboard/touch নয়, row-এর link native); দৃশ্যমান **Correct marks (choose subject)** fallback; published lock/audit অপরিবর্তিত; cross-institution 404।
+- **প্রমাণ:** পূর্ণ suite **739 Django** + **29 Node** pass; shortcut ফোকাসড 17 + 23; `check` 0; `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/EX-07.md`, গাইড `RESULT_PUBLISHING_GUIDE.md` §7।
+- **বাকি:** আসল ব্রাউজার/ডিভাইসে হাতে পরীক্ষা; PR CI ও owner merge অনুমোদন।
+- **Next:** প্রম্পট ০৯/২৮ (OF-01) — owner ক্রমিকভাবে দেবেন; নিজে থেকে শুরু নয়।
+
 ## সেশন EX-06 — ২০২৬-০৯-২৩ · নীতি-সংশোধন · চতুর্থ/অতিরিক্ত বিষয় GPA
 
 - **Owner correction:** আগের 4.90–4.99→5.00 ধারণাটি বাতিল। শুধুমাত্র selected `Subject.category='FOURTH'` (যেমন Agriculture 4th Subject) bonus পায়; ordinary OPTIONAL মূল বিষয়ই থাকে। এক ছাত্রের সর্বোচ্চ একটি fourth subject; একাধিক হলে publish বন্ধ হয়।

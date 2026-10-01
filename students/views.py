@@ -4294,7 +4294,7 @@ def result_sheet(request, pk):
     # paper that particular student sits, never the column).
     enter_marks_base_url = reverse(
         'enter_marks', kwargs={'pk': exam.pk, 'subject_pk': 0},
-    ).removesuffix('0/')
+    ).removesuffix('0/') if request.user.has_perm('students.add_exammark') else ''
     return render(request, 'students/result_sheet.html', {
         'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
         'absent_subject_fails': absent_subject_fails_result(),
@@ -4399,6 +4399,8 @@ def full_rank_list(request, pk):
     marks_entry_url = reverse('select_marks_subject', kwargs={'pk': exam.pk})
     if selected_group:
         marks_entry_url += f'?group={selected_group}'
+    if not request.user.has_perm('students.add_exammark'):
+        marks_entry_url = ''
     return render(request, 'students/full_rank_list.html', {
         'exam': exam,
         'results': ranked,
