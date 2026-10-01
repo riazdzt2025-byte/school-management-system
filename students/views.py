@@ -9,7 +9,7 @@ from django.core.cache import caches
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.utils import OperationalError, ProgrammingError
-from django.core.paginator import Paginator
+from .pagination import paginate_list
 from django.db.models import Sum, Q, Count, F
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -588,8 +588,11 @@ def admission_application_list(request):
     status = request.GET.get('status')
     if status:
         applications = applications.filter(status=status)
+    applications = applications.order_by('-submitted_at', '-pk')
+    pagination = paginate_list(request, applications)
     return render(request, 'students/admission_application_list.html', {
-        'applications': applications, 'status': status,
+        **pagination,
+        'applications': pagination['page_rows'], 'status': status,
         'status_choices': AdmissionApplication.STATUS_CHOICES,
     })
 
@@ -786,8 +789,11 @@ def accounts_admission_queue(request):
     admission_class = request.GET.get('admission_class', '').strip()
     if admission_class:
         applications = applications.filter(requested_class=admission_class)
+    applications = applications.order_by('-submitted_at', '-pk')
+    pagination = paginate_list(request, applications)
     return render(request, 'students/accounts_admission_queue.html', {
-        'applications': applications, 'admission_class': admission_class,
+        **pagination,
+        'applications': pagination['page_rows'], 'admission_class': admission_class,
     })
 
 
@@ -1031,10 +1037,12 @@ def class_section_summary(request):
 
     grand_total = students_qs.count()
 
+    pagination = paginate_list(request, summary_rows, allow_full_print=True)
     return render(request, 'students/class_section_summary.html', {
+        **pagination,
         'institutions': institutions,
         'institution': institution,
-        'summary_rows': summary_rows,
+        'summary_rows': pagination['page_rows'],
         'grand_total': grand_total,
     })
 
@@ -1211,7 +1219,9 @@ def admission_funnel_report(request):
     if institution is None:
         institution_rows = _admission_funnel_by_institution(applications)
 
+    pagination = paginate_list(request, institution_rows, allow_full_print=True)
     return render(request, 'students/admission_funnel_report.html', {
+        **pagination,
         'institutions': _visible_institutions(request),
         'institution': institution,
         'from_date': from_date.isoformat() if from_date else '',
@@ -1222,7 +1232,7 @@ def admission_funnel_report(request):
         'rejected': summary['rejected'],
         'in_progress': summary['in_progress'],
         'conversion_percent': summary['conversion_percent'],
-        'institution_rows': institution_rows,
+        'institution_rows': pagination['page_rows'],
         'funnel_stages': [{'key': key, 'label': label} for key, label in _funnel_stages()],
         'export_url': export_url,
     })
@@ -1304,20 +1314,16 @@ def attendance_report(request):
     class register — rows are records, so the register roll-order rule does
     not apply; the class-wise student list lives in mark_attendance_bulk)."""
     institution = _selected_institution_for_request(request)
-    records = AttendanceRecord.objects.select_related('student', 'employee', 'institution').order_by('-date', '-created_at')
+    records = AttendanceRecord.objects.select_related('student', 'employee', 'institution').order_by('-date', '-created_at', '-pk')
     if institution is not None:
         records = records.filter(institution=institution)
     else:
         records = _scope_by_allowed_institutions(request, records)
-    # Paginate high-volume attendance (100/page) — prevents huge table loads
-    paginator = Paginator(records, 100)
-    page_obj = paginator.get_page(request.GET.get('page'))
+    pagination = paginate_list(request, records)
     return render(request, 'students/attendance_report.html', {
-        'records': page_obj.object_list,
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'is_paginated': page_obj.has_other_pages(),
-        'total_records': paginator.count,
+        **pagination,
+        'records': pagination['page_rows'],
+        'total_records': pagination['paginator'].count,
         'institution': institution,
         'status_choices': AttendanceRecord.STATUS_CHOICES,
     })
@@ -1490,7 +1496,7 @@ def attendance_summary(request):
     if not end_date:
         end_date = today
     
-    records = AttendanceRecord.objects.filter(date__range=[start_date, end_date])
+    records = AttendanceRecord.objects.filter(date__range=[start_date, end_date]).select_related('student', 'employee')
     if institution:
         records = records.filter(institution=institution)
     else:
@@ -1543,13 +1549,20 @@ def attendance_summary(request):
         if summary['total'] > 0:
             summary['attendance_rate'] = round((summary['present'] / summary['total'] * 100), 1)
     
+    student_rows = sorted(student_summary.values(), key=lambda x: (x['student'].name, x['student'].pk))
+    employee_rows = sorted(employee_summary.values(), key=lambda x: (x['employee'].name, x['employee'].pk))
+    # One cap across both tables, not up to 100 students + 100 employees.
+    pagination = paginate_list(request, student_rows + employee_rows, allow_full_print=True)
     return render(request, 'students/attendance_summary.html', {
+        **pagination,
+        'student_summary_count': len(student_rows),
+        'employee_summary_count': len(employee_rows),
         'start_date': start_date,
         'end_date': end_date,
         # Analytics page spanning classes (and employees, who have no roll):
         # rows stay alphabetical by name — not a register list (EX-02 matrix).
-        'student_summary': sorted(student_summary.values(), key=lambda x: x['student'].name),
-        'employee_summary': sorted(employee_summary.values(), key=lambda x: x['employee'].name),
+        'student_summary': [row for row in pagination['page_rows'] if 'student' in row],
+        'employee_summary': [row for row in pagination['page_rows'] if 'employee' in row],
         'institution': institution,
         'total_records': records.count(),
     })
@@ -1562,19 +1575,16 @@ def employee_list(request):
     status = request.GET.get('status')
     institution = _resolve_requested_institution(request, institution_id)
 
-    employees = Employee.objects.all().order_by('name')
+    employees = Employee.objects.select_related('institution').order_by('name', 'pk')
     employees = _scope_institution_qs(request, employees, institution)
     if status:
         employees = employees.filter(status=status)
 
-    paginator = Paginator(employees, 100)
-    page_obj = paginator.get_page(request.GET.get('page'))
+    pagination = paginate_list(request, employees, allow_full_print=True)
     return render(request, 'students/employee_list.html', {
-        'employees': page_obj.object_list,
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'is_paginated': page_obj.has_other_pages(),
-        'total_employees': paginator.count,
+        **pagination,
+        'employees': pagination['page_rows'],
+        'total_employees': pagination['paginator'].count,
         'institutions': institutions,
         'institution': institution,
         'selected_status': status,
@@ -1589,7 +1599,8 @@ def employee_detail(request, pk):
     )
     
     # Get status history
-    status_logs = employee.status_logs.all()
+    status_logs = employee.status_logs.select_related('changed_by').order_by('-changed_at', '-pk')
+    pagination = paginate_list(request, status_logs)
     
     # Get attendance records (last 30 days)
     from datetime import timedelta, date
@@ -1597,7 +1608,7 @@ def employee_detail(request, pk):
     attendance_records = AttendanceRecord.objects.filter(
         employee=employee,
         date__gte=thirty_days_ago
-    ).order_by('-date')
+    ).order_by('-date', '-pk')
     
     # Calculate attendance rate
     attendance_rate = 0
@@ -1610,11 +1621,13 @@ def employee_detail(request, pk):
     attendance_records_display = attendance_records[:30]
     
     # Get salary/finance info if available
-    salary_records = employee.salary_sheets.all().order_by('-month')[:12] if hasattr(employee, 'salary_sheets') else []
+    salary_records = employee.salary_sheets.all().order_by('-month', '-pk')[:12] if hasattr(employee, 'salary_sheets') else []
     
     return render(request, 'students/employee_detail.html', {
+        **pagination,
+        'show_status_history': 'page' in request.GET or 'per_page' in request.GET,
         'employee': employee,
-        'status_logs': status_logs,
+        'status_logs': pagination['page_rows'],
         'attendance_records': attendance_records_display,
         'attendance_rate': attendance_rate,
         'salary_records': salary_records,
@@ -1664,7 +1677,7 @@ def student_list(request):
         if len(exact_matches) == 1:
             return redirect('student_detail', pk=exact_matches[0].pk)
 
-    qs = Student.objects.filter(is_archived=False)
+    qs = Student.objects.filter(is_archived=False).select_related('institution')
     qs = _scope_institution_qs(request, qs, institution)
     qs = _scope_students_to_user(request, qs)
 
@@ -1701,20 +1714,12 @@ def student_list(request):
         elif name_count[name_key] > 1:
             possible_duplicate_ids.add(s.id)
 
-    # Pagination: সর্বোচ্চ ১০০ records per page — portfolio-তে বড় roll (2000+) এ
-    # সব একসাথে load না করে page ভাগে দেখানো (download এখনো সব export করে)।
-    paginator = Paginator(students, 100)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    # Keep the full duplicate sets for highlighting even on paginated view;
-    # the page itself is what the template iterates.
-    paginated_students = list(page_obj.object_list)
+    # Duplicate flags and counts above still use the entire filtered cohort.
+    pagination = paginate_list(request, students, allow_full_print=True)
 
     return render(request, 'students/student_list.html', {
-        'students': paginated_students,
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'is_paginated': page_obj.has_other_pages(),
+        **pagination,
+        'students': pagination['page_rows'],
         'student_count': len(students),
         'class_counts': student_class_counts(students),
         'search_q': search_q,
@@ -2191,9 +2196,11 @@ def certificate_list(request, pk):
         request, Student, pk, lambda s: s.institution
     )
     certificates = student.certificates.all().order_by('-issue_date', '-pk')
+    pagination = paginate_list(request, certificates)
     return render(request, 'students/certificate_list.html', {
+        **pagination,
         'student': student,
-        'certificates': certificates,
+        'certificates': pagination['page_rows'],
     })
 
 
@@ -2304,17 +2311,13 @@ def archived_students(request):
     qs = _scope_institution_qs(request, qs, institution)
     qs = _scope_students_to_user(request, qs)
 
-    students = list(qs.order_by('-archived_at'))
-    paginator = Paginator(students, 100)
-    page_obj = paginator.get_page(request.GET.get('page'))
-    paginated_students = list(page_obj.object_list)
+    students = qs.order_by('-archived_at', '-pk')
+    pagination = paginate_list(request, students)
 
     return render(request, 'students/archived_students.html', {
-        'students': paginated_students,
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'is_paginated': page_obj.has_other_pages(),
-        'total_archived': len(students),
+        **pagination,
+        'students': pagination['page_rows'],
+        'total_archived': pagination['paginator'].count,
         'institution': institution,
         'institutions': institutions,
         'can_purge': request.user.has_perm('students.delete_student'),
@@ -2506,9 +2509,11 @@ def student_exams(request, pk):
         institution=student.institution,
         admission_class=student.admission_class,
     ).filter(Q(section='') | Q(section__iexact=student.section)).order_by('-exam_date', '-id')
+    pagination = paginate_list(request, exams)
     return render(request, 'students/student_exams.html', {
+        **pagination,
         'student': student,
-        'exams': exams,
+        'exams': pagination['page_rows'],
     })
 
 
@@ -2998,9 +3003,14 @@ def subject_requirement_list(request):
     if query:
         requirements = requirements.filter(Q(subject__name__icontains=query) | Q(subject__code__icontains=query))
 
+    requirements = requirements.order_by(
+        'institution', 'admission_class', 'group', 'requirement_type',
+        'subject__name', 'pk',
+    )
+    pagination = paginate_list(request, requirements)
     grouped = {}
     for label_key, label in SubjectRequirement.REQUIREMENT_TYPE_CHOICES:
-        bucket = [r for r in requirements if r.requirement_type == label_key]
+        bucket = [r for r in pagination['page_rows'] if r.requirement_type == label_key]
         if bucket:
             grouped[label] = bucket
 
@@ -3041,6 +3051,7 @@ def subject_requirement_list(request):
     }
 
     return render(request, 'students/subject_requirement_list.html', {
+        **pagination,
         'grouped_requirements': grouped,
         'institutions': institutions,
         'institutions_data': institutions_data,
@@ -3600,9 +3611,13 @@ def download_import_template(request):
 # ---------------- Exam Views ----------------
 @login_required
 def exam_list(request):
-    exams = Exam.objects.all().order_by('-session', 'admission_class', 'name')
+    exams = Exam.objects.select_related('institution').order_by('-session', 'admission_class', 'name', 'pk')
     exams = _filter_by_selected_institution(request, exams)
-    return render(request, 'students/exam_list.html', {'exams': exams})
+    pagination = paginate_list(request, exams)
+    return render(request, 'students/exam_list.html', {
+        **pagination,
+        'exams': pagination['page_rows'],
+    })
 
 
 def _institutions_data_json(request=None):
@@ -4295,8 +4310,12 @@ def result_sheet(request, pk):
     enter_marks_base_url = reverse(
         'enter_marks', kwargs={'pk': exam.pk, 'subject_pk': 0},
     ).removesuffix('0/') if request.user.has_perm('students.add_exammark') else ''
+    pass_rate = int(100 * sum(r['status'] == 'Pass' for r in results) / len(results) + 0.5) if results else 0
+    pagination = paginate_list(request, results, allow_full_print=True)
     return render(request, 'students/result_sheet.html', {
-        'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
+        **pagination,
+        'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': pagination['page_rows'],
+        'total_results': len(results), 'pass_rate': pass_rate,
         'absent_subject_fails': absent_subject_fails_result(),
         'enter_marks_base_url': enter_marks_base_url,
         'ignored_subjects': ignored,
@@ -4334,8 +4353,10 @@ def result_summary(request, pk):
     selected_group_label = dict(group_choices).get(selected_group, '')
     result_group_label = selected_group_label or exam.get_group_display() or ''
     _, results = build_exam_results(exam, group=selected_group or None)
+    pagination = paginate_list(request, results, allow_full_print=True)
     return render(request, 'students/exam_result_summary.html', {
-        'exam': exam, 'results': results,
+        **pagination,
+        'exam': exam, 'results': pagination['page_rows'],
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': selected_group_label,
@@ -4401,10 +4422,13 @@ def full_rank_list(request, pk):
         marks_entry_url += f'?group={selected_group}'
     if not request.user.has_perm('students.add_exammark'):
         marks_entry_url = ''
+    pagination = paginate_list(request, ranked + unranked, allow_full_print=True)
     return render(request, 'students/full_rank_list.html', {
         'exam': exam,
-        'results': ranked,
-        'unranked_results': unranked,
+        **pagination,
+        'ranked_count': len(ranked),
+        'results': [r for r in pagination['page_rows'] if r['position']],
+        'unranked_results': [r for r in pagination['page_rows'] if not r['position']],
         'marks_entry_url': marks_entry_url,
         'group_choices': group_choices,
         'selected_group': selected_group,
@@ -4466,8 +4490,10 @@ def seat_plan_list(request, pk):
     # Group-aware, like every other exam route: a Science seat plan must not
     # count Business students as "unseated".
     students = get_exam_students(exam)
+    pagination = paginate_list(request, sorted(rooms.items()))
     return render(request, 'students/seat_plan_list.html', {
-        'exam': exam, 'rooms': rooms,
+        **pagination,
+        'exam': exam, 'rooms': dict(pagination['page_rows']),
         'total_students': students.count(), 'seated_count': seats.count(),
     })
 
@@ -4539,12 +4565,14 @@ def view_seat_plan_room(request, pk, room_name):
     # SeatPlan.Meta orders by (room_name, seat_no); seat numbers are handed
     # out in register roll order by generate_seat_plan (get_exam_students —
     # numeric roll, None last), so this print follows the class register.
-    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
+    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student').order_by('seat_no', 'pk')
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
         return redirect('seat_plan_list', pk=exam.pk)
+    pagination = paginate_list(request, seats, allow_full_print=True)
     return render(request, 'students/view_seat_plan_room.html', {
-        'exam': exam, 'room_name': room_name, 'seats': seats,
+        **pagination,
+        'exam': exam, 'room_name': room_name, 'seats': pagination['page_rows'],
     })
 
 
@@ -4652,7 +4680,12 @@ def employee_status_history(request, pk):
         request, Employee, pk, lambda e: e.institution
     )
     logs = employee.status_logs.select_related('changed_by').all()
-    return render(request, 'students/employee_status_history.html', {'employee': employee, 'logs': logs})
+    logs = logs.order_by('-changed_at', '-pk')
+    pagination = paginate_list(request, logs)
+    return render(request, 'students/employee_status_history.html', {
+        **pagination,
+        'employee': employee, 'logs': pagination['page_rows'],
+    })
 
 
 # ---------------- Accounts Views ----------------
@@ -4661,7 +4694,11 @@ def employee_status_history(request, pk):
 def money_receipt_list(request):
     receipts = MoneyReceipt.objects.select_related('student', 'created_by').all()
     receipts = _filter_by_selected_institution(request, receipts, 'student__institution')
-    return render(request, 'students/money_receipt_list.html', {'receipts': receipts})
+    pagination = paginate_list(request, receipts)
+    return render(request, 'students/money_receipt_list.html', {
+        **pagination,
+        'receipts': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -4720,7 +4757,11 @@ def voucher_list(request):
             vouchers = vouchers.none()
         else:
             vouchers = vouchers.filter(institution_id__in=allowed_ids)
-    return render(request, 'students/voucher_list.html', {'vouchers': vouchers})
+    pagination = paginate_list(request, vouchers)
+    return render(request, 'students/voucher_list.html', {
+        **pagination,
+        'vouchers': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -4767,7 +4808,11 @@ def delete_voucher(request, pk):
 def salary_sheet_list(request):
     salaries = SalarySheet.objects.select_related('employee', 'created_by').all()
     salaries = _filter_by_selected_institution(request, salaries, 'employee__institution')
-    return render(request, 'students/salary_sheet_list.html', {'salaries': salaries})
+    pagination = paginate_list(request, salaries)
+    return render(request, 'students/salary_sheet_list.html', {
+        **pagination,
+        'salaries': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -4976,7 +5021,7 @@ def rollback_student_promotion(request, pk):
 @permission_required('students.view_promotionbatch', raise_exception=True)
 @_require_department('Office')
 def student_promotion_history(request):
-    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor', 'institution').all().order_by('-created_at')
+    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor', 'institution').all().order_by('-created_at', '-pk')
     # A scoped clerk sees only batches that touch their own institutions. The
     # filter is derived from each batch's students, which stays correct for both
     # new batches (which also carry a `institution` column, D-9) and legacy
@@ -4991,7 +5036,11 @@ def student_promotion_history(request):
             ).exclude(
                 student_history__student__institution_id__in=_institution_ids_outside(allowed),
             ).distinct()
-    return render(request, 'students/student_promotion_history.html', {'batches': batches})
+    pagination = paginate_list(request, batches)
+    return render(request, 'students/student_promotion_history.html', {
+        **pagination,
+        'batches': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -5003,7 +5052,11 @@ def audit_log_list(request):
     # Rows with no institution (system-level actions, and everything recorded
     # before the institution column existed) stay admin/staff-only.
     logs = _scope_by_allowed_institutions(request, logs)
-    return render(request, 'students/audit_log_list.html', {'logs': logs})
+    pagination = paginate_list(request, logs)
+    return render(request, 'students/audit_log_list.html', {
+        **pagination,
+        'logs': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -5101,16 +5154,20 @@ def result_analysis_subject_fail(request):
     exams = _analysis_exam_queryset(request)
     exam = _selected_analysis_exam(request, exams)
     rows = failed_subject_rows(exam, request.GET.get('group') or None) if exam else []
-    by_subject = []
+    failure_counts = defaultdict(int)
     for row in rows:
+        failure_counts[row['subject'].pk] += 1
+    pagination = paginate_list(request, rows, allow_full_print=True)
+    by_subject = []
+    for row in pagination['page_rows']:
         bucket = next((item for item in by_subject if item['subject'].pk == row['subject'].pk), None)
         if bucket is None:
-            bucket = {'subject': row['subject'], 'rows': [], 'count': 0}
+            bucket = {'subject': row['subject'], 'rows': [], 'count': failure_counts[row['subject'].pk]}
             by_subject.append(bucket)
         bucket['rows'].append(row)
-        bucket['count'] += 1
     context = _analysis_base_context(request, exams)
-    context.update({'exam': exam, 'rows': rows, 'subjects_with_fails': by_subject})
+    context.update({'exam': exam, 'rows': pagination['page_rows'], 'subjects_with_fails': by_subject})
+    context.update(pagination)
     return render(request, 'students/result_analysis_subject_fail.html', context)
 
 
@@ -5148,8 +5205,10 @@ def result_analysis_multi_term(request):
     # roll, name, then pk so two students sharing a roll still sort stably.
     for student in sorted(students.values(), key=lambda s: (s.roll_no is None, s.roll_no or 0, s.name.lower(), s.pk)):
         rows.append({'student': student, 'results': [mapping.get(student.pk) for mapping in result_maps]})
+    pagination = paginate_list(request, rows, allow_full_print=True)
     context = _analysis_base_context(request, exams)
-    context.update({'selected_exams': selected, 'selected_exam_ids': [e.pk for e in selected], 'rows': rows})
+    context.update({'selected_exams': selected, 'selected_exam_ids': [e.pk for e in selected], 'rows': pagination['page_rows']})
+    context.update(pagination)
     return render(request, 'students/result_analysis_multi_term.html', context)
 
 
@@ -5283,12 +5342,21 @@ def section_arrangement(request):
                     details={'changes': changes, 'roll_numbers_changed': False},
                 )
             messages.success(request, f'Section arrangement saved for {len(changes)} student(s). Roll numbers were unchanged.')
-            query = f'?exam={exam.pk}&sections={",".join(sections)}'
-            return redirect(reverse('section_arrangement') + query)
+            query = request.GET.copy()
+            query['exam'] = str(exam.pk)
+            query['sections'] = ','.join(sections)
+            selected_group = request.GET.get('group') or request.POST.get('group')
+            if selected_group:
+                query['group'] = selected_group
+            query.pop('page', None)
+            query.pop('print', None)
+            return redirect(reverse('section_arrangement') + '?' + query.urlencode())
 
+    pagination = paginate_list(request, rows, allow_full_print=True)
     context = _analysis_base_context(request, exams)
     context.update({
-        'exam': exam, 'rows': rows, 'sections': sections,
+        'exam': exam, 'rows': pagination['page_rows'], 'sections': sections,
         'sections_csv': ','.join(sections), 'capacity_warnings': capacity_warnings,
     })
+    context.update(pagination)
     return render(request, 'students/section_arrangement.html', context)

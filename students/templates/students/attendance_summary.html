@@ -5,9 +5,12 @@
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-header bg-primary text-white">
             <h4 class="mb-0">Attendance Summary</h4>
+            {% include 'students/_print_all.html' %}
         </div>
         <div class="card-body">
             <form method="get" class="row g-3 mb-3">
+    {% include 'students/_pagination_filter_fields.html' with exclude="start_date end_date" %}
+
                 <div class="col-md-3">
                     <label for="start_date" class="form-label">Start Date</label>
                     <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date|date:'Y-m-d' }}">
@@ -21,7 +24,7 @@
                     <button type="submit" class="btn btn-primary w-100">Filter</button>
                 </div>
             </form>
-            
+
             <div class="row">
                 <div class="col-md-4">
                     <div class="alert alert-info mb-0">
@@ -81,7 +84,7 @@
                     </table>
                 </div>
             {% else %}
-                <div class="alert alert-info mb-0">No student attendance records found for this period.</div>
+                <div class="alert alert-info mb-0">{% if student_summary_count %}No student rows on this page; use the page controls below.{% else %}No student attendance records found for this period.{% endif %}</div>
             {% endif %}
         </div>
     </div>
@@ -134,9 +137,11 @@
                     </table>
                 </div>
             {% else %}
-                <div class="alert alert-info mb-0">No employee attendance records found for this period.</div>
+                <div class="alert alert-info mb-0">{% if employee_summary_count %}No employee rows on this page; use the page controls below.{% else %}No employee attendance records found for this period.{% endif %}</div>
             {% endif %}
         </div>
     </div>
 </div>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}

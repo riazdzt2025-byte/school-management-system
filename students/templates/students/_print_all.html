@@ -1,0 +1,6 @@
+{% if is_print_view %}
+<button type="button" onclick="window.print()" class="btn btn-outline-navy btn-sm d-print-none">🖨️ Print / Save PDF</button>
+<a href="{% querystring request.GET print=None page=None %}" class="btn btn-outline-secondary btn-sm d-print-none">Back to paginated list</a>
+{% else %}
+<a href="{% querystring request.GET print=1 page=None %}" target="_blank" rel="noopener" class="btn btn-outline-navy btn-sm d-print-none" data-print-all>🖨️ Print all / Save PDF</a>
+{% endif %}

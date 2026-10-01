@@ -27,13 +27,15 @@
             <div class="subtitle">
                 Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
                 {% if result_group_label %} &middot; {{ result_group_label }} group{% endif %} &middot; Session {{ exam.session }}
-                &middot; {{ results|length }} ranked student{{ results|length|pluralize }}
+                &middot; {{ ranked_count }} ranked student{{ ranked_count|pluralize }}
             </div>
         </div>
     </div>
 
     {% if show_group_picker %}
     <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
+    {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
+
         <div>
             <label class="form-label fw-semibold mb-1">Group</label>
             <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -54,7 +56,7 @@
         <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-trophy me-1"></i> Top 10</a>
         {% if can_result_analysis %}<a href="{% url 'result_analysis_merit_slides' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-easel me-1"></i> Merit Slides</a>{% endif %}
         {% if perms.students.add_exammark and exam.is_published %}<a href="{{ marks_entry_url }}" class="btn btn-outline-navy btn-sm correction-entry" target="_blank" rel="noopener">Correct marks (choose subject)</a>{% endif %}
-        <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
+        {% include 'students/_print_all.html' %}
         <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Back to Exams</a>
     </div>
 
@@ -106,7 +108,7 @@
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="11" class="text-center py-4">No ranked results yet. Publish marks first.</td></tr>
+                    <tr><td colspan="11" class="text-center py-4">{% if ranked_count %}No ranked students on this page.{% else %}No ranked results yet. Publish marks first.{% endif %}</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -152,6 +154,8 @@
         {% if perms.students.add_exammark %}<br><strong>Ctrl/Cmd + Click</strong> a non-link row cell to open this exam's marks entry in a new tab — the rank list stays open. Plain/Shift/middle clicks and touch do not open correction. Use the visible Correct marks link if needed; marks remain locked until explicitly unlocked.{% endif %}
     </div>
 </div>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}
 
 {% block extra_script %}
