@@ -11,6 +11,8 @@
 </div>
 
 <form method="get" class="d-flex gap-2 mb-3">
+    {% include 'students/_pagination_filter_fields.html' with exclude="admission_class" %}
+
     <input type="text" name="admission_class" value="{{ admission_class }}" class="form-control" style="max-width:220px" placeholder="Class">
     <button type="submit" class="btn btn-outline-navy">Filter</button>
 </form>
@@ -41,4 +43,6 @@
         </tbody>
     </table>
 </div>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}

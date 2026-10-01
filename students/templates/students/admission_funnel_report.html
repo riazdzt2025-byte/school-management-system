@@ -55,6 +55,8 @@
     </div>
     <div class="page-actions d-flex gap-2 d-print-none">
         <form method="get" class="d-flex gap-2 align-items-center">
+    {% include 'students/_pagination_filter_fields.html' with exclude="institution from to" %}
+
             <select name="institution" class="form-select" onchange="this.form.submit()">
                 <option value="">-- All Institutions --</option>
                 {% for inst in institutions %}
@@ -67,7 +69,7 @@
         </form>
         <a href="{{ export_url }}" class="btn btn-outline-navy">📥 Excel</a>
         <a href="{% url 'class_section_summary' %}" class="btn btn-outline-secondary">Class/Section</a>
-        <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+        {% include 'students/_print_all.html' %}
     </div>
 </div>
 
@@ -173,4 +175,6 @@
     Counts are of applications <em>submitted</em> in the selected date range, each in the stage it is
     in right now. Rejected applications are listed alongside the funnel, not inside it.
 </p>
+
+{% if not institution %}{% include 'students/_pagination.html' %}{% endif %}
 {% endblock %}

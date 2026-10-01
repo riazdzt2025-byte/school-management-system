@@ -1,0 +1,26 @@
+{% extends 'admin/change_list.html' %}
+
+{% block search %}
+{{ block.super }}
+<form method="get" action="{{ request.path }}" class="paginator" data-page-size-form>
+    {% include 'students/_pagination_filter_fields.html' with exclude="p all" changing_page_size=True %}
+    <label for="admin-page-size">Rows per page (1–100):</label>
+    <input type="number" id="admin-page-size" name="per_page" value="{{ cl.list_per_page }}" min="1" max="100" step="1" required>
+    <button type="submit">Apply</button>
+</form>
+{% endblock %}
+
+{% block pagination %}
+{{ block.super }}
+<p class="paginator" aria-label="List pagination">
+    {% if cl.page_num > 1 %}
+    <a href="{% querystring request.GET p=1 per_page=cl.list_per_page all=None %}">« First</a>
+    <a href="{% querystring request.GET p=cl.page_num|add:'-1' per_page=cl.list_per_page all=None %}">‹ Prev</a>
+    {% endif %}
+    Page {{ cl.page_num }} of {{ cl.paginator.num_pages }} — {{ cl.result_count }} total
+    {% if cl.page_num < cl.paginator.num_pages %}
+    <a href="{% querystring request.GET p=cl.page_num|add:'1' per_page=cl.list_per_page all=None %}">Next ›</a>
+    <a href="{% querystring request.GET p=cl.paginator.num_pages per_page=cl.list_per_page all=None %}">Last »</a>
+    {% endif %}
+</p>
+{% endblock %}

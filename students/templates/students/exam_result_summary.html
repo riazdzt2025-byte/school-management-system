@@ -23,7 +23,7 @@
 
 {% block content %}
 <div class="result-summary-page">
-    <div class="page-header">
+    <div class="page-header">{% include 'students/_print_all.html' %}
         <div>
             <h1>Published Result</h1>
             <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} - {{ result_group_label }}{% endif %} - Session {{ exam.session }}</div>
@@ -32,6 +32,8 @@
 
     {% if show_group_picker %}
     <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
+    {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
+
         <div>
             <label class="form-label fw-semibold mb-1">Group</label>
             <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -95,4 +97,6 @@
         </div>
     </div>
 </div>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}
