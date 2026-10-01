@@ -5,7 +5,7 @@
 - **Owner সিদ্ধান্ত:** নরম normalize (স্পেস/ড্যাশ/`+880`/বাংলা অঙ্ক) + ফলাফল ঠিক ১১-ডিজিট BD mobile `01[3-9]XXXXXXXX`; ভাইবোনের এক নম্বর অনুমোদিত (report-এ দেখায়, block নয়)।
 - **বদল:** একটি normalise/validate ফাংশন student ফর্ম, দুই admission ফর্ম ও Excel import-এ; import-এ "Row N: …" error; `contact_conflict_report` এখন SHARED/FORMAT/ARCHIVE; help-text। migration/model বদল নেই।
 - **প্রমাণ:** পূর্ণ suite **752 Django** + **29 Node** pass; `test_guardian_contact` 52; `check` 0; `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-01.md` (§৩-এ "কোথায় কোথায় যাচাই")। PR #53।
-- **বাকি:** PR CI ও owner merge; প্রোডাকশনে `contact_conflict_report`-এর `FORMAT` লাইন দেখা (পুরোনো ঢিলা নম্বর পরের edit-এ আটকাবে); আসল ব্রাউজারে হাতে পরীক্ষা।
+- **বাকি:** owner merge (PR #53 CI সবুজ); প্রোডাকশনে `contact_conflict_report`-এর `FORMAT` লাইন দেখা (পুরোনো ঢিলা নম্বর পরের edit-এ আটকাবে); আসল ব্রাউজারে হাতে পরীক্ষা।
 - **Next:** প্রম্পট ১০/২৮ (OF-02 — pagination) — owner ক্রমিকভাবে দেবেন; নিজে থেকে শুরু নয়।
 
 ## সেশন EX-07 — ২০২৬-১০-০১ · প্রম্পট ০৮/২৮ · Ctrl/Cmd+Click correction
