@@ -150,7 +150,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Decision needed:** Owner to confirm 100 is hard cap or configurable (`?per_page` disallowed? we recommend fixed 100).
 - **Small session scope:** Yes — `views.student_list` + `archived_students` + templates + tests (one session).
 
-#### E8 · Result cell থেকে Ctrl/Cmd+Click correction shortcut — ✅ DONE (2026-09-17)
+#### E8 · Result cell থেকে Ctrl/Cmd+Click correction shortcut — ✅ DONE (2026-09-17; EX-07 hardening 2026-10-01: permission-gated rendering, strict modifier/touch rules, visible fallback — `reports/EX-07.md`)
 - **Task ID & Purpose:** E8 — result sheet-এর subject cell থেকে Ctrl/Cmd+Click করলে সরাসরি `enter_marks` correction page (same exam+subject+group) খোলা।
 - **Current status:** **Complete** — `result_sheet.html` cells carry `data-subject-pk` (Religion cells use `sr.paper.pk`, the paper that student sits) + `data-group`, inside `.result-table-card[data-enter-marks-base]`; `static/students/js/result_cell_shortcut.js` opens `enter_marks` in a **new tab** on Ctrl/Cmd+Click and ignores plain clicks (print stays clean). `full_rank_list.html` has no subject columns, so its rows carry `data-shortcut-url` → `select_marks_subject` (group preserved). Without `students.add_exammark` the cell is `data-shortcut-disabled="true"` and the tooltip says “Ask Exam dept”. Documented in `RESULT_PUBLISHING_GUIDE.md` §7.
 - **Evidence:** `students/static/students/js/result_cell_shortcut.js`, `students/templates/students/result_sheet.html`, `students/templates/students/full_rank_list.html`, `views.result_sheet` (`enter_marks_base_url`), `views.full_rank_list` (`marks_entry_url`).

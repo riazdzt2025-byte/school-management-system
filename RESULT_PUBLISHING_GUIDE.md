@@ -295,18 +295,34 @@ that has already gone home with a student.
 
 ### Getting to the right subject quickly (Ctrl/Cmd + Click)
 
-While reading a published result, hold **Ctrl** (Windows/Linux) or **Cmd**
-(macOS) and click a subject cell on the **Result Sheet** — that subject's
-`Enter Marks` page opens **in a new tab**, on the same exam and the same group,
-so the register you were reading stays open. The **Full Rank List** has no
-subject columns, so there the same Ctrl/Cmd + Click opens that exam's marks
-entry chooser instead.
+**Where:** only the **Result Sheet** (subject cells) and the **Full Rank List** (rows).
+Student detail, result card, summary and analysis pages have no shortcut (owner decision, EX-07).
 
-A **plain click does nothing** on purpose: these pages are printed straight from
-the browser, so nothing in the cell can navigate away or show up on the printout.
-The Religion column opens the paper *that student* sits, never the column. If
-your account cannot enter marks, the shortcut is switched off and the cell's
-tooltip says *Ask Exam dept*.
+**Who:** only accounts with `students.add_exammark` — the same permission the `Enter Marks`
+page enforces on the server. Without it the pages render **no** correction URL, `data-*`
+attribute, tooltip hint, link or script at all (nothing hidden in the HTML), and typing the
+URL by hand still gives 403. `change_exammark` alone is not enough.
+
+**How:** hold **Ctrl** (Windows/Linux) or **Cmd** (macOS) and **left-click** a subject cell —
+that subject's `Enter Marks` page opens **in a new tab**, same exam and same group, so the
+register stays open. On the Full Rank List a click on a row (not on a link inside it) opens
+the exam's `Enter Marks` subject chooser. The Religion column opens the paper *that student* sits.
+
+| Action | Result |
+|---|---|
+| Plain click, print | nothing — register reading/printing is untouched |
+| Ctrl/Cmd + left-click | correction page in a new tab |
+| Shift/Alt + Ctrl/Cmd, middle- or right-click, keyboard activation | nothing (browser default) |
+| Links/buttons inside a row | normal browser behaviour, never hijacked |
+| Touch / pen / long-press (mobile) | **off** — no accidental correction page |
+
+**Without the keyboard shortcut:** a visible **Correct marks (choose subject)** button in the page
+toolbar (hidden when printing) opens the same `Enter Marks` chooser in a new tab with the group kept.
+
+**Limits:** the shortcut exists only on published results (unpublished exams redirect from these pages).
+It never bypasses the published-marks lock: the opened page is still locked until
+**Unlock to edit published result** is pressed and every blocked/allowed write is audited.
+Exam/institution scoping is server-side — a tampered exam or subject id gives 404 or a redirect and saves nothing.
 
 ---
 

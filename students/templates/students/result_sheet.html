@@ -292,6 +292,7 @@
             <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-trophy me-1"></i> Top 10</a>
             {% if can_result_analysis %}<a href="{% url 'result_analysis_subject_fail' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-exclamation-triangle me-1"></i> Subject Fail List</a>{% endif %}
             <a href="{{ subject_assignments_url }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-journal-check me-1"></i> Subject Assignments</a>
+            {% if perms.students.add_exammark and exam.is_published %}<a href="{% url 'select_marks_subject' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm correction-entry" target="_blank" rel="noopener">Correct marks (choose subject)</a>{% endif %}
             <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
             <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>
         </div>
@@ -420,7 +421,7 @@
                 <span class="result-count">{{ results|length }} students · {{ columns|length }} subjects</span>
             </div>
 
-            <div class="result-table-card" data-enter-marks-base="{{ enter_marks_base_url }}">
+            <div class="result-table-card" {% if perms.students.add_exammark and exam.is_published %}data-enter-marks-base="{{ enter_marks_base_url }}"{% endif %}>
                 <div class="result-table-wrap">
                     <table>
                         <colgroup>
@@ -472,10 +473,11 @@
                                 </td>
                                 {% else %}
                                 <td class="mark-cell {% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
+                                    {% if perms.students.add_exammark and exam.is_published %}
                                     data-subject-pk="{% if sr.paper %}{{ sr.paper.pk }}{% else %}{{ sr.subject.pk }}{% endif %}"
                                     data-group="{{ selected_group }}"
-                                    {% if not perms.students.add_exammark %}data-shortcut-disabled="true"{% endif %}
-                                    title="{% if sr.absent %}AB - no mark entered - {% if absent_subject_fails %}counted as F (0 / {{ sr.full }}){% else %}not counted (EXAM_ABSENT_SUBJECT_FAILS off){% endif %}{% else %}Pass mark {{ sr.pass_marks }}{% if sr.paper %} &middot; {{ sr.paper.name }}{% endif %}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}{% if perms.students.add_exammark %} &middot; Ctrl/Cmd+Click opens this subject's marks in a new tab{% else %} &middot; Ctrl/Cmd+Click disabled &mdash; Ask Exam dept{% endif %}">
+                                    {% endif %}
+                                    title="{% if sr.absent %}AB - no mark entered - {% if absent_subject_fails %}counted as F (0 / {{ sr.full }}){% else %}not counted (EXAM_ABSENT_SUBJECT_FAILS off){% endif %}{% else %}Pass mark {{ sr.pass_marks }}{% if sr.paper %} &middot; {{ sr.paper.name }}{% endif %}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}{% if perms.students.add_exammark %} &middot; Ctrl/Cmd+Click opens this subject's marks in a new tab{% endif %}">
                                     <div class="mark-row">
                                         {% if sr.absent %}
                                         <span class="mark-number">AB</span>
@@ -530,7 +532,7 @@
         <p class="text-muted small mt-2 d-print-none result-help">
             <strong>AB</strong> = Absent (no mark entered). {% if absent_subject_fails %}It is graded <strong>F</strong> and counted as 0 out of its Full Marks — overall result shows <strong>Fail</strong>.{% else %}It is left out of the total and the GPA (<strong>EXAM_ABSENT_SUBJECT_FAILS</strong> is off) — the student can still pass on the papers they sat.{% endif %}
             * = the subject did not pass; hover a cell for the part breakdown and pass mark.
-            {% if perms.students.add_exammark %}<span class="d-print-none"><strong>Ctrl/Cmd + Click</strong> a subject cell to correct that subject's marks in a new tab — this register stays open. A plain click does nothing, so printing is unaffected.</span>{% endif %}
+            {% if perms.students.add_exammark %}<span class="d-print-none"><strong>Ctrl/Cmd + Click</strong> a subject cell to correct that subject's marks in a new tab — this register stays open. Plain/Shift/middle clicks and touch do not open correction. Use the visible Correct marks link if needed; marks remain locked until explicitly unlocked.</span>{% endif %}
             <strong>REL (Religion &amp; Moral Education)</strong> is one column for both religion papers: each student is graded on their own paper.
         </p>
         {% endif %}
@@ -556,5 +558,5 @@
     });
 })();
 </script>
-<script src="{% static 'students/js/result_cell_shortcut.js' %}"></script>
+{% if perms.students.add_exammark and exam.is_published %}<script src="{% static 'students/js/result_cell_shortcut.js' %}"></script>{% endif %}
 {% endblock %}
