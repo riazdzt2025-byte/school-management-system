@@ -5,8 +5,8 @@
 - **Branch/base:** `arena/01a0f6ce-school-management-system` / `a128376` (owner-এর নির্দেশে PR #53 MERGED)। Prompt-এর পুরোনো branch নয়।
 - **Owner সিদ্ধান্ত:** default/max ১০০; user ১–১০০ কমাতে/বাড়াতে পারবেন; ছোট reference list-এও একই। Dropdown/input workflow পূর্ণ থাকবে।
 - **বদল:** ২৮ frontend list/report/history surface + students-app admin; shared controls/size form/query preservation/unique ties। Admin `?all` cap bypass বন্ধ; result/attendance/funnel/seat/class totals ও full-cohort confirm অক্ষুণ্ণ; full exports + Print all। FK joins + query-count test।
-- **প্রমাণ:** focused **90 pass** (44 নতুন + 46 regression), Node **29**, `check` 0, migrations clean; **796 Django + 29 Node local pass**, CI pending। Code `71b4423`। Inventory/commands/limits: `docs/prompts/reports/OF-02.md`।
-- **বাকি:** PR তৈরি/CI যাচাই ও owner review; actual browser/PDF/live Unverified। UI cap calculation/export/print server cost দূর করার দাবি নয়। No model/migration/production/SSC restoration।
+- **প্রমাণ:** focused **90 pass** (44 নতুন + 46 regression), Node **29**, `check` 0, migrations clean; **796 Django + 29 Node local pass**, CI ✅ sqlite / postgres:16 / Node (PR #54, `c72f814`, run `36848644880`; push run `36848641541`-ও ৬/৬ SUCCESS)। Code `71b4423`। Inventory/commands/limits: `docs/prompts/reports/OF-02.md`।
+- **বাকি:** PR #54 OPEN (CI সবুজ); owner review/merge অনুমোদন; actual browser/PDF/live Unverified। UI cap calculation/export/print server cost দূর করার দাবি নয়। No model/migration/production/SSC restoration।
 - **Next:** প্রম্পট ১১/২৮ (OF-03 — Subject Assignment Office subtab) অপেক্ষমাণ; owner না বলা পর্যন্ত শুরু নয়।
 
 ## সেশন OF-01 — ২০২৬-১০-০১ · প্রম্পট ০৯/২৮ · একটি Guardian Contact

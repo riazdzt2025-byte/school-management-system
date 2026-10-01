@@ -1,10 +1,10 @@
 # Task Backlog — first production release scope
 
-_Last updated: ২০২৬-১০-০১ (OF-02 pagination; local 796 Django + 29 Node pass; CI pending)_
+_Last updated: ২০২৬-১০-০১ (OF-02 pagination; local 796 Django + 29 Node pass; CI sqlite / postgres:16 / Node pass (PR #54))_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 
-**Bengali TL;DR:** 2026-09-19 baseline **৬২৫ Django + ১৪ Node** → EX-01 (PR #39) **৬৩৮** + EX-02 (PR #41) **৬৫৩** + EX-03 (group-aware marks 0044 + বাকি কাজ finishing) **৬৭০ Django + ১৪ Node সব pass**। P0 isolation/validation/voucher/promotion/backup + guardian contact + result analysis + Full Rank List + row gating + roll-order + group marks সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + Office gaps (উন্নত Reports, photo continuity) + Attendance calendar (AT-02) + Employee (assignment/leave/closed-period) + OF-02 release verification (implementation done) + DB-02/03 + FN-01। SSC restore করা হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ।
+**Bengali TL;DR:** 2026-09-19 baseline **৬২৫ Django + ১৪ Node** → EX-01 (PR #39) **৬৩৮** + EX-02 (PR #41) **৬৫৩** + EX-03 (group-aware marks 0044 + বাকি কাজ finishing) **৬৭০ Django + ১৪ Node সব pass**। P0 isolation/validation/voucher/promotion/backup + guardian contact + result analysis + Full Rank List + row gating + roll-order + group marks সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + Office gaps (উন্নত Reports, photo continuity) + Attendance calendar (AT-02) + Employee (assignment/leave/closed-period) + OF-02 owner review/merge + DB-02/03 + FN-01। SSC restore করা হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ।
 
 ---
 
@@ -138,15 +138,15 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Small session scope:** Yes — one view + one test file (≤2 files), no migration.
 - **হালনাগাদ (2026-09-19, EX-01 / PR #39):** Acceptance-এর `?subject=&group=` অংশ এখন পুরোপুরি test-এ pinned — আগের `test_import_stay_on_page_redirects_to_same_page`-এর পাশে নতুন `test_import_stay_on_page_preserves_subject_and_group` (group param সংরক্ষণ)। আচরণ `views.py:3803-3810`-এ main-এ ছিলই; এই সেশনে শুধু regression pin + (প্রম্পট ০২ অনুযায়ী) Exam flyout-এ Analysis subtab ও cross-link এসেছে। পুরোনো PR #23 superseded মনে করা যেতে পারে (owner-সিদ্ধান্ত)। → E1 পুরোপুরি **Complete**।
 
-#### O2 · List pagination: default/max ১০০, selectable ১–১০০ — ✅ local Complete; CI pending (OF-02, 2026-10-01)
+#### O2 · List pagination: default/max ১০০, selectable ১–১০০ — ✅ Complete (local + CI; PR #54 OPEN) (OF-02, 2026-10-01)
 - **Task ID & Purpose:** O2 / OF-02 — সব high-volume list এবং ছোট reference list-এ bounded UI; exports/print ও totals পূর্ণ ডেটা।
-- **Current status:** ২৮ frontend list/report/history surface + students-app admin changelists implemented; **796 Django + 29 Node local pass**; CI pending। আগের ৪/১৫ view baseline gap এখন কোডে দূর — পূর্ণ inventory `docs/prompts/reports/OF-02.md` §২।
+- **Current status:** ২৮ frontend list/report/history surface + students-app admin changelists implemented; **796 Django + 29 Node local pass**; CI sqlite / postgres:16 / Node pass (PR #54)। আগের ৪/১৫ view baseline gap এখন কোডে দূর — পূর্ণ inventory `docs/prompts/reports/OF-02.md` §২।
 - **Owner decision (2026-10-01):** default/max ১০০, user কমাতে/বাড়াতে পারেন (১–১০০); reference list-এও একই। Institution/Subject/Fee-এর standalone frontend list নেই — admin list-এ প্রয়োগ, `?all` cap bypass নয়। Dropdown/input workflows পূর্ণ থাকবে।
 - **Acceptance implemented:** first/prev/next/last + count/empty state; GET filters/search/institution/sort/repeated params বজায়; filter/size বদলালে page reset; invalid page → safe first/last, invalid size → ১০০, oversized → ১০০; unique ordering ties। `download_*`/funnel export ও dedicated signature/class-card print unpaginated; printable reports **Print all**। Full aggregates/GPA/merit/duplicate flags এবং arrangement confirm UI slice-এর আগে।
-- **Evidence:** `students/pagination.py`, `students/admin_pagination.py`, reusable partials; `test_list_pagination.py` **44 test** + navigation/fee/audit/register **46 regression**, combined **90 pass**; Node **29**, check **0**, migrations clean; local 796 Django + 29 Node pass; CI pending। Query-count test: ১→১০০ rows-এ FK query per row বাড়ে না; ২১০ attendance summary entity-তে bounded queries।
+- **Evidence:** `students/pagination.py`, `students/admin_pagination.py`, reusable partials; `test_list_pagination.py` **44 test** + navigation/fee/audit/register **46 regression**, combined **90 pass**; Node **29**, check **0**, migrations clean; local 796 Django + 29 Node pass; CI sqlite / postgres:16 / Node pass (PR #54)। Query-count test: ১→১০০ rows-এ FK query per row বাড়ে না; ২১০ attendance summary entity-তে bounded queries।
 - **Priority / dependencies:** P1 / OF-01 (PR #53 merged `a128376`)।
 - **Migration/data risk:** none; production/live/credentials unchanged। Full cohort calculation/export/print server cost remains intentional; no grading/caching refactor।
-- **Owner action:** review new PR (তৈরি বাকি), manual browser/PDF smoke test; অনুমোদন ছাড়া merge নয়। পরের prompt ১১ নিজে থেকে শুরু নয়।
+- **Owner action:** review/approve PR #54 (OPEN, CI সবুজ), manual browser/PDF smoke test; অনুমোদন ছাড়া merge নয়। পরের prompt ১১ নিজে থেকে শুরু নয়।
 
 #### E8 · Result cell থেকে Ctrl/Cmd+Click correction shortcut — ✅ DONE (2026-09-17; EX-07 hardening 2026-10-01: permission-gated rendering, strict modifier/touch rules, visible fallback — `reports/EX-07.md`)
 - **Task ID & Purpose:** E8 — result sheet-এর subject cell থেকে Ctrl/Cmd+Click করলে সরাসরি `enter_marks` correction page (same exam+subject+group) খোলা।
