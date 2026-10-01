@@ -1,6 +1,13 @@
-"""Read-only report of legacy vs guardian contact data, for the unification
-of the contact number into the single "Guardian Contact Number /
+"""Read-only report on the single "Guardian Contact Number /
 অভিভাবকের যোগাযোগ নম্বর" column.
+
+Current database (after migration 0040): lists guardian numbers shared by
+more than one student / application (siblings — allowed by owner decision
+OF-01, reported for information only), existing numbers that do not match
+the 11-digit Bangladeshi mobile format enforced on new entries, and how many
+legacy numbers were archived to AuditLog when the old columns were dropped.
+
+Old database (before migration 0040) — the original purpose:
 
 On a database that still has the legacy columns (migrations up to 0039) it
 lists rows where the two columns disagree and how many blank guardian
@@ -12,16 +19,22 @@ Usage:
     python manage.py contact_conflict_report
     python manage.py contact_conflict_report --limit 20
 """
+import re
+
 from django.core.exceptions import FieldDoesNotExist
 from django.core.management.base import BaseCommand
-from django.db.models import Q
+from django.db.models import Count, Q
 
-from students.models import AdmissionApplication, Student
+from students.models import (
+    GUARDIAN_CONTACT_RE, AdmissionApplication, AuditLog, Student,
+)
 
 
 class Command(BaseCommand):
     help = (
-        'Dry-run report: where the legacy contact column and the guardian '
+        'Dry-run report on guardian contacts: shared (sibling) numbers, '
+        'non-standard existing numbers, archived legacy numbers; on a pre-0040 '
+        'database also where the legacy contact column and the guardian '
         'contact column disagree, and how many blank guardian numbers the '
         'safe backfill migration would fill. Changes nothing.'
     )
@@ -97,7 +110,70 @@ class Command(BaseCommand):
         )
         return out
 
+    def _current_report(self, limit):
+        """Report for the single-column schema (after migration 0040)."""
+        out = []
+        for label, qs, describe in (
+            ('Students', Student.objects.all(),
+             lambda r: f'{r.student_id or "(no id)"} {r.name}'),
+            ('Admission applications', AdmissionApplication.objects.all(),
+             lambda r: f'{r.application_number} {r.applicant_name}'),
+        ):
+            filled = qs.exclude(guardian_contact_no='').exclude(
+                guardian_contact_no__isnull=True)
+            out.append(f'== {label} (guardian_contact_no) ==')
+            out.append(f'Total with a guardian number: {filled.count()}')
+
+            shared = list(
+                filled.values('guardian_contact_no')
+                .annotate(n=Count('pk')).filter(n__gt=1)
+                .order_by('-n', 'guardian_contact_no')
+            )
+            out.append(
+                f'SHARED: {len(shared)} number(s) used by more than one row '
+                '(siblings are allowed — information only, nothing blocked).'
+            )
+            for entry in shared[:limit]:
+                number = entry['guardian_contact_no']
+                rows = ', '.join(
+                    describe(r) for r in filled.filter(guardian_contact_no=number)[:10]
+                )
+                out.append(f'  {number} x{entry["n"]}: {rows}')
+            if len(shared) > limit:
+                out.append(f'  … and {len(shared) - limit} more (raise --limit to see all)')
+
+            pattern = re.compile(GUARDIAN_CONTACT_RE)
+            invalid = [
+                r for r in filled.iterator()
+                if not pattern.match(r.guardian_contact_no.strip())
+            ]
+            out.append(
+                f'FORMAT: {len(invalid)} existing number(s) are not an '
+                '11-digit Bangladeshi mobile (01[3-9]XXXXXXXX). They were '
+                'not changed; they must be corrected the next time the '
+                'record is edited.'
+            )
+            for r in invalid[:limit]:
+                out.append(f'  {describe(r)} | {r.guardian_contact_no!r}')
+            if len(invalid) > limit:
+                out.append(f'  … and {len(invalid) - limit} more (raise --limit to see all)')
+            out.append('')
+
+        archived = AuditLog.objects.filter(action='legacy_contact_dropped')
+        total = sum(
+            len((entry.details or {}).get('dropped_rows', []))
+            for entry in archived
+        )
+        out.append(
+            f'ARCHIVE: {archived.count()} AuditLog entr(y/ies) with action '
+            f"'legacy_contact_dropped' hold {total} legacy number(s) "
+            "(details.dropped_rows[].legacy_contact) that differed from the "
+            'guardian number when the old columns were dropped.'
+        )
+        return out
+
     def handle(self, *args, **options):
+        limit = options['limit']
         if not self._legacy_columns_present():
             self.stdout.write(
                 'The legacy contact columns (Student.contact_no and '
@@ -106,10 +182,11 @@ class Command(BaseCommand):
                 'compare.\n'
                 'Any legacy number that differed from its guardian contact '
                 "number was archived first: look for AuditLog entries with "
-                "action 'legacy_contact_dropped'."
+                "action 'legacy_contact_dropped'.\n"
             )
+            self.stdout.write('\n'.join(self._current_report(limit)))
+            self.stdout.write('\nThis command is a dry run — nothing was changed.')
             return
-        limit = options['limit']
         lines = self._report_model(
             'Students (Student.contact_no vs Student.guardian_contact_no)',
             Student.objects.all(), 'contact_no',

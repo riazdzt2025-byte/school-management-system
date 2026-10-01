@@ -24,6 +24,7 @@ from .models import (
     StudentSubjectChoice, SectionCapacity,
     MARK_PARTS, GROUPED_CLASS_LABELS,
     class_supports_group, normalize_guardian_contact, validate_guardian_contact,
+    GUARDIAN_CONTACT_ERROR,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -3415,9 +3416,8 @@ def import_students(request):
                     except ValidationError:
                         error_rows.append(
                             f"Row {row_num}: invalid guardian contact number "
-                            f"'{guardian_contact_no}' — enter 6-20 digits (a leading + "
-                            "and spaces, dashes or parentheses are allowed), e.g. "
-                            "01812345678 — skipped."
+                            f"'{guardian_contact_no}' — {GUARDIAN_CONTACT_ERROR} "
+                            "Row skipped."
                         )
                         continue
 

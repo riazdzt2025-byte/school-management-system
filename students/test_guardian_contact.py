@@ -69,10 +69,13 @@ class GuardianContactNormalizationTests(TestCase):
     def test_other_numbers_from_numeric_cells_are_untouched(self):
         self.assertEqual(normalize_guardian_contact(880181234567), '880181234567')
         self.assertEqual(normalize_guardian_contact(1234567), '1234567')
+        # ... except a full +880 number that Excel stored as a number.
+        self.assertEqual(normalize_guardian_contact(8801812345678), '01812345678')
 
     def test_valid_formats_pass_validation(self):
         for value in ('01812345678', '+8801812345678', '+880 1812-345678',
-                      '01812 345678', '01812-345678'):
+                      '01812 345678', '01812-345678', '8801812345678',
+                      '(018) 1234-5678', '০১৮১২-৩৪৫৬৭৮', '01812.345678'):
             validate_guardian_contact(value)
 
     def test_blank_passes_validation(self):
@@ -82,10 +85,83 @@ class GuardianContactNormalizationTests(TestCase):
         validate_guardian_contact(None)
 
     def test_invalid_numbers_are_rejected(self):
+        # OF-01 owner decision: exactly an 11-digit BD mobile (01[3-9]...)
+        # once spaces/dashes/+880 are tidied up.
         for value in ('abc', '12345', 'call the office', '01812345678x',
-                      'ph: 01812345678'):
+                      'ph: 01812345678', '0181234567', '018123456789',
+                      '01212345678', '0312345678', '1812345678',
+                      '+8801812345', '+1 202 555 0147', '++8801812345678'):
             with self.assertRaises(ValidationError):
                 validate_guardian_contact(value)
+
+
+class GuardianContactNormalizedFormTests(TestCase):
+    """OF-01 owner decision: soft normalisation, strict 11-digit result —
+    the same on every typed-in path (student form and both admission forms)."""
+
+    def test_normalised_forms_of_one_number(self):
+        for typed in ('01812345678', '01812 345678', '01812-345678',
+                      '+880 1812-345678', '+8801812345678', '8801812345678',
+                      '(018) 1234 5678', '০১৮১২৩৪৫৬৭৮', ' 01812345678\n'):
+            with self.subTest(typed=typed):
+                self.assertEqual(normalize_guardian_contact(typed), '01812345678')
+
+    def test_unparseable_text_is_returned_trimmed_and_then_rejected(self):
+        self.assertEqual(normalize_guardian_contact('  call office '), 'call office')
+        with self.assertRaises(ValidationError) as caught:
+            validate_guardian_contact('call office')
+        self.assertEqual(caught.exception.code, 'invalid_guardian_contact')
+        self.assertIn('11-digit', caught.exception.messages[0])
+
+    def test_validation_is_idempotent_on_the_stored_form(self):
+        validate_guardian_contact(normalize_guardian_contact('+880 1812-345678'))
+
+    def test_admission_form_stores_the_normalised_number(self):
+        data = AdmissionFormContactTests._form_data(self, **{})
+        data['guardian_contact_no'] = '+880 1812-345678'
+        form = AdmissionApplicationForm(data)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save().guardian_contact_no, '01812345678')
+
+    def test_admission_form_rejects_a_ten_digit_number(self):
+        data = AdmissionFormContactTests._form_data(self, **{})
+        data['guardian_contact_no'] = '0181234567'
+        form = AdmissionApplicationForm(data)
+        self.assertFalse(form.is_valid())
+        self.assertIn('11-digit', form.errors['guardian_contact_no'][0])
+
+    def setUp(self):
+        self.institution = Institution.objects.create(
+            name='Normalised Contact School', classes=INSTITUTION_CLASSES,
+        )
+        self.user = get_user_model().objects.create_superuser(
+            username='normalised-contact-admin', password='pw',
+        )
+
+    def test_student_form_stores_the_normalised_number(self):
+        data = StudentFormContactTests._form_data(self)
+        data['guardian_contact_no'] = '+880 1812-345678'
+        form = StudentForm(data, user=self.user)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save().guardian_contact_no, '01812345678')
+
+    def test_student_form_rejects_a_landline_style_number(self):
+        data = StudentFormContactTests._form_data(self)
+        data['guardian_contact_no'] = '031-2345678'
+        form = StudentForm(data, user=self.user)
+        self.assertFalse(form.is_valid())
+        self.assertIn('guardian_contact_no', form.errors)
+
+    def test_siblings_may_share_one_guardian_number(self):
+        # Owner decision: the same number for two students is allowed.
+        for roll in (1, 2):
+            data = StudentFormContactTests._form_data(self)
+            data.update(name=f'Sibling {roll}', roll_no=roll)
+            form = StudentForm(data, user=self.user)
+            self.assertTrue(form.is_valid(), form.errors)
+            form.save()
+        self.assertEqual(
+            Student.objects.filter(guardian_contact_no='01812345678').count(), 2)
 
 
 class StudentFormContactTests(TestCase):
@@ -413,6 +489,49 @@ class StudentImportContactTests(TestCase):
         self.assertEqual(sheet.cell(row=50, column=contact_column).number_format, '@')
 
 
+    # ---- OF-01: soft-normalise / strict 11-digit rule, row-level errors ----
+
+    def _row(self, name, roll, contact):
+        return [self.institution.name, name, '6', 'A', 2026, roll,
+                'Male', 'Islam', 'Father', contact, '']
+
+    def test_international_format_is_normalised_on_import(self):
+        self._upload(self._new_template_headers(), [
+            self._row('Plus880 Kid', 11, '+880 1812-345678'),
+            self._row('Dashed Kid', 12, '01812-345679'),
+        ])
+        self.assertEqual(
+            Student.objects.get(name='Plus880 Kid').guardian_contact_no, '01812345678')
+        self.assertEqual(
+            Student.objects.get(name='Dashed Kid').guardian_contact_no, '01812345679')
+
+    def test_bad_rows_are_listed_with_their_row_number_and_do_not_block_good_rows(self):
+        response = self._upload(self._new_template_headers(), [
+            self._row('Ten Digit Kid', 13, '0181234567'),       # sheet row 2
+            self._row('Landline Kid', 14, '0312345678'),        # sheet row 3
+            self._row('No Contact Kid', 15, ''),                # sheet row 4
+            self._row('Good Row Kid', 16, '01812345680'),       # sheet row 5
+        ])
+        for name in ('Ten Digit Kid', 'Landline Kid', 'No Contact Kid'):
+            self.assertFalse(Student.objects.filter(name=name).exists())
+        self.assertTrue(Student.objects.filter(name='Good Row Kid').exists())
+        text = ' '.join(str(m) for m in response.context['messages'])
+        self.assertIn('Row 2: invalid guardian contact number', text)
+        self.assertIn('Row 3: invalid guardian contact number', text)
+        self.assertIn('Row 4: guardian contact number is missing', text)
+        self.assertIn('11-digit', text)
+
+    def test_header_aliases_for_the_single_column(self):
+        for header in ('Guardian Contact Number', 'guardian contact no.',
+                       'Guardian Contact', "Guardian's Contact Number"):
+            headers = self._new_template_headers()
+            headers[headers.index('Guardian Contact Number')] = header
+            self._upload(headers, [self._row(f'Alias Kid {header}', 20, '01812345681')])
+            self.assertEqual(
+                Student.objects.get(name=f'Alias Kid {header}').guardian_contact_no,
+                '01812345681', header)
+
+
 class ContactExportTests(TestCase):
     """Exports carry the one canonical contact column."""
 
@@ -631,3 +750,49 @@ class ConflictReportAfterDropTests(TestCase):
         report = out.getvalue()
         self.assertIn('already', report)
         self.assertIn('legacy_contact_dropped', report)
+
+
+class ConflictReportCurrentDataTests(TestCase):
+    """The report lists sibling-shared numbers, pre-rule numbers that do not
+    match the format, and the archived legacy numbers."""
+
+    def setUp(self):
+        self.institution = Institution.objects.create(
+            name='Report School', classes=INSTITUTION_CLASSES)
+
+    def _student(self, name, roll, contact):
+        return Student.objects.create(
+            institution=self.institution, name=name, admission_class='6',
+            admission_year=2026, roll_no=roll, guardian_contact_no=contact,
+            student_id=f'R{roll:03d}')
+
+    def test_report_lists_shared_invalid_and_archived_numbers(self):
+        self._student('Sibling One', 1, '01812345678')
+        self._student('Sibling Two', 2, '01812345678')
+        self._student('Solo Kid', 3, '01912345678')
+        self._student('Old Landline Kid', 4, '031-2345678')
+        AuditLog.objects.create(
+            action='legacy_contact_dropped', model_name='Student',
+            object_repr='1 row(s)',
+            details={'dropped_rows': [{
+                'identifier': 'X1', 'name': 'Old', 'legacy_contact': '01700000000',
+                'guardian_contact': '01900000000'}]})
+        out = StringIO()
+        call_command('contact_conflict_report', stdout=out)
+        report = out.getvalue()
+        self.assertIn('SHARED: 1 number(s)', report)
+        self.assertIn('01812345678 x2', report)
+        self.assertIn('Sibling One', report)
+        self.assertNotIn('01912345678 x', report)
+        self.assertIn('FORMAT: 1 existing number(s)', report)
+        self.assertIn('Old Landline Kid', report)
+        self.assertIn('hold 1 legacy number(s)', report)
+        self.assertIn('nothing was changed', report)
+
+    def test_report_is_read_only(self):
+        self._student('Sibling One', 1, '01812345678')
+        self._student('Landline Kid', 2, '031-2345678')
+        call_command('contact_conflict_report', stdout=StringIO())
+        self.assertEqual(
+            sorted(Student.objects.values_list('guardian_contact_no', flat=True)),
+            ['01812345678', '031-2345678'])

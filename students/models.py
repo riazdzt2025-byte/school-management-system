@@ -72,15 +72,19 @@ def student_religion(value):
 # guardian number was archived to AuditLog first, so nothing was silently
 # lost.
 #
-# Accepted format: an optional leading '+', then 6–20 characters of digits,
-# spaces, dashes and parentheses (e.g. 01812345678, +880 1812-345678,
-# 01812 345678). Anything else — letters, blank-with-junk — is rejected by
-# validate_guardian_contact() at the form / import layer.
-GUARDIAN_CONTACT_RE = r'^\+?\d[\d\s\-()]{5,19}$'
+# Owner decision (OF-01, 2026-10-01): soft normalisation, strict result.
+# Whatever is typed is first normalised — Bangla digits -> ASCII, spaces,
+# dashes, dots and parentheses removed, and a +880 / 880 country code turned
+# back into the leading 0 — and the result must then be exactly an 11-digit
+# Bangladeshi mobile number: 01[3-9] followed by 8 digits. That normalised
+# form (e.g. 01812345678) is what is stored. Existing rows are never
+# rewritten; the rule applies when a form is saved or an import row is read.
+GUARDIAN_CONTACT_RE = r'^01[3-9]\d{8}$'
 
 # Bangla digits typed into the public form are converted to ASCII before
 # validation and storage, so '০১৮১২৩৪৫৬৭৮' is saved as '01812345678'.
 _BANGLA_DIGIT_TABLE = str.maketrans('০১২৩৪৫৬৭৮৯', '0123456789')
+_CONTACT_SEPARATORS = re.compile(r'[\s\-().]')
 
 
 def normalize_guardian_contact(value):
@@ -88,8 +92,10 @@ def normalize_guardian_contact(value):
 
     * ``None`` / blank -> ``''``.
     * Bangla digits (০-৯) are translated to ASCII digits.
-    * Surrounding whitespace is stripped; the rest is kept exactly as
-      typed so the leading zero survives.
+    * Spaces, dashes, dots and parentheses are removed, and a ``+880`` /
+      ``880`` country code becomes the leading ``0`` — but only when what is
+      left is purely digits, so text such as ``call the office`` is returned
+      as typed (trimmed) and then fails validation with a clear message.
     * A value that arrives as an Excel *numeric* cell (``int``/``float``,
       e.g. ``1812345678``) is converted to a digit string — Excel itself
       drops the leading zero of 01812345678 in a numeric cell — and a
@@ -108,22 +114,37 @@ def normalize_guardian_contact(value):
             # A numeric spreadsheet cell dropped the leading zero of a
             # Bangladeshi mobile (01812345678 stored as 1812345678).
             text = '0' + text
-        return text
-    return str(value).strip().translate(_BANGLA_DIGIT_TABLE)
+    else:
+        text = str(value).strip().translate(_BANGLA_DIGIT_TABLE)
+        compact = _CONTACT_SEPARATORS.sub('', text)
+        if not re.fullmatch(r'\+?\d+', compact):
+            return text
+        text = compact
+    if text.startswith('+880'):
+        text = '0' + text[4:]
+    elif text.startswith('880') and len(text) == 13:
+        text = '0' + text[3:]
+    return text
 
 
 def validate_guardian_contact(value):
-    """Reject a non-blank guardian contact that is not a plausible phone
-    number. A blank value is left to the field's own blank/required rule."""
+    """Reject a non-blank guardian contact that is not an 11-digit
+    Bangladeshi mobile number once normalised. A blank value is left to the
+    field's own blank/required rule. Accepts raw or already-normalised
+    input (normalisation is idempotent)."""
     if not value:
         return
-    if not re.match(GUARDIAN_CONTACT_RE, value):
+    if not re.match(GUARDIAN_CONTACT_RE, normalize_guardian_contact(value)):
         raise ValidationError(
-            'Enter a valid contact number (6-20 characters; digits with an '
-            'optional leading +, spaces, dashes and parentheses allowed), '
-            'e.g. 01812345678.',
+            GUARDIAN_CONTACT_ERROR,
             code='invalid_guardian_contact',
         )
+
+
+GUARDIAN_CONTACT_ERROR = (
+    'Enter a valid 11-digit Bangladeshi mobile number, e.g. 01812345678 '
+    '(spaces, dashes and +880 are accepted and tidied up).'
+)
 
 
 def normalize_class_label(value):

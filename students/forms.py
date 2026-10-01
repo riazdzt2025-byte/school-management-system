@@ -137,9 +137,9 @@ class StudentForm(forms.ModelForm):
 
     def clean_guardian_contact_no(self):
         """The guardian contact number is the single primary contact. Normalise
-        it (trim, Bangla digits -> ASCII) and reject anything that is not a
-        plausible phone number; the leading zero is kept because the value is
-        stored as text."""
+        it (trim, Bangla digits -> ASCII, drop spaces/dashes, +880 -> 0) and
+        reject anything that is not then an 11-digit Bangladeshi mobile; the
+        leading zero is kept because the value is stored as text."""
         value = normalize_guardian_contact(self.cleaned_data.get('guardian_contact_no'))
         validate_guardian_contact(value)
         return value
@@ -283,9 +283,10 @@ class AdmissionApplicationForm(forms.ModelForm):
 
     def clean_guardian_contact_no(self):
         """The guardian contact number is the single primary contact for the
-        application. Normalise it (trim, Bangla digits -> ASCII) and reject
-        anything that is not a plausible phone number; the leading zero is
-        kept because the value is stored as text."""
+        application. Normalise it (trim, Bangla digits -> ASCII, drop
+        spaces/dashes, +880 -> 0) and reject anything that is not then an
+        11-digit Bangladeshi mobile; the leading zero is kept because the
+        value is stored as text."""
         value = normalize_guardian_contact(self.cleaned_data.get('guardian_contact_no'))
         validate_guardian_contact(value)
         return value
