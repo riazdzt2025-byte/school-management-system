@@ -1,5 +1,13 @@
 # Handoff — School Management System
 
+## সেশন OF-04 — ২০২৬-১০-০৫ · প্রম্পট ১২/২৮ · Admission reports (regression pin & boundary expansion)
+
+- **Branch/base:** `arena/01a10b01-school-management-system` / `8b8be9e` (= `origin/main`, PR #56 MERGED)। Prompt-এর পুরোনো branch নয়।
+- **ধরন:** regression-only pin ও boundary tests সম্প্রসারণ — baseline verdict অনুযায়ী OF-04 ইতিমধ্যে Complete; ৪টি নতুন regression test যোগ করা হয়েছে। কোনো production model/migration/code পরিবর্তন হয়নি।
+- **যাচাই:** Funnel math, date-range inclusive boundaries (same-day, inverted, future), empty scope / 0-division safety, institution isolation & query param tamper rejection, Office/Accounts department guards, Excel export sheet breakdown ও `class_section_summary` cross-link। Focused **24 pass** (২০ baseline + ৪ নতুন), **৮০০ Django + ২৯ Node pass**, `check` 0, migrations clean। রিপোর্ট `docs/prompts/reports/OF-04.md`।
+- **Bengali TL;DR:** baseline Complete থাকা Admission Funnel ও Reports পুঙ্খানুপুঙ্খ টেস্ট চালিয়ে এবং নতুন boundary regression test যোগ করে পিন করা হলো। ৮০০ Django এবং ২৯ Node টেস্ট সব pass।
+- **Next:** প্রম্পট ১৩/২৮ (OF-05 — Student photos) অপেক্ষমাণ; owner না বলা পর্যন্ত শুরু নয়।
+
 ## সেশন OF-03 — ২০২৬-১০-০৫ · প্রম্পট ১১/২৮ · Subject Assignment Office subtab (regression pin)
 
 - **Branch/base:** `arena/01a10aaa-school-management-system` / `82ce15a` (= `origin/main`, PR #54 MERGED)। Prompt-এর পুরোনো branch নয়।
