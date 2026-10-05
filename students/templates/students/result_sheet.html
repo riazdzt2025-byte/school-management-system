@@ -293,13 +293,15 @@
             {% if can_result_analysis %}<a href="{% url 'result_analysis_subject_fail' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-exclamation-triangle me-1"></i> Subject Fail List</a>{% endif %}
             <a href="{{ subject_assignments_url }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-journal-check me-1"></i> Subject Assignments</a>
             {% if perms.students.add_exammark and exam.is_published %}<a href="{% url 'select_marks_subject' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm correction-entry" target="_blank" rel="noopener">Correct marks (choose subject)</a>{% endif %}
-            <button onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
+            {% include 'students/_print_all.html' %}
             <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>
         </div>
     </div>
 
     {% if show_group_picker %}
     <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
+    {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
+
         <div>
             <label class="form-label fw-semibold mb-1">Group</label>
             <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -336,18 +338,18 @@
             <div class="result-summary-card"><span class="summary-label">Session</span><span class="summary-value">{{ exam.session }}</span></div>
             <div class="result-summary-card"><span class="summary-label">Class</span><span class="summary-value">{{ exam.admission_class }}</span></div>
             <div class="result-summary-card"><span class="summary-label">Section / Group</span><span class="summary-value">{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if result_group_label %} · {{ result_group_label }}{% endif %}</span></div>
-            <div class="result-summary-card"><span class="summary-label">Students</span><span class="summary-value">{{ results|length }}</span></div>
+            <div class="result-summary-card"><span class="summary-label">Students</span><span class="summary-value">{{ total_results }}</span></div>
             <div class="result-summary-card"><span class="summary-label">Subjects</span><span class="summary-value">{{ columns|length }}</span></div>
-            <div class="result-summary-card accent"><span class="summary-label">Pass rate</span><span class="summary-value" id="passRate">—</span></div>
+            <div class="result-summary-card accent"><span class="summary-label">Pass rate</span><span class="summary-value" id="passRate">{{ pass_rate }}%</span></div>
         </section>
 
         <div class="print-meta" aria-label="Printable exam details">
             <span><strong>Session</strong>{{ exam.session }}</span>
             <span><strong>Class</strong>{{ exam.admission_class }}</span>
             <span><strong>Section / Group</strong>{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if result_group_label %} · {{ result_group_label }}{% endif %}</span>
-            <span><strong>Students</strong>{{ results|length }}</span>
+            <span><strong>Students</strong>{{ total_results }}</span>
             <span><strong>Subjects</strong>{{ columns|length }}</span>
-            <span><strong>Pass rate</strong><span id="printPassRate">—</span></span>
+            <span><strong>Pass rate</strong><span id="printPassRate">{{ pass_rate }}%</span></span>
         </div>
 
         {% if no_subjects %}
@@ -418,7 +420,7 @@
                     <h2 id="register-title">Class Performance Register</h2>
                     <p>Subject-wise marks, letter grades and overall standing · Roll order</p>
                 </div>
-                <span class="result-count">{{ results|length }} students · {{ columns|length }} subjects</span>
+                <span class="result-count">{{ total_results }} students · {{ columns|length }} subjects</span>
             </div>
 
             <div class="result-table-card" {% if perms.students.add_exammark and exam.is_published %}data-enter-marks-base="{{ enter_marks_base_url }}"{% endif %}>
@@ -544,19 +546,10 @@
         </footer>
     </div>
 </div>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}
 
 {% block extra_script %}
-<script>
-(function () {
-    var rows = Array.from(document.querySelectorAll('[data-result-status]'));
-    var passed = rows.filter(function (row) { return row.dataset.resultStatus === 'Pass'; }).length;
-    var rate = rows.length ? Math.round((passed / rows.length) * 100) : 0;
-    ['passRate', 'printPassRate'].forEach(function (id) {
-        var rateNode = document.getElementById(id);
-        if (rateNode) rateNode.textContent = rate + '%';
-    });
-})();
-</script>
 {% if perms.students.add_exammark and exam.is_published %}<script src="{% static 'students/js/result_cell_shortcut.js' %}"></script>{% endif %}
 {% endblock %}

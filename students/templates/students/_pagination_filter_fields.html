@@ -1,0 +1,8 @@
+{% load student_filters %}
+{% retained_list_filters exclude|default:'' as retained_fields %}
+{% for name, value in retained_fields %}
+<input type="hidden" name="{{ name }}" value="{{ value }}">
+{% endfor %}
+{% if paginator and not changing_page_size %}
+<input type="hidden" name="per_page" value="{{ paginator.per_page }}">
+{% endif %}
