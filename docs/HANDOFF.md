@@ -1,5 +1,13 @@
 # Handoff — School Management System
 
+## সেশন OF-03 — ২০২৬-১০-০৫ · প্রম্পট ১১/২৮ · Subject Assignment Office subtab (regression pin)
+
+- **Branch/base:** `arena/01a10aaa-school-management-system` / `82ce15a` (= `origin/main`, PR #54 MERGED)। Prompt-এর পুরোনো branch নয়।
+- **ধরন:** regression-only — baseline verdict অনুযায়ী OF-03 ইতিমধ্যে Complete; কোনো source/migration/JS পরিবর্তন হয়নি।
+- **যাচাই:** Office flyout nested link (`base.html:201-202`) + সব server-side gate; inline new-subject validation; isolation ৯ টেস্ট; dead link শূন্য; Mark Evaluation↔Subject Assignments cross-link উভয় দিকে। Focused **28+17+38 pass**, **796 Django + 29 Node pass**, `check` 0, migrations clean। রিপোর্ট `docs/prompts/reports/OF-03.md`।
+- **Bengali TL;DR:** প্রথম full-suite run-এ ২টি env-ঘটিত fail (আমার venv-এ §৫-এর `django-storages`/`boto3` ইনস্টল বাদ পড়ায়) — প্যাকেজ পুরণের পর একই checkout-এ **796/796 OK**। §৮-এর ২ owner-প্রশ্ন (subtab রূপ, subject-master permission) ব্লকিং নয় — বর্তমান অবস্থাই সুপারিশকৃত।
+- **Next:** প্রম্পট ১২/২৮ (OF-04 — Admission reports, baseline Complete + optional `ADM-REPORTS-OPT-1`) অপেক্ষমাণ; owner না বলা পর্যন্ত শুরু নয়।
+
 ## সেশন OF-02 — ২০২৬-১০-০১ · প্রম্পট ১০/২৮ · bounded/selectable pagination
 
 - **Branch/base:** `arena/01a0f6ce-school-management-system` / `a128376` (owner-এর নির্দেশে PR #53 MERGED)। Prompt-এর পুরোনো branch নয়।

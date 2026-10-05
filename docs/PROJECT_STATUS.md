@@ -1,10 +1,12 @@
 # Project Status — School Management System
 
-_Last updated: ২০২৬-১০-০১ (OF-02 — default/selectable ১–১০০ pagination; local **796 Django + 29 Node pass**; CI sqlite / postgres:16 / Node pass (PR #54))_\
-_Base: `a128376` (PR #53 MERGED) · branch `arena/01a0f6ce-school-management-system`_\
-_Scope: pagination/templates/tests/docs only; no model/migration/production change_
+_Last updated: ২০২৬-১০-০৫ (OF-03 — Subject Assignment Office subtab regression pin; local **796 Django + 29 Node pass**)_\
+_Base: `82ce15a` (PR #54 MERGED) · branch `arena/01a10aaa-school-management-system`_\
+_Scope: docs-only regression pin; no model/migration/production change_
 
-> **২০২৬-১০-০১ OF-02 (প্রম্পট ১০/২৮):** owner-সিদ্ধান্ত default/max ১০০, selectable ১–১০০, reference lists too। ২৮ frontend list/report/history surface ও students-app admin changelists-এ bounded pagination, reusable controls, filter state ও deterministic ties; full exports/Print all, aggregate/grade/rank এবং full-cohort arrangement confirm বজায়। Focused **90 pass** (44 pagination + 46 regression), **29 Node**, `check` 0, migrations clean; local **796 Django + 29 Node pass**; CI sqlite / postgres:16 / Node pass (PR #54)। রিপোর্ট `docs/prompts/reports/OF-02.md`। পরের প্রম্পট ১১ এখনো অপেক্ষমাণ।
+> **২০২৬-১০-০৫ OF-03 সম্পন্ন (প্রম্পট ১১/২৮, regression pin):** Subject Assignment Office subtab baseline-এই Complete ছিল — এই সেশনে কোনো কোড বদল ছাড়াই পুনঃপ্রমাণ: Office flyout nested link (`base.html:201-202`) + সব server-side permission gate + inline new-subject validation (duplicate code/name) + ৯টি cross-institution isolation টেস্ট + পুরোনো Subjects page-এর dead link শূন্য + Mark Evaluation↔Subject Assignments cross-link উভয় দিকে। Focused **28+17+38 pass**; **796 Django + 29 Node local pass**; `check` 0; `makemigrations --check` clean। §৮-এর ২ owner-প্রশ্ন ব্লকিং নয়। রিপোর্ট `docs/prompts/reports/OF-03.md`। পরবর্তী প্রম্পট ১২ (OF-04) অপেক্ষমাণ।
+
+> **২০২৬-১০-০১ OF-02 (প্রম্পট ১০/২৮):** owner-সিদ্ধান্ত default/max ১০০, selectable ১–১০০, reference lists too। ২৮ frontend list/report/history surface ও students-app admin changelists-এ bounded pagination, reusable controls, filter state ও deterministic ties; full exports/Print all, aggregate/grade/rank এবং full-cohort arrangement confirm বজায়। Focused **90 pass** (44 pagination + 46 regression), **29 Node**, `check` 0, migrations clean; local **796 Django + 29 Node pass**; CI sqlite / postgres:16 / Node pass (PR #54)। রিপোর্ট `docs/prompts/reports/OF-02.md`। ~~পরের প্রম্পট ১১ এখনো অপেক্ষমাণ~~ (OF-03 সম্পন্ন ২০২৬-১০-০৫; PR #54 MERGED `82ce15a`)।
 
 > **OF-02 supersedes historical pagination notes:** নিচের পুরোনো baseline-এর “OF-02 Partial / বাকি list views” সেই তারিখের snapshot; বর্তমান O2 entry ও OF-02 report-ই 2026-10-01-এর verified state। অন্য task-এর status এই সেশনে নতুন করে দাবি করা হয়নি।
 
