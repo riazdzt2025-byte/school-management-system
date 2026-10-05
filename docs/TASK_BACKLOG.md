@@ -1,6 +1,6 @@
 # Task Backlog — first production release scope
 
-_Last updated: ২০২৬-১০-০৫ (OF-03 Subject Assignment subtab regression pin; local 796 Django + 29 Node pass; OF-02 PR #54 MERGED)_
+_Last updated: ২০২৬-১০-০৫ (OF-04 Admission reports regression pin & boundary expansion; local 800 Django + 29 Node pass; OF-03 PR #55/#56 MERGED)_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 

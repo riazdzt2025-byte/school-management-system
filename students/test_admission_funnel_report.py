@@ -252,6 +252,72 @@ class AdmissionFunnelReportTests(TestCase):
         self.assertEqual(broken.status_code, 200)
         self.assertEqual(broken.context['total_applications'], TOTAL_A + TOTAL_B + 3)
 
+    def test_reports_funnel_counts_same_day_boundary_inclusive(self):
+        """from=D and to=D bounds all submissions within day D from 00:00 to 23:59."""
+        target_day = timezone.localdate() - timedelta(days=60)
+        self._application(
+            self.institution_a, 'SUBMITTED', name='Target day early',
+            submitted_at=datetime.combine(target_day, time(0, 1)),
+        )
+        self._application(
+            self.institution_a, 'PAYMENT_APPROVED', name='Target day late',
+            submitted_at=datetime.combine(target_day, time(23, 59)),
+        )
+        self._application(
+            self.institution_a, 'ENROLLED', name='Previous day',
+            submitted_at=datetime.combine(target_day - timedelta(days=1), time(23, 59)),
+        )
+        self._application(
+            self.institution_a, 'ENROLLED', name='Next day',
+            submitted_at=datetime.combine(target_day + timedelta(days=1), time(0, 1)),
+        )
+        self._login(self.admin)
+        response = self.client.get(reverse(FUNNEL_PAGE), {
+            'institution': self.institution_a.pk,
+            'from': target_day.isoformat(),
+            'to': target_day.isoformat(),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_applications'], 2)
+        self.assertEqual(_count_on_page(response, 'SUBMITTED'), 1)
+        self.assertEqual(_count_on_page(response, 'PAYMENT_APPROVED'), 1)
+        self.assertEqual(_count_on_page(response, 'ENROLLED'), 0)
+
+    def test_reports_funnel_counts_inverted_date_range_safely_empty(self):
+        """from > to yields an empty result set without errors."""
+        base = timezone.localdate() - timedelta(days=50)
+        self._login(self.admin)
+        response = self.client.get(reverse(FUNNEL_PAGE), {
+            'institution': self.institution_a.pk,
+            'from': (base + timedelta(days=10)).isoformat(),
+            'to': base.isoformat(),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_applications'], 0)
+        self.assertEqual(response.context['conversion_percent'], 0.0)
+        self.assertContains(response, 'No applications match this filter.')
+
+    def test_reports_funnel_counts_future_date_range_safely_empty(self):
+        """A future date range returns zero applications without errors."""
+        future_day = timezone.localdate() + timedelta(days=365)
+        self._login(self.admin)
+        response = self.client.get(reverse(FUNNEL_PAGE), {
+            'institution': self.institution_a.pk,
+            'from': future_day.isoformat(),
+            'to': (future_day + timedelta(days=30)).isoformat(),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_applications'], 0)
+        self.assertEqual(response.context['conversion_percent'], 0.0)
+        self.assertContains(response, 'No applications match this filter.')
+
+    def test_reports_funnel_links_to_class_section_summary(self):
+        """The funnel page provides a direct link to the Class/Section summary report."""
+        self._login(self.admin)
+        response = self.client.get(reverse(FUNNEL_PAGE))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('class_section_summary'))
+
     # ------------------------------------------------- institution isolation
     @requires_openpyxl
     def test_reports_scoped_by_institution(self):
