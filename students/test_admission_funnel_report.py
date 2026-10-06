@@ -405,11 +405,35 @@ class AdmissionFunnelReportTests(TestCase):
                 self.assertEqual(self.client.get(url).status_code, 403)
 
     def test_reports_allow_the_accounts_department(self):
-        """Accounts reads the same funnel (it owns the payment stages)."""
+        """Accounts reads the funnel — its own payment stages only (OF-04 §8).
+
+        The department may still open the report, but the copy it gets is the
+        payment slice (owner decision, follow-up session), and every number on
+        it — total, conversion, table rows, export — is computed over that
+        slice. The office stages are what the payment slice must never show.
+        """
         self._login(self.accounts_clerk, institution=self.institution_a, department='Accounts')
         response = self.client.get(reverse(FUNNEL_PAGE))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['total_applications'], TOTAL_A)
+        self.assertEqual(
+            response.context['stage_keys'],
+            ['ACCOUNT_PENDING', 'PAYMENT_APPROVED', 'ENROLLED'],
+        )
+        payment_total = (
+            FIXTURE_COUNTS['ACCOUNT_PENDING'] + FIXTURE_COUNTS['PAYMENT_APPROVED']
+            + FIXTURE_COUNTS['ENROLLED']
+        )
+        self.assertEqual(response.context['total_applications'], payment_total)
+        self.assertEqual(
+            [row['key'] for row in response.context['funnel_rows']],
+            ['ACCOUNT_PENDING', 'PAYMENT_APPROVED', 'ENROLLED'],
+        )
+        self.assertEqual(_count_on_page(response, 'ACCOUNT_PENDING'), FIXTURE_COUNTS['ACCOUNT_PENDING'])
+        self.assertEqual(_count_on_page(response, 'ENROLLED'), FIXTURE_COUNTS['ENROLLED'])
+        body = response.content.decode()
+        self.assertNotIn(f'<td>{LABELS["SUBMITTED"]}</td>', body)
+        self.assertNotIn(f'<td>{LABELS["OFFICE_APPROVED"]}</td>', body)
+        self.assertIn('Accounts view — payment stages only', body)
 
     def test_reports_department_guard_blocks_other_departments(self):
         """Holding the permission is not enough from a department that does not run admissions."""
@@ -453,7 +477,15 @@ class AdmissionFunnelReportTests(TestCase):
         self.assertIn('admission_funnel_report.xlsx', response['Content-Disposition'])
 
         workbook = load_workbook(BytesIO(response.content), data_only=True)
-        self.assertEqual(workbook.sheetnames, ['Admission Funnel'])
+        # The follow-up session adds the capacity and trend sheets; 'By
+        # Institution' is still only built for an all-institution scope, so a
+        # single-institution export must not carry it. The stage sheet itself
+        # keeps its layout.
+        self.assertEqual(
+            workbook.sheetnames,
+            ['Admission Funnel', 'Capacity vs Enrolled', 'Trend'],
+        )
+        self.assertNotIn('By Institution', workbook.sheetnames)
         counts = _funnel_sheet(workbook)
         # Only the January row, in the filtered institution — and the stage
         # order in the sheet is the funnel order, not an arbitrary GROUP BY.

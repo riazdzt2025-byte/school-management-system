@@ -24,9 +24,9 @@ _2026-09-19 baseline re-check (prompt 01/28): PR #33 এখন **MERGED** (gh pr
 | দিক | অবস্থা |
 |---|---|
 | মূল requirement (funnel/report) | **Complete** — code `main`-এ merged + navigation চাহিদা পূরণকারী follow-up PR খোলা |
-| Code merge status | PR #32 **MERGED** · PR #33 **MERGED** (2026-09-19-এ `gh pr list` দিয়ে পুনঃযাচাই; baseline report §৪ OF-04) |
-| Live deployment status | **Unverified** |
-| Optional enhancement (capacity/trend chart) | **Not started** — মূল কাজের অংশ নয়, নিচে আলাদা করা |
+| Code merge status | PR #32 **MERGED** (`11cd35d`) · PR #33 **MERGED** · OF-04 pin PR #57 **MERGED** (`9acbae4`) · follow-up PR (`bbcaa3a`, capacity/trend) owner-এর merge-অনুমোদনসহ খোলা |
+| Live deployment status | **Unverified** (sandbox থেকে live Render যাচাই নয়) |
+| Capacity / trend reports (`ADM-REPORTS-OPT-1`) | **Complete (২০২৬-১০-০৬, OF-04)** — owner-অনুমোদিত তিনটিই ship; দেখুন নিচে “OF-04 additions” |
 
 > মূল funnel/report চাহিদা পূর্ণ হওয়ায় এটি **Complete**। Capacity/trend chart না থাকা
 > এই কাজকে অস্পষ্টভাবে "Partial" রাখে না — ওটি আলাদা Optional enhancement
@@ -62,6 +62,32 @@ PR #32 (merged) থেকে — যাচাই করা হয়েছে �
 - Link-এ **কোনো query string নেই**: report-টি এই list page যে session-selected institution
   দিয়ে filter করে ঠিক সেটিই পায়, তাই institution context নিরাপদভাবে বজায় থাকে এবং
   URL ট্যাম্পার করে scope বাড়ানো যায় না।
+
+### OF-04 additions (prompt 12, ২০২৬-১০-০৬) — এই checkout-এ code+টেস্ট verified
+
+- `students.views._capacity_vs_enrolled` — configured seat limit বনাম প্রকৃত student,
+  প্রতি institution/class/section। Student-দিক হুবহু admission gate-এর population
+  (`SectionCapacity.seats_taken` প্যাটার্ন: `status='ACTIVE'`; archived = `DISCONTINUED`,
+  তাই দুই দিকেই বাইরে)। সারি = limit ও student-group-এর union — limit-হীন section
+  `No limit` হিসেবে থাকে (হারায় না); `capacity=0` → utilization `—` (কখনো 0-division নয়);
+  over হলে `Over by N` ও bar 100%-এ clamp। দুই aggregate query — প্রতি সারিতে query নেই।
+- `students.views._trend_rows` — `?bucket=day|week|month` (default `day`), তিনটি series
+  নিজের event-date-এ: `submitted_at` (Submitted), `account_action_at` (Payment approved),
+  `ENROLLED` + `account_action_at` (Enrolled)। bucket boundary Django `TruncDate`-এ,
+  অর্থাৎ active timezone-মান্য (deploy-এ `TIME_ZONE=Asia/Dhaka` হলে Dhaka-দিন, নাহলে UTC-দিন — টেস্টে দুটোই pin করা);
+  `account_action_at` ছাড়া সারি **`Undated`** রো-তে (চুপচাপ বাদ নয়)। aggregate-only।
+- Excel export-এ দুটি নতুন sheet: `Capacity vs Enrolled` (প্রতি class/section + 'No limit'/
+  'Over capacity' status + summary) ও `Trend` (Bucket / Bucket start / series কলাম, সব bucket)।
+- **Bounded page, full export:** পেজের দুই নতুন টেবিল ২০০ সারি/bucket-এ capped ও নোট দেখায়;
+  export সব সারি/bucket রাখে (page-এর মূল paginated surface `page_rows`/`paginator` অপরিবর্তিত)।
+- **Accounts payment slice (owner decision, prompt 12 §৮):** `_funnel_stage_keys(request)` —
+  Accounts = `ACCOUNT_PENDING → PAYMENT_APPROVED → ENROLLED`; পেজ, export, funnel sheet ও
+  trend — সব একই slice-এ (submitted কলাম Accounts-এর trend-এ নেই)। Admin/Office = পুরো funnel।
+- chart = table + CSS bar (`.funnel-bar-track`/`.funnel-bar` reuse) — **কোনো নতুন JS chart
+  লাইব্রেরি/dependency নেই**; guard, route, scope ও date-filter অপরিবর্তিত।
+- টেস্ট: `students/test_admission_capacity_trend.py` (**২৬টি**: capacity, timezone boundary,
+  series dating, `Undated`, week/month, per-series window, Accounts slice, empty scope,
+  no-N+1) + funnel pin ২০টি pass + OF-02 pagination ৪৪টি pass। প্রমাণ: `docs/prompts/reports/OF-04.md`।
 
 **ইচ্ছাকৃতভাবে অপরিবর্তিত:** backend authorization, export structure ও institution scope,
 `download_admission_sheet`, Office flyout link, Office/Accounts access policy। কোনো
@@ -149,20 +175,21 @@ production-shaped config pass) এবং পূর্ণ `manage.py test student
 
 মূল চাহিদার জন্য **কোড-স্তরে কিছু বাকি নেই** — শুধু একটি অনুমোদন বাকি:
 
-1. **PR #33 merge-এর অনুমোদন** (মালিকের সিদ্ধান্ত; এজেন্ট নিজে merge করবে না)।
-2. **খোলা product সিদ্ধান্ত (নীতি বদলানো হয়নি):** funnel report ও নতুন Reports button
-   বিদ্যমান নীতি অনুযায়ী **Office ও Accounts** উভয় department-কে দেখা যায়। Accounts কি
-   পুরো funnel (enrolment stage-সহ) দেখবে, নাকি শুধু payment stage-সীমিত view পাবে —
-   এটি মালিকের সিদ্ধান্ত। সিদ্ধান্ত না হওয়া পর্যন্ত বর্তমান নীতিই বলবৎ।
-3. Merge-এর পরে চাইলে **live Render যাচাই** (অনুমোদিত user দিয়ে Admission page → Reports),
-   যা এই sandbox থেকে সম্ভব নয়।
+1. **OF-04 follow-up PR merge** — owner ২০২৬-১০-০৫-এ merge-অনুমোদন দিয়েছেন (pin PR #57 ইতিমধ্যে MERGED `9acbae4`); এই সেশনের follow-up PR merge হবে শেষ ধাপে।
+2. ~~খোলা product সিদ্ধান্ত (Accounts funnel scope)~~ — **সিদ্ধান্ত হয়েছে (owner, ২০২৬-১০-০৬):**
+   Accounts payment stage-সীমিত view পায়; OF-04-এ বাস্তবায়িত ও টেস্টে pin।
+   বাকি (সিদ্ধান্ত নয়, ব্যাখ্যা): Accounts capacity সেকশনও দেখে, কারণ payment approval-এর
+   আগে seat check দরকার — ভিন্ন নীতি চাইলে আলাদা সেশনে।
+3. Merge-এর পরে চাইলে **live Render যাচাই** (অনুমোদিত user দিয়ে Admission page → Reports →
+   capacity/trend সেকশন), যা এই sandbox থেকে সম্ভব নয়।
 
 ### Future enhancements (Optional — মূল কাজকে Partial করে না)
 
-- **`ADM-REPORTS-OPT-1` — Capacity / trend charts:** class/section-ভিত্তিক capacity vs
-  enrolled (`SectionCapacity` vs actual), payment-vs-enrolled trend, date-wise trend
-  chart। এটি আলাদা Optional enhancement; মূল funnel/report চাহিদার শর্ত নয়।
-  (Backlog O4 acceptance-এর (b)/(c) অংশ।)
+- ~~**`ADM-REPORTS-OPT-1` — Capacity / trend charts**~~ — **সম্পন্ন ২০২৬-১০-০৬ (OF-04):**
+  capacity vs enrolled (`_capacity_vs_enrolled`), payment-vs-enrolled ও date-wise trend
+  (`_trend_rows`, table + CSS bar), Excel-এ `Capacity vs Enrolled`/`Trend` sheet।
+  একমাত্র অংশ যা ইচ্ছাকৃতভাবে করা হয়নি: আলাদা “section-wise student bar chart” পেজ —
+  class/section-ভিত্তিক সংখ্যা capacity টেবিলেই bar সহ আছে।
 - Admission photo continuity — আলাদা কাজ (`O5`), এই tracker-এ সম্পন্ন ধরা হয়নি।
 - Dashboard redesign — এই follow-up-এর scope-এর বাইরে; করা হয়নি।
 
