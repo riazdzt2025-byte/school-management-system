@@ -11,6 +11,7 @@ from django.db import IntegrityError, transaction
 from django.db.utils import OperationalError, ProgrammingError
 from .pagination import paginate_list
 from django.db.models import Sum, Q, Count, F
+from django.db.models.functions import TruncDate
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from .curriculum_data import curriculum_for_class
@@ -1062,16 +1063,59 @@ FUNNEL_STAGES = [
     'ENROLLED', 'REJECTED',
 ]
 
+# Accounts works the payment side of admissions. Owner decision (prompt 12 §8):
+# its copy of the report carries the payment stages only — and because the page
+# and the Excel export ask for the same slice, downloading the workbook is not a
+# way around the limit.
+FUNNEL_PAYMENT_STAGES = ['ACCOUNT_PENDING', 'PAYMENT_APPROVED', 'ENROLLED']
 
-def _funnel_stages():
+# The trend reads per day (default), per ISO week or per month; ``?bucket=``
+# picks one, and anything unrecognised falls back to the day view.
+TREND_BUCKETS = ('day', 'week', 'month')
+
+# The page renders bounded tables (the OF-02 rule): the two additions below are
+# capped and say so, while the Excel export always carries every row. The trend
+# keeps the most recent buckets — the half an office actually reads — and the
+# 'Undated' row is never dropped by the cap.
+CAPACITY_DISPLAY_LIMIT = 200
+TREND_DISPLAY_LIMIT = 200
+
+# (row key, column label, CSS bar class, funnel stage gating the series).
+# Accounts has no SUBMITTED stage, so its trend has no submission column either.
+TREND_SERIES = (
+    ('submitted', 'Submitted', 'bar-submitted', 'SUBMITTED'),
+    ('payment_approved', 'Payment approved', 'bar-payment_approved', 'PAYMENT_APPROVED'),
+    ('enrolled', 'Enrolled', 'bar-enrolled', 'ENROLLED'),
+)
+
+
+def _funnel_stages(keys=None):
     """[(status key, label)] in funnel order, labelled by the model itself.
 
     The labels come from ``AdmissionApplication.STATUS_CHOICES`` so a renamed
     status can never show one wording on the funnel page and another on the
-    application list.
+    application list. ``keys`` narrows the stages to the slice a department is
+    allowed to read (OF-04: Accounts sees the payment stages only) — the default
+    stays the whole funnel.
     """
     labels = dict(AdmissionApplication.STATUS_CHOICES)
-    return [(key, labels.get(key, key)) for key in FUNNEL_STAGES]
+    return [(key, labels.get(key, key)) for key in (keys or FUNNEL_STAGES)]
+
+
+def _funnel_stage_keys(request):
+    """The funnel stages this user's copy of the report shows.
+
+    Office — and an admin, whatever session department they are in — reads the
+    whole funnel. Accounts works the payment side, so owner decision (prompt 12
+    §8) limits its copy to the stages it owns. The export asks the same helper,
+    so downloading the workbook is not a way around the slice.
+    """
+    if _is_admin(request.user):
+        return list(FUNNEL_STAGES)
+    department = request.session.get('selected_department') or 'Office'
+    if department == 'Accounts':
+        return list(FUNNEL_PAYMENT_STAGES)
+    return list(FUNNEL_STAGES)
 
 
 def _parse_report_date(raw):
@@ -1092,11 +1136,44 @@ def _parse_report_date(raw):
         return None
 
 
-def _admission_funnel_queryset(request):
-    """The applications the funnel counts, scoped and date-filtered.
+def _in_date_window(queryset, field, from_date, to_date):
+    """Bound ``field`` to whole inclusive days in the current timezone.
 
-    Returns ``(queryset, institution, from_date, to_date, export_url)``; the
-    last one is the Excel link carrying exactly the filters in effect.
+    ``< to_date + 1 day`` keeps the end day inclusive without depending on
+    whether the backend stores microseconds; blank/unparseable dates never
+    reach this far (``_parse_report_date`` already turned them into ``None``).
+    """
+    from datetime import datetime, timedelta
+
+    midnight = datetime.min.time()
+    if from_date is not None:
+        queryset = queryset.filter(
+            **{f'{field}__gte': timezone.make_aware(datetime.combine(from_date, midnight))},
+        )
+    if to_date is not None:
+        queryset = queryset.filter(
+            **{f'{field}__lt': timezone.make_aware(
+                datetime.combine(to_date + timedelta(days=1), midnight)
+            )},
+        )
+    return queryset
+
+
+def _trend_granularity(raw):
+    """``?bucket=`` — day (default), week or month. Junk falls back to day."""
+    value = (raw or '').strip().lower()
+    return value if value in TREND_BUCKETS else 'day'
+
+
+def _admission_funnel_queryset(request):
+    """The applications the report counts, scoped and date-filtered.
+
+    Returns ``(applications, scoped, institution, from_date, to_date,
+    export_url)``: ``scoped`` is the same institution-scoped queryset before the
+    submission-date window, which is what the trend needs (it bounds each of its
+    series by the date of that series' own event), and ``export_url`` is the
+    Excel link carrying exactly the filters in effect — the trend bucket
+    included, so the download matches the page.
 
     Institution scoping is exactly the list/export one
     (:func:`_resolve_requested_institution` + :func:`_scope_institution_qs`):
@@ -1106,30 +1183,17 @@ def _admission_funnel_queryset(request):
     set rather than to "everything". The date filter bounds ``submitted_at`` on
     whole inclusive days in the current timezone.
     """
-    from datetime import datetime, timedelta
     from urllib.parse import urlencode
 
     institution = _resolve_requested_institution(request, request.GET.get('institution'))
-    applications = AdmissionApplication.objects.all()
-    applications = _scope_institution_qs(request, applications, institution)
+    scoped = AdmissionApplication.objects.all()
+    scoped = _scope_institution_qs(request, scoped, institution)
 
     from_date = _parse_report_date(request.GET.get('from'))
     to_date = _parse_report_date(request.GET.get('to'))
-    midnight = datetime.min.time()
-    if from_date is not None:
-        applications = applications.filter(
-            submitted_at__gte=timezone.make_aware(datetime.combine(from_date, midnight)),
-        )
-    if to_date is not None:
-        # ``< to_date + 1 day`` keeps the whole end day inclusive without
-        # depending on whether the backend stores microseconds.
-        applications = applications.filter(
-            submitted_at__lt=timezone.make_aware(
-                datetime.combine(to_date + timedelta(days=1), midnight)
-            ),
-        )
+    applications = _in_date_window(scoped, 'submitted_at', from_date, to_date)
 
-    params = {}
+    params = {'bucket': _trend_granularity(request.GET.get('bucket'))}
     if institution is not None:
         params['institution'] = institution.pk
     if from_date is not None:
@@ -1139,24 +1203,29 @@ def _admission_funnel_queryset(request):
     export_url = reverse('admission_funnel_export')
     if params:
         export_url = f'{export_url}?{urlencode(params)}'
-    return applications, institution, from_date, to_date, export_url
+    return applications, scoped, institution, from_date, to_date, export_url
 
 
-def _admission_funnel_counts(queryset):
-    """``{status: count}`` for every funnel stage, zeroes included."""
-    counts = {key: 0 for key, _label in _funnel_stages()}
+def _admission_funnel_counts(queryset, keys=None):
+    """``{status: count}`` for every funnel stage in the slice, zeroes included."""
+    counts = {key: 0 for key, _label in _funnel_stages(keys)}
     for row in queryset.values('status').annotate(total=Count('id')):
         if row['status'] in counts:
             counts[row['status']] = row['total']
     return counts
 
 
-def _admission_funnel_summary(queryset):
-    """The funnel as template-ready rows plus the totals the page highlights."""
-    counts = _admission_funnel_counts(queryset)
+def _admission_funnel_summary(queryset, keys=None):
+    """The funnel as template-ready rows plus the totals the page highlights.
+
+    Every total is computed over the same slice the table shows, so an Accounts
+    copy reports the payment stages it may read and never a whole-funnel number
+    it was not supposed to see.
+    """
+    counts = _admission_funnel_counts(queryset, keys)
     total = sum(counts.values())
     rows = []
-    for key, label in _funnel_stages():
+    for key, label in _funnel_stages(keys):
         count = counts[key]
         rows.append({
             'key': key,
@@ -1164,8 +1233,8 @@ def _admission_funnel_summary(queryset):
             'count': count,
             'percent': round(count * 100 / total, 1) if total else 0.0,
         })
-    enrolled = counts['ENROLLED']
-    rejected = counts['REJECTED']
+    enrolled = counts.get('ENROLLED', 0)
+    rejected = counts.get('REJECTED', 0)
     return {
         'rows': rows,
         'counts': counts,
@@ -1179,13 +1248,13 @@ def _admission_funnel_summary(queryset):
     }
 
 
-def _admission_funnel_by_institution(queryset):
+def _admission_funnel_by_institution(queryset, keys=None):
     """Funnel counts split per institution (the 'All Institutions' page/sheet).
 
     ``stages`` carries the same per-status numbers as the main funnel table in
     template order; ``counts`` is the same data keyed by status for the export.
     """
-    stage_keys = _funnel_stages()
+    stage_keys = _funnel_stages(keys)
     buckets = {}
     for row in queryset.values('institution_id', 'institution__name', 'status').annotate(total=Count('id')):
         name = row['institution__name'] or '—'
@@ -1208,16 +1277,273 @@ def _admission_funnel_by_institution(queryset):
     return out
 
 
+def _capacity_vs_enrolled(request, institution):
+    """Seat limit vs the students actually sitting in each class/section.
+
+    Returns ``(rows, totals)``. The student side is exactly the population the
+    admission gate counts (:meth:`SectionCapacity.seats_taken` —
+    ``status='ACTIVE'``), so a section this report calls full is a section
+    ``has_room`` refuses at payment approval and at Excel import. Archived
+    students are DISCONTINUED by the archive action, so they are out of both
+    counts, the same way they are out of the student list.
+
+    Rows come from the union of the configured limits and the classes/sections
+    that actually hold students: a section with seats configured but nobody in
+    it still shows (0 of N), and a section full of students but with no limit
+    row shows as 'No limit' instead of disappearing. Two aggregate queries, so
+    the page never runs one query per row.
+    """
+    limits_qs = SectionCapacity.objects.all()
+    students_qs = Student.objects.filter(status='ACTIVE')
+    if institution is not None:
+        limits_qs = limits_qs.filter(institution=institution)
+        students_qs = students_qs.filter(institution=institution)
+    else:
+        limits_qs = _scope_by_allowed_institutions(request, limits_qs)
+        students_qs = _scope_by_allowed_institutions(request, students_qs)
+
+    limits = {}
+    names = {}
+    for row in limits_qs.values(
+        'institution_id', 'institution__name', 'admission_class', 'section', 'capacity',
+    ):
+        key = (row['institution_id'], row['admission_class'], row['section'])
+        limits[key] = row['capacity']
+        names[key] = row['institution__name'] or '—'
+
+    taken = {}
+    for row in students_qs.values(
+        'institution_id', 'institution__name', 'admission_class', 'section',
+    ).annotate(total=Count('id')):
+        key = (row['institution_id'], row['admission_class'], row['section'])
+        taken[key] = row['total']
+        names.setdefault(key, row['institution__name'] or '—')
+
+    rows = []
+    for key in sorted(
+        set(limits) | set(taken),
+        # Class and section keep their natural string order, the same
+        # deterministic ordering the Class/Section summary uses; the
+        # institution id only breaks ties between identically named rows.
+        key=lambda k: ((k[1] or ''), (k[2] or ''), (k[0] or 0)),
+    ):
+        capacity = limits.get(key)
+        seated = taken.get(key, 0)
+        if capacity is None:
+            # No limit configured: nothing to compare, and never a divide by 0.
+            free = utilization = None
+            over = False
+        else:
+            free = capacity - seated
+            utilization = round(seated * 100 / capacity, 1) if capacity else None
+            over = seated > capacity
+        rows.append({
+            'institution': names.get(key, '—'),
+            'admission_class': key[1] or '',
+            'section': key[2] or '',
+            'capacity': capacity,
+            'has_limit': capacity is not None,
+            'capacity_display': 'No limit' if capacity is None else capacity,
+            'seated': seated,
+            'free': free,
+            'free_display': '—' if free is None else free,
+            'utilization': utilization,
+            'utilization_display': '—' if utilization is None else f'{utilization}%',
+            'over': over,
+            'over_by': seated - capacity if over else 0,
+            'bar_percent': min(utilization, 100) if utilization is not None else 0.0,
+        })
+
+    limited = [row for row in rows if row['has_limit']]
+    capacity_total = sum(row['capacity'] for row in limited)
+    seated_in_limited = sum(row['seated'] for row in limited)
+    totals = {
+        'sections': len(rows),
+        'limited_sections': len(limited),
+        'no_limit_sections': len(rows) - len(limited),
+        'capacity': capacity_total,
+        'seated': sum(row['seated'] for row in rows),
+        'limited_seated': seated_in_limited,
+        'free': capacity_total - seated_in_limited,
+        'over_sections': sum(1 for row in rows if row['over']),
+    }
+    return rows, totals
+
+
+def _bucket_start(value, granularity):
+    """The first day of the bucket a date falls in (Monday for ISO weeks)."""
+    from datetime import timedelta
+
+    if granularity == 'week':
+        return value - timedelta(days=value.weekday())
+    if granularity == 'month':
+        return value.replace(day=1)
+    return value
+
+
+def _bucket_label(start, granularity):
+    """A deterministic, sortable label: 2026-10-05 · 2026-W41 · 2026-10."""
+    if granularity == 'month':
+        return f'{start:%Y-%m}'
+    if granularity == 'week':
+        iso = start.isocalendar()
+        return f'{iso[0]}-W{iso[1]:02d}'
+    return start.isoformat()
+
+
+def _bucket_counts(queryset, field, granularity):
+    """``{bucket start: count}`` from one aggregate query.
+
+    ``TruncDate`` converts to the current timezone before truncating, so the
+    bucket boundary follows the configured ``TIME_ZONE`` (Asia/Dhaka for a
+    deployment that sets it) instead of mixing local and UTC days.
+    """
+    counts = defaultdict(int)
+    for row in (
+        queryset.annotate(report_bucket=TruncDate(field))
+        .values('report_bucket')
+        .annotate(total=Count('id'))
+    ):
+        if row['report_bucket'] is not None:
+            counts[_bucket_start(row['report_bucket'], granularity)] += row['total']
+    return counts
+
+
+def _trend_rows(applications, from_date, to_date, granularity, keys=None, display_limit=None):
+    """Date-bucketed submissions, payment approvals and enrolments.
+
+    Each series is dated by the moment its own event happened and is bounded by
+    the same ``from``/``to`` window:
+
+    * **Submitted** — ``submitted_at`` (always set).
+    * **Payment approved** — ``account_action_at``, the moment Accounts approved
+      the payment.
+    * **Enrolled** — applications in the ENROLLED stage, dated by the same
+      ``account_action_at`` (enrolment happens inside that transaction); a row
+      approved but not yet enrolled therefore still counts as a payment.
+
+    Rows carrying no accounts action time (legacy or hand-edited data) are not
+    silently dropped: they are summarised in one explicit 'Undated' row, which
+    the display cap never trims. The series are computed with aggregate queries
+    only — no per-row work, no N+1.
+    """
+    series = [
+        (key, label, bar_class)
+        for key, label, bar_class, stage in TREND_SERIES
+        if stage in (keys or FUNNEL_STAGES)
+    ]
+    included = {key for key, _label, _bar in series}
+    counts = {}
+    if 'submitted' in included:
+        counts['submitted'] = _bucket_counts(
+            _in_date_window(applications, 'submitted_at', from_date, to_date),
+            'submitted_at', granularity,
+        )
+    if 'payment_approved' in included:
+        counts['payment_approved'] = _bucket_counts(
+            _in_date_window(
+                applications.filter(account_action_at__isnull=False),
+                'account_action_at', from_date, to_date,
+            ),
+            'account_action_at', granularity,
+        )
+    if 'enrolled' in included:
+        counts['enrolled'] = _bucket_counts(
+            _in_date_window(
+                applications.filter(status='ENROLLED', account_action_at__isnull=False),
+                'account_action_at', from_date, to_date,
+            ),
+            'account_action_at', granularity,
+        )
+
+    rows = []
+    for start in sorted({start for per_series in counts.values() for start in per_series}):
+        rows.append({
+            'start': start.isoformat(),
+            'label': _bucket_label(start, granularity),
+            'cells': [
+                {'key': key, 'label': label, 'bar_class': bar_class,
+                 'value': counts[key].get(start, 0), 'display': counts[key].get(start, 0)}
+                for key, label, bar_class in series
+            ],
+        })
+
+    # The page asks for a bounded table and keeps the most recent buckets; the
+    # export passes no limit, so the workbook always carries every bucket.
+    total_buckets = len(rows)
+    truncated = 0
+    if display_limit is not None and total_buckets > display_limit:
+        truncated = total_buckets - display_limit
+        rows = rows[-display_limit:]
+
+    # Bars are scaled to the busiest single number on the table, so the shape of
+    # the trend stays comparable from row to row; a zero value gets no bar at
+    # all rather than a fake sliver.
+    peak = max((cell['value'] for row in rows for cell in row['cells']), default=0)
+    for row in rows:
+        for cell in row['cells']:
+            cell['percent'] = round(cell['value'] * 100 / peak, 1) if peak else 0.0
+
+    # A payment approval and an enrolment both live on ``account_action_at``, so
+    # one 'Undated' row carries whatever of either is missing that timestamp.
+    undated = {
+        'payment_approved': applications.filter(
+            status='PAYMENT_APPROVED', account_action_at__isnull=True,
+        ).count() if 'payment_approved' in included else None,
+        'enrolled': applications.filter(
+            status='ENROLLED', account_action_at__isnull=True,
+        ).count() if 'enrolled' in included else None,
+    }
+    if any(undated.values()):
+        rows.append({
+            'start': '',
+            'label': 'Undated',
+            'undated': True,
+            'cells': [
+                {'key': key, 'label': label, 'bar_class': bar_class,
+                 'value': undated.get(key), 'display': undated.get(key), 'percent': 0.0}
+                for key, label, bar_class in series
+            ],
+        })
+
+    return {
+        'rows': rows,
+        'truncated': truncated,
+        'buckets': total_buckets,
+        'granularity': granularity,
+        'columns': [{'label': label, 'bar_class': bar_class} for _key, label, bar_class in series],
+        'undated': sum(count for count in undated.values() if count),
+    }
+
+
 @login_required
 @permission_required('students.view_admissionapplication', raise_exception=True)
 @_require_department(('Office', 'Accounts'))
 def admission_funnel_report(request):
-    """Office → Reports: how many applications sit at each admission stage."""
-    applications, institution, from_date, to_date, export_url = _admission_funnel_queryset(request)
-    summary = _admission_funnel_summary(applications)
+    """Office → Reports: how many applications sit at each admission stage.
+
+    OF-04 adds the two owner-approved reports to the same page and the same
+    guards: seat capacity vs the students actually enrolled per class/section,
+    and a date-bucketed trend of submissions, payment approvals and enrolments
+    (table + CSS bars, no new chart dependency). Accounts reads the payment
+    stages only (``_funnel_stage_keys``).
+    """
+    applications, scoped, institution, from_date, to_date, export_url = (
+        _admission_funnel_queryset(request)
+    )
+    stage_keys = _funnel_stage_keys(request)
+    summary = _admission_funnel_summary(applications, stage_keys)
     institution_rows = []
     if institution is None:
-        institution_rows = _admission_funnel_by_institution(applications)
+        institution_rows = _admission_funnel_by_institution(applications, stage_keys)
+
+    capacity_html_rows, capacity_totals = _capacity_vs_enrolled(request, institution)
+    capacity_rows = capacity_html_rows[:CAPACITY_DISPLAY_LIMIT]
+
+    trend = _trend_rows(
+        scoped, from_date, to_date, _trend_granularity(request.GET.get('bucket')), stage_keys,
+        display_limit=TREND_DISPLAY_LIMIT,
+    )
 
     pagination = paginate_list(request, institution_rows, allow_full_print=True)
     return render(request, 'students/admission_funnel_report.html', {
@@ -1233,9 +1559,27 @@ def admission_funnel_report(request):
         'in_progress': summary['in_progress'],
         'conversion_percent': summary['conversion_percent'],
         'institution_rows': pagination['page_rows'],
-        'funnel_stages': [{'key': key, 'label': label} for key, label in _funnel_stages()],
+        'funnel_stages': [{'key': key, 'label': label} for key, label in _funnel_stages(stage_keys)],
+        'stage_keys': stage_keys,
+        'payment_stages_only': 'SUBMITTED' not in stage_keys,
+        'capacity_rows': capacity_rows,
+        'capacity_totals': capacity_totals,
+        'capacity_truncated': len(capacity_html_rows) - len(capacity_rows),
+        'trend_rows': trend['rows'],
+        'trend_columns': trend['columns'],
+        'trend_granularity': trend['granularity'],
+        'trend_truncated': trend['truncated'],
+        'trend_undated': trend['undated'],
+        'timezone_name': timezone.get_current_timezone_name(),
         'export_url': export_url,
     })
+
+
+def _autosize_columns(sheet):
+    """Shared column width pass for the report sheets."""
+    for col in sheet.columns:
+        max_length = max((len(str(cell.value)) for cell in col if cell.value is not None), default=8)
+        sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
 
 
 @login_required
@@ -1244,17 +1588,27 @@ def admission_funnel_report(request):
 def admission_funnel_export(request):
     """Excel export of the funnel counts, with the filters of the report page.
 
-    This is the aggregate sheet; ``download_admission_sheet`` remains the
+    This is the aggregate workbook; ``download_admission_sheet`` remains the
     per-application sheet and is not changed by it. When the scope spans
     several institutions a second 'By Institution' sheet is added, so an admin
     exporting 'All Institutions' still gets the per-school breakdown.
+
+    OF-04 adds two sheets that carry the whole page's data, not the bounded
+    slice drawn on screen: 'Capacity vs Enrolled' (every class/section) and
+    'Trend' (every bucket, including the ones the page trimmed and the undated
+    row). Both follow the department slice, so an Accounts export has the same
+    payment-stage view as its page.
     """
     if openpyxl is None:
         messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
         return redirect('admission_funnel_report')
 
-    applications, institution, from_date, to_date, _export_url = _admission_funnel_queryset(request)
-    summary = _admission_funnel_summary(applications)
+    applications, scoped, institution, from_date, to_date, _export_url = (
+        _admission_funnel_queryset(request)
+    )
+    stage_keys = _funnel_stage_keys(request)
+    summary = _admission_funnel_summary(applications, stage_keys)
+    granularity = _trend_granularity(request.GET.get('bucket'))
 
     wb = openpyxl.Workbook()
     sheet = wb.active
@@ -1271,34 +1625,88 @@ def admission_funnel_export(request):
     sheet.append(['Total applications', summary['total'], ''])
     sheet.append(['In progress (not enrolled/rejected)', summary['in_progress'], ''])
     sheet.append(['Enrolled', summary['enrolled'], ''])
-    sheet.append(['Rejected', summary['rejected'], ''])
+    if 'REJECTED' in stage_keys:
+        sheet.append(['Rejected', summary['rejected'], ''])
     sheet.append(['Conversion (enrolled / total) %', summary['conversion_percent'], ''])
-    for col in sheet.columns:
-        max_length = max((len(str(cell.value)) for cell in col if cell.value is not None), default=8)
-        sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
+    _autosize_columns(sheet)
+
+    capacity_rows, capacity_totals = _capacity_vs_enrolled(request, institution)
+    capacity_sheet = wb.create_sheet(title='Capacity vs Enrolled')
+    capacity_sheet.append(['Seat Capacity vs Enrolled Students'])
+    capacity_sheet.append(['Institution', institution.name if institution is not None else 'All Institutions'])
+    capacity_sheet.append([
+        'Enrolled here means students with status ACTIVE, the same population the '
+        'admission seat check counts.',
+    ])
+    capacity_sheet.append([])
+    capacity_sheet.append([
+        'Institution', 'Class', 'Section', 'Capacity', 'Enrolled (ACTIVE)',
+        'Free seats', 'Utilization %', 'Status',
+    ])
+    for row in capacity_rows:
+        capacity_sheet.append([
+            row['institution'], row['admission_class'], row['section'],
+            'No limit' if not row['has_limit'] else row['capacity'],
+            row['seated'],
+            '' if row['free'] is None else row['free'],
+            '' if row['utilization'] is None else row['utilization'],
+            'No limit' if not row['has_limit'] else ('Over capacity' if row['over'] else 'Within limit'),
+        ])
+    capacity_sheet.append([])
+    capacity_sheet.append(['Sections listed', capacity_totals['sections'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Sections with a limit', capacity_totals['limited_sections'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Seats configured', capacity_totals['capacity'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Students (ACTIVE)', capacity_totals['seated'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Free seats (limited sections)', capacity_totals['free'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Sections over capacity', capacity_totals['over_sections'], '', '', '', '', '', ''])
+    _autosize_columns(capacity_sheet)
+
+    trend = _trend_rows(scoped, from_date, to_date, granularity, stage_keys)
+    trend_sheet = wb.create_sheet(title='Trend')
+    trend_sheet.append(['Admission Trend Report'])
+    trend_sheet.append(['Institution', institution.name if institution is not None else 'All Institutions'])
+    trend_sheet.append(['Bucket', granularity])
+    trend_sheet.append(['Submitted from', from_date.isoformat() if from_date else ''])
+    trend_sheet.append(['Submitted to', to_date.isoformat() if to_date else ''])
+    trend_sheet.append([
+        'Each series counts the events dated inside the window — submitted (submitted_at), '
+        'payment approved (account_action_at) and enrolled (account_action_at) — not '
+        'applications grouped by their submission date.',
+    ])
+    trend_sheet.append(['Day boundaries follow the timezone ' + timezone.get_current_timezone_name()])
+    trend_sheet.append([])
+    trend_sheet.append(['Bucket', 'Bucket start'] + [column['label'] for column in trend['columns']])
+    for row in trend['rows']:
+        trend_sheet.append(
+            [row['label'], row['start']]
+            + ['' if cell['value'] is None else cell['value'] for cell in row['cells']]
+        )
+    if trend['undated']:
+        trend_sheet.append([
+            'Undated rows carry no accounts action time (legacy or hand-edited data).',
+        ])
+    _autosize_columns(trend_sheet)
 
     if institution is None:
-        institution_rows = _admission_funnel_by_institution(applications)
+        institution_rows = _admission_funnel_by_institution(applications, stage_keys)
         if institution_rows:
-            labels = dict(_funnel_stages())
+            labels = dict(_funnel_stages(stage_keys))
             breakdown = wb.create_sheet(title='By Institution')
             breakdown.append(
-                ['Institution'] + [labels[key] for key, _label in _funnel_stages()] + ['Total']
+                ['Institution'] + [labels[key] for key, _label in _funnel_stages(stage_keys)] + ['Total']
             )
             for row in institution_rows:
                 breakdown.append(
                     [row['institution']]
-                    + [row['counts'][key] for key, _label in _funnel_stages()]
+                    + [row['counts'][key] for key, _label in _funnel_stages(stage_keys)]
                     + [row['total']]
                 )
             breakdown.append(
                 ['All Institutions']
-                + [summary['counts'][key] for key, _label in _funnel_stages()]
+                + [summary['counts'][key] for key, _label in _funnel_stages(stage_keys)]
                 + [summary['total']]
             )
-            for col in breakdown.columns:
-                max_length = max((len(str(cell.value)) for cell in col if cell.value is not None), default=8)
-                breakdown.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
+            _autosize_columns(breakdown)
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

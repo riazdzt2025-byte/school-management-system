@@ -27,6 +27,16 @@
 .funnel-bar.bar-enrolled { background: #198754; }
 .funnel-bar.bar-rejected { background: #dc3545; }
 .table-card td.num, .table-card th.num { text-align: right; white-space: nowrap; }
+/* OF-04: the capacity fill bar reuses the funnel bar, and the trend draws one
+   thin bar per series so three numbers can be compared without a chart
+   library. */
+.funnel-bar.bar-payment_approved { background: #0dcaf0; }
+.trend-bar-line { margin-bottom: 2px; }
+.trend-bar-track { height: 8px; min-width: 60px; }
+.trend-bar-track .funnel-bar { height: 8px; }
+.trend-legend { font-size: .78rem; color: #6c757d; }
+.trend-legend span { display: inline-block; margin-right: 12px; }
+.trend-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; }
 @media print {
     .funnel-stats { grid-template-columns: repeat(5, 1fr); }
     .table-card { border: none; box-shadow: none; page-break-inside: avoid; }
@@ -55,7 +65,7 @@
     </div>
     <div class="page-actions d-flex gap-2 d-print-none">
         <form method="get" class="d-flex gap-2 align-items-center">
-    {% include 'students/_pagination_filter_fields.html' with exclude="institution from to" %}
+    {% include 'students/_pagination_filter_fields.html' with exclude="institution from to bucket" %}
 
             <select name="institution" class="form-select" onchange="this.form.submit()">
                 <option value="">-- All Institutions --</option>
@@ -65,6 +75,11 @@
             </select>
             <input type="date" name="from" value="{{ from_date }}" class="form-control" title="Submitted on or after">
             <input type="date" name="to" value="{{ to_date }}" class="form-control" title="Submitted on or before">
+            <select name="bucket" class="form-select" title="Trend bucket" onchange="this.form.submit()">
+                <option value="day" {% if trend_granularity == 'day' %}selected{% endif %}>Per day</option>
+                <option value="week" {% if trend_granularity == 'week' %}selected{% endif %}>Per week</option>
+                <option value="month" {% if trend_granularity == 'month' %}selected{% endif %}>Per month</option>
+            </select>
             <button type="submit" class="btn btn-navy">Apply</button>
         </form>
         <a href="{{ export_url }}" class="btn btn-outline-navy">📥 Excel</a>
@@ -73,9 +88,18 @@
     </div>
 </div>
 
+{% if payment_stages_only %}
+<div class="alert alert-info py-2 px-3 small mb-3">
+    <strong>Accounts view — payment stages only.</strong>
+    This copy of the report counts the stages Accounts works with
+    (Accounts pending → Payment approved → Enrolled) and its trend shows payment
+    approvals and enrolments. The office stages are not part of it.
+</div>
+{% endif %}
+
 <div class="funnel-stats">
     <div class="funnel-stat">
-        <div class="label">Total</div>
+        <div class="label">{% if payment_stages_only %}Payment stages{% else %}Total{% endif %}</div>
         <div class="value">{{ total_applications }}</div>
     </div>
     <div class="funnel-stat">
@@ -86,10 +110,12 @@
         <div class="label">Enrolled</div>
         <div class="value">{{ enrolled }}</div>
     </div>
+    {% if 'REJECTED' in stage_keys %}
     <div class="funnel-stat">
         <div class="label">Rejected</div>
         <div class="value">{{ rejected }}</div>
     </div>
+    {% endif %}
     <div class="funnel-stat">
         <div class="label">Conversion</div>
         <div class="value">{{ conversion_percent }}%</div>
@@ -128,7 +154,7 @@
             </tbody>
             <tfoot>
                 <tr class="fw-semibold">
-                    <td>Total applications</td>
+                    <td>{% if payment_stages_only %}Payment-stage total{% else %}Total applications{% endif %}</td>
                     <td class="num">{{ total_applications }}</td>
                     <td class="num">100.0%</td>
                     <td></td>
@@ -170,6 +196,149 @@
     </div>
 </div>
 {% endif %}
+
+<!-- OF-04: seat capacity vs the students actually enrolled (the same ACTIVE
+     population the admission seat check counts). -->
+<div class="table-card mt-4">
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <caption class="caption-top fw-semibold" style="padding-left:1rem;">
+                Seat capacity vs enrolled students (ACTIVE)
+            </caption>
+            <thead>
+                <tr>
+                    <th>Institution</th>
+                    <th>Class</th>
+                    <th>Section</th>
+                    <th class="num">Capacity</th>
+                    <th class="num">Enrolled</th>
+                    <th class="num">Free</th>
+                    <th class="num">Used</th>
+                    <th style="width: 22%;">Fill</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in capacity_rows %}
+                <tr>
+                    <td>{{ row.institution }}</td>
+                    <td>{{ row.admission_class }}</td>
+                    <td>{{ row.section|default:'—' }}</td>
+                    <td class="num">{{ row.capacity_display }}</td>
+                    <td class="num">{{ row.seated }}</td>
+                    <td class="num">{{ row.free_display }}</td>
+                    <td class="num">{{ row.utilization_display }}</td>
+                    <td>
+                        {% if row.has_limit %}
+                        <div class="funnel-bar-track">
+                            {% if row.seated %}
+                            <div class="funnel-bar {% if row.over %}bar-rejected{% else %}bar-enrolled{% endif %}"
+                                 style="width: {{ row.bar_percent }}%;"></div>
+                            {% endif %}
+                        </div>
+                        {% if row.over %}
+                        <span class="badge text-bg-danger mt-1">Over by {{ row.over_by }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="text-muted small">No limit configured</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-4">No seat limits or students in this scope.</td></tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="fw-semibold">
+                    <td colspan="3">Total ({{ capacity_totals.sections }} class/section rows)</td>
+                    <td class="num">{{ capacity_totals.capacity }}</td>
+                    <td class="num">{{ capacity_totals.seated }}</td>
+                    <td class="num">{{ capacity_totals.free }}</td>
+                    <td class="num"></td>
+                    <td>
+                        {% if capacity_totals.over_sections %}
+                        <span class="text-danger">{{ capacity_totals.over_sections }} over capacity</span>
+                        {% else %}
+                        All within capacity
+                        {% endif %}
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% if capacity_truncated %}
+    <div class="text-center text-muted small py-2">
+        Showing the first {{ capacity_rows|length }} of {{ capacity_totals.sections }} rows —
+        the Excel export carries every row.
+    </div>
+    {% endif %}
+    <div class="text-muted small px-3 pb-2">
+        'Enrolled' counts students with status ACTIVE — exactly the population the admission seat
+        check uses. A class/section without a capacity row has no limit configured, so it can never
+        be called full.
+    </div>
+</div>
+
+<!-- OF-04: date-bucketed trend. Table + CSS bars only — no chart library. -->
+<div class="table-card mt-4">
+    <div class="table-responsive">
+        <table class="table table-striped mb-0">
+            <caption class="caption-top fw-semibold" style="padding-left:1rem;">
+                Trend per {{ trend_granularity }} — day boundaries in {{ timezone_name }}
+            </caption>
+            <thead>
+                <tr>
+                    <th>Bucket</th>
+                    {% for column in trend_columns %}<th class="num">{{ column.label }}</th>{% endfor %}
+                    <th style="width: 25%;">Trend</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in trend_rows %}
+                <tr{% if row.undated %} class="table-warning"{% endif %}>
+                    <td>
+                        {{ row.label }}
+                        {% if row.undated %}<span class="text-muted small">(no accounts action time)</span>{% endif %}
+                    </td>
+                    {% for cell in row.cells %}
+                    <td class="num">{{ cell.display|default_if_none:'—' }}</td>
+                    {% endfor %}
+                    <td>
+                        {% for cell in row.cells %}
+                        <div class="trend-bar-line">
+                            <div class="funnel-bar-track trend-bar-track">
+                                {% if cell.value %}
+                                <div class="funnel-bar {{ cell.bar_class }}" style="width: {{ cell.percent }}%;"></div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="{{ trend_columns|length|add:2 }}" class="text-center text-muted py-4">No dated events in this window.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="trend-legend px-3 pb-2 pt-2">
+        {% for column in trend_columns %}
+        <span><i class="funnel-bar {{ column.bar_class }}"></i>{{ column.label }}</span>
+        {% endfor %}
+        <span>bars are scaled to the busiest number on the table</span>
+    </div>
+    {% if trend_truncated %}
+    <div class="text-center text-muted small pb-2">
+        Showing the most recent {{ trend_rows|length }} buckets — {{ trend_truncated }} older
+        bucket(s) are in the Excel export.
+    </div>
+    {% endif %}
+    <div class="text-muted small px-3 pb-2">
+        Each series counts the events dated inside the selected window — submitted
+        (<code>submitted_at</code>), payment approved and enrolled (<code>account_action_at</code>) —
+        so a payment approved today on an application submitted months ago shows up today, not at
+        its submission date.
+    </div>
+</div>
 
 <p class="text-muted mt-3" style="font-size:.85rem;">
     Counts are of applications <em>submitted</em> in the selected date range, each in the stage it is
