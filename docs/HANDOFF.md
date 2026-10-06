@@ -2,7 +2,7 @@
 
 ## সেশন OF-04 (follow-up) — ২০২৬-১০-০৬ · প্রম্পট ১২/২৮ · capacity vs enrolled + trend + Accounts slice
 
-- **Branch/base:** `arena/01a10b01-school-management-system` / `53c86d6` (= `origin/main`, PR #57/#58 MERGED)। Prompt-এর পুরোনো branch নয়।
+- **Branch/base:** `arena/01a10b01-school-management-system` / `53c86d6` (= `origin/main`, PR #57/#58 MERGED); feature commit `bbcaa3a`, docs `9400012` → **PR #59 MERGED (`f5561f5`, 2026-10-06; CI ৩/৩ সবুজ)**। Prompt-এর পুরোনো branch নয়।
 - **Owner সিদ্ধান্ত (Arena chat, ২০২৬-১০-০৬ — prompt 12 §৮):** তিনটি report-ই (capacity vs enrolled · payment-vs-enrolled trend · date-wise trend); Accounts = **payment stage-সীমিত view**; chart = **table + CSS bar** (নতুন JS dependency নয়)।
 - **বদল (query-only; কোনো model/migration/URL/JS নেই):** একই পেজ/export-এ `_capacity_vs_enrolled` (limit বনাম `status='ACTIVE'` student; `No limit`/`Over by N`; capacity=0 → `—`; দুই aggregate query) + `_trend_rows` (`submitted_at` / `account_action_at` series, `?bucket=day|week|month`, timezone-aware `TruncDate`, `Undated` সারি; পেজ ২০০ bucket-এ bounded, export full) + `_funnel_stage_keys` (Accounts slice — পেজ/export/trend একই সীমা)। Excel-এ নতুন `Capacity vs Enrolled` ও `Trend` sheet। Guard/route/scope/date-filter অপরিবর্তিত।
 - **প্রমাণ (এই checkout):** `students/test_admission_capacity_trend.py` **২৬ নতুন টেস্ট**; pin-সেশনের `test_admission_funnel_report.py` ২৪টিই pass (দুটি pin ইচ্ছাকৃতভাবে হালনাগাদ — Accounts slice + export sheetnames); OF-02 `test_list_pagination` ৪৪ pass; **৮২৬ Django + ২৯ Node pass**; `check` 0; `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-04.md` (follow-up §)।

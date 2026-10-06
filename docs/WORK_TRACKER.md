@@ -24,7 +24,7 @@ _2026-09-19 baseline re-check (prompt 01/28): PR #33 এখন **MERGED** (gh pr
 | দিক | অবস্থা |
 |---|---|
 | মূল requirement (funnel/report) | **Complete** — code `main`-এ merged + navigation চাহিদা পূরণকারী follow-up PR খোলা |
-| Code merge status | PR #32 **MERGED** (`11cd35d`) · PR #33 **MERGED** · OF-04 pin PR #57 **MERGED** (`9acbae4`) · follow-up PR (`bbcaa3a`, capacity/trend) owner-এর merge-অনুমোদনসহ খোলা |
+| Code merge status | PR #32 **MERGED** (`11cd35d`) · PR #33 **MERGED** · OF-04 pin PR #57 **MERGED** (`9acbae4`) · follow-up PR #59 **MERGED** (`f5561f5`, 2026-10-06; CI ৩/৩ সবুজ) |
 | Live deployment status | **Unverified** (sandbox থেকে live Render যাচাই নয়) |
 | Capacity / trend reports (`ADM-REPORTS-OPT-1`) | **Complete (২০২৬-১০-০৬, OF-04)** — owner-অনুমোদিত তিনটিই ship; দেখুন নিচে “OF-04 additions” |
 
@@ -175,7 +175,7 @@ production-shaped config pass) এবং পূর্ণ `manage.py test student
 
 মূল চাহিদার জন্য **কোড-স্তরে কিছু বাকি নেই** — শুধু একটি অনুমোদন বাকি:
 
-1. **OF-04 follow-up PR merge** — owner ২০২৬-১০-০৫-এ merge-অনুমোদন দিয়েছেন (pin PR #57 ইতিমধ্যে MERGED `9acbae4`); এই সেশনের follow-up PR merge হবে শেষ ধাপে।
+1. ~~OF-04 follow-up PR merge~~ — **সম্পন্ন** (owner-অনুমোদনে PR #59 MERGED `f5561f5`, 2026-10-06; pin PR #57 আগেই MERGED `9acbae4`)।
 2. ~~খোলা product সিদ্ধান্ত (Accounts funnel scope)~~ — **সিদ্ধান্ত হয়েছে (owner, ২০২৬-১০-০৬):**
    Accounts payment stage-সীমিত view পায়; OF-04-এ বাস্তবায়িত ও টেস্টে pin।
    বাকি (সিদ্ধান্ত নয়, ব্যাখ্যা): Accounts capacity সেকশনও দেখে, কারণ payment approval-এর
