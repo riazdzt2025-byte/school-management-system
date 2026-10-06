@@ -1,7 +1,7 @@
 # Project Status — School Management System
 
 _Last updated: ২০২৬-১০-০৬ (OF-04 follow-up — capacity vs enrolled + trend + Accounts payment slice; local **826 Django + 29 Node pass**, `bbcaa3a`)_\
-_Base: `53c86d6` (= `origin/main`, PR #57/#58 MERGED) · branch `arena/01a10b01-school-management-system`_\
+_Base: `53c86d6` (= `origin/main`, PR #57/#58 MERGED) · follow-up PR #59 **MERGED** (`f5561f5`, 2026-10-06) · branch `arena/01a10b01-school-management-system`_\
 _Scope: query/report UI additions only; no model/migration/URL/JS/production change_
 
 > **২০২৬-১০-০৫ OF-04 সম্পন্ন (প্রম্পট ১২/২৮, regression pin & boundary expansion):** Admission reports (Funnel report & export, Class/Section summary, download admission sheet) baseline-এই Complete ছিল (PR #32/#33 merged) — এই সেশনে ৪টি নতুন boundary ও cross-link regression test যোগ করে পূর্ণ funnel math, inclusive date boundaries (same-day, inverted, future), empty scope safety, isolation, Excel export ও navigation পুঙ্খানুপুঙ্খ পুনঃপ্রমাণ করা হয়েছে। Focused **24 pass** (`test_admission_funnel_report`); **800 Django + 29 Node local pass**; `check` 0; `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-04.md`। **PR #57 owner-এর নির্দেশে MERGED (`9acbae4`, 2026-10-05; CI ৩/৩ সবুজ)**। পরবর্তী প্রম্পট ১৩ (OF-05) অপেক্ষমাণ।
