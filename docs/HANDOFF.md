@@ -7,7 +7,7 @@
 - **Implementation:** model validator + UUID storage key; replace/clear/purge-এ post-commit `Storage.delete`; archive/TC retain; active ও archived list থেকে bulk cleanup; institution scope/permission/audit; list/detail/ID/result cards-এ photo/fallback; N+1 test। Migration `0047_alter_student_photo.py`; data/media backfill নেই।
 - **Evidence:** focused **১১৩** (upload ১২ + photo workflow ২৩ + storage ৩৪ + isolation ৪৪); full **৮৫২ Django + ২৯ Node pass**; `check` ০; `makemigrations --check` clean। Local Python 3.11 / Django 5.2.17 fallback, SQLite + `/tmp` media।
 - **Unverified / merge gate:** Django 6.1/Postgres CI, browser/print/PDF, deployed `MEDIA_URL` ও live S3। S3 signed URL/key path fake config-এ যাচাই, network নয়। Post-commit storage outage/crash হলে orphan cleanup retry queue নেই; generic error log হয়। **এই residual risk ও deployment public-media setting review না হওয়া পর্যন্ত merge নয়।**
-- **Commit/PR:** validation/report update-পরবর্তী state-এ পূরণ; merge intentionally withheld. Details `docs/prompts/reports/OF-05.md`.
+- **Commit/PR:** `423acfe` pushed; Draft PR [#61](https://github.com/riazdzt2025-byte/school-management-system/pull/61), CI pending, merge intentionally withheld. Details `docs/prompts/reports/OF-05.md`.
 - **Next:** OF-05 review/CI gate; তারপর owner-এর ক্রমে prompt 14 (OF-06)।
 
 ---
