@@ -51,7 +51,7 @@ _বিভাগ: Office · ধরন: যাচাই + উন্নয়ন �
 
 ## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
 
-- **branch:** সব কাজ `arena/1805a6ab-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/1805a6ab-school-management-system`।
+- **branch:** সব কাজ `arena/43bee7c6-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/43bee7c6-school-management-system`।
 - **PR/merge:** ওই branch থেকেই PR খুলবে (`gh pr create --base main`)। Merge কেবল সব CI/local checks সবুজ এবং কোনো unresolved risk/policy ambiguity না থাকলে; risk থাকলে merge নয়, কারণ ও owner-এর করণীয় লিখবে। PR body-তে verified/unverified/risks আলাদা থাকবে।
 - **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
 - **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
@@ -85,7 +85,7 @@ python manage.py test students
 node --test students/js/*.test.js
 ```
 
-- OF-05-এর আগের local baseline ছিল ৮২৬ Django + ২৯ Node; এই implementation-এর final verified সংখ্যা ৮৫২ Django + ২৯ Node। নতুন run-এ প্রকৃত সংখ্যা report/PROGRESS-এ লিখবে।
+- OF-05-এর আগের local baseline ছিল ৮২৬ Django + ২৯ Node; এই implementation-এর final verified সংখ্যা ৮৬০ Django + ২৯ Node। নতুন run-এ প্রকৃত সংখ্যা report/PROGRESS-এ লিখবে।
 - কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
 - **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
 
@@ -93,8 +93,8 @@ node --test students/js/*.test.js
 
 - প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-05: <সংক্ষিপ্ত>`)।
 - `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
-- `git push origin arena/1805a6ab-school-management-system`।
-- `gh pr create --base main --head arena/1805a6ab-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- `git push origin arena/43bee7c6-school-management-system`।
+- `gh pr create --base main --head arena/43bee7c6-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
 - কোনো residual storage/privacy/CI risk থাকলে merge করবে না; risk মিটলে এবং সব checks সবুজ থাকলেই user-এর conditional merge instruction প্রয়োগ করবে।
 
 ## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)

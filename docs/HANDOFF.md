@@ -2,7 +2,7 @@
 
 ## সেশন OF-05 — ২০২৬-১০-০৭ · প্রম্পট ১৩/২৮ · Student photos — durable outbox hardening, merge gate open
 
-- **Branch/base:** `arena/1805a6ab-school-management-system` / `e7904ba` (= `origin/main`). Production DB, Render, credentials, live S3 ও real student data ছোঁয়া হয়নি।
+- **Branch/base:** `arena/43bee7c6-school-management-system` / `e7904ba` (= `origin/main`). Production DB, Render, credentials, live S3 ও real student data ছোঁয়া হয়নি।
 - **Owner policy (2026-10-07):** Student photo private থাকবে; admission photo নেই; ২ MiB max, 300×300–4096×4096 inclusive; photo archive/TC-তেও রাখা, per-student + institution-scoped bulk clear, hard-purge-এ file delete।
 - **Implementation:** model validator + UUID storage key; replace/clear/purge transaction-এ `StudentPhotoDeletionJob` outbox; commit-এর পর fast-path delete, failure/crash-এ durable retry; archive/TC retain; active/archived bulk cleanup; institution scope/permission/audit; list/detail/ID/result cards-এ photo/fallback; N+1 test। `students.E012` deploy guard public URL/ACL/signing/shared-cache ও production filesystem media আটকায়; default S3 `private, no-store`। Migrations `0047` (state-only) + `0048` (outbox table/index); data/media backfill নেই। Worker: `retry_student_photo_deletions --limit 100`, exponential backoff.
 - **Evidence:** focused **১২১** (upload ১২ + photo workflow ২৬ + storage/privacy ৩৯ + isolation ৪৪); full **৮৬০ Django + ২৯ Node pass**; `check` ০; `makemigrations --check` clean; `0047` SQL no-op, `0048` table/index only। Synthetic production-shaped private S3 `check --deploy` has no E012; public settings fail with E012. Local Python 3.11 / Django 5.2.17 fallback, SQLite + `/tmp` media; no real bucket touched।
