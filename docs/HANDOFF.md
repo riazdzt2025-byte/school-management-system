@@ -6,8 +6,8 @@
 - **Owner policy:** admission photo নেই; ২ MiB max, 300×300–4096×4096 inclusive; photo archive/TC-তেও রাখা, per-student + institution-scoped bulk clear, hard-purge-এ file delete।
 - **Implementation:** model validator + UUID storage key; replace/clear/purge-এ post-commit `Storage.delete`; archive/TC retain; active ও archived list থেকে bulk cleanup; institution scope/permission/audit; list/detail/ID/result cards-এ photo/fallback; N+1 test। Migration `0047_alter_student_photo.py`; data/media backfill নেই।
 - **Evidence:** focused **১১৩** (upload ১২ + photo workflow ২৩ + storage ৩৪ + isolation ৪৪); full **৮৫২ Django + ২৯ Node pass**; `check` ০; `makemigrations --check` clean। Local Python 3.11 / Django 5.2.17 fallback, SQLite + `/tmp` media।
-- **Unverified / merge gate:** Django 6.1/Postgres CI, browser/print/PDF, deployed `MEDIA_URL` ও live S3। S3 signed URL/key path fake config-এ যাচাই, network নয়। Post-commit storage outage/crash হলে orphan cleanup retry queue নেই; generic error log হয়। **এই residual risk ও deployment public-media setting review না হওয়া পর্যন্ত merge নয়।**
-- **Commit/PR:** `423acfe` pushed; Draft PR [#61](https://github.com/riazdzt2025-byte/school-management-system/pull/61), CI pending, merge intentionally withheld. Details `docs/prompts/reports/OF-05.md`.
+- **Unverified / merge gate:** GitHub CI (Django 6.1, SQLite/PostgreSQL 16, Node) 3/3 green, run `37576338768`; browser/print/PDF, deployed `MEDIA_URL` ও live S3 এখনো unverified। S3 signed URL/key path fake config-এ যাচাই, network নয়। Post-commit storage outage/crash হলে orphan cleanup retry queue নেই; generic error log হয়। **এই residual risk ও deployment public-media setting review না হওয়া পর্যন্ত merge নয়।**
+- **Commit/PR:** Commits `423acfe` + `6b983a3` pushed; Draft PR [#61](https://github.com/riazdzt2025-byte/school-management-system/pull/61), CI 3/3 green (run `37576338768`), merge intentionally withheld. Details `docs/prompts/reports/OF-05.md`.
 - **Next:** OF-05 review/CI gate; তারপর owner-এর ক্রমে prompt 14 (OF-06)।
 
 ---
