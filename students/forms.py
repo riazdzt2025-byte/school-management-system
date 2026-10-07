@@ -186,23 +186,6 @@ class StudentForm(forms.ModelForm):
             raise forms.ValidationError('Select Science, Business Studies or Humanities.')
         return value
 
-    def clean_photo(self):
-        photo = self.cleaned_data.get('photo')
-        if photo:
-            # Size cap (2 MB)
-            max_size = 2 * 1024 * 1024
-            if photo.size > max_size:
-                raise forms.ValidationError('Photo must be under 2 MB.')
-            # Type and extension check
-            valid_exts = {'.jpg', '.jpeg', '.png', '.gif'}
-            name = photo.name.lower()
-            if not any(name.endswith(ext) for ext in valid_exts):
-                raise forms.ValidationError('Only JPG, PNG or GIF images are allowed.')
-            # Content-type guard (Django already checks, but reinforce)
-            if not photo.content_type.startswith('image/'):
-                raise forms.ValidationError('Uploaded file is not a valid image.')
-        return photo
-
     def clean(self):
         cleaned_data = super().clean()
         admission_class = cleaned_data.get('admission_class')

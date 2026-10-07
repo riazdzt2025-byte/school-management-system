@@ -1,37 +1,32 @@
 """Regression tests for upload security (P0 security audit session).
-Covers photo validation (StudentForm.clean_photo) and Excel import
-validation (ExcelImportForm / ExamExcelImportForm.clean_excel_file).
+Covers model-field photo validation and Excel import validation
+(ExcelImportForm / ExamExcelImportForm.clean_excel_file).
 Does NOT restore SSC features (session rule 4).
 """
 from django import forms
 from django.test import TestCase, Client
 from django.core.files.uploadedfile import SimpleUploadedFile
 from students.forms import StudentForm, ExcelImportForm, ExamExcelImportForm
+from students.photo_uploads import validate_student_photo
 
 
 class PhotoUploadSecurityTests(TestCase):
     def test_photo_too_large_rejected(self):
-        big = SimpleUploadedFile('big.png', b'\x89PNG\r\n\x1a\n' + b'\x00' * (3 * 1024 * 1024), content_type='image/png')
-        form = StudentForm()
-        form.cleaned_data = {'photo': big}
+        big = SimpleUploadedFile('big.png', b'x' * (3 * 1024 * 1024), content_type='image/png')
         with self.assertRaises(forms.ValidationError) as cm:
-            StudentForm.clean_photo(form)
-        self.assertIn('under 2 MB', str(cm.exception))
+            validate_student_photo(big)
+        self.assertIn('2 MiB', str(cm.exception))
 
     def test_photo_bad_extension_rejected(self):
         bad = SimpleUploadedFile('shell.php', b'<?php echo 1; ?>', content_type='image/png')
-        form = StudentForm()
-        form.cleaned_data = {'photo': bad}
         with self.assertRaises(forms.ValidationError) as cm:
-            StudentForm.clean_photo(form)
-        self.assertIn('JPG', str(cm.exception) or 'Only')
+            validate_student_photo(bad)
+        self.assertIn('JPG', str(cm.exception))
 
     def test_photo_non_image_content_rejected(self):
         bad = SimpleUploadedFile('fake.jpg', b'not an image', content_type='application/pdf')
-        form = StudentForm()
-        form.cleaned_data = {'photo': bad}
         with self.assertRaises(forms.ValidationError) as cm:
-            StudentForm.clean_photo(form)
+            validate_student_photo(bad)
         self.assertIn('not a valid image', str(cm.exception))
 
 
@@ -67,14 +62,29 @@ class PhotoEndToEndValidationTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('photo', form.errors)
 
-    def test_real_small_image_accepted_end_to_end(self):
-        """The legitimate path keeps working: a genuine tiny PNG passes the
-        full form (guardian contact is the only other required value here)."""
-        import base64
-        png_bytes = base64.b64decode(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-        )
-        photo = SimpleUploadedFile('photo.png', png_bytes, content_type='image/png')
+    def _png(self, width, height):
+        from io import BytesIO
+        from PIL import Image
+
+        image_buffer = BytesIO()
+        Image.new('RGB', (width, height), color='white').save(image_buffer, format='PNG')
+        return image_buffer.getvalue()
+
+    def test_photo_below_minimum_dimensions_rejected_end_to_end(self):
+        photo = SimpleUploadedFile('photo.png', self._png(299, 300), content_type='image/png')
+        form = StudentForm(data=self._valid_student_data(), files={'photo': photo})
+        self.assertFalse(form.is_valid())
+        self.assertIn('at least 300', str(form.errors['photo']))
+
+    def test_photo_above_maximum_dimensions_rejected_end_to_end(self):
+        photo = SimpleUploadedFile('photo.png', self._png(4097, 300), content_type='image/png')
+        form = StudentForm(data=self._valid_student_data(), files={'photo': photo})
+        self.assertFalse(form.is_valid())
+        self.assertIn('cannot exceed 4096', str(form.errors['photo']))
+
+    def test_real_minimum_size_image_accepted_end_to_end(self):
+        """A genuine minimum-size PNG passes the complete StudentForm."""
+        photo = SimpleUploadedFile('photo.png', self._png(300, 300), content_type='image/png')
         form = StudentForm(data=self._valid_student_data(), files={'photo': photo})
         self.assertTrue(form.is_valid(), form.errors)
 

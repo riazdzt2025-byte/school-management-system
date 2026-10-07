@@ -2,6 +2,15 @@
 
 {% block title %}{{ student.name }} - Principal Kazi Faruky School And College{% endblock %}
 
+{% block extra_style %}
+.student-profile-photo {
+    width: 180px; height: 220px; border-radius: 14px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: #eef1f5; color: var(--navy); font-size: 3rem; font-weight: 700;
+}
+.student-profile-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <div>
@@ -18,6 +27,20 @@
 
 {% if student.is_archived %}
 <div class="alert alert-warning">This student is archived and is not in the active list.</div>
+{% endif %}
+
+<div class="student-profile-photo mb-2">
+    {% include 'students/_student_photo.html' with photo=student.photo display_name=student.name alt_text=student.name image_class='student-profile-photo-image' fallback_class='student-photo-fallback' fallback_text=student.name|first|upper width='180' height='220' %}
+</div>
+{% if student.photo and perms.students.change_student %}
+<form method="POST" action="{% url 'clear_student_photo' student.pk %}" class="mb-4">
+    {% csrf_token %}
+    <input type="hidden" name="return_to" value="student_detail">
+    <button type="submit" class="btn btn-sm btn-outline-danger"
+            onclick="return confirm('Permanently remove this student photo? The student record will remain.');">
+        Remove photo
+    </button>
+</form>
 {% endif %}
 
 <!-- Student Info Card -->

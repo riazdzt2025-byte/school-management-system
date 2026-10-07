@@ -216,14 +216,14 @@ def media_storage_config(env=None):
             env.get('AWS_LOCATION', 'media').strip().strip('/')
             if 'AWS_LOCATION' in env else 'media'
         ),
-        # Set this to serve files publicly (CDN / public bucket). Left unset,
-        # the bucket stays private and `photo.url` is a signed URL instead.
+        # Public/CDN mode is not permitted for student photos; the deploy check
+        # rejects it so generated photo URLs remain signed and private.
         'public_base_url': _get('AWS_S3_PUBLIC_BASE_URL') or None,
-        # Object ACL: 'public-read' only makes sense for a bucket meant to be
-        # public; private + signed URLs is the safer default for photos of
-        # students (PII).
+        # Public ACLs are prohibited for student photos; E012 enforces private
+        # ACL configuration during deploy checks.
         'default_acl': _get('AWS_DEFAULT_ACL') or None,
-        'cache_control': _get('AWS_S3_CACHE_CONTROL', 'max-age=2592000, public'),
+        # Student photos are private PII; do not let shared caches retain them.
+        'cache_control': _get('AWS_S3_CACHE_CONTROL', 'private, no-store'),
         # Signed media URLs must outlive a school day of open tabs/printing.
         'querystring_expire': int(_get('AWS_S3_QUERYSTRING_EXPIRE', '86400')),
     }

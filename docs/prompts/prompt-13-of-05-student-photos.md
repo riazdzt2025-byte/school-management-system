@@ -27,31 +27,32 @@ _বিভাগ: Office · ধরন: যাচাই + উন্নয়ন �
 
 ## ১. প্রেক্ষাপট (এই checkout-এ যাচাই করা অবস্থা)
 
-- `Student.photo` = `ImageField(upload_to='student_photos/', blank=True, null=True)` (`students/models.py` ~L252); form-এ `clean_photo`: ২MB সীমা, image type, extension চেক; upload widget `accept="image/*"`।
-- Storage: default `MEDIA_ROOT` filesystem; `USE_S3=True` হলে `storages.backends.s3.S3Storage`; checks `E011`/`W010` (`students/checks.py`); management command `copy_media_to_storage`; টেস্ট `students/test_upload_security.py` (৩৩?) ও `test_media_storage.py` (৩৩ দাবি)।
-- Gap (grep করে দেখা): student list template-এ photo দেখানো হয় না; `AdmissionApplication`-এ **কোনো photo field নেই** → admission form-এ ছবি নেওয়া যায় না, enrolment-পরবর্তী ছবি manually।
-- Media cleanup: archive purge-এ photo ফাইল মুছে যায় কি না — যাচাই করা প্রয়োজন (data protection)।
+- `Student.photo` optional `ImageField`; form/admin-এ upload চলে। নতুন upload-এর জন্য agreed policy: max 2 MiB, 300×300–4096×4096 inclusive, JPG/JPEG/PNG/GIF।
+- New uploads `student_photos/<UUID>.<ext>` opaque storage key পায়; existing media keys migrate/backfill হয় না। Storage filesystem অথবা configured `USE_S3` `Storage` API দিয়ে চলে; private S3 signed URLs default।
+- Student add/edit form upload/preview/clear; admission forms-এ **কোনো photo field হবে না**।
+- Active/archived list + student detail + ID/result-card/print surfaces photo/fallback দেখায়। List rendering-এর N+1 query regression test আছে।
+- Archive/TC student row থাকাকালীন retention; per-student clear, institution-scoped active/archived bulk clear, hard-purge-এ post-commit storage deletion। Remote delete failure retry queue নেই—review/merge gate হিসেবে report-এ লিখতে হবে।
 
-## ২. এই সেশনের চাহিদা
+## ২. Owner-এর acceptance scope (সিদ্ধান্ত নেওয়া হয়েছে)
 
-- (ক) Upload path যাচাই: add/edit student-এ ছবি দেওয়া/বদলানো/মুছে ফেলা; size/type/extension validation; ফাইলের নাম নিরাপদ (path traversal/unicode ঝুঁকি); S3 মোডে সংরক্ষণ ও PATH; permission/scoping অপরিবর্তিত।
-- (খ) Display: student list-এ thumbnail (fallback avatar সহ), student detail-এ বড় ছবি, id card/result card/print-এ ছবি; server-rendered (নতুন JS library নয়)।
-- (গ) Admission → Student continuity: public/internal admission form-এ optional photo যোগ করা হবে কি না — owner-সিদ্ধান্ত; সমর্থন করলে size/type validation ও rate-limit প্রভাব যাচাই + enrolment-এ transfer + টেস্ট।
-- (ঘ) Data protection: purge/delete-এ ফাইল মুছে ফেলা বা retention নীতি; media backup-এ ছবি পড়ে কি না নিশ্চিত করা।
+- (ক) Upload/replace/clear secure; max 2 MiB, dimensions inclusive 300×300–4096×4096, existing formats unchanged; filenames opaque/path-safe; filesystem + S3-compatible `Storage` behavior test; permission/isolation unchanged।
+- (খ) Student list thumbnail + accessible fallback; detail portrait; ID card, single/class result card ও print/result detail-এ photo; query-count regression।
+- (গ) Admission form-এ ছবি নেওয়া **স্পষ্টভাবে out of scope** — public/internal কোনোটিতে নয়; admission photo migration/transfer হবে না।
+- (ঘ) Photo archive/TC-তে থাকবে; per-student clear + institution-scoped bulk cleanup (active ও archived); hard purge-এ stored photo delete; lifecycle, permission/isolation regression tests।
 
-## ৩. যা করতে হবে (ক্রমে)
+## ৩. বাস্তবায়ন ও যাচাইয়ের ক্রম
 
-1. বর্তমান upload/list/detail/render paths টেস্ট দিয়ে যাচাই করো; `test_upload_security.py`-এ বিদ্যমান কেসগুলো কী cover করে তা লেখো।
-2. Thumbnail rendering যোগ করো (template + CSS; `object-fit`, lazy loading), fallback avatar; দ্রুত query (N+1 নয়) টেস্ট।
-3. Id card/result card-এ ছবি ঠিকভাবে বসে ও print-এ দেখায় — টেস্ট (rendered HTML-এ img path)।
-4. Purge flow-এ ফাইল মুছে ফেলার নিয়ম যোগ করো (thumbnail/cache সহ) — টেস্ট।
-5. Admission photo (owner চাইলে): form field + validation + enrolment transfer + টেস্ট; না চাইলে ডকে কারণ লিখো।
-6. §৫ চালাও; media storage দুটো মোডে (filesystem + `USE_S3` env, bucket ছাড়া dummy config) টেস্ট।
+1. Baseline upload/storage/isolation tests চালিয়ে বর্তমান behavior নথিবদ্ধ করো।
+2. Model validator + opaque UUID upload path যোগ করো; form/admin path, size, extension, image content ও dimension limits টেস্ট করো।
+3. Replace/clear/hard-purge storage cleanup post-commit schedule করো; archive/TC save-এ ফাইল retain প্রমাণ করো।
+4. List/detail/ID/single-result/class-result/print display + fallback; bulk cleanup active ও archived list-এ; institution-scope/permission/audit tests।
+5. Local filesystem ও dummy S3 storage/key/signing behavior পরীক্ষা; live bucket কখনো নয়।
+6. §৫-এর focused/full suites, `check`, `makemigrations --check`, Node চালাও; unverified CI/browser/live অংশ আলাদা করে report করো।
 
 ## ৪. সীমা ও নিয়ম (সব প্রম্পটে প্রযোজ্য)
 
-- **branch:** সব কাজ `arena/01a0b7f7-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/01a0b7f7-school-management-system`।
-- **PR:** পরিবর্তন থাকলে ওই branch থেকেই PR খুলবে (`gh pr create --base main`), কিন্তু **owner-এর অনুমোদন ছাড়া merge করবে না**। PR বিবরণে যাচাই করা অবস্থা, যাচাই না হওয়া অংশ ও ঝুঁকি আলাদা করে লিখবে।
+- **branch:** সব কাজ `arena/1805a6ab-school-management-system`-এ। `main`-এ সরাসরি push নয়, অন্য কোনো branch-এ যাওয়া নয়। শেষে `git push origin arena/1805a6ab-school-management-system`।
+- **PR/merge:** ওই branch থেকেই PR খুলবে (`gh pr create --base main`)। Merge কেবল সব CI/local checks সবুজ এবং কোনো unresolved risk/policy ambiguity না থাকলে; risk থাকলে merge নয়, কারণ ও owner-এর করণীয় লিখবে। PR body-তে verified/unverified/risks আলাদা থাকবে।
 - **SSC Registration / BoardResult:** পুনরুদ্ধার করা যাবে না (migration 0035 irreversible); `RetiredBoardFeatureTests` pass থাকবে।
 - **live/production:** production DB, live Render, credentials, S3/bucket, cron — কিছুই ছোঁয়া বা সক্রিয় করা যাবে না। কোনো password/token chat-এ চাওয়া বা লেখা যাবে না (owner নিজে Render env-এ দেবেন)।
 - **git:** `reset --hard`, `git clean`, force-push নয়। pre-existing uncommitted change স্পর্শ করা যাবে না। commit ছোট ও বর্ণনামূলক।
@@ -84,7 +85,7 @@ python manage.py test students
 node --test students/js/*.test.js
 ```
 
-- Baseline ধরা হয় ≈৬২৫ Django + ≈১৪ Node (সেশন ০০-এর যাচাই সেটি নিশ্চিত/সংশোধন করবে)। নতুন টেস্ট যোগ হলে প্রকৃত সংখ্যা ডকে ও স্ট্যাটাস ব্লকে লিখবে।
+- OF-05-এর আগের local baseline ছিল ৮২৬ Django + ২৯ Node; এই implementation-এর final verified সংখ্যা ৮৫২ Django + ২৯ Node। নতুন run-এ প্রকৃত সংখ্যা report/PROGRESS-এ লিখবে।
 - কোনো কমান্ড fail করলে লুকাবে না — root cause-সহ লিখবে এবং সেশন বন্ধ করার আগে ঠিক করার চেষ্টা করবে; না পারলে স্ট্যাটাস **🟡 আংশিক**।
 - **CI:** PR-এ `.github/workflows/tests.yml` (sqlite + postgres:16 + Node) pass হতে হবে; `gh pr checks <PR>` দিয়ে যাচাই করে ফল PROGRESS.md-এ লিখবে।
 
@@ -92,9 +93,9 @@ node --test students/js/*.test.js
 
 - প্রতিটি কারণের জন্য ছোট commit; message-এ session ID (যেমন `OF-05: <সংক্ষিপ্ত>`)।
 - `git add` করার আগে `git status` দিয়ে নিশ্চিত হবে যে `.env`/`db.sqlite3`/`media/`/`backups/` ঢুকছে না।
-- `git push origin arena/01a0b7f7-school-management-system`।
-- `gh pr create --base main --head arena/01a0b7f7-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
-- merge করবে না (owner অনুমোদন সাপেক্ষে)।
+- `git push origin arena/1805a6ab-school-management-system`।
+- `gh pr create --base main --head arena/1805a6ab-school-management-system` — title-এ session ID, body-তে: কী বদলেছে · কী যাচাই হয়েছে · কী যাচাই হয়নি · owner-এর করণীয়।
+- কোনো residual storage/privacy/CI risk থাকলে merge করবে না; risk মিটলে এবং সব checks সবুজ থাকলেই user-এর conditional merge instruction প্রয়োগ করবে।
 
 ## ৭. ডক ও ট্র্যাকার আপডেট (এই সেশনের অবিচ্ছেদ্য অংশ)
 
@@ -103,12 +104,13 @@ node --test students/js/*.test.js
 3. সেশন-রিপোর্ট (ছোট, ১ পৃষ্ঠা): `docs/prompts/reports/OF-05.md` — আগের অবস্থা → এখনকার অবস্থা, প্রমাণ (কমান্ড + ফল), যাচাই হয়নি এমন অংশ, বাকি ঝুঁকি, owner-সিদ্ধান্ত।
 4. এই সেশনের পরের প্রম্পটটি এখনো `⏳ অপেক্ষমাণ` — সেটি কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
 
-## ৮. owner-এর সিদ্ধান্ত প্রয়োজন হলে
+## ৮. owner-এর সিদ্ধান্ত (২০২৬-১০-০৬-এ রেকর্ড)
 
-- Admission form-এ ছবি নেওয়া হবে কি না (public form-এ upload = rate limit/spam ঝুঁকি) — owner সিদ্ধান্ত।
-- ছবি সর্বোচ্চ আকার (এখন ২MB) ও minimum resolution policy।
-- Purge/TC-এর পর ছবি মুছে ফেলা হবে কি না (audit/legal কারণে রাখতে হতে পারে)।
-> সিদ্ধান্ত ছাড়া কাজ আটকে গেলে: কোড বদলাবে না, `docs/prompts/PROGRESS.md`-এ স্ট্যাটাস `⛔ ব্লকড (owner decision)` লিখবে, সিদ্ধান্ত-অনুরোধ `docs/prompts/reports/OF-05.md`-এ লিখবে (প্রশ্ন · কেন দরকার · প্রতিটি বিকল্পের প্রভাব · সুপারিশ), এবং শেষ ব্লকে পরিষ্কারভাবে বলবে।
+- Admission forms (public ও internal): **photo নেওয়া হবে না**।
+- File policy: **max 2 MiB**, min **300×300**, max **4096×4096 px**, boundary inclusive; JPG/JPEG/PNG/GIF রাখা হবে।
+- Retention: student record থাকলে archive/TC-তেও photo থাকবে; per-student clear ও institution-scoped bulk cleanup থাকবে; hard purge-এ storage file delete হবে।
+
+এই সিদ্ধান্তে policy blocker নেই। নতুন অস্পষ্টতা বা storage failure-retry policy উঠলে merge নয়—`docs/prompts/reports/OF-05.md` ও `PROGRESS.md`-এ ঝুঁকি লিখে owner review চাইবে।
 
 ## ৯. আউটপুট ফরম্যাট
 

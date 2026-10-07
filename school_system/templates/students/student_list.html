@@ -24,6 +24,14 @@
     .students-table tr.dup-possible { background: #fffdf3; }
     .students-table .name-cell { font-weight: 600; color: var(--navy); }
     .students-table .id-cell { font-family: monospace; font-size: 0.82rem; color: #6c757d; white-space: nowrap; }
+    .student-photo-frame {
+        width: 46px; height: 46px; border-radius: 50%; overflow: hidden;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: #eef1f5; color: var(--navy); font-weight: 700; flex: 0 0 auto;
+    }
+    .student-photo-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .student-photo-fallback { font-size: 0.95rem; }
+    .students-table .photo-cell { width: 62px; }
     .students-table-empty { text-align: center; color: #6c757d; padding: 48px 16px; }
     .print-table-wrapper { display: none; }
     @media print {
@@ -166,6 +174,7 @@
     <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
     <input type="hidden" name="admission_class" value="{{ selected_class|default:'' }}">
     <input type="hidden" name="section" value="{{ selected_section|default:'' }}">
+    <input type="hidden" name="return_to" value="student_list">
 
     <div class="d-flex justify-content-between align-items-center mb-2 d-print-none">
         <div>
@@ -189,6 +198,13 @@
                     title="Add each selected student's Mandatory/Conditional subjects — never removes existing ones.">
                 ⚡ Auto Registration
             </button>
+            {% if perms.students.change_student %}
+            <button type="submit" id="bulk-photo-delete-btn" class="btn btn-sm btn-outline-warning" disabled
+                    formaction="{% url 'bulk_clear_student_photos' %}" formmethod="POST"
+                    onclick="return confirm('Permanently remove photos for the selected students? Student records will remain.');">
+                🖼️ Remove Photos
+            </button>
+            {% endif %}
             <button type="submit" id="bulk-delete-btn" class="btn btn-sm btn-outline-danger" disabled
                     onclick="return confirm('Archive all selected students? They will be removed from active lists but kept in the database for record safety.');">
                 🗑️ Archive Selected
@@ -213,6 +229,7 @@
                 <tr>
                 <th style="width:36px;"></th>
                 <th>#</th>
+                <th>Photo</th>
                 <th>Roll</th>
                 <th>Student ID</th>
                 <th>Name</th>
@@ -229,6 +246,11 @@
                 <tr class="{% if student.id in exact_duplicate_ids %}dup-exact{% elif student.id in possible_duplicate_ids %}dup-possible{% endif %}">
                                    <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
                 <td>{{ forloop.counter }}</td>
+                <td class="photo-cell">
+                    <span class="student-photo-frame">
+                        {% include 'students/_student_photo.html' with photo=student.photo display_name=student.name alt_text=student.name image_class='student-photo-image' fallback_class='student-photo-fallback' loading='lazy' width='46' height='46' %}
+                    </span>
+                </td>
                 <td>{{ student.roll_no|default:"—" }}</td>
                 <td class="id-cell"><a href="{% url 'student_detail' student.pk %}">{{ student.student_id }}</a></td>
                 <td class="name-cell"><a href="{% url 'student_detail' student.pk %}">{{ student.name }}</a></td>
@@ -299,7 +321,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="11" class="students-table-empty">{% if search_q %}No student matching “{{ search_q }}”. Check the ID, or look in Archive.{% else %}No students to show yet — pick a filter to get started.{% endif %}</td></tr>
+                <tr><td colspan="12" class="students-table-empty">{% if search_q %}No student matching “{{ search_q }}”. Check the ID, or look in Archive.{% else %}No students to show yet — pick a filter to get started.{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -360,12 +382,14 @@
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     const bulkUpdateBtn = document.getElementById('bulk-update-btn');
     const bulkAutoRegisterBtn = document.getElementById('bulk-auto-register-btn');
+    const bulkPhotoDeleteBtn = document.getElementById('bulk-photo-delete-btn');
 
     function updateBulkButtons() {
         const anyChecked = Array.from(rowCheckboxes).some(cb => cb.checked);
         bulkDeleteBtn.disabled = !anyChecked;
         bulkUpdateBtn.disabled = !anyChecked;
         bulkAutoRegisterBtn.disabled = !anyChecked;
+        if (bulkPhotoDeleteBtn) bulkPhotoDeleteBtn.disabled = !anyChecked;
     }
 
     if (selectAll) {

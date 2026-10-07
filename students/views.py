@@ -44,6 +44,7 @@ import re
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from datetime import date
+from urllib.parse import urlencode
 from uuid import uuid4
 from .result_utils import (
     SUBJECTS_ALL_DISABLED,
@@ -2267,6 +2268,97 @@ def bulk_delete_students(request):
             url += "?" + "&".join(params)
         return redirect(url)
     return redirect('student_list')
+
+
+def _student_photo_cleanup_return_url(request, student=None):
+    return_to = request.POST.get('return_to')
+    if return_to == 'student_detail' and student is not None:
+        return reverse('student_detail', args=[student.pk])
+
+    if return_to == 'archived_students':
+        url = reverse('archived_students')
+        institution_id = request.POST.get('institution')
+        if institution_id:
+            url += '?' + urlencode([('institution', institution_id)])
+        return url
+
+    url = reverse('student_list')
+    params = []
+    for key in ('institution', 'admission_class', 'section'):
+        value = request.POST.get(key)
+        if value:
+            params.append((key, value))
+    if params:
+        url += '?' + urlencode(params)
+    return url
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+@require_POST
+def clear_student_photo(request, pk):
+    """Clear one student's photo, including while the record is archived."""
+    student = _get_scoped_object_or_404(request, Student, pk, lambda row: row.institution)
+    if student.photo:
+        student.photo = None
+        student.save(update_fields=['photo'])
+        record_audit(
+            request.user, 'student_photo_deleted', student,
+            details={'source': 'clear_student_photo'},
+        )
+        messages.success(request, f'Photo cleared for {student.name}.')
+    else:
+        messages.info(request, f'{student.name} does not have a photo to remove.')
+    return redirect(_student_photo_cleanup_return_url(request, student))
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+@require_POST
+def bulk_clear_student_photos(request):
+    """Clear selected photos across active and archived students within scope."""
+    student_ids = list(dict.fromkeys(request.POST.getlist('student_ids')))
+    return_url = _student_photo_cleanup_return_url(request)
+    if not student_ids:
+        messages.error(request, 'No students were selected.')
+        return redirect(return_url)
+    if len(student_ids) > 100:
+        messages.error(request, 'Select up to 100 students at a time.')
+        return redirect(return_url)
+
+    students_qs, rejected = _scope_write_queryset(
+        request, Student.objects.all(), student_ids,
+    )
+    if rejected:
+        messages.error(
+            request,
+            'One or more of the selected students belong to an institution you cannot access.',
+        )
+        return redirect(return_url)
+
+    cleared_count = 0
+    with transaction.atomic():
+        for student in students_qs.select_related('institution').order_by('pk'):
+            if not student.photo:
+                continue
+            student.photo = None
+            student.save(update_fields=['photo'])
+            record_audit(
+                request.user, 'student_photo_deleted', student,
+                details={'source': 'bulk_clear_student_photos'},
+            )
+            cleared_count += 1
+
+    if cleared_count:
+        messages.success(
+            request,
+            f'Photo cleared for {cleared_count} student(s); stored-file deletion is queued.',
+        )
+    else:
+        messages.info(request, 'The selected students do not have photos to remove.')
+    return redirect(return_url)
+
+
 @login_required
 @permission_required('students.change_student', raise_exception=True)
 def bulk_update_students(request):
