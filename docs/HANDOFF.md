@@ -1,5 +1,17 @@
 # Handoff — School Management System
 
+## সেশন OF-05 — ২০২৬-১০-০৭ · প্রম্পট ১৩/২৮ · Student photos — implementation complete locally, merge gate open
+
+- **Branch/base:** `arena/1805a6ab-school-management-system` / `e7904ba` (= `origin/main`). Production DB, Render, credentials, live S3 ও real student data ছোঁয়া হয়নি।
+- **Owner policy:** admission photo নেই; ২ MiB max, 300×300–4096×4096 inclusive; photo archive/TC-তেও রাখা, per-student + institution-scoped bulk clear, hard-purge-এ file delete।
+- **Implementation:** model validator + UUID storage key; replace/clear/purge-এ post-commit `Storage.delete`; archive/TC retain; active ও archived list থেকে bulk cleanup; institution scope/permission/audit; list/detail/ID/result cards-এ photo/fallback; N+1 test। Migration `0047_alter_student_photo.py`; data/media backfill নেই।
+- **Evidence:** focused **১১৩** (upload ১২ + photo workflow ২৩ + storage ৩৪ + isolation ৪৪); full **৮৫২ Django + ২৯ Node pass**; `check` ০; `makemigrations --check` clean। Local Python 3.11 / Django 5.2.17 fallback, SQLite + `/tmp` media।
+- **Unverified / merge gate:** Django 6.1/Postgres CI, browser/print/PDF, deployed `MEDIA_URL` ও live S3। S3 signed URL/key path fake config-এ যাচাই, network নয়। Post-commit storage outage/crash হলে orphan cleanup retry queue নেই; generic error log হয়। **এই residual risk ও deployment public-media setting review না হওয়া পর্যন্ত merge নয়।**
+- **Commit/PR:** validation/report update-পরবর্তী state-এ পূরণ; merge intentionally withheld. Details `docs/prompts/reports/OF-05.md`.
+- **Next:** OF-05 review/CI gate; তারপর owner-এর ক্রমে prompt 14 (OF-06)।
+
+---
+
 ## সেশন OF-04 (follow-up) — ২০২৬-১০-০৬ · প্রম্পট ১২/২৮ · capacity vs enrolled + trend + Accounts slice
 
 - **Branch/base:** `arena/01a10b01-school-management-system` / `53c86d6` (= `origin/main`, PR #57/#58 MERGED); feature commit `bbcaa3a`, docs `9400012` → **PR #59 MERGED (`f5561f5`, 2026-10-06; CI ৩/৩ সবুজ)**। Prompt-এর পুরোনো branch নয়।

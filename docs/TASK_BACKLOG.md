@@ -1,10 +1,10 @@
 # Task Backlog — first production release scope
 
-_Last updated: ২০২৬-১০-০৬ (OF-04 follow-up — capacity vs enrolled + trend + Accounts payment slice; local 826 Django + 29 Node pass; PR #57/#58 MERGED)_
+_Last updated: ২০২৬-১০-০৭ (OF-05 implementation + verification — 852 Django + 29 Node pass; merge gate remains)_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 
-**Bengali TL;DR:** 2026-09-19 baseline **৬২৫ Django + ১৪ Node** → EX-01 (PR #39) **৬৩৮** + EX-02 (PR #41) **৬৫৩** + EX-03 (group-aware marks 0044 + বাকি কাজ finishing) **৬৭০ Django + ১৪ Node সব pass**। P0 isolation/validation/voucher/promotion/backup + guardian contact + result analysis + Full Rank List + row gating + roll-order + group marks সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + Office gaps (উন্নত Reports, photo continuity) + Attendance calendar (AT-02) + Employee (assignment/leave/closed-period) + OF-02 owner review/merge + DB-02/03 + FN-01। SSC restore করা হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ।
+**Bengali TL;DR:** 2026-09-19 baseline **৬২৫ Django + ১৪ Node** → EX-01 (PR #39) **৬৩৮** + EX-02 (PR #41) **৬৫৩** + EX-03 (group-aware marks 0044 + বাকি কাজ finishing) **৬৭০ Django + ১৪ Node সব pass**। P0 isolation/validation/voucher/promotion/backup + guardian contact + result analysis + Full Rank List + row gating + roll-order + group marks সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + Office merge/review gate (OF-05) + Attendance calendar (AT-02) + Employee (assignment/leave/closed-period) + OF-02 owner review/merge + DB-02/03 + FN-01। SSC restore করা হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ।
 
 ---
 
@@ -223,17 +223,19 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **অবশিষ্ট:** follow-up PR-এর CI + owner merge; এরপর চাইলে live Render যাচাই (sandbox থেকে সম্ভব নয়)। ভবিষ্যতের (ঐচ্ছিক, চাহিদা নয়): section-wise student bar chart/export — trend রিপোর্টের bucket প্যাটার্ন পুনর্ব্যবহার করে করা যাবে।
 
 
-#### O5 · Application থেকে student record ও প্রয়োজনীয় documents-এ photo continuity
-- **Task ID & Purpose:** O5 — application-এ আপলোড করা photo student record + ID/TC/certificate-এ দেখা।
-- **Current status (2026-09-19 baseline re-verified):** **Partial** — (১) `AdmissionApplication`-এ **photo field নেই** (admission থেকে ছবি আসে না), (২) **student list template-এ ছবি দেখানো হয় না** (`school_system/templates/students/student_list.html`-এ `photo` নেই; ছবি ব্যবহৃত শুধু `id_card_print.html`, `result_analysis_merit_slides.html`, `add_student.html`), (৩) **`purge_archived_student` ছবির ফাইল মোছে না** — `views.py:2312-2334` শুধু `student.delete()` করে (Django model delete-এ file delete হয় না)। `Student.photo` + 2MB/type validation + S3 storage path আগে থেকেই কাজ করে।
-- **Evidence:** `models.AdmissionApplication` has no `photo` field; `forms.AdmissionApplicationForm` no image; `views.accounts_approve_payment` creates `Student` without photo (L912). `Student.photo` exists separately, `student_id_card`, `tc_print`, `certificate_print` use `student.photo` but admission flow leaves it blank.
-- **Priority:** **P1**
-- **Dependencies:** P1-11-live (S3 bucket determines where photos live persistently)
-- **Acceptance:** `AdmissionApplication.photo` (optional ImageField, 2MB, image type `clean_photo` same as Student), stored via same `MEDIA_STORAGE` (S3 if enabled), preview in `admission_application_detail`, copied to `Student.photo` on `accounts_approve_payment` (preserves file, not just path), shown on `student_detail`, `student_id_card`, `view_tc`/`certificate_print`. Existing applications without photo still work (blank).
-- **Tests required:** `test_application_photo_carries_to_student`, `test_application_without_photo_still_enrolls`, `test_photo_validated_size_type`.
-- **Migration/data risk:** **Additive nullable FK/FileField** (`photo` ImageField) — migration 00xx, safe (nullable, no backfill). Media copy must handle same-file-name collision (uuid suffix).
-- **Decision needed:** Whether application photo is required or optional (we recommend optional).
-- **Small session scope:** Yes — model + migration (nullable) + forms + two views + 3 templates + tests (one session, but separate from large fee engine).
+#### O5 · Student photo upload, display ও retention (admission photo নয়)
+- **Task ID & Purpose:** OF-05 / O5 — enrolled Student-এর photo-র secure upload/display, authorized clear ও storage lifecycle; AdmissionApplication photo এই scope-এ নেই।
+- **Current status (২০২৬-১০-০৭):** implementation ও isolated local validation সম্পন্ন; **review/merge gate pending**। `Student.photo` validator: ২ MiB max, 300×300–4096×4096 px inclusive; JPG/JPEG/PNG/GIF; opaque UUID storage key। নতুন migration `0047_alter_student_photo.py` field metadata বদলায়, existing media/data backfill করে না।
+- **Retention/actions:** photo archive/TC-তেও row থাকা পর্যন্ত থাকে। Student detail-এ permission-gated per-student clear (archived row-সহ); bulk clear active ও archived list থেকে, সর্বোচ্চ ১০০ unique student, `_scope_write_queryset`-এর institution-scoped all-or-nothing check ও audit সহ। Hard purge-এ `post_delete` storage `delete()` DB commit-এর পরে চলে।
+- **Display:** student list lazy thumbnail + initials fallback; archived list thumbnail; student detail portrait; ID card, single/class result cards ও result detail-এ photo/fallback। List photo rendering-এর N+1 query-count regression আছে; Merit Slides-এর পুরোনো display অক্ষত।
+- **Storage/tests:** `test_upload_security` 12 + `test_student_photo_workflow` 23 + `test_institution_write_isolation` 44 + `test_media_storage` 34 = **113 focused pass**; full **852 Django + 29 Node pass**, `check` 0, `makemigrations --check` clean। Filesystem lifecycle temp directory-তে; S3 config/UUID key/signed URL fake R2 settings দিয়ে পরীক্ষা, কোনো network/bucket request নয়। Details `docs/prompts/reports/OF-05.md`।
+- **Priority:** **P1** (student PII ও media lifecycle)
+- **Dependencies:** policy decisions resolved; `P1-11-live` production media durability remains separate live-only task.
+- **Acceptance:** secure upload/replace/clear; approved dimensions/types/size; list/detail/ID/result-card/print display + fallback; permission/institution scope; archive/TC retention; hard-purge storage cleanup — locally verified. Admission photo intentionally excluded.
+- **Migration/data risk:** no backfill/destructive DB data change intended; field alteration is metadata-only. Existing files retain old storage keys; new uploads use opaque UUID keys. **Residual risk:** post-commit remote storage outage/process interruption can leave an orphan object; no durable retry queue is included. Default S3 is private/signed, but `AWS_S3_PUBLIC_BASE_URL` makes media public by existing config.
+- **Owner সিদ্ধান্ত (২০২৬-১০-০৬):** admission photo নয়; max 2 MiB, min 300×300, max 4096×4096; photo remains through archive/TC, clear per student and in institution-scoped bulk, delete file on hard purge.
+- **অবশিষ্ট / merge gate:** Django 6.1 target CI (local sandbox Python 3.11 uses Django 5.2.17 fallback), Postgres CI, actual browser/print/PDF, deployed MEDIA_URL and live bucket behavior unverified. Live S3/production access is deliberately prohibited; storage-failure retry behavior needs owner review. Do not merge until CI/review clear these risks.
+- **Small session scope:** Yes — student photo workflow, no admission form field or admission migration.
 
 #### P0-9 · Documentation refresh (doc-only) — ✅ DONE (2026-09-17)
 - **Task ID & Purpose:** P0-9 — README roadmap ticks + stale SSC mentions fix।

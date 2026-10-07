@@ -144,6 +144,7 @@
                 <div class="col-md-4">
                     <label class="form-label" for="id_photo">Photo</label>
                     {{ form.photo }}
+                    {% if form.photo.help_text %}<div class="form-text small">{{ form.photo.help_text }}</div>{% endif %}
                     {% for error in form.photo.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                 </div>
                 <div class="col-12" id="photo-preview-box" style="display:none;">

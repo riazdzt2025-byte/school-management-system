@@ -285,8 +285,8 @@ class S3BackendWiringTests(TestCase):
         """The model field must follow the configured backend, not a cached
         filesystem storage — otherwise photos land in BASE_DIR/media again.
 
-        ``upload_to='student_photos/'`` is resolved against ``default_storage``
-        at access time, so the field's URL has to come out of the bucket.
+        The callable upload path remains relative to the configured storage;
+        the field's URL has to come out of the bucket.
         """
         from urllib.parse import urlsplit
 
@@ -301,6 +301,24 @@ class S3BackendWiringTests(TestCase):
         # <bucket>/<AWS_LOCATION>/<upload_to>/<name>
         self.assertEqual(parsed.path, '/school-media/media/student_photos/x.jpg')
         # Private bucket by default, so the URL carries a signature.
+        self.assertIn('X-Amz-Signature', parsed.query)
+
+    @needs_s3_stack
+    def test_opaque_student_photo_key_and_signed_url_use_s3_storage(self):
+        from urllib.parse import urlsplit
+
+        from students.models import Student
+
+        field = Student._meta.get_field('photo')
+        with override_settings(**self._s3_override()):
+            key = field.generate_filename(None, 'student name.png')
+            url = field.storage.url(key)
+
+        self.assertRegex(key, r'^student_photos/[0-9a-f]{32}[.]png$')
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.scheme, 'https')
+        self.assertEqual(parsed.netloc, 'acct123.r2.cloudflarestorage.com')
+        self.assertIn('media/' + key, parsed.path)
         self.assertIn('X-Amz-Signature', parsed.query)
 
 

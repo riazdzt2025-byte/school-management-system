@@ -1,0 +1,5 @@
+{% if photo %}
+<img src="{{ photo.url }}" alt="{{ alt_text|default:display_name }}" class="{{ image_class|default:'' }}"{% if loading %} loading="{{ loading }}"{% endif %}{% if width %} width="{{ width }}"{% endif %}{% if height %} height="{{ height }}"{% endif %}>
+{% else %}
+<span class="{{ fallback_class|default:'' }}" role="img" aria-label="No photo for {{ display_name }}">{{ fallback_text|default:display_name|first|upper|default:"?" }}</span>
+{% endif %}

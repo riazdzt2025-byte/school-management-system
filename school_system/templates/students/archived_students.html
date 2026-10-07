@@ -22,6 +22,9 @@
     .students-table tbody tr:hover { background: #f8f9fb; }
     .students-table .name-cell { font-weight: 600; color: var(--navy); }
     .students-table .id-cell { font-family: monospace; font-size: 0.82rem; color: #6c757d; white-space: nowrap; }
+    .student-photo-frame { width: 42px; height: 42px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: #eef1f5; color: var(--navy); font-weight: 700; }
+    .student-photo-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .archived-photo-cell { width: 58px; }
     .students-table-empty { text-align: center; color: #6c757d; padding: 48px 16px; }
     .inline-filter-bar {
         background: #fff; border-radius: 14px; padding: 14px 16px;
@@ -66,6 +69,7 @@
 <form method="POST" action="{% url 'bulk_restore_students' %}" id="bulk-form">
     {% csrf_token %}
     <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
+    <input type="hidden" name="return_to" value="archived_students">
 
     <div class="d-flex justify-content-between align-items-center mb-3 d-print-none">
         <div class="form-check">
@@ -77,6 +81,13 @@
                     onclick="return confirm('Restore all selected students back into the active list?');">
                 ♻️ Restore Selected
             </button>
+            {% if perms.students.change_student %}
+            <button type="submit" id="bulk-photo-delete-btn" class="btn btn-sm btn-outline-warning" disabled
+                    formaction="{% url 'bulk_clear_student_photos' %}"
+                    onclick="return confirm('Permanently remove photos for the selected archived students? Records will remain archived.');">
+                🖼️ Remove Photos
+            </button>
+            {% endif %}
             {% if can_purge %}
             <button type="submit" id="bulk-purge-btn" class="btn btn-sm btn-outline-danger" disabled
                     formaction="{% url 'bulk_purge_archived_students' %}"
@@ -92,6 +103,7 @@
             <thead>
                 <tr>
                     <th style="width:36px;"></th>
+                    <th>Photo</th>
                     <th>Student ID</th>
                     <th>Name</th>
                     <th>Class</th>
@@ -105,6 +117,7 @@
                 {% for student in students %}
                 <tr>
                     <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
+                    <td class="archived-photo-cell"><span class="student-photo-frame">{% include 'students/_student_photo.html' with photo=student.photo display_name=student.name alt_text=student.name image_class='archived-student-photo' fallback_class='student-photo-fallback' loading='lazy' width='42' height='42' %}</span></td>
                     <td class="id-cell">{{ student.student_id }}</td>
                     <td class="name-cell">{{ student.name }}</td>
                     <td>{{ student.admission_class }}{% if student.section %} - {{ student.section }}{% endif %}</td>
@@ -128,7 +141,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="8" class="students-table-empty">No archived students found.</td></tr>
+                <tr><td colspan="9" class="students-table-empty">No archived students found.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -146,11 +159,13 @@
     const rowCheckboxes = document.querySelectorAll('.row-checkbox');
     const bulkRestoreBtn = document.getElementById('bulk-restore-btn');
     const bulkPurgeBtn = document.getElementById('bulk-purge-btn');
+    const bulkPhotoDeleteBtn = document.getElementById('bulk-photo-delete-btn');
 
     function updateBulkButtons() {
         const anyChecked = Array.from(rowCheckboxes).some(cb => cb.checked);
         if (bulkRestoreBtn) bulkRestoreBtn.disabled = !anyChecked;
         if (bulkPurgeBtn) bulkPurgeBtn.disabled = !anyChecked;
+        if (bulkPhotoDeleteBtn) bulkPhotoDeleteBtn.disabled = !anyChecked;
     }
 
     if (selectAll) {
