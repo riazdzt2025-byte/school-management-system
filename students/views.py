@@ -2352,7 +2352,7 @@ def bulk_clear_student_photos(request):
     if cleared_count:
         messages.success(
             request,
-            f'Photo cleared for {cleared_count} student(s); stored files are removed after commit.',
+            f'Photo cleared for {cleared_count} student(s); stored-file deletion is queued.',
         )
     else:
         messages.info(request, 'The selected students do not have photos to remove.')

@@ -1,8 +1,8 @@
-"""Keep student photo files in sync with their database references."""
+"""Queue student-photo cleanup atomically with database reference changes."""
 from django.db.models.signals import post_delete, post_save, pre_save
 
 from .models import Student
-from .photo_uploads import delete_photo_after_commit
+from .photo_deletion import enqueue_student_photo_deletion
 
 
 def _remember_previous_photo(sender, instance, raw=False, using='default', update_fields=None, **kwargs):
@@ -19,21 +19,21 @@ def _remember_previous_photo(sender, instance, raw=False, using='default', updat
     ).values_list('photo', flat=True).first()
 
 
-def _delete_replaced_photo(sender, instance, created=False, raw=False, **kwargs):
+def _queue_replaced_photo(sender, instance, created=False, raw=False, using='default', **kwargs):
     if raw or not hasattr(instance, '_previous_photo_name'):
         return
 
     old_name = instance._previous_photo_name
     new_name = instance.photo.name if instance.photo else ''
     if old_name and old_name != new_name:
-        delete_photo_after_commit(sender._meta.get_field('photo').storage, old_name)
+        enqueue_student_photo_deletion(old_name, using=using)
 
     del instance._previous_photo_name
 
 
-def _delete_hard_deleted_photo(sender, instance, **kwargs):
+def _queue_hard_deleted_photo(sender, instance, using='default', **kwargs):
     if instance.photo and instance.photo.name:
-        delete_photo_after_commit(instance.photo.storage, instance.photo.name)
+        enqueue_student_photo_deletion(instance.photo.name, using=using)
 
 
 pre_save.connect(
@@ -42,12 +42,12 @@ pre_save.connect(
     dispatch_uid='students.remember_previous_photo',
 )
 post_save.connect(
-    _delete_replaced_photo,
+    _queue_replaced_photo,
     sender=Student,
-    dispatch_uid='students.delete_replaced_photo',
+    dispatch_uid='students.queue_replaced_photo',
 )
 post_delete.connect(
-    _delete_hard_deleted_photo,
+    _queue_hard_deleted_photo,
     sender=Student,
-    dispatch_uid='students.delete_hard_deleted_photo',
+    dispatch_uid='students.queue_hard_deleted_photo',
 )

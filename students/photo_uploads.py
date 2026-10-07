@@ -1,14 +1,10 @@
-"""Validation, opaque names, and post-commit cleanup for student photos."""
+"""Validation and opaque storage names for student photo uploads."""
 from __future__ import annotations
 
-import logging
 import os
 from uuid import uuid4
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
-
-logger = logging.getLogger(__name__)
 
 PHOTO_MAX_BYTES = 2 * 1024 * 1024
 PHOTO_MIN_DIMENSION = 300
@@ -86,24 +82,3 @@ def student_photo_upload_to(instance, filename):
     if extension not in PHOTO_ALLOWED_EXTENSIONS:
         extension = '.img'
     return f'student_photos/{uuid4().hex}{extension}'
-
-
-def delete_photo_after_commit(storage, name):
-    """Delete an old photo only once its database reference is committed.
-
-    If a remote backend is temporarily unavailable, log a generic error without
-    exposing a potentially identifying legacy filename or object key.
-    """
-    if not name:
-        return
-
-    def _delete():
-        try:
-            storage.delete(name)
-        except Exception:  # storage backends can fail independently of the DB
-            logger.error(
-                'Unable to delete student photo from storage (backend=%s).',
-                type(storage).__name__,
-            )
-
-    transaction.on_commit(_delete, robust=True)

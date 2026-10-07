@@ -1,9 +1,10 @@
 """Regression coverage for student photo validation, display, scoping and cleanup."""
 import re
 import tempfile
-from io import BytesIO
+from datetime import timedelta
+from io import BytesIO, StringIO
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from PIL import Image
 from django.contrib.auth import get_user_model
@@ -11,21 +12,26 @@ from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection
+from django.core.management import call_command, CommandError
+from django.db import connection, transaction
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from .forms import StudentForm
 from .models import (
-    Exam, ExamMark, Institution, InstitutionAccess, Student, Subject,
-    SubjectRequirement,
+    Exam, ExamMark, Institution, InstitutionAccess, Student,
+    StudentPhotoDeletionJob, Subject, SubjectRequirement,
+)
+from .photo_deletion import (
+    enqueue_student_photo_deletion,
+    process_due_student_photo_deletions,
 )
 from .photo_uploads import (
     PHOTO_MAX_BYTES,
     PHOTO_MAX_DIMENSION,
     PHOTO_MIN_DIMENSION,
-    delete_photo_after_commit,
     student_photo_upload_to,
     validate_student_photo,
 )
@@ -98,21 +104,88 @@ class StudentPhotoPolicyTests(SimpleTestCase):
 
 
 class StudentPhotoCleanupTests(TestCase):
-    def test_backend_delete_is_deferred_until_transaction_commit(self):
+    def test_successful_on_commit_delete_uses_the_outbox_fast_path(self):
         storage = Mock()
-        with self.captureOnCommitCallbacks(execute=True):
-            delete_photo_after_commit(storage, 'student_photos/example.png')
-            storage.delete.assert_not_called()
-        storage.delete.assert_called_once_with('student_photos/example.png')
-
-    def test_storage_failure_is_logged_without_undoing_the_database_operation(self):
-        storage = Mock()
-        storage.delete.side_effect = OSError('remote storage unavailable')
-        with self.assertLogs('students.photo_uploads', level='ERROR') as captured:
+        with patch('students.photo_deletion.storages', {'default': storage}):
             with self.captureOnCommitCallbacks(execute=True):
-                delete_photo_after_commit(storage, 'student_photos/example.png')
-        self.assertIn('Unable to delete student photo', captured.output[0])
-        self.assertNotIn('student_photos/example.png', captured.output[0])
+                job = enqueue_student_photo_deletion('student_photos/example.png')
+                storage.delete.assert_not_called()
+
+        storage.delete.assert_called_once_with(job.name)
+        self.assertFalse(StudentPhotoDeletionJob.objects.filter(pk=job.pk).exists())
+
+    def test_delete_intent_rolls_back_with_the_database_transaction(self):
+        storage = Mock()
+        with patch('students.photo_deletion.storages', {'default': storage}):
+            with self.assertRaisesRegex(RuntimeError, 'rollback'):
+                with transaction.atomic():
+                    enqueue_student_photo_deletion('student_photos/example.png')
+                    self.assertEqual(StudentPhotoDeletionJob.objects.count(), 1)
+                    raise RuntimeError('rollback')
+
+        self.assertEqual(StudentPhotoDeletionJob.objects.count(), 0)
+        storage.delete.assert_not_called()
+
+    def test_failed_fast_path_is_retained_and_retried_without_logging_key(self):
+        storage = Mock()
+        storage.delete.side_effect = OSError('remote storage unavailable: private-name.png')
+        attempted_at = timezone.now()
+
+        with patch('students.photo_deletion.storages', {'default': storage}):
+            with self.assertLogs('students.photo_deletion', level='ERROR') as captured:
+                with self.captureOnCommitCallbacks(execute=True):
+                    job = enqueue_student_photo_deletion('student_photos/private-name.png')
+
+            self.assertNotIn('private-name.png', captured.output[0])
+            job.refresh_from_db()
+            self.assertEqual(job.attempts, 1)
+            self.assertEqual(job.last_error_type, 'OSError')
+            self.assertEqual(
+                job.next_attempt_at,
+                job.last_attempt_at + timedelta(seconds=60),
+            )
+
+            # Make it due and let the same persisted job succeed on a later run.
+            StudentPhotoDeletionJob.objects.filter(pk=job.pk).update(
+                next_attempt_at=attempted_at,
+            )
+            storage.delete.side_effect = None
+            result = process_due_student_photo_deletions(now=attempted_at)
+
+        self.assertEqual(result, {'processed': 1, 'deleted': 1, 'retrying': 0})
+        self.assertFalse(StudentPhotoDeletionJob.objects.filter(pk=job.pk).exists())
+
+    def test_worker_only_processes_due_jobs_and_honors_batch_limit(self):
+        due = enqueue_student_photo_deletion('student_photos/due.png')
+        future = enqueue_student_photo_deletion('student_photos/future.png')
+        future.next_attempt_at = timezone.now() + timedelta(days=1)
+        future.save(update_fields=['next_attempt_at'])
+        storage = Mock()
+
+        with patch('students.photo_deletion.storages', {'default': storage}):
+            result = process_due_student_photo_deletions(limit=1)
+
+        self.assertEqual(result, {'processed': 1, 'deleted': 1, 'retrying': 0})
+        storage.delete.assert_called_once_with(due.name)
+        self.assertFalse(StudentPhotoDeletionJob.objects.filter(pk=due.pk).exists())
+        self.assertTrue(StudentPhotoDeletionJob.objects.filter(pk=future.pk).exists())
+
+    def test_management_command_reports_retryable_failure_without_exposing_key(self):
+        job = enqueue_student_photo_deletion('student_photos/private-name.png')
+        storage = Mock()
+        storage.delete.side_effect = OSError('backend message with private-name.png')
+
+        with patch('students.photo_deletion.storages', {'default': storage}):
+            with self.assertRaisesMessage(CommandError, 'durable retries were scheduled'):
+                call_command(
+                    'retry_student_photo_deletions',
+                    stdout=StringIO(),
+                    stderr=StringIO(),
+                )
+
+        job.refresh_from_db()
+        self.assertEqual(job.attempts, 1)
+        self.assertEqual(job.last_error_type, 'OSError')
 
 
 class StudentPhotoWorkflowTests(TestCase):
@@ -186,6 +259,16 @@ class StudentPhotoWorkflowTests(TestCase):
                 data[field_name] = value
         return data
 
+    def process_photo_deletion_queue(self):
+        output = StringIO()
+        with patch('students.photo_deletion.storages', {'default': self.storage}):
+            call_command(
+                'retry_student_photo_deletions',
+                stdout=output,
+                stderr=StringIO(),
+            )
+        return output.getvalue()
+
     def test_photo_is_rendered_on_student_list_detail_and_id_card(self):
         for url in (
             reverse('student_list'),
@@ -249,20 +332,27 @@ class StudentPhotoWorkflowTests(TestCase):
         several_students_query_count = query_count()
         self.assertEqual(several_students_query_count, one_student_query_count)
 
-    def test_student_form_clear_removes_the_file_after_commit(self):
+    def test_student_form_clear_queues_file_deletion_for_worker(self):
         data = self.photo_form_data()
         data['photo-clear'] = 'on'
         form = StudentForm(data=data, instance=self.student, user=self.user)
         self.assertTrue(form.is_valid(), form.errors)
 
-        with self.captureOnCommitCallbacks(execute=True):
-            saved = form.save()
-
+        saved = form.save()
         saved.refresh_from_db()
         self.assertFalse(saved.photo)
-        self.assertFalse(self.storage.exists(self.photo_name))
+        self.assertTrue(self.storage.exists(self.photo_name))
+        self.assertTrue(
+            StudentPhotoDeletionJob.objects.filter(name=self.photo_name).exists()
+        )
 
-    def test_replacing_a_photo_removes_the_old_file_after_commit(self):
+        self.process_photo_deletion_queue()
+        self.assertFalse(self.storage.exists(self.photo_name))
+        self.assertFalse(
+            StudentPhotoDeletionJob.objects.filter(name=self.photo_name).exists()
+        )
+
+    def test_replacing_a_photo_queues_old_file_for_worker(self):
         replacement_bytes = make_png(color=(20, 160, 90))
         replacement = SimpleUploadedFile(
             'replacement.png', replacement_bytes, content_type='image/png',
@@ -275,40 +365,57 @@ class StudentPhotoWorkflowTests(TestCase):
         )
         self.assertTrue(form.is_valid(), form.errors)
 
-        with self.captureOnCommitCallbacks(execute=True):
-            saved = form.save()
-
+        saved = form.save()
         saved.refresh_from_db()
         self.assertTrue(saved.photo)
         self.assertNotEqual(saved.photo.name, self.photo_name)
         self.assertTrue(self.storage.exists(saved.photo.name))
-        self.assertFalse(self.storage.exists(self.photo_name))
+        self.assertTrue(self.storage.exists(self.photo_name))
+        self.assertTrue(
+            StudentPhotoDeletionJob.objects.filter(name=self.photo_name).exists()
+        )
 
-    def test_archiving_retains_photo_but_hard_purge_deletes_it(self):
+        self.process_photo_deletion_queue()
+        self.assertFalse(self.storage.exists(self.photo_name))
+        self.assertTrue(self.storage.exists(saved.photo.name))
+
+    def test_archiving_retains_photo_and_hard_purge_queues_durable_delete(self):
         response = self.client.post(reverse('delete_student', args=[self.student.pk]))
         self.assertEqual(response.status_code, 302)
         self.student.refresh_from_db()
         self.assertTrue(self.student.is_archived)
         self.assertTrue(self.storage.exists(self.photo_name))
 
-        with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(reverse('purge_archived_student', args=[self.student.pk]))
+        response = self.client.post(reverse('purge_archived_student', args=[self.student.pk]))
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Student.objects.filter(pk=self.student.pk).exists())
+        self.assertTrue(self.storage.exists(self.photo_name))
+        self.assertTrue(
+            StudentPhotoDeletionJob.objects.filter(name=self.photo_name).exists()
+        )
+
+        self.process_photo_deletion_queue()
         self.assertFalse(self.storage.exists(self.photo_name))
+        self.assertFalse(
+            StudentPhotoDeletionJob.objects.filter(name=self.photo_name).exists()
+        )
 
     def test_single_photo_clear_remains_available_for_archived_student(self):
         self.student.is_archived = True
         self.student.save(update_fields=['is_archived'])
 
-        with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(
-                reverse('clear_student_photo', args=[self.student.pk]),
-                {'return_to': 'student_detail'},
-            )
+        response = self.client.post(
+            reverse('clear_student_photo', args=[self.student.pk]),
+            {'return_to': 'student_detail'},
+        )
 
         self.assertEqual(response.status_code, 302)
         self.assertTrue(Student.objects.get(pk=self.student.pk).is_archived)
+        self.assertTrue(self.storage.exists(self.photo_name))
+        self.assertTrue(
+            StudentPhotoDeletionJob.objects.filter(name=self.photo_name).exists()
+        )
+        self.process_photo_deletion_queue()
         self.assertFalse(self.storage.exists(self.photo_name))
 
     def test_bulk_clear_can_clean_archived_students_without_purging_records(self):
@@ -320,18 +427,22 @@ class StudentPhotoWorkflowTests(TestCase):
         archived.is_archived = True
         archived.save(update_fields=['is_archived'])
 
-        with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(reverse('bulk_clear_student_photos'), {
-                'student_ids': [str(archived.pk)],
-                'institution': str(self.institution.pk),
-                'return_to': 'archived_students',
-            })
+        response = self.client.post(reverse('bulk_clear_student_photos'), {
+            'student_ids': [str(archived.pk)],
+            'institution': str(self.institution.pk),
+            'return_to': 'archived_students',
+        })
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, f"{reverse('archived_students')}?institution={self.institution.pk}")
         archived.refresh_from_db()
         self.assertTrue(archived.is_archived)
         self.assertFalse(archived.photo)
+        self.assertTrue(self.storage.exists(archived_photo_name))
+        self.assertTrue(
+            StudentPhotoDeletionJob.objects.filter(name=archived_photo_name).exists()
+        )
+        self.process_photo_deletion_queue()
         self.assertFalse(self.storage.exists(archived_photo_name))
 
     def test_single_photo_clear_is_institution_scoped(self):
@@ -376,13 +487,15 @@ class StudentPhotoWorkflowTests(TestCase):
         self.assertTrue(self.storage.exists(self.photo_name))
         self.assertTrue(self.storage.exists(foreign_photo_name))
 
-        with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(reverse('bulk_clear_student_photos'), {
-                'student_ids': [str(self.student.pk)],
-            })
+        response = self.client.post(reverse('bulk_clear_student_photos'), {
+            'student_ids': [str(self.student.pk)],
+        })
         self.assertEqual(response.status_code, 302)
         self.student.refresh_from_db()
         self.assertFalse(self.student.photo)
+        self.assertTrue(self.storage.exists(self.photo_name))
+        self.assertTrue(self.storage.exists(foreign_photo_name))
+        self.process_photo_deletion_queue()
         self.assertFalse(self.storage.exists(self.photo_name))
         self.assertTrue(self.storage.exists(foreign_photo_name))
 

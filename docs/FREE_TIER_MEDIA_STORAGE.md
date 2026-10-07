@@ -164,3 +164,30 @@ its file iterator, 4 on the real `S3Storage` wiring).
 Those last 4 skip when `django-storages`/`boto3` are absent — CI and the Render
 build install both from `requirements.txt`, so they run there (and they passed on
 Python 3.12 / Django 6.1 in CI, which is the pinned combination).
+
+## 8. Student-photo deletion retries (OF-05)
+
+When a student photo is cleared, replaced, or hard-purged, the database transaction
+also writes a `StudentPhotoDeletionJob` row. An `on_commit` fast path deletes the
+object immediately when storage is healthy. If the process stops after commit or
+the backend fails, the outbox row remains; the worker retries with exponential
+backoff, starting at 60 seconds and capped at 24 hours. Only exception type and
+job ID are logged—never the object key or backend error message.
+
+Run the bounded worker with:
+
+```sh
+python manage.py retry_student_photo_deletions --limit 100
+```
+
+A deployment scheduler must invoke it periodically (for example every 5 minutes)
+with the same database and media-storage configuration as the web app. The command
+returns a nonzero exit if any deletes fail, while retaining those jobs for retry.
+On SQLite, schedule only one worker at a time. **No scheduler has been configured
+or verified for this project**, and the Render free service has no shell or
+one-off jobs; an approved external/scheduled execution path is still required.
+Do not treat the durable table alone as proof that automatic retries are running.
+
+The older §6 statement that the storage-wiring change had “no migration” predates
+OF-05: photo deletion retry now adds `students_studentphotodeletionjob` in
+migration `0048_studentphotodeletionjob.py`.

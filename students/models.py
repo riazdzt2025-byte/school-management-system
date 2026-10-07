@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 from uuid import uuid4
 from django.core.serializers.json import DjangoJSONEncoder
 from .photo_uploads import student_photo_upload_to, validate_student_photo
@@ -1147,4 +1148,31 @@ class RateLimitCacheEntry(models.Model):
 
     class Meta:
         db_table = 'django_cache'
+        default_permissions = ()
+
+
+class StudentPhotoDeletionJob(models.Model):
+    """Durable outbox entry for deleting a photo after its DB reference clears.
+
+    This intentionally stores only a storage alias and object name, not a
+    Student foreign key: hard purge must not cascade the retry record away.
+    """
+    storage_alias = models.CharField(max_length=100, default='default')
+    name = models.CharField(max_length=512)
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    # Keep only an exception class name; backend errors can contain object keys
+    # or credentials and must not be persisted or printed.
+    last_error_type = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['next_attempt_at', 'pk']
+        indexes = [
+            models.Index(
+                fields=['next_attempt_at', 'id'],
+                name='student_photo_del_due',
+            ),
+        ]
         default_permissions = ()

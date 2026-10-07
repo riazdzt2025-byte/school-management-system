@@ -1,13 +1,13 @@
 # Handoff — School Management System
 
-## সেশন OF-05 — ২০২৬-১০-০৭ · প্রম্পট ১৩/২৮ · Student photos — implementation complete locally, merge gate open
+## সেশন OF-05 — ২০২৬-১০-০৭ · প্রম্পট ১৩/২৮ · Student photos — durable outbox hardening, merge gate open
 
 - **Branch/base:** `arena/1805a6ab-school-management-system` / `e7904ba` (= `origin/main`). Production DB, Render, credentials, live S3 ও real student data ছোঁয়া হয়নি।
 - **Owner policy:** admission photo নেই; ২ MiB max, 300×300–4096×4096 inclusive; photo archive/TC-তেও রাখা, per-student + institution-scoped bulk clear, hard-purge-এ file delete।
-- **Implementation:** model validator + UUID storage key; replace/clear/purge-এ post-commit `Storage.delete`; archive/TC retain; active ও archived list থেকে bulk cleanup; institution scope/permission/audit; list/detail/ID/result cards-এ photo/fallback; N+1 test। Migration `0047_alter_student_photo.py`; data/media backfill নেই।
-- **Evidence:** focused **১১৩** (upload ১২ + photo workflow ২৩ + storage ৩৪ + isolation ৪৪); full **৮৫২ Django + ২৯ Node pass**; `check` ০; `makemigrations --check` clean। Local Python 3.11 / Django 5.2.17 fallback, SQLite + `/tmp` media।
-- **Unverified / merge gate:** GitHub CI (Django 6.1, SQLite/PostgreSQL 16, Node) 3/3 green, run `37576338768`; browser/print/PDF, deployed `MEDIA_URL` ও live S3 এখনো unverified। S3 signed URL/key path fake config-এ যাচাই, network নয়। Post-commit storage outage/crash হলে orphan cleanup retry queue নেই; generic error log হয়। **এই residual risk ও deployment public-media setting review না হওয়া পর্যন্ত merge নয়।**
-- **Commit/PR:** Commits `423acfe` + `6b983a3` pushed; Draft PR [#61](https://github.com/riazdzt2025-byte/school-management-system/pull/61), CI 3/3 green (run `37576338768`), merge intentionally withheld. Details `docs/prompts/reports/OF-05.md`.
+- **Implementation:** model validator + UUID storage key; replace/clear/purge transaction-এ `StudentPhotoDeletionJob` outbox; commit-এর পর fast-path delete, failure/crash-এ durable retry; archive/TC retain; active/archived bulk cleanup; institution scope/permission/audit; list/detail/ID/result cards-এ photo/fallback; N+1 test। Migrations `0047` (state-only) + `0048` (outbox table/index); data/media backfill নেই। Worker: `retry_student_photo_deletions --limit 100`, exponential backoff.
+- **Evidence:** focused **১১৬** (upload ১২ + photo workflow ২৬ + storage ৩৪ + isolation ৪৪); full **৮৫৫ Django + ২৯ Node pass**; `check` ০; migration check clean; `0047` SQL no-op, `0048` table/index only। Local Python 3.11 / Django 5.2.17 fallback, SQLite + `/tmp` media।
+- **Unverified / merge gate:** updated code-এর GitHub CI push-এর পর pending; previous PR head run `37577262528` সবুজ ছিল। Browser/print/PDF, deployed `MEDIA_URL` ও live S3 unverified। Durable retry command exists, কিন্তু periodic scheduler configure/verify হয়নি। Default S3 signed/private; `AWS_S3_PUBLIC_BASE_URL` public করতে পারে—owner policy/config review বাকি। **Scheduler path ও private-media policy review না হওয়া পর্যন্ত merge নয়।**
+- **Commit/PR:** Outbox hardening + docs local update; Draft PR [#61](https://github.com/riazdzt2025-byte/school-management-system/pull/61) updated branch head-এ push/fresh CI pending; merge নয়। Details `docs/prompts/reports/OF-05.md`.
 - **Next:** OF-05 review/CI gate; তারপর owner-এর ক্রমে prompt 14 (OF-06)।
 
 ---
