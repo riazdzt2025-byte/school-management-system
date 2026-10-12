@@ -1,6 +1,6 @@
 # Task Backlog — first production release scope
 
-_Last updated: ২০২৬-১০-১২ (OF-06 — public success slip + public status/progress page; local **873 Django + 29 Node pass**, PR #63 OPEN; আগের: ২০২৬-১০-০৬ OF-04 follow-up, PR #59 MERGED)_
+_Last updated: ২০২৬-১০-১২ (OF-06 — public success slip + public status/progress page; local **873 Django + 29 Node pass**, PR #63 MERGED; আগের: ২০২৬-১০-০৬ OF-04 follow-up, PR #59 MERGED)_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 
@@ -443,5 +443,5 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 - **নতুন public surface:** `PublicAdmissionStatusForm` (lowercase/hyphen/prefix-ছাড়া number ও বাংলা অঙ্ক চলে) · এক query-তে number+tail মিলিয়ে status · ৪-ধাপ **timeline** (তারিখসহ) · masked name/contact · ENROLLED-এ Student ID · slip-এ print CSS, Copy details, WhatsApp share, জমার তারিখ; পুরোনো internal `dashboard` link সরানো; তিন public template-এ `noindex, nofollow`।
 - **Privacy (pinned):** ভুল number / ভুল tail / malformed input — সবেতেই একই generic বার্তা এবং (visitor-এর নিজের typed number echo বাদে) একই byte-body ⇒ enumeration oracle নয়; cross-applicant isolation দুই দিকেই; remarks/actor/amount/`next_step` কোনো public template-এ নেই (source pin).
 - **Throttle:** P1-9 helper reuse — ৩০ lookup/১০মিনিট per address + ৫ ভুল/১৫মিনিট per (address, application number); XFF-এর বাঁ দিক spoof করে bypass হয় না; `RATE_LIMIT_CACHE=db`-তেও কাজ করে।
-- **প্রমাণ:** নতুন `students/test_public_admission_status.py` **৩৫**; regression ৬ মডিউলে **১১৭**; পূর্ণ suite **৮৭৩ Django + ২৯ Node pass**, `check` 0, `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-06.md`; PR #63 (OPEN, owner merge সাপেক্ষ)।
+- **প্রমাণ:** নতুন `students/test_public_admission_status.py` **৩৫**; regression ৬ মডিউলে **১১৭**; পূর্ণ suite **৮৭৩ Django + ২৯ Node pass**, `check` 0, `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-06.md`; **PR #63 owner-এর নির্দেশে MERGED (`c823d1d`, 2026-10-12; CI ৩/৩ সবুজ)**।
 - **এখন খোলা (ক্রম অনুযায়ী):** OF-07 integrity audit (baseline Unverified) · OF-08 archive/promotion/certificates audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification + **OF-06-এর নতুন owner-decision আইটেম** (institution contact phone field হবে কি না)। OF-02-এর ৭টি list view ও OF-05-এর তিন গ্যাপ এর মধ্যে বন্ধ হয়েছে (PR #54 / PR #62 MERGED)।
