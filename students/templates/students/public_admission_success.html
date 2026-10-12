@@ -3,46 +3,208 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# Public page: never indexed, never linked from inside the system (OF-06). #}
+    <meta name="robots" content="noindex, nofollow">
     <title>Application Submitted — Principal Kazi Faruky School And College</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root { --navy: #0F2D52; --navy-light: #17406e; --gold: #C9A227; --bg: #F6F7FA; }
         body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
-        h1, .brand { font-family: 'Fraunces', serif; }
-        .main { padding: 32px 40px; }
-        .page-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
-        .page-header h1 { font-size: 1.6rem; color: var(--navy); }
-        .btn-navy { background: var(--navy); color: #fff; border-radius: 8px; border: none; }
+        h1, h2, .brand { font-family: 'Fraunces', serif; }
+
+        .hero {
+            background: linear-gradient(120deg, var(--navy) 0%, #17406e 70%, #1d5189 100%);
+            color: #fff; padding: 40px 20px 48px; position: relative; overflow: hidden; text-align: center;
+        }
+        .hero::after {
+            content: ''; position: absolute; left: -80px; bottom: -100px; width: 240px; height: 240px;
+            border-radius: 50%; background: rgba(201,162,39,0.15);
+        }
+        .hero .crest {
+            width: 60px; height: 60px; margin: 0 auto 12px; border-radius: 17px;
+            background: rgba(255,255,255,0.10); border: 1px solid rgba(201,162,39,0.55);
+            display: flex; align-items: center; justify-content: center; font-size: 1.6rem; color: var(--gold);
+            position: relative; z-index: 1;
+        }
+        .hero h1 { font-size: 1.45rem; margin: 0 0 6px; position: relative; z-index: 1; }
+        .hero p { margin: 0; opacity: .85; font-size: .93rem; position: relative; z-index: 1; }
+        .hero .gold-rule { width: 68px; height: 3px; background: var(--gold); border-radius: 2px; margin: 14px auto 0; position: relative; z-index: 1; }
+
+        .main { padding: 0 16px 48px; max-width: 860px; margin: -26px auto 0; position: relative; z-index: 2; }
+        .panel {
+            background: #fff; border-radius: 16px; padding: 28px;
+            box-shadow: 0 10px 30px rgba(15,45,82,0.12); border: 1px solid rgba(15,45,82,0.05);
+        }
+        .panel + .panel { margin-top: 18px; }
+        .headline { font-family: 'Fraunces', serif; color: var(--navy); font-size: 1.3rem; margin-bottom: 4px; }
+        .headline-sub { color: #5c6b7a; font-size: .92rem; }
+        .appno {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 1.35rem; font-weight: 600; letter-spacing: .5px; color: var(--navy);
+            background: #F6F7FA; border: 1px dashed #c6ced8; border-radius: 12px;
+            padding: 14px 16px; word-break: break-all;
+        }
+        .appno-label { color: #6b7a89; font-size: .82rem; text-transform: uppercase; letter-spacing: .6px; }
+        .who { background: #F6F7FA; border: 1px solid #e4e8ee; border-radius: 12px; padding: 14px 16px; margin: 18px 0; }
+        .who dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: .92rem; }
+        .who dt { color: #6b7a89; font-weight: 500; }
+        .who dd { margin: 0; color: var(--navy); font-weight: 600; }
+        .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+        .steps li { position: relative; padding: 0 0 14px 34px; font-size: .93rem; color: #3f4a57; counter-increment: step; }
+        .steps li:last-child { padding-bottom: 0; }
+        .steps li::before {
+            content: counter(step); position: absolute; left: 0; top: 0; width: 22px; height: 22px;
+            border-radius: 50%; background: var(--navy); color: #fff; font-size: .78rem; font-weight: 600;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .steps li::after { content: ''; position: absolute; left: 10px; top: 24px; bottom: 0; width: 2px; background: #e4e8ee; }
+        .steps li:last-child::after { display: none; }
+        .section-title {
+            display: flex; align-items: center; gap: 10px; font-family: 'Fraunces', serif; color: var(--navy);
+            font-size: 1.02rem; margin: 22px 0 12px; padding-bottom: 8px; border-bottom: 2px solid var(--gold);
+        }
+        .section-title:first-child { margin-top: 0; }
+        .btn-navy { background: var(--navy); color: #fff; border-radius: 10px; border: none; padding: 10px 22px; font-weight: 600; }
         .btn-navy:hover { background: var(--navy-light); color: #fff; }
-        .form-card { background: #fff; border-radius: 14px; padding: 32px; box-shadow: 0 4px 14px rgba(15,45,82,0.06); }
+        .btn-quiet { border-radius: 10px; border: 1px solid #cfd6de; color: var(--navy); background: #fff; padding: 10px 18px; }
+        .btn-quiet:hover { background: #f2f4f7; color: var(--navy); }
+        .office-note { font-size: .88rem; color: #6b7a89; }
+        .foot { text-align: center; color: #8b97a5; font-size: .84rem; margin-top: 22px; }
+
         @media (max-width: 768px) {
-            .main { padding: 80px 16px 24px; }
-            .form-card { padding: 20px; }
+            .hero { padding: 30px 14px 42px; }
+            .panel { padding: 20px 16px; }
+            .who dl { grid-template-columns: 1fr; gap: 2px; }
+            .appno { font-size: 1.05rem; }
+        }
+
+        /* printable slip: the details print, the buttons do not */
+        @media print {
+            body { background: #fff; }
+            .hero { background: #fff; color: #000; padding: 0 0 12px; text-align: left; }
+            .hero::after, .hero .gold-rule { display: none; }
+            .hero .crest { color: #000; border-color: #000; }
+            .main { margin: 0; max-width: none; padding: 0; }
+            .panel { box-shadow: none; border: none; padding: 0; }
+            .no-print { display: none !important; }
         }
     </style>
 </head>
 <body>
+<div class="hero">
+    <div class="crest"><i class="bi bi-check2-circle"></i></div>
+    <h1>Principal Kazi Faruky School And College</h1>
+    <p>Application Submitted</p>
+    <div class="gold-rule"></div>
+</div>
+
 <div class="main">
-    <div class="page-header">
-        <div>
-            <h1>Application Submitted</h1>
-            <div class="text-muted">Your admission application has been received.</div>
+    <div class="panel">
+        <div class="headline">Application submitted successfully</div>
+        <div class="headline-sub">
+            Thank you. The office has received your admission application — please keep
+            this slip safe.
         </div>
-        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">← Back to Home</a>
+
+        <div class="mt-3">
+            <div class="appno-label">Application Number</div>
+            <div class="appno" id="application-number">{{ application.application_number }}</div>
+        </div>
+
+        <div class="who">
+            <dl>
+                <dt>Applicant</dt>
+                <dd>{{ application.applicant_name }}</dd>
+                <dt>Class / Section</dt>
+                <dd>{{ application.requested_class }}{% if application.requested_section %} / {{ application.requested_section }}{% endif %}{% if application.requested_group %} ({{ application.get_requested_group_display }}){% endif %}</dd>
+                <dt>Session</dt>
+                <dd>{{ application.session }}</dd>
+                <dt>Institution</dt>
+                <dd>{{ application.institution.name }}</dd>
+                <dt>Guardian contact</dt>
+                <dd>{{ masked_contact }}</dd>
+                <dt>Submitted on</dt>
+                <dd>{{ application.submitted_at|date:"d M Y, h:i A" }}</dd>
+            </dl>
+        </div>
+
+        <div class="section-title">
+            <span class="section-icon"><i class="bi bi-list-check"></i></span>What happens next
+        </div>
+        <ol class="steps">
+            <li><strong>Office review.</strong> The school office checks your application. Keep the guardian contact number reachable — the office may call it.</li>
+            <li><strong>Admission payment.</strong> After the office review the file goes to the accounts section; the office will tell you the fee and how to pay.</li>
+            <li><strong>Enrolment.</strong> Once the payment is confirmed the student is enrolled and the office gives you the money receipt and the student ID card.</li>
+        </ol>
+        <p class="office-note mt-3 mb-0">
+            No payment is collected on this page. Anything the office needs from you
+            will be asked over the phone or at the school office desk.
+        </p>
+
+        <div class="section-title">
+            <span class="section-icon"><i class="bi bi-share"></i></span>Keep or share this slip
+        </div>
+        <dl class="mb-3">
+            <dt class="office-note">Check the status later</dt>
+            <dd class="small mb-0">
+                Use the application number above together with the last 4 digits of the
+                guardian contact number ({{ masked_contact }}).
+            </dd>
+        </dl>
+        <div class="d-flex flex-wrap gap-2 no-print">
+            <button type="button" class="btn btn-quiet" onclick="window.print()">
+                <i class="bi bi-printer me-1"></i>Print slip
+            </button>
+            <button type="button" class="btn btn-quiet" id="copy-slip" data-copy="{{ share_text }}">
+                <i class="bi bi-clipboard me-1"></i>Copy details
+            </button>
+            <a class="btn btn-quiet"
+               href="https://wa.me/?text={{ share_text|urlencode }}"
+               target="_blank" rel="noopener noreferrer">
+                <i class="bi bi-whatsapp me-1"></i>Send on WhatsApp
+            </a>
+            <a class="btn btn-navy" href="{% url 'public_admission_status' %}">
+                <i class="bi bi-search me-1"></i>Check status
+            </a>
+        </div>
+        <div class="office-note mt-2 no-print" id="copy-status" hidden></div>
+
+        <div class="mt-3 no-print">
+            <a class="office-note" href="{% url 'public_admission_apply' %}">
+                <i class="bi bi-pencil-square me-1"></i>Submit another application
+            </a>
+        </div>
     </div>
 
-    <div class="form-card">
-        <p class="mb-3">Thank you for submitting your admission application. Please save your application number for future reference.</p>
-        <div class="alert alert-info">
-            <strong>Application Number:</strong> {{ application.application_number }}<br>
-            <strong>Applicant:</strong> {{ application.applicant_name }}<br>
-            <strong>Class:</strong> {{ application.requested_class }} {{ application.requested_section }}<br>
-            <strong>Session:</strong> {{ application.session }}
-        </div>
-        <p class="text-muted">Our office will review your application and contact you shortly. You can use the application number above to check the status.</p>
+    <div class="foot">
+        Principal Kazi Faruky School And College — Online Admission
     </div>
 </div>
 
+<script>
+    (function () {
+        var button = document.getElementById('copy-slip');
+        if (!button) { return; }
+        var status = document.getElementById('copy-status');
+        function say(message) {
+            if (!status) { return; }
+            status.textContent = message;
+            status.hidden = false;
+        }
+        button.addEventListener('click', function () {
+            var text = button.getAttribute('data-copy') || '';
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(
+                    function () { say('Application number copied. Paste it in a message to keep it.'); },
+                    function () { say('Copy is not available in this browser — please select the number and copy it.'); }
+                );
+            } else {
+                say('Copy is not available in this browser — please select the number and copy it.');
+            }
+        });
+    })();
+</script>
 </body>
 </html>
