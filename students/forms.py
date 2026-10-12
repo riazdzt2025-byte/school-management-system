@@ -328,6 +328,75 @@ class AdmissionApplicationForm(forms.ModelForm):
         return cleaned_data
 
 
+# ---- Public "check your admission status" form (OF-06) --------------------
+# The applicant's two-part key: the application number from the slip plus the
+# last four digits of the guardian contact number. The form itself never looks
+# at the database — the view does the lookup and answers every mismatch with
+# the same generic message — so nothing here can turn into an oracle.
+
+_APPLICATION_NUMBER_SHAPE = re.compile(r'^[0-9A-F]{12}$')
+
+
+def normalize_application_number(value):
+    """Normalise a typed application number for lookup.
+
+    ``AdmissionApplication.application_number`` is ``APP-`` + 12 uppercase hex
+    characters (e.g. ``APP-1A2B3C4D5E6F``). A parent who types it in lowercase,
+    with spaces/dashes, or without the ``APP-`` prefix still gets a match;
+    anything that is not that shape is returned as typed (uppercased) so the
+    lookup simply finds nothing and the generic "not found" answer is given.
+    """
+    cleaned = re.sub(r'[^0-9A-Za-z]', '', str(value or '')).upper()
+    if cleaned.startswith('APP'):
+        cleaned = cleaned[3:]
+    if _APPLICATION_NUMBER_SHAPE.match(cleaned):
+        return 'APP-' + cleaned
+    return cleaned[:40]
+
+
+class PublicAdmissionStatusForm(forms.Form):
+    """Public status check: application number + guardian contact tail.
+
+    Both fields are plain text (Bangla digits are accepted and normalised) and
+    the widget hints keep the two values easy to type on a phone. Validation
+    failures are never shown field-by-field on the public page: the view
+    renders one generic message for every mismatch so a wrong tail, a bad
+    format and an unknown application number are indistinguishable.
+    """
+
+    application_number = forms.CharField(
+        max_length=40,
+        label='Application Number',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control', 'autocomplete': 'off', 'autocapitalize': 'off',
+            'spellcheck': 'false', 'placeholder': 'APP-1A2B3C4D5E6F',
+        }),
+    )
+    contact_last4 = forms.CharField(
+        max_length=4,
+        label='Guardian contact number — last 4 digits',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control', 'autocomplete': 'off', 'inputmode': 'numeric',
+            'maxlength': '4', 'pattern': '[0-9]{4}', 'placeholder': '5678',
+        }),
+    )
+
+    def clean_application_number(self):
+        value = normalize_application_number(self.cleaned_data.get('application_number'))
+        if not value:
+            raise forms.ValidationError('Enter the application number from your slip.')
+        return value
+
+    def clean_contact_last4(self):
+        # Bangla digits -> ASCII, then exactly four digits.
+        digits = re.sub(r'\D', '', normalize_guardian_contact(self.cleaned_data.get('contact_last4')))
+        if len(digits) != 4:
+            raise forms.ValidationError(
+                'Enter the last 4 digits of the guardian contact number.'
+            )
+        return digits
+
+
 class AdmissionPaymentForm(forms.ModelForm):
     class Meta:
         model = AdmissionApplication

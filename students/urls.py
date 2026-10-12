@@ -7,6 +7,7 @@ urlpatterns = [
     path('admission/download-sheet/', views.download_admission_sheet, name='download_admission_sheet'),
     path('admission/new/', views.create_admission_application, name='admission'),
     path('admission/apply/', views.public_admission_apply, name='public_admission_apply'),
+    path('admission/status/', views.public_admission_status, name='public_admission_status'),
     path('admission/dropdown-options/', views.admission_dropdown_options, name='admission_dropdown_options'),
     path('admission/<int:pk>/', views.admission_application_detail, name='admission_application_detail'),
     path('admission/<int:pk>/office-approve/', views.office_approve_application, name='office_approve_application'),

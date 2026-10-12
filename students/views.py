@@ -34,6 +34,7 @@ from .forms import (
     ExamForm, auto_exam_name, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm,
     EmployeeStatusChangeForm, MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
     AdmissionApplicationForm, AdmissionPaymentForm, AttendanceMarkingForm, DailyAttendanceSelectionForm,
+    PublicAdmissionStatusForm, normalize_application_number,
 )
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
@@ -704,12 +705,230 @@ def public_admission_apply(request):
         form = AdmissionApplicationForm(request.POST or None)
         if form.is_valid():
             application = form.save()
-            return render(request, 'students/public_admission_success.html', {
-                'application': application,
-            })
+            return render(request, 'students/public_admission_success.html',
+                          _public_success_context(request, application))
         return render(request, 'students/public_admission_form.html', {'form': form})
     form = AdmissionApplicationForm()
     return render(request, 'students/public_admission_form.html', {'form': form})
+
+
+# ---------------- public application slip + status check (OF-06) ----------------
+# The applicant's own two pages, both reachable without a login:
+#   * the printable slip shown right after the public form is submitted, and
+#   * "check your admission status", which needs the application number PLUS
+#     the last four digits of the guardian contact number.
+# Privacy rules that the tests pin:
+#   * every mismatch — unknown number, wrong tail, malformed input — renders the
+#     same page with the same generic message, so the route cannot be used to
+#     test whether an application number exists (enumeration);
+#   * only the applicant's own masked name is shown, never internal remarks,
+#     the acting user, amounts or another applicant's data;
+#   * no internal route is linked from a public page, and every public page
+#     carries `noindex, nofollow`.
+
+
+def _mask_person_name(value):
+    """``Md. Rahim Uddin`` -> ``M*** R*** U***``.
+
+    Public pages show names masked only. A fixed three-asterisk tail keeps the
+    rendered page the same size whatever the real name is.
+    """
+    parts = [f'{word[0].upper()}***' for word in str(value or '').split() if word]
+    return ' '.join(parts)
+
+
+def _mask_contact_tail(value):
+    """``01812345678`` -> ``*******5678`` (hidden digits become asterisks)."""
+    digits = re.sub(r'\D', '', str(value or ''))
+    if not digits:
+        return ''
+    return '*' * max(len(digits) - 4, 0) + digits[-4:]
+
+
+PUBLIC_STATUS_IP_LIMIT = 30            # all status lookups from one address ...
+PUBLIC_STATUS_IP_WINDOW_SECONDS = 600  # ... per 10 minutes
+PUBLIC_STATUS_FAIL_LIMIT = 5           # wrong details for one application ...
+PUBLIC_STATUS_FAIL_WINDOW_SECONDS = 900  # ... lock that pair for 15 minutes
+
+PUBLIC_STATUS_NOT_FOUND_ERROR = (
+    'No application was found with those details. Please check the application '
+    'number and the last 4 digits of the guardian contact number.'
+)
+PUBLIC_STATUS_THROTTLE_ERROR = (
+    'Too many status checks from this address. Please wait a few minutes and try again.'
+)
+
+# Applicant-facing wording per status: (headline, what happens next). The text
+# is fixed here on purpose — ``office_remarks`` / ``account_remarks`` are
+# internal and never reach a public page.
+PUBLIC_STATUS_MESSAGES = {
+    'SUBMITTED': (
+        'Application received',
+        'The office will review your application. Please keep the phone reachable '
+        '— the office may call the guardian contact number you gave. Nothing else '
+        'is needed from you right now.',
+    ),
+    'OFFICE_APPROVED': (
+        'Office review complete',
+        'Your application passed the office review and has been sent to the '
+        'accounts section for the admission payment.',
+    ),
+    'ACCOUNT_PENDING': (
+        'Waiting for the accounts section',
+        'The accounts section will confirm the admission payment. The school '
+        'office will contact you about the fee.',
+    ),
+    'PAYMENT_APPROVED': (
+        'Payment confirmed',
+        'Your payment is confirmed and the admission is being finalised.',
+    ),
+    'ENROLLED': (
+        'Admission complete',
+        'Admission is complete. Please collect the money receipt and the student '
+        'ID card from the school office.',
+    ),
+    'REJECTED': (
+        'Application closed',
+        'This application was not approved. If you have any questions, or would '
+        'like to apply again, please contact the school office.',
+    ),
+}
+
+_PUBLIC_STATUS_STEPS = (
+    'Application received',
+    'Office review',
+    'Accounts review',
+    'Admission complete',
+)
+# Index of the step the application is standing on right now (len == finished).
+_PUBLIC_STATUS_CURRENT_STEP = {
+    'SUBMITTED': 1,
+    'OFFICE_APPROVED': 2,
+    'ACCOUNT_PENDING': 2,
+    'PAYMENT_APPROVED': 3,
+    'ENROLLED': 4,
+}
+
+
+def _public_status_timeline(application):
+    """Stages and dates of an application, for the applicant's own eyes.
+
+    Nothing else: no remarks, no acting user, no amount. ``REJECTED`` gets a
+    two-step closed timeline instead of the happy path (the reason for the
+    decision is deliberately not published — owner decision, OF-06).
+    """
+    if application.status == 'REJECTED':
+        return [
+            {'label': _PUBLIC_STATUS_STEPS[0], 'state': 'done', 'date': application.submitted_at},
+            {'label': 'Review finished', 'state': 'closed', 'date': application.office_action_at},
+        ]
+    dates = (
+        application.submitted_at,
+        application.office_action_at,
+        application.account_action_at,
+        application.account_action_at,
+    )
+    current = _PUBLIC_STATUS_CURRENT_STEP.get(application.status, 1)
+    timeline = []
+    for index, label in enumerate(_PUBLIC_STATUS_STEPS):
+        if index < current:
+            state = 'done'
+        elif index == current:
+            state = 'current'
+        else:
+            state = 'todo'
+        timeline.append({
+            'label': label,
+            'state': state,
+            'date': dates[index] if state == 'done' else None,
+        })
+    return timeline
+
+
+def _public_status_fail_key(request, application_number):
+    """Counter key for wrong details on one application from one address."""
+    return f'rl:public_status_fail:{_client_ip(request)}:{application_number[:40]}'
+
+
+def _match_public_application(application_number, contact_last4):
+    """The application whose number *and* contact tail both match, else None.
+
+    One query, one boolean answer: the caller cannot tell an unknown
+    application number from a wrong contact tail.
+    """
+    application = AdmissionApplication.objects.select_related(
+        'institution', 'enrolled_student',
+    ).filter(application_number=application_number).first()
+    if application is None:
+        return None
+    digits = re.sub(r'\D', '', application.guardian_contact_no or '')
+    if len(contact_last4) != 4 or not digits.endswith(contact_last4):
+        return None
+    return application
+
+
+def _public_success_context(request, application):
+    """Context of the printable slip rendered right after a public POST."""
+    status_url = request.build_absolute_uri(reverse('public_admission_status'))
+    return {
+        'application': application,
+        'masked_contact': _mask_contact_tail(application.guardian_contact_no),
+        'status_url': status_url,
+        'share_text': (
+            f'Admission application {application.application_number} '
+            f'({application.institution.name}). Check the status: {status_url}'
+        ),
+    }
+
+
+def public_admission_status(request):
+    """Public "check your admission status" page (OF-06)."""
+    form = PublicAdmissionStatusForm(request.POST or None)
+    application = None
+    error = None
+    if request.method == 'POST':
+        if _rate_limit_exceeded(
+            request, 'public_status',
+            limit=PUBLIC_STATUS_IP_LIMIT, window_seconds=PUBLIC_STATUS_IP_WINDOW_SECONDS,
+        ):
+            error = PUBLIC_STATUS_THROTTLE_ERROR
+        else:
+            fail_key = _public_status_fail_key(
+                request, normalize_application_number(request.POST.get('application_number', '')),
+            )
+            if _rl_get(fail_key, 0) >= PUBLIC_STATUS_FAIL_LIMIT:
+                error = PUBLIC_STATUS_THROTTLE_ERROR
+            else:
+                if form.is_valid():
+                    application = _match_public_application(
+                        form.cleaned_data['application_number'],
+                        form.cleaned_data['contact_last4'],
+                    )
+                if application is None:
+                    _rl_set(fail_key, _rl_get(fail_key, 0) + 1, PUBLIC_STATUS_FAIL_WINDOW_SECONDS)
+                    error = PUBLIC_STATUS_NOT_FOUND_ERROR
+                else:
+                    # Right details clear that pair's failure budget.
+                    _rl_delete(fail_key)
+
+    context = {'form': form, 'error': error, 'application': application}
+    if application is not None:
+        headline, what_next = PUBLIC_STATUS_MESSAGES.get(
+            application.status, PUBLIC_STATUS_MESSAGES['SUBMITTED'],
+        )
+        context.update({
+            'headline': headline,
+            'what_next': what_next,
+            'timeline': _public_status_timeline(application),
+            'masked_name': _mask_person_name(application.applicant_name),
+            'masked_contact': _mask_contact_tail(application.guardian_contact_no),
+            'student_id': (
+                application.enrolled_student.student_id
+                if application.status == 'ENROLLED' and application.enrolled_student else ''
+            ),
+            'rejected': application.status == 'REJECTED',
+        })
+    return render(request, 'students/public_admission_status.html', context)
 
 
 @login_required
