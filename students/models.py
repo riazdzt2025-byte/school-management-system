@@ -503,6 +503,11 @@ class AdmissionApplication(models.Model):
                   'Stored as text so the leading zero is kept.',
     )
     guardian_address = models.TextField(blank=True)
+    # Optional applicant photo (internal admission form only — public form
+    # does not accept photos to reduce spam/rate-limit risk). Uploaded to
+    # 'admission_photos/' subdirectory. Max 1MB, JPG/PNG/GIF only (validated
+    # in the form, not the model).
+    applicant_photo = models.ImageField(upload_to='admission_photos/', blank=True, null=True)
     requested_class = models.CharField(max_length=10)
     requested_group = models.CharField(max_length=3, choices=Student.GROUP_CHOICES, blank=True)
     requested_section = models.CharField(max_length=5, blank=True)

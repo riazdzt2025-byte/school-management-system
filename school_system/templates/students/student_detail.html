@@ -2,11 +2,32 @@
 
 {% block title %}{{ student.name }} - Principal Kazi Faruky School And College{% endblock %}
 
+{% block extra_style %}
+    .student-profile-photo {
+        width: 120px; height: 120px; border-radius: 50%; object-fit: cover;
+        border: 4px solid #fff; box-shadow: 0 4px 14px rgba(15,45,82,0.15);
+    }
+    .student-photo-fallback-lg {
+        width: 120px; height: 120px; border-radius: 50%;
+        background: #f0f2f5; color: #6c757d;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 2.5rem;
+        border: 4px solid #fff; box-shadow: 0 4px 14px rgba(15,45,82,0.15);
+    }
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
-    <div>
-        <h1>{{ student.name }}</h1>
-        <div class="subtitle">Student ID: {{ student.student_id }} | Class {{ student.admission_class }} - {{ student.section }}</div>
+    <div class="d-flex align-items-center gap-3">
+        {% if student.photo %}
+            <img src="{{ student.photo.url }}" alt="{{ student.name }}" class="student-profile-photo"/>
+        {% else %}
+            <div class="student-photo-fallback-lg">{{ student.name|first|default:"?" }}</div>
+        {% endif %}
+        <div>
+            <h1 class="mb-0">{{ student.name }}</h1>
+            <div class="subtitle">Student ID: {{ student.student_id }} | Class {{ student.admission_class }} - {{ student.section }}</div>
+        </div>
     </div>
     <div class="page-actions">
         <form method="GET" action="{% url 'student_list' %}" class="d-flex gap-2">

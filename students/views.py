@@ -964,6 +964,10 @@ def accounts_approve_payment(request, pk):
             guardian_contact_no=application.guardian_contact_no,
             admission_year=int(application.session[:4]) if application.session[:4].isdigit() else None,
         )
+        # Transfer applicant photo from admission application to student record
+        if application.applicant_photo:
+            student.photo = application.applicant_photo
+            student.save(update_fields=['photo'])
         # Auto-assign Mandatory/Conditional subjects from the Subject
         # Assignments table (same source the "Add Student" form uses).
         # Optional subjects still need a manual pick, so leave those for
@@ -2806,7 +2810,12 @@ def _purge_archived_student(user, student):
     Admission applications point at the enrolled student with PROTECT, so that
     link is cleared first. Everything else (marks, receipts, certificates)
     cascades with the student row.
+
+    If DELETE_MEDIA_ON_PURGE is True (default), also delete the student's
+    photo file from storage (filesystem or S3). Set DELETE_MEDIA_ON_PURGE=False
+    to retain photos for audit/legal reasons.
     """
+    from django.conf import settings
     snapshot = {
         'student_id': student.student_id,
         'name': student.name,
@@ -2816,6 +2825,14 @@ def _purge_archived_student(user, student):
     }
     with transaction.atomic():
         AdmissionApplication.objects.filter(enrolled_student=student).update(enrolled_student=None)
+        # Delete photo file if configured to do so
+        if getattr(settings, 'DELETE_MEDIA_ON_PURGE', True) and student.photo:
+            try:
+                storage = student.photo.storage
+                name = student.photo.name
+                storage.delete(name)
+            except Exception:
+                pass  # Don't block purge if photo deletion fails
         record_audit(user, 'student_purged', student, snapshot=snapshot,
                      details={'source': 'purge_archived_student'})
         student.delete()
