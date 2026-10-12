@@ -76,6 +76,7 @@ class MediaBackendSelectionTests(TestCase):
         # Defaults an operator should not have to think about.
         self.assertIsNone(cfg['public_base_url'])
         self.assertIsNone(cfg['default_acl'])
+        self.assertEqual(cfg['cache_control'], 'private, no-store')
         self.assertEqual(cfg['querystring_expire'], 86400)
 
     def test_aws_s3_needs_no_endpoint_and_no_invented_region(self):
@@ -202,6 +203,62 @@ class MediaStorageCheckTests(TestCase):
         )
 
 
+class StudentPhotoPrivacyCheckTests(TestCase):
+    """Production must not silently turn student photos into public media."""
+
+    PRIVATE_CONFIG = {
+        'backend': 's3',
+        'public_base_url': None,
+        'default_acl': None,
+        'cache_control': 'private, no-store',
+    }
+
+    def check_ids(self, *, debug=False, remote=True, config=None, querystring_auth=True):
+        with override_settings(
+            DEBUG=debug,
+            MEDIA_IS_REMOTE=remote,
+            MEDIA_CONFIG=config or self.PRIVATE_CONFIG,
+            AWS_QUERYSTRING_AUTH=querystring_auth,
+        ):
+            return [check.id for check in checks.check_student_photo_storage_private()]
+
+    def test_private_signed_remote_storage_passes(self):
+        self.assertEqual(self.check_ids(), [])
+
+    def test_production_filesystem_media_is_rejected(self):
+        self.assertIn(
+            'students.E012',
+            self.check_ids(remote=False),
+        )
+
+    def test_development_filesystem_media_is_allowed(self):
+        self.assertEqual(self.check_ids(debug=True, remote=False), [])
+
+    def test_public_or_shared_access_settings_are_rejected(self):
+        cases = (
+            ({'public_base_url': 'https://public.example.invalid'}, True),
+            ({'default_acl': 'public-read'}, True),
+            ({'cache_control': 'max-age=3600, public'}, True),
+            ({'cache_control': 'max-age=3600'}, True),
+        )
+        for change, expected in cases:
+            with self.subTest(change=change):
+                config = {**self.PRIVATE_CONFIG, **change}
+                ids = self.check_ids(config=config)
+                self.assertEqual('students.E012' in ids, expected)
+
+        self.assertIn(
+            'students.E012',
+            self.check_ids(querystring_auth=False),
+        )
+
+    def test_private_photo_check_is_deploy_only(self):
+        self.assertIn(
+            checks.check_student_photo_storage_private,
+            registry.deployment_checks,
+        )
+
+
 class S3DependencyCheckTests(TestCase):
     def test_noop_when_media_is_local(self):
         with override_settings(MEDIA_IS_REMOTE=False):
@@ -242,6 +299,7 @@ class S3BackendWiringTests(TestCase):
             AWS_LOCATION=cfg['location'],
             AWS_DEFAULT_ACL=None,
             AWS_S3_FILE_OVERWRITE=False,
+            AWS_S3_OBJECT_PARAMETERS={'CacheControl': cfg['cache_control']},
             AWS_S3_CUSTOM_DOMAIN=None,
             AWS_QUERYSTRING_AUTH=True,
             AWS_QUERYSTRING_EXPIRE=cfg['querystring_expire'],
@@ -260,11 +318,15 @@ class S3BackendWiringTests(TestCase):
             self.assertTrue(default_storage.querystring_auth)
             self.assertEqual(default_storage.location, 'media')
 
-    def test_private_bucket_urls_are_absolute_and_prefixed(self):
+    def test_private_bucket_urls_are_absolute_prefixed_and_non_cacheable(self):
         from django.core.files.storage import default_storage
 
         with override_settings(**self._s3_override()):
             url = default_storage.url('student_photos/123.jpg')
+            object_parameters = default_storage.get_object_parameters(
+                'student_photos/123.jpg',
+            )
+        self.assertEqual(object_parameters.get('CacheControl'), 'private, no-store')
         self.assertTrue(url.startswith('https://'), url)
         self.assertIn('acct123.r2.cloudflarestorage.com', url)
         self.assertIn('media/student_photos/123.jpg', url)
@@ -285,8 +347,8 @@ class S3BackendWiringTests(TestCase):
         """The model field must follow the configured backend, not a cached
         filesystem storage — otherwise photos land in BASE_DIR/media again.
 
-        ``upload_to='student_photos/'`` is resolved against ``default_storage``
-        at access time, so the field's URL has to come out of the bucket.
+        The callable upload path remains relative to the configured storage;
+        the field's URL has to come out of the bucket.
         """
         from urllib.parse import urlsplit
 
@@ -301,6 +363,24 @@ class S3BackendWiringTests(TestCase):
         # <bucket>/<AWS_LOCATION>/<upload_to>/<name>
         self.assertEqual(parsed.path, '/school-media/media/student_photos/x.jpg')
         # Private bucket by default, so the URL carries a signature.
+        self.assertIn('X-Amz-Signature', parsed.query)
+
+    @needs_s3_stack
+    def test_opaque_student_photo_key_and_signed_url_use_s3_storage(self):
+        from urllib.parse import urlsplit
+
+        from students.models import Student
+
+        field = Student._meta.get_field('photo')
+        with override_settings(**self._s3_override()):
+            key = field.generate_filename(None, 'student name.png')
+            url = field.storage.url(key)
+
+        self.assertRegex(key, r'^student_photos/[0-9a-f]{32}[.]png$')
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.scheme, 'https')
+        self.assertEqual(parsed.netloc, 'acct123.r2.cloudflarestorage.com')
+        self.assertIn('media/' + key, parsed.path)
         self.assertIn('X-Amz-Signature', parsed.query)
 
 

@@ -57,8 +57,8 @@ jobs:
       # --- Production settings guards (SEC session-02) -----------------------
       # The settings module refuses to boot with the dev fallback SECRET_KEY
       # when DEBUG=False, and students.E016 fails `check --deploy` when
-      # ALLOWED_HOSTS stays on the '*' dev fallback. The three steps below prove
-      # both gates keep working — with ONLY ephemeral CI values (a throwaway
+      # ALLOWED_HOSTS stays on the '*' dev fallback. The four steps below prove
+      # the settings and private-photo deploy gates — with ONLY ephemeral CI values (a throwaway
       # key and a .invalid host), never real production secrets or hosts.
       - name: Deploy guard — fallback SECRET_KEY rejected when DEBUG=False
         env:
@@ -73,6 +73,11 @@ jobs:
         env:
           DEBUG: "False"
           SECRET_KEY: "ci-ephemeral-${{ github.run_id }}-${{ github.run_attempt }}"
+          USE_S3: "True"
+          AWS_STORAGE_BUCKET_NAME: "ci-student-photos"
+          AWS_ACCESS_KEY_ID: "ci-access-key"
+          AWS_SECRET_ACCESS_KEY: "ci-secret-key"
+          AWS_S3_CACHE_CONTROL: "private, no-store"
         run: |
           set +e
           output=$(python manage.py check --deploy 2>&1)
@@ -100,7 +105,41 @@ jobs:
           # sent, and nothing sends mail in CI, so naming the SMTP backend here
           # keeps this a production-shaped config without any mail server.
           MAILERS_BACKEND: "django.core.mail.backends.smtp.EmailBackend"
+          # The deploy guard requires private media because Student.photo is PII.
+          USE_S3: "True"
+          AWS_STORAGE_BUCKET_NAME: "ci-student-photos"
+          AWS_ACCESS_KEY_ID: "ci-access-key"
+          AWS_SECRET_ACCESS_KEY: "ci-secret-key"
+          AWS_S3_CACHE_CONTROL: "private, no-store"
         run: python manage.py check --deploy
+
+      - name: Deploy guard — public student photo media rejected (students.E012)
+        env:
+          DEBUG: "False"
+          SECRET_KEY: "ci-ephemeral-${{ github.run_id }}-${{ github.run_attempt }}"
+          ALLOWED_HOSTS: "ci.example.invalid,localhost"
+          CSRF_TRUSTED_ORIGINS: "https://ci.example.invalid"
+          TRUST_FORWARDED_PROTO: "True"
+          USE_X_FORWARDED_HOST: "True"
+          MAILERS_BACKEND: "django.core.mail.backends.smtp.EmailBackend"
+          USE_S3: "True"
+          AWS_STORAGE_BUCKET_NAME: "ci-student-photos"
+          AWS_ACCESS_KEY_ID: "ci-access-key"
+          AWS_SECRET_ACCESS_KEY: "ci-secret-key"
+          AWS_S3_PUBLIC_BASE_URL: "https://public.example.invalid"
+          AWS_S3_CACHE_CONTROL: "public, max-age=3600"
+        run: |
+          set +e
+          output=$(python manage.py check --deploy 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ $status -eq 0 ]; then
+            echo "::error::check --deploy accepted public student photo media"
+            exit 1
+          fi
+          echo "$output" | grep -q 'students.E012' \
+            || { echo "::error::deploy check failed without students.E012"; exit 1; }
 
       - name: Run test suite (${{ matrix.name }})
         run: |

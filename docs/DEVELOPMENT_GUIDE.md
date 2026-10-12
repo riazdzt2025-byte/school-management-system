@@ -141,7 +141,7 @@ State machine: `SUBMITTED → OFFICE_APPROVED → ACCOUNT_PENDING → PAYMENT_AP
 - `DEBUG` defaults True (dev); set `DEBUG=False` + real `SECRET_KEY` + `ALLOWED_HOSTS` + `CSRF_TRUSTED_ORIGINS` + `TRUST_FORWARDED_PROTO=True` + `USE_X_FORWARDED_HOST=True` behind proxy — otherwise CSRF 403।
 - `EXAM_ABSENT_SUBJECT_FAILS=True` default (un-entered = F); disable করতে `False`।
 - `DATABASE_URL` via `dj-database-url` (sqlite default, Postgres via `postgres://...`); `P0B_BACKUP_ROOT` must be persistent (cron filesystem is ephemeral)।
-- Media: `USE_S3=True` + `AWS_STORAGE_BUCKET_NAME/_ACCESS_KEY_ID/_SECRET_ACCESS_KEY` (+ endpoint/region for R2/B2) → `MEDIA_URL` bucket/CDN; else `MEDIA_ROOT` (persistent disk)। `E011` (missing storages/boto3) + `W010` (ephemeral media) via `checks.py`।
+- Media / student-photo privacy (owner policy 2026-10-07): production must use private S3-compatible storage with signed URLs and `Cache-Control: private, no-store`; unset `AWS_S3_PUBLIC_BASE_URL` and avoid public ACL/shared caching. `students.E012` (`check --deploy`) rejects public settings and production filesystem media; `students.E011` checks S3 dependencies; `students.W010` warns about ephemeral app-tree media. Verify the deployed bucket policy blocks anonymous reads—Django's check cannot inspect it. Local development may continue using `MEDIA_ROOT`.
 
 ## 9. Code Conventions
 

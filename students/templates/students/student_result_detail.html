@@ -4,13 +4,20 @@
 
 {% block extra_style %}
     .summary td { font-weight: 700; background: var(--bg); }
+    .result-detail-photo { width: 68px; height: 80px; overflow: hidden; border-radius: 8px; background: #eef1f5; display: flex; align-items: center; justify-content: center; color: var(--navy); font-weight: 700; }
+    .result-detail-photo img { width: 100%; height: 100%; display: block; object-fit: cover; }
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <div>
-        <h1>{{ result.student.name }} - Result Detail</h1>
-        <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} - Roll {{ result.student.roll_no }}</div>
+    <div class="d-flex align-items-center gap-3">
+        <span class="result-detail-photo">
+            {% include 'students/_student_photo.html' with photo=result.student.photo display_name=result.student.name alt_text=result.student.name image_class='result-detail-photo-image' fallback_class='student-photo-fallback' fallback_text=result.student.name|first|upper width='68' height='80' %}
+        </span>
+        <div>
+            <h1>{{ result.student.name }} - Result Detail</h1>
+            <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} - Roll {{ result.student.roll_no }}</div>
+        </div>
     </div>
 </div>
 
