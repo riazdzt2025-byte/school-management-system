@@ -104,7 +104,7 @@ scripts/              # backup.sh, restore.sh, backup_cron.sh, backup_smoke_test
 - **Group rule:** `GROUPED_CLASS_LABELS = ['9','10','11','12']` — class 9-এর নিচে group নেই; `Student.clean` / `AdmissionApplicationForm.clean` / import সব `Student.group_supports_class()` চেক করে।
 - **Subjects:** `Subject` (master) + `SubjectRequirement(institution, admission_class, group, subject, requirement_type ∈ {MANDATORY, OPTIONAL, CONDITIONAL}, optional_set_key, religion_condition)`। `curriculum_data.SSC_GROUPS` → SSC Science-এ HMATH **MANDATORY** (0042 migration), HSC Science-এ OPTIONAL। Auto-populate: `auto_populate_subject_requirements` → `curriculum_data` + `seed_subject_requirements`।
 - **StudentSubjectChoice:** optional subject-এ ছাত্রের পছন্দ; `save_student_subject_choices()` + `class_filter_variants('09'↔'9')`।
-- **Photos:** `Student.photo` (ImageField, 2MB, image types, `clean_photo`), `MEDIA_ROOT` filesystem default, `USE_S3=True` হলে `storages.backends.s3.S3Storage` (E011/W010 checks, `copy_media_to_storage` command)।
+- **Photos:** `Student.photo` (ImageField, **1 MB**, 300×300–4096×4096 px, JPG/PNG/GIF) — policy lives in `students/photo_uploads.py::validate_student_photo` as a **model-field validator** (admin ও যেকোনো ModelForm একই নীতি পায়; আলাদা `clean_photo` নেই), নতুন upload opaque UUID key `student_photos/<uuid>.<ext>`-এ যায়। Admission photo (`AdmissionApplication.applicant_photo`, 1 MB, `clean_applicant_photo`) আলাদা এবং internal form-এ সীমিত। Delete durable `StudentPhotoDeletionJob` outbox + `retry_student_photo_deletions` command দিয়ে; `DELETE_MEDIA_ON_PURGE=False` hard purge-এ ফাইল রাখে। `MEDIA_ROOT` filesystem default, `USE_S3=True` হলে `storages.backends.s3.S3Storage` (E011/W010 checks, `copy_media_to_storage` command); student photo private PII, তাই production-এ signed URL + `students.E012` deploy guard।
 
 ### 5.2 Admission
 
@@ -141,7 +141,7 @@ State machine: `SUBMITTED → OFFICE_APPROVED → ACCOUNT_PENDING → PAYMENT_AP
 - `DEBUG` defaults True (dev); set `DEBUG=False` + real `SECRET_KEY` + `ALLOWED_HOSTS` + `CSRF_TRUSTED_ORIGINS` + `TRUST_FORWARDED_PROTO=True` + `USE_X_FORWARDED_HOST=True` behind proxy — otherwise CSRF 403।
 - `EXAM_ABSENT_SUBJECT_FAILS=True` default (un-entered = F); disable করতে `False`।
 - `DATABASE_URL` via `dj-database-url` (sqlite default, Postgres via `postgres://...`); `P0B_BACKUP_ROOT` must be persistent (cron filesystem is ephemeral)।
-- Media: `USE_S3=True` + `AWS_STORAGE_BUCKET_NAME/_ACCESS_KEY_ID/_SECRET_ACCESS_KEY` (+ endpoint/region for R2/B2) → `MEDIA_URL` bucket/CDN; else `MEDIA_ROOT` (persistent disk)। `E011` (missing storages/boto3) + `W010` (ephemeral media) via `checks.py`।
+- Media / student-photo privacy (owner policy 2026-10-07): production must use private S3-compatible storage with signed URLs and `Cache-Control: private, no-store`; unset `AWS_S3_PUBLIC_BASE_URL` and avoid public ACL/shared caching. `students.E012` (`check --deploy`) rejects public settings and production filesystem media; `students.E011` checks S3 dependencies; `students.W010` warns about ephemeral app-tree media. Verify the deployed bucket policy blocks anonymous reads—Django's check cannot inspect it. Local development may continue using `MEDIA_ROOT`.
 
 ## 9. Code Conventions
 

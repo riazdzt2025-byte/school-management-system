@@ -38,11 +38,12 @@ apply only if the service is on a paid plan. Setup: `docs/FREE_TIER_MEDIA_STORAG
 
 | Check | How | Status |
 |---|---|---|
-| Media backend is durable (S3/R2) **or** on a persistent disk | env `USE_S3=True` + `AWS_STORAGE_BUCKET_NAME` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (endpoint for R2/B2), **or** `MEDIA_ROOT=/data/media` | 🔧 |
+| Private durable media backend | env `USE_S3=True` + `AWS_STORAGE_BUCKET_NAME` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (endpoint for R2/B2); production filesystem media (even on `/data/media`) fails `students.E012` until a reviewed authenticated media proxy exists | 🔧 |
 | Config is complete (missing keys abort the boot, they do not fall back) | `python manage.py check` → no `students.E011` | ✅ command |
 | Uploads are not landing in the app tree | `python manage.py check --deploy` → no `students.W010` | ✅ command |
 | Photos already on disk were copied into the bucket | `python manage.py copy_media_to_storage --dry-run` then without it | ✅ command |
-| Student photos are not world-readable unless intended | no `AWS_S3_PUBLIC_BASE_URL` → signed URLs | ⚠️ owner decision |
+| Student photos stay private (owner decision 2026-10-07) | `USE_S3=True`; unset `AWS_S3_PUBLIC_BASE_URL`; no public ACL; signed URLs; `Cache-Control: private, no-store`; bucket blocks anonymous reads; `manage.py check --deploy` → no `students.E012` | ⚠️ **decision confirmed; deployed config/bucket policy still unverified** |
+| Photo-deletion outbox is drained regularly | schedule `python manage.py retry_student_photo_deletions --limit 100` with app DB/storage settings; alert on nonzero exit | ⚠️ **scheduler not configured/verified** |
 | Persistent disk attached + mounted at that path (paid plans only) | Render dashboard | 🔧 |
 | A test upload survives a redeploy | upload a photo → redeploy → photo still loads | ⚠️ **owner waived 2026-09-09** (optional; the only live proof) |
 

@@ -1,5 +1,17 @@
 # Handoff — School Management System
 
+## সেশন MERGE — ২০২৬-১০-১২ · PR #61 (OF-05 privacy/outbox) → main সমন্বয়
+
+- **Branch/base:** `arena/f5fca6f9-school-management-system` / `c823d1d` (= `origin/main`, PR #63 MERGED) — PR #61-এর head `def3156` মার্জ করা হয়েছে।
+- **কেন হাতে সমন্বয়:** PR #61 ছিল **DRAFT** এবং GitHub-এ `mergeable: CONFLICTING` (main-এ ইতিমধ্যে PR #62-এর ভিন্ন OF-05 চলে এসেছিল)। Merge base `e7904ba`; ১০টি ফাইলে conflict।
+- **Owner সিদ্ধান্ত (Arena chat, ২০২৬-১০-১২):** (১) ফটোর সাইজ cap **1 MB**-ই থাকবে (PR #62-এর নীতি), বাকি privacy/signed-URL/outbox PR #61 থেকে; (২) ল্যান্ডিং পদ্ধতি agent-এর বিবেচনায়; (৩) বাকি operational gate ইস্যুতে ট্র্যাক করে মার্জ।
+- **সমন্বয়:** `PHOTO_MAX_BYTES` 2 MiB → **1 MB** (+ help text/migration state/tests/.env.example); main-এর `StudentForm.clean_photo` বাদ (validation এখন model validator-এ, ফলে admin-ও একই নীতি পায়); list/detail/ID card PR #61-এর `_student_photo.html` partial ব্যবহার করে (opaque key + fallback); **`DELETE_MEDIA_ON_PURGE` এখন outbox signal মানে** — `_purge_archived_student`-এর দ্বিতীয় direct delete সরানো হয়েছে, না হলে flag=False নীরবে অকার্যকর হতো; `test_student_photos.py` নতুন API/টেমপ্লেট class অনুযায়ী আপডেট + purge টেস্টে `captureOnCommitCallbacks`; migration leaf conflict-এর জন্য `0049_merge_20261012_0613`।
+- **প্রমাণ (এই checkout, Python 3.11.2 / Django 5.2.18 fallback — `requirements.txt` Django 6.1 py3.12 চায়):** পূর্ণ **৯০৭ Django test OK** (৮৭৩ + ৩৪, 0 fail/error), **২৯/২৯ Node pass**, `check` 0 issue, `makemigrations --check` clean, `migrate` → 0047×2 + 0048 + 0049 merge OK, `retry_student_photo_deletions --limit 100` → `processed=0, deleted=0, retrying=0` rc 0। Private S3 `check --deploy` rc 0 (E012 নেই), public media config-এ `students.E012` rc 1।
+- **অবশিষ্ট gate (ইস্যুতে ট্র্যাক):** `retry_student_photo_deletions`-এর periodic scheduler এখনো configure/verify হয়নি (`render.cron.yaml`-এ শুধু backup cron আছে); deployed env/bucket policy, live S3 এবং browser/print/PDF যাচাই হয়নি।
+- **Next:** OF-07 (প্রম্পট ১৫/২৮) owner-এর নীতি ৩টি পেলে।
+
+---
+
 ## সেশন OF-06 — ২০২৬-১০-১২ · প্রম্পট ১৪/২৮ · Public success page ও progress (status check)
 
 - **Branch/base:** `arena/54f6db0e-school-management-system` / `7aa5d51` (= `origin/main`, PR #62 MERGED)। Prompt-এ লেখা `arena/01a0b7f7-…` stale — branch বদলানো হয়নি। Commit `dbd5a39` + `aff2228` + `adac750` + docs `0811980` → **PR #63 (OPEN)** — CI: sqlite ✅ 8m17s · postgres:16 ✅ 5m25s · Node ✅ 9s (run 38206355900)।
@@ -9,6 +21,20 @@
 - **প্রমাণ (এই checkout):** নতুন `students/test_public_admission_status.py` **৩৫**; regression ৬ মডিউলে **১১৭**; পূর্ণ **৮৭৩ Django + ২৯ Node pass** (৮৩৮ + ৩৫), `check` 0, `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-06.md`।
 - **লোকাল HTTP round-trip (synthetic ডেটা, gitignored dev sqlite):** `runserver`-এ form→slip→status round-trip ও REJECTED/no-leak curl দিয়ে যাচাই (rendered HTML); আসল ব্রাউজারে print preview/clipboard/WhatsApp deep-link এখনো যাচাই হয়নি; live Render (নতুন public route, absolute URL); postgres:16 matrix (শুধু CI) — এবং `Institution`-এ contact phone field না থাকায় “অফিসে যোগাযোগ” বার্তায় স্কুলের নম্বর নেই। পুরোনো ভাঙা/dirty contact ডেটার applicant status দেখতে পাবেন না (generic message-ই)।
 - **Next:** **প্রম্পট ১৫/২৮ (OF-07 — Admission/import integrity)** — baseline **Unverified** (audit নিজে চালানোর সেশন) + §৭-এর owner-নীতি ৩টি আগে দরকার; owner না বলা পর্যন্ত শুরু নয়।
+
+---
+
+## সেশন OF-05 — ২০২৬-১০-০৭ · প্রম্পট ১৩/২৮ · Student photos — durable outbox hardening, merge gate open
+
+- **Branch/base:** `arena/1805a6ab-school-management-system` / `e7904ba` (= `origin/main`). Production DB, Render, credentials, live S3 ও real student data ছোঁয়া হয়নি।
+- **Owner policy (2026-10-07):** Student photo private থাকবে; admission photo নেই; ২ MiB max, 300×300–4096×4096 inclusive; photo archive/TC-তেও রাখা, per-student + institution-scoped bulk clear, hard-purge-এ file delete।
+- **Implementation:** model validator + UUID storage key; replace/clear/purge transaction-এ `StudentPhotoDeletionJob` outbox; commit-এর পর fast-path delete, failure/crash-এ durable retry; archive/TC retain; active/archived bulk cleanup; institution scope/permission/audit; list/detail/ID/result cards-এ photo/fallback; N+1 test। `students.E012` deploy guard public URL/ACL/signing/shared-cache ও production filesystem media আটকায়; default S3 `private, no-store`। Migrations `0047` (state-only) + `0048` (outbox table/index); data/media backfill নেই। Worker: `retry_student_photo_deletions --limit 100`, exponential backoff.
+- **Evidence:** focused **১২১** (upload ১২ + photo workflow ২৬ + storage/privacy ৩৯ + isolation ৪৪); full **৮৬০ Django + ২৯ Node pass**; `check` ০; `makemigrations --check` clean; `0047` SQL no-op, `0048` table/index only। Synthetic production-shaped private S3 `check --deploy` has no E012; public settings fail with E012. Local Python 3.11 / Django 5.2.17 fallback, SQLite + `/tmp` media; no real bucket touched।
+- **Unverified / merge gate:** guard commit `4ff84e2`-এর CI ৩/৩ green, run `37593462790` (SQLite 8m10s, PostgreSQL 6m59s, Node 7s)। Browser/print/PDF, deployed env/bucket policy ও live S3 unverified। Owner private policy নিশ্চিত করেছেন; actual deployment config এখনও পরীক্ষা হয়নি। Durable retry command আছে, periodic scheduler configure/verify হয়নি। **Scheduler path এবং private-config verification না হওয়া পর্যন্ত merge নয়।**
+- **Commit/PR:** Outbox implementation `9e6372a`, review-gate docs `c6df95d`, and privacy guard `4ff84e2` are pushed on the session branch. Draft PR [#61](https://github.com/riazdzt2025-byte/school-management-system/pull/61), latest CI ৩/৩ green (run `37593462790`), merge নয়. Details `docs/prompts/reports/OF-05.md`.
+- **Next:** OF-05 review/CI gate; তারপর owner-এর ক্রমে prompt 14 (OF-06)।
+
+---
 
 ## সেশন OF-04 (follow-up) — ২০২৬-১০-০৬ · প্রম্পট ১২/২৮ · capacity vs enrolled + trend + Accounts slice
 
@@ -270,10 +296,10 @@ Verification → নিরাপত্তা & backup (P0-7/P0-8-live/P1-11-live
 | D-MIS | Missing/null marks: blank = F (current, `True`) vs blank = exempt (`False`) বা per-subject exempt? | (a) keep `True` (did not sit = Fail, current), or (b) global `False`, or (c) per-subject exempt flag — specify |
 | D-HOL | Attendance Holiday: holiday কি absent percentage থেকে বাদ যাবে auto? | Confirm |
 | P0-7 choose | `EXAM_ABSENT_SUBJECT_FAILS` live value, how many institutions live, `DATABASE_URL` engine? | Confirm 3 values |
-| P0-8/P1-11 | Backup storage: R2/S3 bucket vs persistent-disk worker? Photo bucket public vs private (signed URLs)? | (a) R2 private (recommended) vs (b) public CDN |
+| P0-8/P1-11 | Backup storage: R2/S3 bucket vs persistent-disk worker? Photo access? | Backup storage remains owner choice; student photos **private** (owner confirmed 2026-10-07); verify deployed environment and bucket policy, do not use public CDN |
 | H2/H4 | Teacher assignment: one teacher many subjects? Salary closed-period: who locks (Accounts/Admin) per-institution? | Confirm |
 | E1/E8 | Import stay-on-page vs exam_list, Ctrl+Click new tab vs same tab? | Confirm (recommend stay-on-page + new tab) |
-| O4/O5 | Reports priority (funnel first?), Application photo required or optional? | Confirm |
+| O4/O5 | Reports priority; admission/student photo policy? | Admission forms: no photos; student photos private (owner-confirmed 2026-10-07). O4 priority remains separate; do not reopen resolved photo policy. |
 
 **Missing marks ও GPA — দুটোই আগে এই current vs proposed লিখে decision নেওয়া হয়েছে, পরে দুটো আলাদা PR হবে (নির্দেশ অনুযায়ী)। Accounts full fee engine / guardian portal / online payment এখন implementation scope-এর বাইরে — future backlog-এ রাখা হয়েছে।**
 
