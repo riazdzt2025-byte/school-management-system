@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# Public page: never indexed, never linked from inside the system (OF-06). #}
+    <meta name="robots" content="noindex, nofollow">
     <title>Admission Application — Principal Kazi Faruky School And College</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
@@ -180,6 +182,10 @@
             </div>
             <p class="form-foot-note">After submitting, the school office will contact you on the given number for the next steps.</p>
         </form>
+        <p class="form-foot-note mb-0">
+            Already applied? <a href="{% url 'public_admission_status' %}">Check your application status</a>
+            with the application number and the last 4 digits of the guardian contact number.
+        </p>
     </div>
 </div>
 

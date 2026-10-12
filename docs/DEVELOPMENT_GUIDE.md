@@ -108,7 +108,7 @@ scripts/              # backup.sh, restore.sh, backup_cron.sh, backup_smoke_test
 
 ### 5.2 Admission
 
-State machine: `SUBMITTED → OFFICE_APPROVED → ACCOUNT_PENDING → PAYMENT_APPROVED → ENROLLED` (+ `REJECTED`)। `office_approve/reject/handoff`, `accounts_approve_payment` (capacity `SectionCapacity.has_room`, Fee pre-fill/warning, auto `MoneyReceipt RC-...` + `Student` creation + mandatory subjects auto-assign)। Public form `public_admission_apply` rate-limited 5/10min per IP + success page `public_admission_success.html`। Share link toast in `admission_application_list.html` (WhatsApp message + `public_admission_apply` URL)।
+State machine: `SUBMITTED → OFFICE_APPROVED → ACCOUNT_PENDING → PAYMENT_APPROVED → ENROLLED` (+ `REJECTED`)। `office_approve/reject/handoff`, `accounts_approve_payment` (capacity `SectionCapacity.has_room`, Fee pre-fill/warning, auto `MoneyReceipt RC-...` + `Student` creation + mandatory subjects auto-assign)। Public form `public_admission_apply` rate-limited 5/10min per IP + success page `public_admission_success.html` (printable slip: print CSS, copy/WhatsApp share, no internal link) + public status check `public_admission_status` (`admission/status/`, application number + guardian contact-এর শেষ ৪ ডিজিট, noindex, ৩০ lookup/10min per IP + ৫ ভুল/15min per address+number pair; সব mismatch-এ এক generic বার্তা, শুধু masked name/contact)। Share link toast in `admission_application_list.html` (WhatsApp message + `public_admission_apply` URL)।
 
 ### 5.3 Exams & Results
 
