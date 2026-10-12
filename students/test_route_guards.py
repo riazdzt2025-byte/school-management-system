@@ -18,12 +18,21 @@ from django.urls.resolvers import URLResolver
 
 from .models import Institution, InstitutionAccess
 
-# Reviewed on 2026-09-21. Each one is public on purpose:
+# Reviewed on 2026-09-21; `public_admission_status` reviewed on 2026-10-12
+# (OF-06). Each one is public on purpose:
 #   login                      - the login page itself
 #   public_admission_apply     - the public admission form (rate limited)
 #   admission_dropdown_options - JSON for that form: group names and section
 #                                letters only, no personal data
-PUBLIC_ROUTE_NAMES = {'login', 'public_admission_apply', 'admission_dropdown_options'}
+#   public_admission_status    - the applicant's own status check (OF-06): needs
+#                                the application number plus the last 4 digits of
+#                                the guardian contact, rate limited, one generic
+#                                answer for every mismatch, noindex, and it
+#                                returns only that applicant's masked name
+PUBLIC_ROUTE_NAMES = {
+    'login', 'public_admission_apply', 'admission_dropdown_options',
+    'public_admission_status',
+}
 
 SKIPPED_PREFIXES = ('admin/', 'media', 'static')
 REFUSED = {302, 403, 405}
@@ -81,7 +90,7 @@ class RouteGuardMatrixTests(TestCase):
         self.assertEqual(leaks, [])
 
     def test_public_routes_stay_public_for_anonymous_visitors(self):
-        for name in ('login', 'public_admission_apply'):
+        for name in ('login', 'public_admission_apply', 'public_admission_status'):
             self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
 
 
