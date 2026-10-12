@@ -77,7 +77,7 @@
     </div>
 
     <div class="admission-form-body">
-        <form method="post" novalidate>
+        <form method="post" enctype="multipart/form-data" novalidate>
             {% csrf_token %}
             {% if form.non_field_errors %}
             <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
@@ -115,6 +115,12 @@
                     <label class="form-label" for="id_applicant_address">Address</label>
                     {{ form.applicant_address }}
                     {% for error in form.applicant_address.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_applicant_photo">Applicant Photo (optional)</label>
+                    {{ form.applicant_photo }}
+                    <div class="form-text small">Max 1 MB · JPG, PNG or GIF</div>
+                    {% for error in form.applicant_photo.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                 </div>
             </div>
 

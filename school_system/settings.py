@@ -267,6 +267,12 @@ MEDIA_URL = media_public_url(MEDIA_CONFIG)
 # development working with no setup at all.
 MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
 
+# DELETE_MEDIA_ON_PURGE: when a student is permanently purged (archive purge),
+# also delete their photo file from storage. Default True (delete); set to
+# False to retain photos for audit/legal reasons even after student deletion.
+# Configurable via DELETE_MEDIA_ON_PURGE env var.
+DELETE_MEDIA_ON_PURGE = os.environ.get('DELETE_MEDIA_ON_PURGE', 'True') == 'True'
+
 if MEDIA_IS_REMOTE:
     AWS_ACCESS_KEY_ID = MEDIA_CONFIG['access_key']
     AWS_SECRET_ACCESS_KEY = MEDIA_CONFIG['secret_key']

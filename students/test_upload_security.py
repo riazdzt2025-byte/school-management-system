@@ -16,7 +16,7 @@ class PhotoUploadSecurityTests(TestCase):
         form.cleaned_data = {'photo': big}
         with self.assertRaises(forms.ValidationError) as cm:
             StudentForm.clean_photo(form)
-        self.assertIn('under 2 MB', str(cm.exception))
+        self.assertIn('under 1 MB', str(cm.exception))
 
     def test_photo_bad_extension_rejected(self):
         bad = SimpleUploadedFile('shell.php', b'<?php echo 1; ?>', content_type='image/png')

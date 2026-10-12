@@ -189,10 +189,10 @@ class StudentForm(forms.ModelForm):
     def clean_photo(self):
         photo = self.cleaned_data.get('photo')
         if photo:
-            # Size cap (2 MB)
-            max_size = 2 * 1024 * 1024
+            # Size cap (1 MB)
+            max_size = 1 * 1024 * 1024
             if photo.size > max_size:
-                raise forms.ValidationError('Photo must be under 2 MB.')
+                raise forms.ValidationError('Photo must be under 1 MB.')
             # Type and extension check
             valid_exts = {'.jpg', '.jpeg', '.png', '.gif'}
             name = photo.name.lower()
@@ -236,10 +236,12 @@ class AdmissionApplicationForm(forms.ModelForm):
             'institution', 'applicant_name', 'date_of_birth', 'gender', 'religion',
             'applicant_address', 'guardian_name',
             'guardian_relation', 'guardian_contact_no', 'guardian_address',
+            'applicant_photo',
             'requested_class', 'requested_group', 'requested_section', 'session',
         ]
         labels = {
             'guardian_contact_no': 'Guardian Contact Number',
+            'applicant_photo': 'Applicant Photo (optional)',
         }
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
@@ -247,6 +249,7 @@ class AdmissionApplicationForm(forms.ModelForm):
             'gender': forms.Select(attrs={'class': 'form-select'}),
             'applicant_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
             'guardian_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'applicant_photo': forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
             # These three start empty and are populated by JS as
             # Institution -> Class -> Group/Section are chosen in sequence.
             'requested_class': forms.Select(choices=[('', '-- Select Institution first --')], attrs={'class': 'form-select'}),
@@ -290,6 +293,24 @@ class AdmissionApplicationForm(forms.ModelForm):
         value = normalize_guardian_contact(self.cleaned_data.get('guardian_contact_no'))
         validate_guardian_contact(value)
         return value
+
+    def clean_applicant_photo(self):
+        """Optional photo: max 1MB, JPG/PNG/GIF only, must be a real image."""
+        photo = self.cleaned_data.get('applicant_photo')
+        if photo:
+            # Size cap (1 MB)
+            max_size = 1 * 1024 * 1024
+            if photo.size > max_size:
+                raise forms.ValidationError('Photo must be under 1 MB.')
+            # Type and extension check
+            valid_exts = {'.jpg', '.jpeg', '.png', '.gif'}
+            name = photo.name.lower()
+            if not any(name.endswith(ext) for ext in valid_exts):
+                raise forms.ValidationError('Only JPG, PNG or GIF images are allowed.')
+            # Content-type guard
+            if not photo.content_type.startswith('image/'):
+                raise forms.ValidationError('Uploaded file is not a valid image.')
+        return photo
 
     def clean(self):
         cleaned_data = super().clean()

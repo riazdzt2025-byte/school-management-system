@@ -19,6 +19,16 @@
     .students-table td {
         padding: 10px 12px; border-bottom: 1px solid #eef0f3; vertical-align: middle; font-size: 0.9rem;
     }
+    .student-photo-thumb {
+        width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+        border: 2px solid #eef0f3;
+    }
+    .student-photo-fallback {
+        width: 32px; height: 32px; border-radius: 50%;
+        background: #f0f2f5; color: #6c757d;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 0.75rem;
+    }
     .students-table tbody tr:hover { background: #f8f9fb; }
     .students-table tr.dup-exact { background: #fff6f6; }
     .students-table tr.dup-possible { background: #fffdf3; }
@@ -213,6 +223,7 @@
                 <tr>
                 <th style="width:36px;"></th>
                 <th>#</th>
+                <th>Photo</th>
                 <th>Roll</th>
                 <th>Student ID</th>
                 <th>Name</th>
@@ -229,6 +240,13 @@
                 <tr class="{% if student.id in exact_duplicate_ids %}dup-exact{% elif student.id in possible_duplicate_ids %}dup-possible{% endif %}">
                                    <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
                 <td>{{ forloop.counter }}</td>
+                <td>
+                    {% if student.photo %}
+                        <img src="{{ student.photo.url }}" alt="{{ student.name }}" class="student-photo-thumb" loading="lazy"/>
+                    {% else %}
+                        <div class="student-photo-fallback">{{ student.name|first|default:"?" }}</div>
+                    {% endif %}
+                </td>
                 <td>{{ student.roll_no|default:"—" }}</td>
                 <td class="id-cell"><a href="{% url 'student_detail' student.pk %}">{{ student.student_id }}</a></td>
                 <td class="name-cell"><a href="{% url 'student_detail' student.pk %}">{{ student.name }}</a></td>
@@ -299,7 +317,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="11" class="students-table-empty">{% if search_q %}No student matching “{{ search_q }}”. Check the ID, or look in Archive.{% else %}No students to show yet — pick a filter to get started.{% endif %}</td></tr>
+                <tr><td colspan="12" class="students-table-empty">{% if search_q %}No student matching “{{ search_q }}”. Check the ID, or look in Archive.{% else %}No students to show yet — pick a filter to get started.{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>
