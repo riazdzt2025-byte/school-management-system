@@ -1,5 +1,15 @@
 # Handoff — School Management System
 
+## সেশন OF-06 — ২০২৬-১০-১২ · প্রম্পট ১৪/২৮ · Public success page ও progress (status check)
+
+- **Branch/base:** `arena/54f6db0e-school-management-system` / `7aa5d51` (= `origin/main`, PR #62 MERGED)। Prompt-এ লেখা `arena/01a0b7f7-…` stale — branch বদলানো হয়নি। Commit `dbd5a39` + `aff2228` + `adac750` (+docs) → **PR #63 (OPEN)**।
+- **Owner সিদ্ধান্ত (Arena chat, ২০২৬-১০-১২ — prompt 14 §৮):** যাচাই factor = **Application No. + guardian contact-এর শেষ ৪ ডিজিট**; REJECTED = **সাধারণ বার্তা + অফিসে যোগাযোগ (কারণ নয়)**; lookback = **সব session-এর application**।
+- **বদল:** (১) success page = ছাপার-উপযোগী **slip** — application number, জমার তারিখ, class/section/group/session, masked contact (`*******5678`), “What happens next”, `@media print`, Print slip, Copy details + WhatsApp share (`wa.me`), আর পেজ থেকে **internal `dashboard` link বাদ**; (২) **নতুন public route `admission/status/`** (`public_admission_status`) + `PublicAdmissionStatusForm` + নতুন template — এক query-তে number+tail, ৪-ধাপ timeline (done/current/todo, তারিখসহ), masked name (`R*** U***`), ENROLLED-এ Student ID, REJECTED-এ closed timeline; (৩) তিন public template-এ `noindex, nofollow` + public form-এ “Already applied?” link। **নতুন model/migration/JS dependency নেই** (leaf 0047 অপরিবর্তিত)।
+- **Privacy/throttle (টেস্টে pinned):** সব mismatch-এ একই generic বার্তা ও একই byte-body (শুধু visitor-এর নিজের typed number echo করা input value normalize করে) ⇒ enumeration oracle নয়; cross-applicant isolation দুই দিকেই; remarks/actor/amount/`next_step` কোনো public template-এ নেই; throttle = P1-9 helper reuse — **৩০ lookup/১০মিনিট per address + ৫ ভুল/১৫মিনিট per (address, application number)**, XFF-এর বাঁ দিক spoof করে bypass হয় না, `RATE_LIMIT_CACHE=db`-তেও চলে; email/SMS/payment সক্রিয় নয়।
+- **প্রমাণ (এই checkout):** নতুন `students/test_public_admission_status.py` **৩৫**; regression ৬ মডিউলে **১১৭**; পূর্ণ **৮৭৩ Django + ২৯ Node pass** (৮৩৮ + ৩৫), `check` 0, `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-06.md`।
+- **যাচাই হয়নি:** আসল ব্রাউজারে হাতে পরীক্ষা (print preview/clipboard/WhatsApp deep-link); live Render (নতুন public route, absolute URL); postgres:16 matrix (শুধু CI) — এবং `Institution`-এ contact phone field না থাকায় “অফিসে যোগাযোগ” বার্তায় স্কুলের নম্বর নেই। পুরোনো ভাঙা/dirty contact ডেটার applicant status দেখতে পাবেন না (generic message-ই)।
+- **Next:** **প্রম্পট ১৫/২৮ (OF-07 — Admission/import integrity)** — baseline **Unverified** (audit নিজে চালানোর সেশন) + §৭-এর owner-নীতি ৩টি আগে দরকার; owner না বলা পর্যন্ত শুরু নয়।
+
 ## সেশন OF-04 (follow-up) — ২০২৬-১০-০৬ · প্রম্পট ১২/২৮ · capacity vs enrolled + trend + Accounts slice
 
 - **Branch/base:** `arena/01a10b01-school-management-system` / `53c86d6` (= `origin/main`, PR #57/#58 MERGED); feature commit `bbcaa3a`, docs `9400012` → **PR #59 MERGED (`f5561f5`, 2026-10-06; CI ৩/৩ সবুজ)**। Prompt-এর পুরোনো branch নয়।
