@@ -522,11 +522,14 @@ class StudentImportContactTests(TestCase):
         self.assertIn('11-digit', text)
 
     def test_header_aliases_for_the_single_column(self):
-        for header in ('Guardian Contact Number', 'guardian contact no.',
-                       'Guardian Contact', "Guardian's Contact Number"):
+        # Each alias is a different student in the same section, so each gets its
+        # own roll number (a repeated roll is rejected — OF-07 duplicate-roll rule).
+        for roll, header in enumerate((
+                'Guardian Contact Number', 'guardian contact no.',
+                'Guardian Contact', "Guardian's Contact Number"), start=20):
             headers = self._new_template_headers()
             headers[headers.index('Guardian Contact Number')] = header
-            self._upload(headers, [self._row(f'Alias Kid {header}', 20, '01812345681')])
+            self._upload(headers, [self._row(f'Alias Kid {header}', roll, '01812345681')])
             self.assertEqual(
                 Student.objects.get(name=f'Alias Kid {header}').guardian_contact_no,
                 '01812345681', header)

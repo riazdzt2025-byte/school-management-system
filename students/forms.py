@@ -206,6 +206,31 @@ class StudentForm(forms.ModelForm):
             exclude_id = self.instance.pk if self.instance and self.instance.pk else None
             if not SectionCapacity.has_room(institution, admission_class, section, exclude_student_id=exclude_id):
                 self.add_error('section', f'Section {section} is already at its student limit.')
+
+        # OF-07 owner decision: a roll number already held by another active
+        # student in the same class/section is rejected (the same rule as the
+        # Excel import). Only checked when the roll, class, section or school
+        # is being set to a new value, so editing an old record never trips
+        # over a clash that predates this rule.
+        roll_no = cleaned_data.get('roll_no')
+        if institution and admission_class and roll_no:
+            instance = self.instance if self.instance and self.instance.pk else None
+            unchanged = bool(
+                instance
+                and instance.institution_id == institution.pk
+                and str(instance.admission_class).strip() == str(admission_class).strip()
+                and (instance.section or '') == (section or '')
+                and instance.roll_no == roll_no
+            )
+            if not unchanged and Student.roll_taken(
+                institution, admission_class, section or '', roll_no,
+                exclude_pk=instance.pk if instance else None,
+            ):
+                self.add_error(
+                    'roll_no',
+                    f'Roll no {roll_no} is already used by another active student in this '
+                    'class and section. Choose a different roll number.',
+                )
         return cleaned_data
 
 
