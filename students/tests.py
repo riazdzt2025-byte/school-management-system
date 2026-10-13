@@ -1373,8 +1373,10 @@ class GroupOnlyFromClass9Tests(TestCase):
 		self.assertFalse(Student.objects.filter(name='No Group Nine').exists())
 
 	def test_class_9_admission_accepts_business_and_humanities(self):
-		for code in ('BUS', 'HUM'):
-			self._post(name=f'Student {code}', admission_class='9', group=code)
+		# Distinct roll numbers: the students share class 9 / section A, and a
+		# repeated roll is rejected (OF-07 duplicate-roll rule).
+		for roll, code in ((2, 'BUS'), (3, 'HUM')):
+			self._post(name=f'Student {code}', admission_class='9', group=code, roll_no=roll)
 			self.assertEqual(Student.objects.get(name=f'Student {code}').group, code)
 
 	def test_diploma_group_is_not_offered_at_class_9(self):

@@ -1,4 +1,4 @@
-"""Tests for P1-2: class-wise fee schedule (pre-fill + mismatch warning)."""
+"""Tests for P1-2: class-wise fee schedule (pre-fill + mismatch block, OF-07)."""
 from datetime import date
 
 from django.contrib.auth import get_user_model
@@ -50,7 +50,9 @@ class FeeScheduleTests(TestCase):
         self.assertIn('value="1500.00"', response.content.decode())
         self.assertIn('Fee schedule for Class 6', response.content.decode())
 
-    def test_fee_mismatch_warns_but_approves(self):
+    def test_fee_mismatch_blocks_approval(self):
+        # OF-07 owner decision: an amount that differs from the class fee blocks
+        # payment approval (it used to warn and approve).
         Fee.objects.create(
             institution=self.institution, admission_class='6',
             purpose='Admission Fee', amount=1500,
@@ -61,10 +63,24 @@ class FeeScheduleTests(TestCase):
              'payment_purpose': 'Admission Fee'},
         )
         self.assertEqual(response.status_code, 302)
-        messages = list(response.wsgi_request._messages) if hasattr(response.wsgi_request, '_messages') else []
         from django.contrib.messages import get_messages
         msgs = [m.message for m in get_messages(response.wsgi_request)]
-        self.assertTrue(any('differs from the fee schedule' in m for m in msgs))
+        self.assertTrue(any('does not match the fee schedule' in m for m in msgs))
+        self.application.refresh_from_db()
+        self.assertEqual(self.application.status, 'ACCOUNT_PENDING')
+        self.assertFalse(Student.objects.filter(admission_application=self.application).exists())
+
+    def test_fee_exact_amount_approves(self):
+        Fee.objects.create(
+            institution=self.institution, admission_class='6',
+            purpose='Admission Fee', amount=1500,
+        )
+        response = self.client.post(
+            reverse('accounts_approve_payment', args=[self.application.pk]),
+            {'payment_amount': '1500.00', 'payment_date': '2026-01-01',
+             'payment_purpose': 'Admission Fee'},
+        )
+        self.assertEqual(response.status_code, 302)
         self.application.refresh_from_db()
         self.assertEqual(self.application.status, 'ENROLLED')
 

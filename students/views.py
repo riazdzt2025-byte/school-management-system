@@ -163,7 +163,7 @@ from .marks_import import (
 )
 from .audit import record_audit
 from .permissions import sync_user_department_permissions
-from .models import Student, Subject, Institution, Employee, student_religion
+from .models import Student, Subject, Institution, Employee, student_religion, class_label_spellings
 
 # Import the optional Excel dependency dynamically so this module remains
 # importable in environments where the package is not installed.
@@ -952,9 +952,6 @@ def admission_application_detail(request, pk):
 
 
 def _application_transition(request, pk, action):
-    application = _get_scoped_object_or_404(
-        request, AdmissionApplication, pk, lambda a: a.institution,
-    )
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     now = timezone.now()
@@ -965,17 +962,25 @@ def _application_transition(request, pk, action):
         'handoff': ('OFFICE_APPROVED', 'ACCOUNT_PENDING', 'Payment approval'),
     }
     allowed_from, new_status, next_step = transitions[action]
-    if application.status not in ((allowed_from,) if isinstance(allowed_from, str) else allowed_from):
-        messages.error(request, f'Application cannot be {action} from its current status.')
-        return redirect('admission_application_detail', pk=pk)
-    application.status = new_status
-    application.next_step = next_step
-    application.office_actor = request.user
-    application.office_action_at = now
-    application.office_remarks = remarks
-    application.save(update_fields=['status', 'next_step', 'office_actor', 'office_action_at', 'office_remarks'])
-    record_audit(request.user, f'application_{new_status.lower()}', application,
-                snapshot={'status': new_status}, details={'remarks': remarks})
+    with transaction.atomic():
+        # Lock the row and re-read the status under the lock. Without this a
+        # reject that loaded the row before an accounts approval could save
+        # REJECTED over an ENROLLED application (lost update).
+        application = _get_scoped_object_or_404(
+            request, AdmissionApplication.objects.select_for_update(), pk,
+            lambda a: a.institution,
+        )
+        if application.status not in ((allowed_from,) if isinstance(allowed_from, str) else allowed_from):
+            messages.error(request, f'Application cannot be {action} from its current status.')
+            return redirect('admission_application_detail', pk=pk)
+        application.status = new_status
+        application.next_step = next_step
+        application.office_actor = request.user
+        application.office_action_at = now
+        application.office_remarks = remarks
+        application.save(update_fields=['status', 'next_step', 'office_actor', 'office_action_at', 'office_remarks'])
+        record_audit(request.user, f'application_{new_status.lower()}', application,
+                    snapshot={'status': new_status}, details={'remarks': remarks})
     messages.success(request, f'Application {new_status.replace("_", " ").title()}.')
     return redirect('admission_application_detail', pk=pk)
 
@@ -1150,15 +1155,23 @@ def accounts_approve_payment(request, pk):
         if not form.is_valid():
             messages.error(request, 'Please provide valid payment details.')
             return redirect('admission_application_detail', pk=pk)
-        # P1-2: warn when the entered amount differs from the class fee schedule
-        # (a configured fee is a guideline/confirmation, not a hard cap).
+        # P1-2 / OF-07: an entered amount that differs from the configured class
+        # fee is blocked (owner decision: fee mismatch blocks, it does not warn).
+        # Nothing has been written yet, so the redirect leaves no partial state.
         fee = _matching_fee(application)
         if fee is not None and form.cleaned_data.get('payment_amount') != fee.amount:
-            messages.warning(
+            messages.error(
                 request,
-                f'Entered amount differs from the fee schedule for this class '
-                f'({fee.amount:,.2f} per {fee.purpose}).'
+                f'Entered amount does not match the fee schedule for this class '
+                f'({fee.amount:,.2f} per {fee.purpose}). Correct the amount, or ask the '
+                'administrator to change the fee schedule, before approving payment.'
             )
+            return redirect('admission_application_detail', pk=pk)
+        # OF-07: serialise the seat check with other approvals/imports on the same
+        # section, so the last seat cannot be given out twice.
+        SectionCapacity.lock_for_update(
+            application.institution, application.requested_class, application.requested_section,
+        )
         if not SectionCapacity.has_room(
             application.institution, application.requested_class, application.requested_section
         ):
@@ -4208,11 +4221,14 @@ def import_students(request):
                     # twice: match on the natural key the sheet describes.
                     admission_year_int = int(admission_year) if admission_year else 0
                     roll_no_int = int(roll_no) if roll_no else 0
+                    section_code = str(section).strip() if section else ''
+                    # '9' and '09' are one class (zero-padding tolerant), so a
+                    # re-run that spells the class differently is still "already here".
                     existing = Student.objects.filter(
                         institution=institution,
                         name__iexact=str(name).strip(),
-                        admission_class=str(admission_class).strip(),
-                        section=str(section).strip() if section else '',
+                        admission_class__in=class_label_spellings(admission_class),
+                        section=section_code,
                         roll_no=roll_no_int,
                         admission_year=admission_year_int,
                     ).first()
@@ -4235,41 +4251,59 @@ def import_students(request):
                             skipped_count += 1
                         continue
 
-                    # Honour the section seat limit (P1-7), same as the Add
-                    # Student form. An over-capacity row is skipped, not created,
-                    # so a bulk import can never push a class/section past its
-                    # configured capacity. A missing SectionCapacity row means
-                    # "no limit" (has_room returns True).
-                    if not SectionCapacity.has_room(
-                        institution, str(admission_class).strip(),
-                        str(section).strip() if section else '',
-                    ):
-                        error_rows.append(
-                            f"Row {row_num}: class/section {admission_class}"
-                            f"{('-' + str(section).strip()) if section else ''} is full "
-                            f"(capacity reached) — skipped."
+                    # OF-07: the seat check, the roll check and the insert run in
+                    # one transaction holding the section's capacity-row lock, so
+                    # two imports (or an import and an approval) cannot both take
+                    # the last seat or the same roll number.
+                    with transaction.atomic():
+                        SectionCapacity.lock_for_update(
+                            institution, str(admission_class).strip(), section_code,
                         )
-                        continue
+                        # Honour the section seat limit (P1-7), same as the Add
+                        # Student form. An over-capacity row is skipped, not created,
+                        # so a bulk import can never push a class/section past its
+                        # configured capacity. A missing SectionCapacity row means
+                        # "no limit" (has_room returns True).
+                        if not SectionCapacity.has_room(
+                            institution, str(admission_class).strip(), section_code,
+                        ):
+                            error_rows.append(
+                                f"Row {row_num}: class/section {admission_class}"
+                                f"{('-' + section_code) if section_code else ''} is full "
+                                f"(capacity reached) — skipped."
+                            )
+                            continue
+                        # OF-07 owner decision: a roll number already held by an
+                        # active student in the same class/section is rejected.
+                        if Student.roll_taken(
+                            institution, str(admission_class).strip(), section_code, roll_no_int,
+                        ):
+                            error_rows.append(
+                                f"Row {row_num}: roll no {roll_no_int} is already used in "
+                                f"class {admission_class}"
+                                f"{('-' + section_code) if section_code else ''} — skipped."
+                            )
+                            continue
 
-                    Student.objects.create(
-                        institution=institution,
-                        name=str(name).strip(),
-                        admission_class=str(admission_class).strip(),
-                        section=str(section).strip() if section else '',
-                        admission_year=admission_year_int,
-                        roll_no=roll_no_int,
-                        gender=gender_code,
-                        # Free-text religions from the sheet ('Muslim', 'হিন্দু'…)
-                        # are normalised to the dropdown values, defaulting to
-                        # Islam like every other screen.
-                        religion=student_religion(religion),
-                        father_name=str(father_name).strip() if father_name else '',
-                        # The single primary contact, kept as text so the
-                        # leading zero of e.g. 01812345678 survives.
-                        guardian_contact_no=guardian_contact_no,
-                        group=group_code,
-                        created_by=request.user,
-                    )
+                        Student.objects.create(
+                            institution=institution,
+                            name=str(name).strip(),
+                            admission_class=str(admission_class).strip(),
+                            section=section_code,
+                            admission_year=admission_year_int,
+                            roll_no=roll_no_int,
+                            gender=gender_code,
+                            # Free-text religions from the sheet ('Muslim', 'হিন্দু'…)
+                            # are normalised to the dropdown values, defaulting to
+                            # Islam like every other screen.
+                            religion=student_religion(religion),
+                            father_name=str(father_name).strip() if father_name else '',
+                            # The single primary contact, kept as text so the
+                            # leading zero of e.g. 01812345678 survives.
+                            guardian_contact_no=guardian_contact_no,
+                            group=group_code,
+                            created_by=request.user,
+                        )
                     success_count += 1
                 except Exception as e:
                     error_rows.append(f"Row {row_num}: {type(e).__name__}: {e}")

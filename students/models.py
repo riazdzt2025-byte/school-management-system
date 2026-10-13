@@ -158,6 +158,19 @@ def normalize_class_label(value):
     return label
 
 
+def class_label_spellings(value):
+    """Every stored spelling of one class label: '9' and '09' (and any other
+    zero-padded form of the same number) are the same class, so capacity and
+    roll checks must count them together. Returns a sorted, de-duplicated list
+    that always contains the label exactly as typed."""
+    raw = str(value or '').strip()
+    spellings = {raw}
+    if raw.isdigit():
+        number = str(int(raw))
+        spellings.update({number, number.zfill(2)})
+    return sorted(s for s in spellings if s)
+
+
 def class_supports_group(admission_class):
     """True when this class label is one where a group applies (9-12)."""
     return normalize_class_label(admission_class) in GROUPED_CLASS_LABELS
@@ -227,6 +240,25 @@ class Student(models.Model):
         """True when this class label is one where a group applies (9-12).
         Primary and junior secondary (6-8) have no group at all."""
         return class_supports_group(admission_class)
+
+    @classmethod
+    def roll_taken(cls, institution, admission_class, section, roll_no, exclude_pk=None):
+        """True when an ACTIVE, non-archived student in the same institution,
+        class (zero-padding tolerant) and section already holds this roll
+        number. A blank / zero roll never clashes: it means "no roll given"."""
+        if not roll_no:
+            return False
+        qs = cls.objects.filter(
+            institution=institution,
+            admission_class__in=class_label_spellings(admission_class),
+            section=section or '',
+            roll_no=roll_no,
+            status='ACTIVE',
+            is_archived=False,
+        )
+        if exclude_pk:
+            qs = qs.exclude(pk=exclude_pk)
+        return qs.exists()
 
     @classmethod
     def group_choices_for_class(cls, admission_class):
@@ -384,19 +416,47 @@ class SectionCapacity(models.Model):
     def seats_taken(cls, institution, admission_class, section):
         return Student.objects.filter(
             institution=institution,
-            admission_class=admission_class,
+            admission_class__in=class_label_spellings(admission_class),
             section=section,
             status='ACTIVE',
         ).count()
 
     @classmethod
+    def _rows_for(cls, institution, admission_class, section):
+        """Capacity rows for this class/section, the exact spelling first."""
+        exact = str(admission_class or '').strip()
+        rows = list(cls.objects.filter(
+            institution=institution,
+            admission_class__in=class_label_spellings(admission_class),
+            section=section,
+        ))
+        rows.sort(key=lambda row: row.admission_class != exact)
+        return rows
+
+    @classmethod
     def get_limit(cls, institution, admission_class, section):
-        try:
-            return cls.objects.get(
-                institution=institution, admission_class=admission_class, section=section
-            ).capacity
-        except cls.DoesNotExist:
-            return None
+        rows = cls._rows_for(institution, admission_class, section)
+        return rows[0].capacity if rows else None
+
+    @classmethod
+    def lock_for_update(cls, institution, admission_class, section):
+        """Lock the capacity row for this class/section (if one exists).
+
+        Two approvals or imports filling the last seat must not both pass
+        ``has_room``. Taking this row lock inside a transaction serialises them:
+        the second writer waits, then counts the seat the first one just took.
+        No row means no limit, so there is nothing to serialise. Must be called
+        inside ``transaction.atomic()``."""
+        return (
+            cls.objects.select_for_update()
+            .filter(
+                institution=institution,
+                admission_class__in=class_label_spellings(admission_class),
+                section=section,
+            )
+            .order_by('pk')
+            .first()
+        )
 
     @classmethod
     def has_room(cls, institution, admission_class, section, exclude_student_id=None):
@@ -409,7 +469,8 @@ class SectionCapacity(models.Model):
         if exclude_student_id:
             already_counted = Student.objects.filter(
                 pk=exclude_student_id, institution=institution,
-                admission_class=admission_class, section=section, status='ACTIVE',
+                admission_class__in=class_label_spellings(admission_class),
+                section=section, status='ACTIVE',
             ).exists()
             if already_counted:
                 taken -= 1
