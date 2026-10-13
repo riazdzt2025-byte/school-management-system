@@ -448,3 +448,11 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 - **Throttle:** P1-9 helper reuse — ৩০ lookup/১০মিনিট per address + ৫ ভুল/১৫মিনিট per (address, application number); XFF-এর বাঁ দিক spoof করে bypass হয় না; `RATE_LIMIT_CACHE=db`-তেও কাজ করে।
 - **প্রমাণ:** নতুন `students/test_public_admission_status.py` **৩৫**; regression ৬ মডিউলে **১১৭**; পূর্ণ suite **৮৭৩ Django + ২৯ Node pass**, `check` 0, `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-06.md`; PR #63 (OPEN, owner merge সাপেক্ষ)।
 - **এখন খোলা (ক্রম অনুযায়ী):** OF-07 integrity audit (baseline Unverified) · OF-08 archive/promotion/certificates audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification + **OF-06-এর নতুন owner-decision আইটেম** (institution contact phone field হবে কি না)। OF-02-এর ৭টি list view ও OF-05-এর তিন গ্যাপ এর মধ্যে বন্ধ হয়েছে (PR #54 / PR #62 MERGED)।
+
+## Update — 2026-10-13 · সেশন OF-07 — Admission/import integrity (প্রম্পট ১৫/২৮) · ✅ কোড/টেস্ট সম্পন্ন
+
+- owner-সিদ্ধান্ত: capacity race = block · duplicate roll/ID = reject · fee mismatch = block।
+- Fix: fee block; approval/import/office transition-এ row lock; import `09`/`9` re-run ও capacity bypass বন্ধ; duplicate roll reject (import + Add/Edit form)।
+- **প্রমাণ:** `students` **942 Django OK** (নতুন ৩৮); Node **29/29**; `check` 0; `makemigrations --check` clean।
+- **খোলা বাকি (OF-07):** আসল parallel race test (শুধু SQLite-এ যাচাই); Add Student form-এর capacity lock; import all-or-nothing নীতি (owner); class-কে institution class list-এর সাথে মেলানো (নীতি নয়, এখনো নেই); marks import-এ sheet/subject যাচাই।
+- **এখন খোলা (ক্রম অনুযায়ী):** OF-08 archive/promotion/certificates audit · DB-02 · DB-03 · AT-01 · AT-02 · EM-01 · EM-03 · FN-01।

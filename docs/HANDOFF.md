@@ -8,7 +8,18 @@
 - **সমন্বয়:** `PHOTO_MAX_BYTES` 2 MiB → **1 MB** (+ help text/migration state/tests/.env.example); main-এর `StudentForm.clean_photo` বাদ (validation এখন model validator-এ, ফলে admin-ও একই নীতি পায়); list/detail/ID card PR #61-এর `_student_photo.html` partial ব্যবহার করে (opaque key + fallback); **`DELETE_MEDIA_ON_PURGE` এখন outbox signal মানে** — `_purge_archived_student`-এর দ্বিতীয় direct delete সরানো হয়েছে, না হলে flag=False নীরবে অকার্যকর হতো; `test_student_photos.py` নতুন API/টেমপ্লেট class অনুযায়ী আপডেট + purge টেস্টে `captureOnCommitCallbacks`; migration leaf conflict-এর জন্য `0049_merge_20261012_0613`।
 - **প্রমাণ (এই checkout, Python 3.11.2 / Django 5.2.18 fallback — `requirements.txt` Django 6.1 py3.12 চায়):** পূর্ণ **৯০৭ Django test OK** (৮৭৩ + ৩৪, 0 fail/error), **২৯/২৯ Node pass**, `check` 0 issue, `makemigrations --check` clean, `migrate` → 0047×2 + 0048 + 0049 merge OK, `retry_student_photo_deletions --limit 100` → `processed=0, deleted=0, retrying=0` rc 0। Private S3 `check --deploy` rc 0 (E012 নেই), public media config-এ `students.E012` rc 1।
 - **অবশিষ্ট gate (ইস্যুতে ট্র্যাক):** `retry_student_photo_deletions`-এর periodic scheduler এখনো configure/verify হয়নি (`render.cron.yaml`-এ শুধু backup cron আছে); deployed env/bucket policy, live S3 এবং browser/print/PDF যাচাই হয়নি।
-- **Next:** OF-07 (প্রম্পট ১৫/২৮) owner-এর নীতি ৩টি পেলে।
+- **Next:** OF-07 (প্রম্পট ১৫/২৮) — ✅ সম্পন্ন (পরের সেশনে দেখুন)।
+
+---
+
+## সেশন OF-07 — ২০২৬-১০-১৩ · প্রম্পট ১৫/২৮ · Admission/import integrity (audit + fix)
+
+- **Branch:** `arena/dc9b8fe5-school-management-system` (এই session-এর branch; prompt-এর `arena/01a0b7f7-…` stale)।
+- **Owner-সিদ্ধান্ত (Arena chat, ২০২৬-১০-১৩):** capacity race = **block** · duplicate roll/student-id = **reject** · fee mismatch = **block** (warn নয়)।
+- **পরিবর্তন:** fee mismatch → block (`accounts_approve_payment`); capacity row lock (`SectionCapacity.lock_for_update`) approval ও import-এ; office transition-এ row lock (lost update বন্ধ); import re-run ও capacity `09`/`9` (zero-padding tolerant, `class_label_spellings`); duplicate roll reject (import + Add/Edit Student form, `Student.roll_taken`)।
+- **প্রমাণ:** `students` suite **942 Django OK** (নতুন `test_admission_import_integrity.py` ৩৮ সহ); Node **29/29**; `check` 0; `makemigrations --check` clean। নতুন test আসল কোডে ৭টি fail — bug ধরে।
+- **যাচাই হয়নি:** আসল parallel race (শুধু SQLite); Postgres CI-র মাধ্যমে; Add Student form-এর capacity lock; import all-or-nothing (owner-সিদ্ধান্ত)। রিপোর্ট `docs/prompts/reports/OF-07.md`।
+- **Next:** প্রম্পট ১৬/২৮ (OF-08) — owner ক্রমিকভাবে দেবেন।
 
 ---
 
