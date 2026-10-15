@@ -49,6 +49,13 @@
     </div>
 </div>
 
+<div class="alert alert-warning d-print-none">
+    <strong>Permanent delete is final.</strong>
+    It also destroys the student's marks, receipts, certificates and any Transfer Certificate —
+    the audit trail keeps only the numbers, not the records themselves.
+    Restore instead when the student may come back.
+</div>
+
 <form method="GET" action="{% url 'archived_students' %}" class="inline-filter-bar d-print-none">
     {% include 'students/_pagination_filter_fields.html' with exclude="institution" %}
 
@@ -132,9 +139,10 @@
                         </form>
                         {% if can_purge %}
                         <form method="POST" action="{% url 'purge_archived_student' student.pk %}" class="d-inline"
-                              onsubmit="return confirm('PERMANENTLY delete {{ student.name|escapejs }} ({{ student.student_id }}) and all related records? This cannot be undone.');">
+                              onsubmit="return confirm('PERMANENTLY delete {{ student.name|escapejs }} ({{ student.student_id }}) and all related records? This cannot be undone.{% if student.transfer_certificate %} Transfer Certificate {{ student.transfer_certificate.tc_number|escapejs }} will also be permanently deleted.{% endif %}');">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-sm btn-outline-danger">🗑️ Delete Permanently</button>
+                        {% if student.transfer_certificate %}<span class="badge text-bg-danger ms-1" title="A Transfer Certificate will be deleted with this student">TC {{ student.transfer_certificate.tc_number }}</span>{% endif %}
                         </form>
                         {% endif %}
                         <a href="{% url 'student_detail' student.pk %}" class="btn btn-sm btn-outline-secondary">Details</a>

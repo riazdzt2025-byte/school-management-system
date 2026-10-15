@@ -2869,6 +2869,12 @@ def issue_tc(request, pk):
                 transfer_certificate.save()
                 student.status = 'TRANSFERRED'
                 student.save(update_fields=['status'])
+                # A TC changes the student's standing for good: keep who issued
+                # which number (and why) in the audit trail of that institution.
+                record_audit(request.user, 'transfer_certificate_issued', transfer_certificate,
+                            snapshot={'tc_number': transfer_certificate.tc_number,
+                                      'reason': transfer_certificate.reason},
+                            details={'student_id': student.student_id})
             messages.success(request, f"Transfer Certificate {transfer_certificate.tc_number} issued.")
             return redirect('view_tc', pk=transfer_certificate.pk)
     else:
@@ -2901,9 +2907,14 @@ def issue_certificate(request, pk):
     if request.method == 'POST':
         form = CertificateForm(request.POST)
         if form.is_valid():
-            certificate = form.save(commit=False)
-            certificate.student = student
-            certificate.save()
+            with transaction.atomic():
+                certificate = form.save(commit=False)
+                certificate.student = student
+                certificate.save()
+                record_audit(request.user, 'certificate_issued', certificate,
+                            snapshot={'certificate_number': certificate.certificate_number,
+                                      'certificate_type': certificate.certificate_type},
+                            details={'student_id': student.student_id})
             messages.success(request, f"Certificate issued — {certificate.certificate_number}")
             return redirect('view_certificate', pk=certificate.pk)
     else:
@@ -3043,7 +3054,11 @@ def archived_students(request):
     institution_id = request.GET.get('institution')
     institution = _resolve_requested_institution(request, institution_id)
 
-    qs = Student.objects.filter(is_archived=True).select_related('institution', 'archived_by')
+    # ``transfer_certificate`` rides along so the row's permanent-delete warning
+    # can name the TC without a query per row.
+    qs = Student.objects.filter(is_archived=True).select_related(
+        'institution', 'archived_by', 'transfer_certificate',
+    )
     qs = _scope_institution_qs(request, qs, institution)
     qs = _scope_students_to_user(request, qs)
 
@@ -3128,6 +3143,39 @@ def bulk_restore_students(request):
     return redirect(url)
 
 
+def _collect_destroyed_documents(student):
+    """The printed documents a purge is about to destroy, by number.
+
+    Owner rule (OF-08, 2026-10-15): a purge stays allowed even for a student
+    holding a TC or certificates, but it must never be silent — the numbers go
+    into the audit row and into the message the clerk sees.
+    """
+    destroyed = {}
+    transfer_certificate = getattr(student, 'transfer_certificate', None)
+    if transfer_certificate is not None:
+        destroyed['transfer_certificate'] = transfer_certificate.tc_number
+    certificate_numbers = list(
+        student.certificates.order_by('pk').values_list('certificate_number', flat=True)
+    )
+    if certificate_numbers:
+        destroyed['certificates'] = certificate_numbers
+    return destroyed
+
+
+def _destroyed_documents_warning(destroyed):
+    """Human sentence naming what a purge destroyed (empty when nothing was)."""
+    parts = []
+    if destroyed.get('transfer_certificate'):
+        parts.append(f"transfer certificate {destroyed['transfer_certificate']}")
+    numbers = destroyed.get('certificates') or []
+    if numbers:
+        label = 'certificate' if len(numbers) == 1 else 'certificates'
+        parts.append(f'{len(numbers)} {label} ({", ".join(numbers)})')
+    if not parts:
+        return ''
+    return 'Also permanently deleted: ' + ' and '.join(parts) + '.'
+
+
 def _purge_archived_student(user, student):
     """Hard-delete one archived student and the rows that hang off them.
 
@@ -3148,12 +3196,16 @@ def _purge_archived_student(user, student):
         'section': student.section,
         'institution_id': student.institution_id,
     }
+    # Collected before the delete: after it the rows are gone, and a purged
+    # number must stay traceable to the audit trail that destroyed it.
+    destroyed_documents = _collect_destroyed_documents(student)
     with transaction.atomic():
         AdmissionApplication.objects.filter(enrolled_student=student).update(enrolled_student=None)
         record_audit(user, 'student_purged', student, snapshot=snapshot,
-                     details={'source': 'purge_archived_student'})
+                     details={'source': 'purge_archived_student',
+                              'destroyed_documents': destroyed_documents})
         student.delete()
-    return snapshot
+    return {'snapshot': snapshot, 'destroyed_documents': destroyed_documents}
 
 
 @login_required
@@ -3168,8 +3220,12 @@ def purge_archived_student(request, pk):
     name = student.name
     student_id = student.student_id
     institution_id = student.institution_id
-    _purge_archived_student(request.user, student)
-    messages.success(request, f'{name} ({student_id}) was permanently deleted.')
+    destroyed = _purge_archived_student(request.user, student)['destroyed_documents']
+    warning = _destroyed_documents_warning(destroyed)
+    if warning:
+        messages.warning(request, f'{name} ({student_id}) was permanently deleted. {warning}')
+    else:
+        messages.success(request, f'{name} ({student_id}) was permanently deleted.')
     url = reverse('archived_students')
     if institution_id:
         url += f'?institution={institution_id}'
@@ -3193,10 +3249,18 @@ def bulk_purge_archived_students(request):
         return redirect('archived_students')
     students = list(students_qs)
     purged = 0
+    destroyed_lines = []
     for student in students:
-        _purge_archived_student(request.user, student)
+        result = _purge_archived_student(request.user, student)
         purged += 1
-    messages.success(request, f'{purged} archived student(s) permanently deleted.')
+        warning = _destroyed_documents_warning(result['destroyed_documents'])
+        if warning:
+            destroyed_lines.append(f'{student.name} ({student.student_id}): {warning}')
+    message = f'{purged} archived student(s) permanently deleted.'
+    if destroyed_lines:
+        messages.warning(request, f'{message} ' + ' '.join(destroyed_lines))
+    else:
+        messages.success(request, message)
     url = reverse('archived_students')
     if request.POST.get('institution'):
         url += f'?institution={request.POST.get("institution")}'
@@ -5672,11 +5736,41 @@ def finance_dashboard(request):
     })
 
 
+def _promotion_already_run(students, data):
+    """A live (not rolled back) batch that already promoted this class/section.
+
+    Owner rule (OF-08, 2026-10-15): one promotion run per class/section and
+    session. A second run used to be accepted and quietly created a second batch
+    for whoever was left in the class, so a double promotion was impossible to
+    spot in the history. Rolling the first batch back clears the block.
+    """
+    institution_ids = {student.institution_id for student in students if student.institution_id}
+    batches = PromotionBatch.objects.filter(
+        session__iexact=data['session'],
+        from_class__in=class_label_spellings(data['from_class']),
+        rolled_back_at__isnull=True,
+    )
+    batches = batches.filter(
+        from_section__iexact=data['from_section'],
+    ) if data['from_section'] else batches.filter(from_section='')
+    if institution_ids:
+        batches = batches.filter(
+            Q(institution_id__in=institution_ids)
+            | Q(institution__isnull=True,
+                student_history__student__institution_id__in=institution_ids)
+        )
+    else:
+        batches = batches.filter(institution__isnull=True)
+    return batches.distinct().order_by('-pk').first()
+
+
 @login_required
 @permission_required('students.change_student', raise_exception=True)
 @_require_department('Office')
 def student_promotion(request):
     form = StudentPromotionForm(request.POST or None)
+    count = 0
+    blocked = None
     if request.method == 'POST' and form.is_valid():
         data = {key: value.strip() for key, value in form.cleaned_data.items()}
         with transaction.atomic():
@@ -5694,7 +5788,8 @@ def student_promotion(request):
             if data['from_section']:
                 students = [student for student in students if student.section.lower() == data['from_section'].lower()]
             count = len(students)
-            if count:
+            blocked = _promotion_already_run(students, data) if count else None
+            if count and blocked is None:
                 # A promotion run moves a single class/section, so all promoted
                 # students belong to one institution. Record it on the batch
                 # (D-9) so scoping no longer has to be derived from the rows;
@@ -5727,9 +5822,14 @@ def student_promotion(request):
                             snapshot={'session': batch.session, 'student_count': count},
                             details={'from_class': batch.from_class, 'from_section': batch.from_section,
                                     'to_class': batch.to_class, 'to_section': batch.to_section})
+            elif count:
+                section = f" section {data['from_section']}" if data['from_section'] else ''
+                form.add_error(None,
+                    f'Class {data["from_class"]}{section} has already been promoted in session '
+                    f'{blocked.session}. Roll the earlier promotion back first if it was a mistake.')
         if not count:
             messages.error(request, 'No students found for the selected class/section.')
-        else:
+        elif blocked is None:
             messages.success(request, f'{count} student(s) promoted.')
             return redirect('student_list')
     return render(request, 'students/student_promotion.html', {'form': form})
