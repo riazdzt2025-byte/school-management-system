@@ -3,7 +3,7 @@ import re
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from uuid import uuid4
 from django.core.serializers.json import DjangoJSONEncoder
@@ -786,6 +786,61 @@ class StudentSubject(models.Model):
         return f"{self.student.name} - {self.subject.name}"
 
 
+class DocumentSequence(models.Model):
+    """Monotonic year-wise counter behind TC and certificate numbers.
+
+    Printed numbers are quoted on paper, so they must be unique *and* must
+    never be handed out twice. The earlier ``count() + 1`` scheme was neither:
+    two rows sharing a number raised an IntegrityError (a 500 on screen), and
+    purging the row that used a number handed the same number out again to the
+    next student. A counter row outlives the documents it numbered, so a
+    deleted number stays spent.
+    """
+
+    # ``'TC-2026'`` / ``'CERT-STUDY-2026'`` — one counter per year (and per
+    # certificate type, because each type has its own prefix and sequence).
+    scope = models.CharField(max_length=64, unique=True)
+    last_number = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Internal bookkeeping — nothing is granted or checked against it.
+        default_permissions = ()
+
+    def __str__(self):
+        return f'{self.scope} -> {self.last_number}'
+
+
+def next_document_sequence_number(scope, *, seed=0):
+    """Allocate the next number for ``scope`` and return it.
+
+    The counter row is locked for the whole read-increment-write, so two clerks
+    issuing at the same moment get different numbers (Postgres; on SQLite this
+    is a no-op, as everywhere else in this codebase). ``seed`` lifts a missing
+    or lagging counter to the highest number already in use, which is how
+    legacy/hand-typed numbers are respected when the counter is first created.
+    """
+    with transaction.atomic():
+        DocumentSequence.objects.get_or_create(scope=scope, defaults={'last_number': seed})
+        sequence = DocumentSequence.objects.select_for_update().get(scope=scope)
+        if sequence.last_number < seed:
+            sequence.last_number = seed
+        sequence.last_number += 1
+        sequence.save(update_fields=['last_number', 'updated_at'])
+        return sequence.last_number
+
+
+def _highest_sequence(numbers):
+    """Largest ``...-NNN`` tail in ``numbers``, ignoring unparseable strings."""
+    highest = 0
+    for number in numbers:
+        try:
+            highest = max(highest, int(str(number).rsplit('-', 1)[-1]))
+        except (TypeError, ValueError):
+            continue
+    return highest
+
+
 class TransferCertificate(models.Model):
     student = models.OneToOneField(
         Student, on_delete=models.CASCADE, related_name='transfer_certificate'
@@ -798,13 +853,25 @@ class TransferCertificate(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.tc_number:
-            from django.utils import timezone
-            year = timezone.now().year
-            count = TransferCertificate.objects.filter(
-                issue_date__year=year
-            ).count() + 1
-            self.tc_number = f"TC-{year}-{count:03d}"
+            self.tc_number = self._allocate_tc_number()
         super().save(*args, **kwargs)
+
+    def _allocate_tc_number(self):
+        year = timezone.now().year
+        scope = f'TC-{year}'
+        taken = set(
+            TransferCertificate.objects.filter(issue_date__year=year)
+            .values_list('tc_number', flat=True)
+        )
+        for _ in range(10):
+            sequence = next_document_sequence_number(
+                scope, seed=_highest_sequence(taken),
+            )
+            number = f"TC-{year}-{sequence:03d}"
+            if number not in taken:
+                return number
+            taken.add(number)
+        raise ValidationError(f'Could not allocate a free TC number for {year}.')
 
     def __str__(self):
         return f"{self.tc_number} - {self.student.name}"
@@ -828,14 +895,29 @@ class Certificate(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.certificate_number:
-            from django.utils import timezone
-            year = timezone.now().year
-            prefix = self.certificate_type[:3]
-            count = Certificate.objects.filter(
-                issue_date__year=year, certificate_type=self.certificate_type
-            ).count() + 1
-            self.certificate_number = f"{prefix}-{year}-{count:03d}"
+            self.certificate_number = self._allocate_certificate_number()
         super().save(*args, **kwargs)
+
+    def _allocate_certificate_number(self):
+        year = timezone.now().year
+        prefix = self.certificate_type[:3]
+        scope = f'CERT-{self.certificate_type}-{year}'
+        taken = set(
+            Certificate.objects.filter(
+                issue_date__year=year, certificate_type=self.certificate_type,
+            ).values_list('certificate_number', flat=True)
+        )
+        for _ in range(10):
+            sequence = next_document_sequence_number(
+                scope, seed=_highest_sequence(taken),
+            )
+            number = f"{prefix}-{year}-{sequence:03d}"
+            if number not in taken:
+                return number
+            taken.add(number)
+        raise ValidationError(
+            f'Could not allocate a free certificate number for {year} ({self.certificate_type}).'
+        )
 
     def __str__(self):
         return f"{self.certificate_number} - {self.student.name}"
