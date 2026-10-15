@@ -456,3 +456,11 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 - **প্রমাণ:** `students` **942 Django OK** (নতুন ৩৮); Node **29/29**; `check` 0; `makemigrations --check` clean।
 - **খোলা বাকি (OF-07):** আসল parallel race test (শুধু SQLite-এ যাচাই); Add Student form-এর capacity lock; import all-or-nothing নীতি (owner); class-কে institution class list-এর সাথে মেলানো (নীতি নয়, এখনো নেই); marks import-এ sheet/subject যাচাই।
 - **এখন খোলা (ক্রম অনুযায়ী):** OF-08 archive/promotion/certificates audit · DB-02 · DB-03 · AT-01 · AT-02 · EM-01 · EM-03 · FN-01।
+
+## Update — 2026-10-15 · সেশন OF-08 — Archive/promotion/certificates (প্রম্পট ১৬/২৮) · ✅ কোড/টেস্ট সম্পন্ন
+
+- **owner-সিদ্ধান্ত ৩:** purge = warn-only + audit (block নয়) · নম্বর year-wise-ই কিন্তু collision-safe ও পুনর্ব্যবহার-মুক্ত · একই class+session-এ দ্বিতীয় promotion run block (rollback করলে আবার অনুমোদিত)।
+- **Fix:** `DocumentSequence` counter (migration `0050`) — TC/certificate নম্বর এখন lock করা counter থেকে, হাতে বসানো নম্বরের সাথে ধাক্কা খেলেও 500 নয়, purge-এর পরেও নম্বর ফেরে না; `issue_tc`/`issue_certificate`-এ audit row; purge-এ `destroyed_documents` audit + warning + archived পেজে সতর্কবার্তা; certificate form-এ field error; promotion duplicate-run block (`_promotion_already_run`, spelling-tolerant)।
+- **প্রমাণ:** `students` **৯৯৩ Django OK** (নতুন `test_archive_promotion_certificate_audit.py` ৫১); Node **29/29**; `check` 0; `makemigrations --check` clean; প্রাক-ফিক্স কোডে নতুন test ১৪টি fail (bug-প্রমাণ)। রিপোর্ট `docs/prompts/reports/OF-08.md`।
+- **খোলা বাকি (OF-08):** counter lock-এর আসল parallel test (Postgres); certificate eligibility নীতি (owner); read view-এর permission নীতি (এখন login-only); print-এর চেহারা/আসল প্রিন্টার যাচাই।
+- **এখন খোলা (ক্রম অনুযায়ী):** DB-01 regression (baseline Complete) · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification।
