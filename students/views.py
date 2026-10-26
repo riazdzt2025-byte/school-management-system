@@ -4475,17 +4475,50 @@ def _institutions_data_json(request=None):
     })
 
 
+def _special_exam_selection(request, exam):
+    """Pk lists behind the special-exam pickers.
+
+    On a rejected POST the ticks the user just made are what the page must
+    show back, not the rows saved on the exam (there may be none yet); on a
+    GET the exam's own candidates and papers are shown.
+    """
+    if request.method == 'POST':
+        picked = []
+        for name in ('special_students', 'special_subjects'):
+            picked.append([
+                int(value) for value in request.POST.getlist(name)
+                if str(value).isdigit()
+            ])
+        return picked
+    if exam is None:
+        return [], []
+    return (
+        list(exam.special_students.values_list('pk', flat=True)),
+        list(exam.special_subjects.values_list('pk', flat=True)),
+    )
+
+
 @login_required
 @permission_required('students.add_exam', raise_exception=True)
 def add_exam(request):
     form = ExamForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
-        form.save()
+        exam = form.save()
         messages.success(request, 'Exam created.')
+        if exam.is_special:
+            messages.info(
+                request,
+                f'Special exam created with {exam.special_students.count()} candidate(s) '
+                f'and {exam.special_subjects.count()} paper(s). Class / section / group '
+                f'filters do not apply — only the candidates you ticked will sit it.',
+            )
         return redirect('exam_list')
+    student_ids, subject_ids = _special_exam_selection(request, None)
     return render(request, 'students/add_exam.html', {
         'form': form,
         'institutions_data_json': _institutions_data_json(request),
+        'selected_special_student_ids': student_ids,
+        'selected_special_subject_ids': subject_ids,
     })
 
 
@@ -4498,10 +4531,13 @@ def edit_exam(request, pk):
         form.save()
         messages.success(request, 'Exam updated.')
         return redirect('exam_list')
+    student_ids, subject_ids = _special_exam_selection(request, exam)
     return render(request, 'students/add_exam.html', {
         'form': form,
         'exam': exam,
         'institutions_data_json': _institutions_data_json(request),
+        'selected_special_student_ids': student_ids,
+        'selected_special_subject_ids': subject_ids,
     })
 
 
@@ -4594,6 +4630,7 @@ def select_marks_subject(request, pk):
 
     return render(request, 'students/select_marks_subject.html', {
         'exam': exam,
+        'students': students,
         'subjects': subjects,
         'is_filtered': is_filtered,
         'no_subjects': no_subjects,

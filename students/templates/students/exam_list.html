@@ -48,7 +48,14 @@
                 <tbody>
                     {% for exam in exams %}
                     <tr>
-                        <td>{{ exam.name }}</td>
+                        <td>
+                            {{ exam.name }}
+                            {% if exam.is_special %}
+                            <span class="badge bg-info text-dark" title="Candidates and papers picked by hand">
+                                Special
+                            </span>
+                            {% endif %}
+                        </td>
                         <td>{{ exam.get_exam_type_display }}</td>
                         <td>{{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</td>
                         <td>{{ exam.get_group_display|default:'-' }}</td>

@@ -949,6 +949,29 @@ class Exam(models.Model):
     exam_date = models.DateField(null=True, blank=True)
     is_published = models.BooleanField(default=False)
 
+    # ---- Special exam (বৃত্তি পরীক্ষা / competitive test) ----------------
+    # A normal exam is a register: its cohort is "class + section + group" and
+    # its papers are the ones assigned to that class. A special exam is the
+    # opposite — the candidates and the papers are picked by hand, so any
+    # student of the institution can sit it regardless of class or group
+    # (a class-8 scholarship test a few class-9 students also sit, say).
+    # ``admission_class`` is still kept: it drives the Mark Evaluation marks
+    # distribution (full marks / CQ / MCQ / pass %) and the printed heading.
+    is_special = models.BooleanField(
+        default=False,
+        help_text='Special exam (scholarship / competitive test): candidates '
+                  'and papers are picked by hand instead of following the '
+                  'class register.',
+    )
+    special_students = models.ManyToManyField(
+        'Student', blank=True, related_name='special_exams',
+        help_text='Candidates of a special exam, chosen by hand.',
+    )
+    special_subjects = models.ManyToManyField(
+        'Subject', blank=True, related_name='special_exams',
+        help_text='Papers a special exam is held on.',
+    )
+
     def __str__(self):
         return f"{self.name} ({self.get_exam_type_display()}) - Class {self.admission_class}"
 

@@ -7,13 +7,24 @@
     <div>
         <h1>Enter Marks - {{ exam.name }}</h1>
         <div class="subtitle">
-            Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if exam.group %} &middot; {{ exam.get_group_display }} group{% endif %}
+            {% if exam.is_special %}
+                Special exam &middot; {{ students|length }} candidate(s) &middot; Class {{ exam.admission_class }}
+            {% else %}
+                Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if exam.group %} &middot; {{ exam.get_group_display }} group{% endif %}
+            {% endif %}
         </div>
     </div>
 </div>
 
 {% if messages %}
     {% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}
+{% endif %}
+
+{% if exam.is_special %}
+<div class="alert alert-info small">
+    <strong>Special exam</strong> — candidates and papers were picked when this exam was created,
+    so the class / section / group register does not apply. To change the list, edit the exam.
+</div>
 {% endif %}
 
 <div class="table-card p-4">
