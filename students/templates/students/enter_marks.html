@@ -18,8 +18,9 @@
         <h1>Enter Marks</h1>
         <div class="subtitle">
             {{ exam.name }} - {{ subject.name }} (Full Marks: {{ marks_config.full_marks }})
+            {% if exam.is_special %}- Special exam ({{ total_students }} candidate(s)){% else %}
             - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
-            {% if selected_group_label or exam.group %} &middot; {{ selected_group_label|default:exam.get_group_display }} group{% endif %}
+            {% if selected_group_label or exam.group %} &middot; {{ selected_group_label|default:exam.get_group_display }} group{% endif %}{% endif %}
             - Pass Marks: {{ marks_config.pass_marks }}
         </div>
     </div>

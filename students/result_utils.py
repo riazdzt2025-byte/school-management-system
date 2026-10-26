@@ -26,6 +26,48 @@ def class_filter_variants(value):
     return list(variants)
 
 
+def special_exam_students(exam):
+    """The hand-picked candidates of a special exam, or ``None``.
+
+    A special exam (``Exam.is_special`` — the class-8 scholarship test, a
+    competitive exam, ...) does not follow the register: its cohort is the
+    list of students somebody ticked at creation time, whatever class or
+    group they belong to. Returns ``None`` for an ordinary exam so callers
+    keep using the class/section/group filter.
+    """
+    if not getattr(exam, 'pk', None) or not getattr(exam, 'is_special', False):
+        return None
+    # Archived / TC / discontinued candidates are dropped for the same reason
+    # the register drops them: they would otherwise show AB/F for every paper.
+    return list(
+        exam.special_students.filter(is_archived=False, status='ACTIVE')
+        .select_related('institution')
+        .order_by('admission_class', 'section', F('roll_no').asc(nulls_last=True), 'name', 'pk')
+    )
+
+
+def special_exam_subjects(exam, group=None):
+    """The papers a special exam is held on, or ``None``.
+
+    Returns ``None`` for an ordinary exam. The picked papers still pass
+    through Mark Evaluation's "Count" tick (a paper switched off for this
+    exam type stays off), because a special exam reuses the marks
+    distribution configured for its institution + class + exam type.
+    """
+    if not getattr(exam, 'pk', None) or not getattr(exam, 'is_special', False):
+        return None
+    from .models import Subject
+
+    picked_ids = list(exam.special_subjects.values_list('pk', flat=True))
+    if not picked_ids:
+        return [], True
+    effective_group = (group if group is not None else exam.group) or ''
+    kept = list(active_exam_subject_ids(exam, picked_ids, group=effective_group))
+    if not kept:
+        return [], True
+    return list(Subject.objects.filter(pk__in=kept).order_by('code', 'name')), True
+
+
 def get_exam_students(exam, group=None):
     """The one and only student list an exam works on.
 
@@ -33,8 +75,15 @@ def get_exam_students(exam, group=None):
     and group. ``group`` overrides the exam's own group for exams created
     without one, so the group picker on the marks pages drives the same filter
     as the subject list.
+
+    A special exam ignores all of that and uses its hand-picked candidates
+    (see :func:`special_exam_students`).
     """
     from .models import Student
+
+    special = special_exam_students(exam)
+    if special is not None:
+        return special
 
     # D-MIS (2026-09-17): TC / Discontinued / inactive students are not part
     #    # of the published register — they would otherwise show AB/F for every subject.
@@ -85,6 +134,10 @@ def get_exam_subjects(exam, group=None):
     from .models import Subject, SubjectRequirement
 
     effective_group = (group if group is not None else exam.group) or ''
+
+    special = special_exam_subjects(exam, group=group)
+    if special is not None:
+        return special
 
     if not exam.institution_id:
         return [], False
@@ -417,6 +470,13 @@ def get_student_subject_ids(exam, students, subjects=None, group=None):
     if not students or not base_subject_ids:
         return {student.pk: set() for student in students}
 
+    # A special exam's papers were chosen on the exam itself, so every
+    # candidate sits every one of them — there is no admission subject choice
+    # to consult, and a candidate from another class would otherwise be left
+    # with an empty paper list.
+    if getattr(exam, 'is_special', False):
+        return {student.pk: set(base_subject_ids) for student in students}
+
     student_ids = [student.pk for student in students]
     effective_group = (group if group is not None else exam.group) or ''
     class_variants = class_filter_variants(exam.admission_class)
@@ -506,9 +566,16 @@ def get_exam_subjects_for_students(exam, students, group=None):
 
 def get_exam_group_choices(exam):
     """Groups configured for this exam's institution + class, for the picker."""
-    from .models import Student, SubjectRequirement
+    from .models import Student, SubjectRequirement, class_supports_group
 
     if not exam.institution_id:
+        return []
+    # Groups only exist from class 9 upwards, so a lower class has no group
+    # to narrow to — no student of that class carries one. Offering a group
+    # here (a stray group tag on the class's Subject Assignment rows is
+    # enough to create a choice) would leave marks entry and result pages
+    # filtered to a cohort of nobody.
+    if not class_supports_group(exam.admission_class):
         return []
     codes = set(
         SubjectRequirement.objects.filter(

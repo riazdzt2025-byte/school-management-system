@@ -3506,8 +3506,18 @@ def mark_evaluation_settings(request):
     MID_TYPES = {'MID_TERM_1', 'MID_TERM_2', 'MID_TERM_3'}
     show_weekly_test = exam_type in MID_TYPES
 
+    # Groups only exist from class 9 upwards (owner rule — see
+    # GROUP_RULE_DEPLOY_NOTES.md), and a Mark Evaluation row cannot carry one
+    # below that either: SubjectMarkSetting.save() blanks it, so a value
+    # entered here would be silently stored as the shared, group-neutral
+    # setting. Groups are therefore offered *and* kept only where they can
+    # actually be used; offering a group the page is about to throw away
+    # (from a stray group tag on this class's Subject Assignment rows) made
+    # the picker bounce straight back to "All groups" on every reload.
+    class_has_group = bool(admission_class) and class_supports_group(admission_class)
+
     # Normalise group for non-group classes: force blank
-    if admission_class and not class_supports_group(admission_class):
+    if admission_class and not class_has_group:
         group = ''
 
     class_variants = class_filter_variants(admission_class)
@@ -3523,13 +3533,15 @@ def mark_evaluation_settings(request):
             admission_class__in=class_variants,
         )
         group_labels = dict(Student.GROUP_CHOICES)
-        assigned_group_codes = set(
-            requirement_scope.exclude(group='').values_list('group', flat=True).distinct()
-        )
-        group_choices = [
-            (code, label) for code, label in Student.GROUP_CHOICES
-            if code in assigned_group_codes
-        ]
+        group_choices = []
+        if class_has_group:
+            assigned_group_codes = set(
+                requirement_scope.exclude(group='').values_list('group', flat=True).distinct()
+            )
+            group_choices = [
+                (code, label) for code, label in Student.GROUP_CHOICES
+                if code in assigned_group_codes
+            ]
         from types import SimpleNamespace
         exam_like = SimpleNamespace(
             institution_id=int(institution_id),
@@ -3600,7 +3612,7 @@ def mark_evaluation_settings(request):
                 if not (0 <= pass_percentage <= 100):
                     messages.error(request, f'{subject.name}: Pass % must be between 0 and 100. Skipped.')
                     continue
-                if not class_supports_group(admission_class) and group:
+                if not class_has_group and group:
                     messages.error(request, f'{subject.name}: Group must be blank for classes below 9. Skipped.')
                     continue
 
@@ -3748,6 +3760,7 @@ def mark_evaluation_settings(request):
         'selected_exam_type': exam_type,
         'selected_group': group,
         'group_choices': group_choices,
+        'class_has_group': class_has_group,
         'show_weekly_test': show_weekly_test,
         'subjects_with_settings': subjects_with_settings,
         'empty_reason': empty_reason,
@@ -4462,17 +4475,50 @@ def _institutions_data_json(request=None):
     })
 
 
+def _special_exam_selection(request, exam):
+    """Pk lists behind the special-exam pickers.
+
+    On a rejected POST the ticks the user just made are what the page must
+    show back, not the rows saved on the exam (there may be none yet); on a
+    GET the exam's own candidates and papers are shown.
+    """
+    if request.method == 'POST':
+        picked = []
+        for name in ('special_students', 'special_subjects'):
+            picked.append([
+                int(value) for value in request.POST.getlist(name)
+                if str(value).isdigit()
+            ])
+        return picked
+    if exam is None:
+        return [], []
+    return (
+        list(exam.special_students.values_list('pk', flat=True)),
+        list(exam.special_subjects.values_list('pk', flat=True)),
+    )
+
+
 @login_required
 @permission_required('students.add_exam', raise_exception=True)
 def add_exam(request):
     form = ExamForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
-        form.save()
+        exam = form.save()
         messages.success(request, 'Exam created.')
+        if exam.is_special:
+            messages.info(
+                request,
+                f'Special exam created with {exam.special_students.count()} candidate(s) '
+                f'and {exam.special_subjects.count()} paper(s). Class / section / group '
+                f'filters do not apply — only the candidates you ticked will sit it.',
+            )
         return redirect('exam_list')
+    student_ids, subject_ids = _special_exam_selection(request, None)
     return render(request, 'students/add_exam.html', {
         'form': form,
         'institutions_data_json': _institutions_data_json(request),
+        'selected_special_student_ids': student_ids,
+        'selected_special_subject_ids': subject_ids,
     })
 
 
@@ -4485,10 +4531,13 @@ def edit_exam(request, pk):
         form.save()
         messages.success(request, 'Exam updated.')
         return redirect('exam_list')
+    student_ids, subject_ids = _special_exam_selection(request, exam)
     return render(request, 'students/add_exam.html', {
         'form': form,
         'exam': exam,
         'institutions_data_json': _institutions_data_json(request),
+        'selected_special_student_ids': student_ids,
+        'selected_special_subject_ids': subject_ids,
     })
 
 
@@ -4581,6 +4630,7 @@ def select_marks_subject(request, pk):
 
     return render(request, 'students/select_marks_subject.html', {
         'exam': exam,
+        'students': students,
         'subjects': subjects,
         'is_filtered': is_filtered,
         'no_subjects': no_subjects,

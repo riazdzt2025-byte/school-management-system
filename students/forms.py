@@ -668,11 +668,44 @@ class ExamForm(forms.ModelForm):
         widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
     )
 
-    field_order = ['institution', 'admission_class', 'section', 'group', 'exam_type', 'session', 'exam_date', 'is_published']
+    # ---- Special exam (বৃত্তি পরীক্ষা / competitive test) ----
+    # A special exam does not follow the register: the candidates and the
+    # papers are ticked here instead of being derived from class/section/group
+    # and the Subject Assignment table. See Exam.is_special.
+    is_special = forms.BooleanField(
+        required=False,
+        label='Special exam (pick students & subjects by hand)',
+        help_text='বৃত্তি পরীক্ষা বা যেকোনো বিশেষ পরীক্ষার জন্য — নিচে শিক্ষার্থী ও বিষয় টিক দিন। '
+                  'ক্লাস/সেকশন/গ্রুপ দিয়ে সবাইকে ধরা হবে না, শুধু টিক দেওয়া শিক্ষার্থীরাই বসবে।',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
+    special_students = forms.ModelMultipleChoiceField(
+        queryset=Student.objects.none(),
+        required=False,
+        label='Candidates',
+        help_text='যারা এই পরীক্ষায় বসবে — যেকোনো ক্লাস থেকে বাছাই করা যায়।',
+        widget=forms.CheckboxSelectMultiple(),
+    )
+    special_subjects = forms.ModelMultipleChoiceField(
+        queryset=Subject.objects.all(),
+        required=False,
+        label='Papers',
+        help_text='এই পরীক্ষায় যে বিষয়গুলোর নম্বর থাকবে। নম্বর বণ্টন (Full marks / CQ / MCQ) '
+                  'Mark Evaluation-এ ক্লাস ও exam type অনুযায়ী কনফিগার করা সেটিং থেকে আসবে।',
+        widget=forms.CheckboxSelectMultiple(),
+    )
+
+    field_order = [
+        'institution', 'admission_class', 'section', 'group', 'exam_type', 'session',
+        'exam_date', 'is_published', 'is_special', 'special_students', 'special_subjects',
+    ]
 
     class Meta:
         model = Exam
-        fields = ['institution', 'admission_class', 'section', 'group', 'exam_type', 'session', 'exam_date', 'is_published']
+        fields = [
+            'institution', 'admission_class', 'section', 'group', 'exam_type', 'session',
+            'exam_date', 'is_published', 'is_special', 'special_students', 'special_subjects',
+        ]
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
             'exam_type': forms.Select(attrs={'class': 'form-select'}),
@@ -688,6 +721,16 @@ class ExamForm(forms.ModelForm):
                 pk__in=self.allowed_institution_ids
             )
         self._set_class_choices()
+        self._set_special_querysets()
+
+    def _set_special_querysets(self):
+        """Offer only candidates this user may see, and order them usefully."""
+        students = Student.objects.filter(is_archived=False, status='ACTIVE')
+        if self.allowed_institution_ids is not None:
+            students = students.filter(institution_id__in=self.allowed_institution_ids)
+        self.fields['special_students'].queryset = students.select_related(
+            'institution'
+        ).order_by('institution__name', 'admission_class', 'section', 'name')
 
     def _get_selected_institution(self):
         """The institution this exam belongs to (bound instance or POST choice)."""
@@ -729,12 +772,56 @@ class ExamForm(forms.ModelForm):
                 )
         return institution
 
+    def clean(self):
+        cleaned_data = super().clean()
+        is_special = cleaned_data.get('is_special')
+        students = cleaned_data.get('special_students')
+        subjects = cleaned_data.get('special_subjects')
+        institution = cleaned_data.get('institution')
+
+        if not is_special:
+            # An ordinary exam is a register — its cohort is class/section/group,
+            # so a candidate list left over from an earlier edit must not stick.
+            cleaned_data['special_students'] = self.fields['special_students'].queryset.none()
+            cleaned_data['special_subjects'] = self.fields['special_subjects'].queryset.none()
+            return cleaned_data
+
+        if institution is None:
+            self.add_error(
+                'institution', 'A special exam needs an institution.'
+            )
+        if not students:
+            self.add_error(
+                'special_students', 'Tick at least one candidate for a special exam.'
+            )
+        if not subjects:
+            self.add_error(
+                'special_subjects', 'Tick at least one paper for a special exam.'
+            )
+        if students and institution is not None:
+            outsiders = [s for s in students if s.institution_id != institution.pk]
+            if outsiders:
+                shown = ', '.join(str(s) for s in outsiders[:3])
+                if len(outsiders) > 3:
+                    shown += f' and {len(outsiders) - 3} more'
+                self.add_error(
+                    'special_students',
+                    f'These candidates do not belong to {institution.name}: {shown}.',
+                )
+        # Section / group filters describe the register, not a hand-picked
+        # cohort, so they must not narrow it.
+        cleaned_data['section'] = ''
+        cleaned_data['group'] = ''
+        return cleaned_data
+
     def save(self, commit=True):
         exam = super().save(commit=False)
         exam.name = auto_exam_name(exam.exam_type, exam.session)
         if commit:
             exam.save()
+            self.save_m2m()
         return exam
+
 
 class ExamExcelImportForm(forms.Form):
     excel_file = forms.FileField(
