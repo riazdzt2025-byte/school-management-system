@@ -506,9 +506,16 @@ def get_exam_subjects_for_students(exam, students, group=None):
 
 def get_exam_group_choices(exam):
     """Groups configured for this exam's institution + class, for the picker."""
-    from .models import Student, SubjectRequirement
+    from .models import Student, SubjectRequirement, class_supports_group
 
     if not exam.institution_id:
+        return []
+    # Groups only exist from class 9 upwards, so a lower class has no group
+    # to narrow to — no student of that class carries one. Offering a group
+    # here (a stray group tag on the class's Subject Assignment rows is
+    # enough to create a choice) would leave marks entry and result pages
+    # filtered to a cohort of nobody.
+    if not class_supports_group(exam.admission_class):
         return []
     codes = set(
         SubjectRequirement.objects.filter(

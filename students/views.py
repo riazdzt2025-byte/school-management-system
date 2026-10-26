@@ -3506,8 +3506,18 @@ def mark_evaluation_settings(request):
     MID_TYPES = {'MID_TERM_1', 'MID_TERM_2', 'MID_TERM_3'}
     show_weekly_test = exam_type in MID_TYPES
 
+    # Groups only exist from class 9 upwards (owner rule — see
+    # GROUP_RULE_DEPLOY_NOTES.md), and a Mark Evaluation row cannot carry one
+    # below that either: SubjectMarkSetting.save() blanks it, so a value
+    # entered here would be silently stored as the shared, group-neutral
+    # setting. Groups are therefore offered *and* kept only where they can
+    # actually be used; offering a group the page is about to throw away
+    # (from a stray group tag on this class's Subject Assignment rows) made
+    # the picker bounce straight back to "All groups" on every reload.
+    class_has_group = bool(admission_class) and class_supports_group(admission_class)
+
     # Normalise group for non-group classes: force blank
-    if admission_class and not class_supports_group(admission_class):
+    if admission_class and not class_has_group:
         group = ''
 
     class_variants = class_filter_variants(admission_class)
@@ -3523,13 +3533,15 @@ def mark_evaluation_settings(request):
             admission_class__in=class_variants,
         )
         group_labels = dict(Student.GROUP_CHOICES)
-        assigned_group_codes = set(
-            requirement_scope.exclude(group='').values_list('group', flat=True).distinct()
-        )
-        group_choices = [
-            (code, label) for code, label in Student.GROUP_CHOICES
-            if code in assigned_group_codes
-        ]
+        group_choices = []
+        if class_has_group:
+            assigned_group_codes = set(
+                requirement_scope.exclude(group='').values_list('group', flat=True).distinct()
+            )
+            group_choices = [
+                (code, label) for code, label in Student.GROUP_CHOICES
+                if code in assigned_group_codes
+            ]
         from types import SimpleNamespace
         exam_like = SimpleNamespace(
             institution_id=int(institution_id),
@@ -3600,7 +3612,7 @@ def mark_evaluation_settings(request):
                 if not (0 <= pass_percentage <= 100):
                     messages.error(request, f'{subject.name}: Pass % must be between 0 and 100. Skipped.')
                     continue
-                if not class_supports_group(admission_class) and group:
+                if not class_has_group and group:
                     messages.error(request, f'{subject.name}: Group must be blank for classes below 9. Skipped.')
                     continue
 
@@ -3748,6 +3760,7 @@ def mark_evaluation_settings(request):
         'selected_exam_type': exam_type,
         'selected_group': group,
         'group_choices': group_choices,
+        'class_has_group': class_has_group,
         'show_weekly_test': show_weekly_test,
         'subjects_with_settings': subjects_with_settings,
         'empty_reason': empty_reason,
