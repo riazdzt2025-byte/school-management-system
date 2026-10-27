@@ -299,6 +299,14 @@ class SpecialExamFormTests(SpecialExamFixtureMixin, TestCase):
         self.assertEqual(exam.special_students.count(), 0)
         self.assertEqual(exam.special_subjects.count(), 0)
 
+    def test_candidate_rows_carry_class_and_institution(self):
+        """The browser picker narrows the list by the exam's class/institution."""
+        response = self.client.get(reverse('add_exam'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'data-institution="{self.institution.pk}"')
+        self.assertContains(response, 'data-class="8"')
+        self.assertContains(response, 'data-class="9"')
+
     def test_edit_form_preselects_the_saved_candidates(self):
         exam = self.build_special_exam([self.class9_sci], [self.math])
         response = self.client.get(reverse('edit_exam', args=[exam.pk]))
