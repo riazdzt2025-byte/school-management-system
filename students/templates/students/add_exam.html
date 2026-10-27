@@ -56,7 +56,8 @@
                                 <div class="d-flex gap-2 mb-2">
                                     <input type="text" id="candidate-search" class="form-control form-control-sm"
                                            placeholder="নাম / ID / Roll দিয়ে খুঁজুন" autocomplete="off">
-                                    <select id="candidate-class-filter" class="form-select form-select-sm" style="max-width: 150px;">
+                                    <select id="candidate-class-filter" class="form-select form-select-sm" style="max-width: 150px;"
+                                            title="বাছাই করা ক্লাসের শিক্ষার্থীরাই দেখায়; অন্য ক্লাস থেকে নিতে চাইলে All classes বাছুন">
                                         <option value="">All classes</option>
                                     </select>
                                 </div>
@@ -66,11 +67,12 @@
                                         <label class="form-check-label" for="candidate-select-all">Select all shown</label>
                                     </div>
                                     <span class="text-muted"><span id="candidate-count">0</span> selected</span>
+                                    <span class="text-muted" id="candidate-hidden-note"></span>
                                 </div>
                                 <div class="border rounded p-2 overflow-auto" style="max-height: 260px;">
                                     <ul class="list-unstyled mb-0" id="candidate-list">
                                         {% for student in form.special_students.field.queryset %}
-                                        <li class="candidate-row" data-class="{{ student.admission_class }}"
+                                        <li class="candidate-row" data-class="{{ student.admission_class }}" data-institution="{{ student.institution_id }}"
                                             data-search="{{ student.name|lower }} {{ student.student_id|lower }} {{ student.roll_no|default_if_none:'' }} {{ student.section|lower }} class {{ student.admission_class }}">
                                             <div class="form-check">
                                                 <input class="form-check-input candidate-box" type="checkbox"
@@ -211,14 +213,26 @@
         toggleSpecialPickers();
     }
 
-    function wirePicker(searchId, filterId, selectAllId, countId, rows, boxes) {
+    function wirePicker(searchId, filterId, selectAllId, countId, rows, boxes, extraMatch, hiddenNoteId) {
         var search = document.getElementById(searchId);
         var filter = document.getElementById(filterId);
         var selectAll = document.getElementById(selectAllId);
         var count = document.getElementById(countId);
+        var hiddenNote = document.getElementById(hiddenNoteId);
 
         function updateCount() {
             if (count) count.textContent = boxes.filter(function(b) { return b.checked; }).length;
+            if (hiddenNote) {
+                // Candidates ticked from another class stay ticked — say so,
+                // otherwise they look like they disappeared.
+                var hidden = boxes.filter(function(b) {
+                    var row = b.closest ? b.closest('li') : null;
+                    return b.checked && row && row.style.display === 'none';
+                }).length;
+                hiddenNote.textContent = hidden
+                    ? '(' + hidden + ' more selected outside this filter)'
+                    : '';
+            }
         }
 
         function applyFilters() {
@@ -227,7 +241,8 @@
             rows.forEach(function(row) {
                 var matchesText = !term || (row.dataset.search || '').indexOf(term) !== -1;
                 var matchesClass = !wanted || row.dataset.class === wanted;
-                row.style.display = matchesText && matchesClass ? '' : 'none';
+                var matchesExtra = !extraMatch || extraMatch(row);
+                row.style.display = matchesText && matchesClass && matchesExtra ? '' : 'none';
             });
             if (selectAll) {
                 var visible = rows.filter(function(row) { return row.style.display !== 'none'; });
@@ -236,6 +251,7 @@
                     return box && box.checked;
                 });
             }
+            updateCount();
         }
 
         if (search) search.addEventListener('input', applyFilters);
@@ -251,9 +267,16 @@
             });
         }
         boxes.forEach(function(box) { box.addEventListener('change', updateCount); });
-        applyFilters();
-        updateCount();
+        return applyFilters;
     }
+
+    // Candidates are shown for the institution and the class chosen for the
+    // exam — "Class 8" means the class-8 students. Ticks made for other
+    // classes are kept, and announced, so nothing vanishes silently.
+    var candidateInstitutionMatches = function(row) {
+        return !institutionSelect || !institutionSelect.value
+            || row.dataset.institution === institutionSelect.value;
+    };
 
     // Class filter options come from the candidates actually offered.
     var classFilter = document.getElementById('candidate-class-filter');
@@ -270,8 +293,42 @@
         });
     }
 
-    wirePicker('candidate-search', 'candidate-class-filter', 'candidate-select-all', 'candidate-count', candidateRows, candidateBoxes);
+    var applyCandidateFilters = wirePicker(
+        'candidate-search', 'candidate-class-filter', 'candidate-select-all', 'candidate-count',
+        candidateRows, candidateBoxes, candidateInstitutionMatches, 'candidate-hidden-note',
+    );
     wirePicker('paper-search', null, 'paper-select-all', 'paper-count', paperRows, paperBoxes);
+
+    function ensureClassOption(value) {
+        if (!classFilter || !value) return;
+        for (var i = 0; i < classFilter.options.length; i++) {
+            if (classFilter.options[i].value === value) return;
+        }
+        var opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = 'Class ' + value;
+        classFilter.appendChild(opt);
+    }
+
+    // Whichever class the exam is for is what the candidate list shows.
+    function syncCandidateClass() {
+        if (!classFilter || !classSelect) return;
+        ensureClassOption(classSelect.value);
+        classFilter.value = classSelect.value || '';
+        applyCandidateFilters();
+    }
+
+    if (classSelect) {
+        classSelect.addEventListener('change', syncCandidateClass);
+    }
+    if (institutionSelect) {
+        institutionSelect.addEventListener('change', function() {
+            // populateClasses() (bound above) refills the class dropdown; the
+            // candidate list follows whichever class ends up selected.
+            setTimeout(syncCandidateClass, 0);
+        });
+    }
+    syncCandidateClass();
 
     var examTypeSelect = document.getElementById('id_exam_type');
     var sessionInput   = document.getElementById('id_session');
