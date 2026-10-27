@@ -71,6 +71,7 @@
                                     <ul class="list-unstyled mb-0" id="candidate-list">
                                         {% for student in form.special_students.field.queryset %}
                                         <li class="candidate-row" data-class="{{ student.admission_class }}"
+                                            data-institution="{{ student.institution_id }}"
                                             data-search="{{ student.name|lower }} {{ student.student_id|lower }} {{ student.roll_no|default_if_none:'' }} {{ student.section|lower }} class {{ student.admission_class }}">
                                             <div class="form-check">
                                                 <input class="form-check-input candidate-box" type="checkbox"
@@ -89,7 +90,14 @@
                                         {% empty %}
                                         <li class="text-muted small">No active student to pick from.</li>
                                         {% endfor %}
+                                        <li class="text-muted small" id="candidate-no-match" style="display: none;">
+                                            এই শ্রেণিতে কোনো শিক্ষার্থী পাওয়া যায়নি — Class বদলান অথবা ড্রপডাউনে <em>All classes</em> বাছুন।
+                                        </li>
                                     </ul>
+                                </div>
+                                <div class="form-text">
+                                    শিক্ষার্থীর তালিকা উপরের <strong>Class</strong> ও <strong>Institution</strong> অনুযায়ী দেখানো হচ্ছে।
+                                    অন্য শ্রেণির শিক্ষার্থী নিতে চাইলে নিচের ড্রপডাউনে <em>All classes</em> বাছুন।
                                 </div>
                                 {% for error in form.special_students.errors %}
                                 <div class="text-danger small mt-1">{{ error }}</div>
@@ -184,6 +192,7 @@
                 classSelect.appendChild(opt);
             });
             toggleGroupField();
+            syncCandidateFilters();
         }
         institutionSelect.addEventListener('change', populateClasses);
     }
@@ -211,11 +220,15 @@
         toggleSpecialPickers();
     }
 
-    function wirePicker(searchId, filterId, selectAllId, countId, rows, boxes) {
-        var search = document.getElementById(searchId);
-        var filter = document.getElementById(filterId);
-        var selectAll = document.getElementById(selectAllId);
-        var count = document.getElementById(countId);
+    function wirePicker(options) {
+        var search = document.getElementById(options.searchId);
+        var filter = options.filterId ? document.getElementById(options.filterId) : null;
+        var selectAll = options.selectAllId ? document.getElementById(options.selectAllId) : null;
+        var count = options.countId ? document.getElementById(options.countId) : null;
+        var emptyRow = options.emptyId ? document.getElementById(options.emptyId) : null;
+        var rows = options.rows;
+        var boxes = options.boxes;
+        var extraFilter = options.extraFilter;
 
         function updateCount() {
             if (count) count.textContent = boxes.filter(function(b) { return b.checked; }).length;
@@ -224,11 +237,22 @@
         function applyFilters() {
             var term = (search && search.value || '').trim().toLowerCase();
             var wanted = filter ? filter.value : '';
+            var shown = 0;
             rows.forEach(function(row) {
                 var matchesText = !term || (row.dataset.search || '').indexOf(term) !== -1;
                 var matchesClass = !wanted || row.dataset.class === wanted;
-                row.style.display = matchesText && matchesClass ? '' : 'none';
+                var matchesExtra = !extraFilter || extraFilter(row);
+                // A tick that was already saved on the exam stays on screen even
+                // when the filters would hide it: an invisible tick would still
+                // be submitted, so it must never be hidden by accident.
+                var sticky = options.sticky && row.dataset.sticky === '1';
+                var visible = sticky || (matchesText && matchesClass && matchesExtra);
+                row.style.display = visible ? '' : 'none';
+                if (visible) shown += 1;
             });
+            if (emptyRow) {
+                emptyRow.style.display = shown ? 'none' : '';
+            }
             if (selectAll) {
                 var visible = rows.filter(function(row) { return row.style.display !== 'none'; });
                 selectAll.checked = visible.length > 0 && visible.every(function(row) {
@@ -236,6 +260,7 @@
                     return box && box.checked;
                 });
             }
+            return shown;
         }
 
         if (search) search.addEventListener('input', applyFilters);
@@ -250,28 +275,106 @@
                 updateCount();
             });
         }
-        boxes.forEach(function(box) { box.addEventListener('change', updateCount); });
+        boxes.forEach(function(box) {
+            box.addEventListener('change', function() {
+                var row = box.closest('.candidate-row');
+                if (row && row.dataset.sticky === '1' && !box.checked) {
+                    delete row.dataset.sticky;
+                }
+                if (options.sticky) applyFilters();
+                updateCount();
+            });
+        });
         applyFilters();
         updateCount();
+        return applyFilters;
     }
 
     // Class filter options come from the candidates actually offered.
     var classFilter = document.getElementById('candidate-class-filter');
+    var candidateInstitution = institutionSelect ? institutionSelect.value : '';
+
+    function addClassFilterOption(cls) {
+        if (!classFilter || !cls) return;
+        if (classFilter.querySelector('option[value="' + cls + '"]')) return;
+        var opt = document.createElement('option');
+        opt.value = cls;
+        opt.textContent = 'Class ' + cls;
+        classFilter.appendChild(opt);
+    }
+
     if (classFilter) {
         var seen = {};
         candidateRows.forEach(function(row) {
             var cls = row.dataset.class || '';
             if (!cls || seen[cls]) return;
             seen[cls] = true;
-            var opt = document.createElement('option');
-            opt.value = cls;
-            opt.textContent = 'Class ' + cls;
-            classFilter.appendChild(opt);
+            addClassFilterOption(cls);
         });
     }
 
-    wirePicker('candidate-search', 'candidate-class-filter', 'candidate-select-all', 'candidate-count', candidateRows, candidateBoxes);
-    wirePicker('paper-search', null, 'paper-select-all', 'paper-count', paperRows, paperBoxes);
+    // Picks restored from a saved exam are flagged so the filters never hide them.
+    candidateBoxes.forEach(function(box) {
+        var row = box.closest('.candidate-row');
+        if (row && box.checked) row.dataset.sticky = '1';
+    });
+
+    var applyCandidateFilters = wirePicker({
+        searchId: 'candidate-search',
+        filterId: 'candidate-class-filter',
+        selectAllId: 'candidate-select-all',
+        countId: 'candidate-count',
+        rows: candidateRows,
+        boxes: candidateBoxes,
+        emptyId: 'candidate-no-match',
+        sticky: true,
+        extraFilter: function(row) {
+            return !candidateInstitution || row.dataset.institution === candidateInstitution;
+        }
+    });
+    wirePicker({
+        searchId: 'paper-search',
+        selectAllId: 'paper-select-all',
+        countId: 'paper-count',
+        rows: paperRows,
+        boxes: paperBoxes
+    });
+
+    // The candidate list follows the Institution + Class picked at the top of
+    // the form: pick Class 8 and only Class 8 students are listed. The picker's
+    // own dropdown stays in sync, so "All classes" can still be chosen on
+    // purpose when a candidate from another class is needed.
+    //
+    // On a brand-new exam the Class field still holds its first option before
+    // the office has touched it, so the picker only starts following it once the
+    // class (or institution) is actually chosen. An existing exam already knows
+    // its class, so it follows from the start.
+    var followClassSelect = {% if exam %}true{% else %}false{% endif %};
+
+    function syncCandidateFilters() {
+        var candidateClass = classSelect ? classSelect.value : '';
+        candidateInstitution = institutionSelect ? institutionSelect.value : '';
+        if (classFilter && followClassSelect) {
+            if (candidateClass) {
+                addClassFilterOption(candidateClass);
+                classFilter.value = candidateClass;
+            } else {
+                classFilter.value = '';
+            }
+        }
+        if (typeof applyCandidateFilters === 'function') {
+            applyCandidateFilters();
+        }
+    }
+
+    function onClassOrInstitutionChanged() {
+        followClassSelect = true;
+        syncCandidateFilters();
+    }
+
+    if (classSelect) classSelect.addEventListener('change', onClassOrInstitutionChanged);
+    if (institutionSelect) institutionSelect.addEventListener('change', onClassOrInstitutionChanged);
+    syncCandidateFilters();
 
     var examTypeSelect = document.getElementById('id_exam_type');
     var sessionInput   = document.getElementById('id_session');
