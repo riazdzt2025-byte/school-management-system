@@ -305,3 +305,22 @@ class SpecialExamFormTests(SpecialExamFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['selected_special_student_ids'], [self.class9_sci.pk])
         self.assertEqual(response.context['selected_special_subject_ids'], [self.math.pk])
+
+    def test_candidate_rows_carry_class_and_institution_for_the_picker(self):
+        """The candidate list is filtered in the browser by the Class dropdown,
+        so every row has to say which class and institution it belongs to."""
+        response = self.client.get(reverse('add_exam'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'data-institution="{self.institution.pk}"')
+        self.assertContains(response, 'data-class="9"')
+        self.assertContains(response, 'id="candidate-class-filter"')
+        # "All classes" must stay reachable even though the class filter follows
+        # the exam's Class field.
+        self.assertContains(response, '<option value="">All classes</option>', html=False)
+
+    def test_picker_shows_students_of_every_class_the_exam_may_use(self):
+        """Candidates are pre-rendered (no AJAX), so the picker can only filter
+        what the form offered — class 8 and class 9 students must both be there."""
+        response = self.client.get(reverse('add_exam'))
+        self.assertContains(response, 'Ayesha')
+        self.assertContains(response, 'Tania')
