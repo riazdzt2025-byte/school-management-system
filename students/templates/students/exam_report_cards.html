@@ -1,0 +1,263 @@
+{% extends 'students/base.html' %}
+{% load static %}
+
+{% block title %}রিপোর্ট কার্ড (A4) - {{ exam.name }} - {{ block.super }}{% endblock %}
+
+{% block print_subtitle %}রিপোর্ট কার্ড - {{ exam.name }}{% endblock %}
+
+{% block extra_style %}
+    /* ---- A4 report card ----
+       One page per student, black rules only (no fills, no colours) so it
+       prints on a school photocopier without eating a toner cartridge. */
+    @page { size: A4 portrait; margin: 10mm; }
+
+    .rc-page { max-width: 100%; }
+    .rc-page .page-header h1 { font-size: 1.45rem; }
+    .rc-page .page-header h1 small { color: #6c757d; font-size: .62em; font-weight: 400; }
+    .rc-toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
+    .rc-toolbar .btn { border-radius: 8px; font-weight: 600; }
+
+    .rc-student-picker { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+    .rc-student-picker .form-select { max-width: 280px; }
+
+    /* The sheet itself: 190mm wide inside a 10mm A4 margin. */
+    .rc-sheet {
+        width: 190mm; min-height: 277mm; margin: 0 auto 10mm; padding: 4mm 3mm;
+        display: flex; flex-direction: column; justify-content: space-between;
+        background: #fff; color: #000; font-size: 12.5px; line-height: 1.35;
+        break-after: page; page-break-after: always;
+    }
+    .rc-sheet:last-child { break-after: auto; page-break-after: auto; margin-bottom: 0; }
+    .rc-sheet * { box-sizing: border-box; }
+
+    .rc-head { text-align: center; padding-bottom: 6px; border-bottom: 1.5px solid #000; }
+    .rc-school { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: .2px; }
+    .rc-meta { margin: 3px 0 0; font-size: 10.5px; }
+    .rc-exam { margin: 2px 0 0; font-size: 13px; font-weight: 700; }
+    .rc-title { margin: 5px 0 0; font-size: 12px; letter-spacing: 5px; font-weight: 700; text-transform: uppercase; }
+    .rc-draft { margin: 4px 0 0; font-size: 10.5px; font-weight: 700; letter-spacing: .5px; }
+
+    .rc-ident {
+        display: flex; justify-content: space-between; gap: 14px;
+        padding: 7px 0; margin-bottom: 5px; border-bottom: 1px solid #000;
+    }
+    .rc-ident small { display: block; font-size: 8px; letter-spacing: 1.4px; text-transform: uppercase; color: #000; }
+    .rc-ident b { font-size: 15px; }
+    .rc-ident .rc-ident-name { flex: 1; min-width: 0; }
+    .rc-ident .rc-ident-name b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    table.rc-marks { width: 100%; border-collapse: collapse; }
+    table.rc-marks th, table.rc-marks td {
+        border: 1px solid #000; padding: 4px 3px; text-align: center; vertical-align: middle;
+        background: #fff; color: #000; font-size: 11px;
+    }
+    table.rc-marks thead th { font-size: 9.5px; font-weight: 700; border-bottom: 1.6px solid #000; }
+    table.rc-marks .rc-subject { text-align: left; font-weight: 600; }
+    table.rc-marks .rc-subject small { display: block; font-size: 8.5px; font-weight: 400; }
+    table.rc-marks tbody td { border-bottom: .6px solid #666; }
+    table.rc-marks tbody tr:last-child td { border-bottom: 1px solid #000; }
+    table.rc-marks .rc-fail { font-weight: 800; }
+    table.rc-marks .rc-fail-note { display: block; font-size: 8px; font-weight: 700; letter-spacing: .3px; }
+
+    .rc-result { display: flex; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; margin-top: 8px; }
+    .rc-result div { flex: 1; padding: 6px 2px; text-align: center; border-right: .6px solid #000; }
+    .rc-result div:last-child { border-right: 0; }
+    .rc-result small { display: block; font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; }
+    .rc-result b { font-size: 19px; }
+
+    .rc-foot { display: flex; justify-content: space-between; gap: 16px; margin-top: 8px; }
+    .rc-lines { flex: 1; font-size: 11.5px; line-height: 1.85; }
+    .rc-lines b { font-weight: 700; }
+    .rc-scale { border-collapse: collapse; font-size: 10px; }
+    .rc-scale th, .rc-scale td { border: .6px solid #000; padding: 2px 9px; text-align: center; background: #fff; color: #000; }
+    .rc-scale th { border-bottom: 1.2px solid #000; font-size: 9px; }
+
+    .rc-sign { display: flex; justify-content: space-between; gap: 8px; margin-top: 26px; }
+    .rc-sign span {
+        flex: 1; max-width: 40mm; border-top: 1px solid #000; padding-top: 3px;
+        font-size: 10px; text-align: center; white-space: nowrap;
+    }
+
+    /* The card carries its own letterhead, so the app's shared print header
+       must not print above the first sheet (it would push the card over onto
+       a second page). */
+    .main > .print-header { display: none !important; }
+    .school-header { display: none !important; }
+
+    @media print {
+        .main { padding: 0 !important; }
+        .rc-page { max-width: none; }
+        /* A4 printable area is 277mm; leave 12mm of slack so a class with
+           many subjects still flows instead of clipping. */
+        .rc-sheet {
+            width: auto; min-height: 265mm; margin: 0; padding: 0;
+            box-shadow: none; border: 0;
+        }
+        .rc-toolbar, .rc-student-picker, .rc-note { display: none !important; }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="rc-page">
+    <div class="page-header d-print-none">
+        <div>
+            <h1>রিপোর্ট কার্ড <small>A4 Report Card</small></h1>
+            <div class="subtitle">
+                {{ exam.name }} · {{ exam.get_exam_type_display }}
+                · Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
+                {% if report_group_label %}· {{ report_group_label }} group{% endif %}
+                · {{ cards|length }} কার্ড
+                {% if not is_published %}<span class="badge bg-warning text-dark ms-1">Draft — ফল এখনো প্রকাশিত নয়</span>{% endif %}
+            </div>
+        </div>
+        <div class="rc-toolbar">
+            <a class="btn btn-sm btn-navy" href="{% url 'marks_grid' exam.pk %}{{ group_querystring }}">
+                <i class="bi bi-grid-3x3-gap"></i> রেজাল্ট গ্রিড
+            </a>
+            <a class="btn btn-sm btn-outline-navy" href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}">
+                <i class="bi bi-table"></i> Result Sheet
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-navy" onclick="window.print()">
+                <i class="bi bi-printer"></i> প্রিন্ট / PDF
+            </button>
+        </div>
+    </div>
+
+    {% if show_group_picker or students %}
+    <form method="get" class="rc-student-picker d-print-none">
+        {% if show_group_picker %}
+        <div>
+            <label class="form-label fw-semibold mb-1" for="rc-group">গ্রুপ</label>
+            <select name="group" id="rc-group" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">— সব গ্রুপ —</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        <div>
+            <label class="form-label fw-semibold mb-1" for="rc-student">একজনের কার্ড</label>
+            <select name="student" id="rc-student" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">— পুরো ক্লাস ({{ students|length }} জন) —</option>
+                {% for student in students %}
+                <option value="{{ student.pk }}" {% if selected_student == student.pk|stringformat:'s' %}selected{% endif %}>
+                    {{ student.roll_no|default:'—' }} · {{ student.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-sm btn-outline-navy">দেখান</button>
+        </div>
+        <div class="text-muted small mb-1">
+            প্রতিটি শিক্ষার্থীর জন্য এক পাতা A4। প্রিন্ট ডায়ালগে “Save as PDF” দিলে একই ফাইল হবে।
+        </div>
+    </form>
+    {% endif %}
+
+    {% if not cards %}
+    <div class="alert alert-info d-print-none">
+        {% if no_marks_at_all %}
+        এই পরীক্ষায় এখনো কোনো নম্বর দেওয়া হয়নি — কার্ড তৈরি হলে সব ঘর ফাঁকা দেখাবে। আগে
+        <a href="{% url 'marks_grid' exam.pk %}{{ group_querystring }}">রেজাল্ট গ্রিড</a>-এ নম্বর দিন।
+        {% else %}
+        এই শ্রেণিতে কোনো শিক্ষার্থী পাওয়া যায়নি।
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% for card in cards %}
+    <section class="rc-sheet">
+        <div>
+            <div class="rc-head">
+                <h2 class="rc-school">{{ SCHOOL_INFO.name|default:'School Name' }}</h2>
+                <div class="rc-meta">{{ SCHOOL_INFO.address|default:'' }}{% if SCHOOL_INFO.phone %} · {{ SCHOOL_INFO.phone }}{% endif %}</div>
+                <div class="rc-exam">
+                    {{ exam.name }} · {{ exam.session }}
+                    · Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if report_group_label %} · {{ report_group_label }}{% endif %}
+                </div>
+                <div class="rc-title">Report Card</div>
+                {% if not is_published %}<div class="rc-draft">DRAFT — RESULT NOT YET PUBLISHED</div>{% endif %}
+            </div>
+
+            <div class="rc-ident">
+                <div class="rc-ident-name">
+                    <small>Name of Student</small>
+                    <b>{{ card.student.name }}</b>
+                </div>
+                <div><small>Roll</small><b>{{ card.student.roll_no|default:'—' }}</b></div>
+                <div><small>ID</small><b>{{ card.student.student_id|default:'—' }}</b></div>
+            </div>
+
+            <table class="rc-marks">
+                <thead>
+                    <tr>
+                        <th class="rc-subject">Subject</th>
+                        {% for part in part_columns %}<th>{{ part.label }}</th>{% endfor %}
+                        <th>Total<br><small>/ Full</small></th>
+                        <th>Grade</th>
+                        <th>GP</th>
+                        <th>Highest</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in card.rows %}
+                    <tr>
+                        <td class="rc-subject">
+                            {{ row.name }}{% if row.is_fourth %} <small>(4th subject)</small>{% endif %}
+                            <small>{{ row.code }} · Full {{ row.full }}</small>
+                        </td>
+                        {% for cell in row.cells %}
+                        <td>{% if cell.value is None %}—{% else %}{{ cell.value }}{% endif %}</td>
+                        {% endfor %}
+                        <td>
+                            {% if row.obtained is None %}—{% else %}<b>{{ row.obtained }}</b> / {{ row.full }}{% endif %}
+                        </td>
+                        <td class="{% if row.grade == 'F' %}rc-fail{% endif %}">{{ row.grade|default:'—' }}</td>
+                        <td>{% if row.point is None %}—{% else %}{{ row.point|floatformat:2 }}{% endif %}</td>
+                        <td>{% if row.highest is None %}—{% else %}{{ row.highest }}{% endif %}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td class="rc-subject" colspan="{{ part_columns|length|add:5 }}">এই পরীক্ষায় এই শিক্ষার্থীর কোনো বিষয় পাওয়া যায়নি।</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="rc-result">
+                <div><small>Total</small><b>{% if card.total is None %}—{% else %}{{ card.total }}{% endif %}</b></div>
+                <div><small>GPA</small><b>{{ card.gpa|default:'—' }}</b></div>
+                <div><small>Grade</small><b>{{ card.grade|default:'—' }}</b></div>
+                <div><small>Merit Place</small><b>{% if card.position %}{{ card.position }}{% else %}—{% endif %}</b></div>
+            </div>
+        </div>
+
+        <div>
+            <div class="rc-foot">
+                <div class="rc-lines">
+                    <div>Result: <b>{% if card.has_marks %}{% if card.status == 'Pass' %}Pass{% else %}Fail{% endif %}{% else %}No Marks{% endif %}</b>{% if card.golden %} · <b>Golden A+</b>{% endif %}</div>
+                    <div>Highest marks (class): <b>{% if card.highest_total is None %}—{% else %}{{ card.highest_total }}{% endif %}</b></div>
+                    <div>A Plus: <b>{{ card.a_plus }}</b> · Fail: <b>{{ card.fails }}</b></div>
+                    <div>Comments: <b>{{ card.comment|default:'—' }}</b></div>
+                </div>
+                <table class="rc-scale">
+                    <thead><tr><th>Marks</th><th>Grade</th><th>GP</th></tr></thead>
+                    <tbody>
+                        {% for row in scale_rows %}
+                        <tr><td>{{ row.marks }}</td><td>{{ row.grade }}</td><td>{{ row.point }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="rc-sign">
+                <span>Guardian</span>
+                <span>Guide Teacher</span>
+                <span>Controller of Exam</span>
+                <span>Head Teacher</span>
+            </div>
+        </div>
+    </section>
+    {% endfor %}
+</div>
+{% endblock %}

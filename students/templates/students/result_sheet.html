@@ -293,6 +293,7 @@
             {% if can_result_analysis %}<a href="{% url 'result_analysis_subject_fail' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-exclamation-triangle me-1"></i> Subject Fail List</a>{% endif %}
             <a href="{{ subject_assignments_url }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-journal-check me-1"></i> Subject Assignments</a>
             <a href="{% url 'marks_grid' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-grid-3x3-gap me-1"></i> Result Grid</a>
+            <a href="{% url 'exam_report_cards' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-file-earmark-person me-1"></i> A4 Report Cards</a>
             {% if perms.students.add_exammark and exam.is_published %}<a href="{% url 'select_marks_subject' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm correction-entry" target="_blank" rel="noopener">Correct marks (choose subject)</a>{% endif %}
             {% include 'students/_print_all.html' %}
             <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>

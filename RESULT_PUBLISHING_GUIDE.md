@@ -284,7 +284,17 @@ Read them in this order:
    detail links.
 3. **Top 10** — ranking sanity check: ties share a position, and a student whose
    marks sit only in unassigned subjects must not be ranked.
-4. **One result card** — print preview, because that is what parents see.
+4. **A4 report cards** (`Exam List → Grid → A4 রিপোর্ট কার্ড`, or the
+   *A4 Report Cards* button on the result sheet) — one printed page per
+   student, because that is what parents see. The card is built from the same
+   results as the sheet: the school letterhead, every paper with its part
+   marks and its grade/GP, the class highest next to each subject, then Total /
+   GPA / Grade / Merit Place, the pass count and the grade scale. Print the
+   whole class at once, or pick one student in the *একজনের কার্ড* box to
+   reprint a single page. An unpublished exam prints a **DRAFT — RESULT NOT
+   YET PUBLISHED** line at the top of every card.
+5. **One result card** (per-student detail page) — the older single-subject
+   card, kept for a quick look-up.
 
 A student with no entered marks at all shows `No Marks` and is left unranked. A
 student who sat some subjects but not others shows `Fail` with the missed subjects as

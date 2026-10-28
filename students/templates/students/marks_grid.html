@@ -170,6 +170,9 @@
             <a class="btn btn-sm btn-outline-navy" href="{% url 'top_10' exam.pk %}{{ group_querystring }}">
                 <i class="bi bi-trophy"></i> Top 10
             </a>
+            <a class="btn btn-sm btn-navy" href="{% url 'exam_report_cards' exam.pk %}{{ group_querystring }}">
+                <i class="bi bi-file-earmark-person"></i> A4 রিপোর্ট কার্ড
+            </a>
             <a class="btn btn-sm btn-outline-navy" href="{% url 'select_marks_subject' exam.pk %}{{ group_querystring }}">
                 <i class="bi bi-pencil-square"></i> এক বিষয়ের এন্ট্রি
             </a>

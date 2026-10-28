@@ -50,6 +50,7 @@ from urllib.parse import urlencode
 from uuid import uuid4
 from .result_utils import (
     ABSENT,
+    ReligionColumn,
     SUBJECTS_ALL_DISABLED,
     SUBJECTS_NOT_ASSIGNED,
     SUBJECTS_NO_STUDENT,
@@ -5577,6 +5578,209 @@ def marks_grid_save(request, pk):
         'error_count': len(errors),
         'rows': [_marks_grid_row_json(row) for row in rows],
         'summary': _marks_grid_summary(rows),
+    })
+
+
+# ---------------- A4 Report Card — one page per student ----------------
+#
+# The office hands a printed card to every guardian, and the card has to say
+# the same thing for the whole class: the school letterhead, the student's own
+# papers with their part marks, the result block, the grade scale and the four
+# signatures. This page prints one A4 portrait page per student.
+#
+# Like the Result Grid it is not a second result engine: every number comes
+# from build_exam_results(), and the subject columns come from the same Mark
+# Evaluation settings the grid and the result sheet use. The design follows the
+# school's own paper card — black rules only, no fills, so it stays readable on
+# a school photocopier and does not waste ink.
+
+#: The grading scale printed on the card (matches result_utils.get_grade()).
+REPORT_CARD_GRADE_SCALE = [
+    (80, 'A+', '5.00'),
+    (70, 'A', '4.00'),
+    (60, 'A-', '3.50'),
+    (50, 'B', '3.00'),
+    (40, 'C', '2.00'),
+    (33, 'D', '1.00'),
+    (0, 'F', '0.00'),
+]
+#: The remark printed for each final grade (a fixed remark, not a stored note).
+REPORT_CARD_COMMENTS = {
+    'A+': 'Excellent Result',
+    'A': 'Good Enough',
+    'A-': 'Average Result',
+    'B': 'Honorable Mention',
+    'C': 'Satisfactory Result',
+    'D': 'Needs Improvement',
+    'F': 'Badly Fail',
+}
+
+
+def _report_card_scale_rows():
+    """The scale table as the card prints it: '80% +', '70–79%', …"""
+    rows = []
+    for index, (minimum, grade, point) in enumerate(REPORT_CARD_GRADE_SCALE):
+        if index == 0:
+            marks = f'{minimum}% +'
+        else:
+            upper = REPORT_CARD_GRADE_SCALE[index - 1][0] - 1
+            marks = f'{minimum}–{upper}%'
+        rows.append({'marks': marks, 'grade': grade, 'point': point})
+    return rows
+
+
+def _report_card_part_columns(exam, columns, selected_group):
+    """The part columns the whole class shares (CQ, MCQ, Practical, Weekly)."""
+    part_columns = []
+    seen = set()
+    for column in columns:
+        papers = column.subjects if isinstance(column, ReligionColumn) else [column]
+        for paper in papers:
+            config = get_subject_marks(exam, paper, group=selected_group or None)
+            for part in config.parts:
+                if part['key'] in seen:
+                    continue
+                seen.add(part['key'])
+                part_columns.append({'key': part['key'], 'label': part['label']})
+    return part_columns
+
+
+def _report_card_rows(exam, students, columns, results, selected_group):
+    """One printable card per student, in register order."""
+    part_columns = _report_card_part_columns(exam, columns, selected_group)
+    results_by_student = {result['student'].pk: result for result in results}
+
+    # Highest mark per subject and for the class total: the card prints them so
+    # a guardian can see where the mark stands, like the paper card does.
+    column_highest = []
+    for index in range(len(columns)):
+        values = [
+            result['subject_results'][index]['obtained']
+            for result in results
+            if result['subject_results'][index]['obtained'] is not None
+        ]
+        column_highest.append(_grid_number(max(values)) if values else None)
+    total_values = [
+        result['total_obtained'] for result in results if result['has_marks']
+    ]
+    total_highest = _grid_number(max(total_values)) if total_values else None
+
+    cards = []
+    for student in students:
+        result = results_by_student.get(student.pk)
+        if result is None:
+            continue
+        subject_rows = []
+        for index, subject_result in enumerate(result['subject_results']):
+            if subject_result.get('not_applicable'):
+                continue
+            paper = subject_result.get('paper')
+            subject = paper or subject_result['subject']
+            parts_by_label = {
+                part['label']: part for part in subject_result.get('parts', [])
+            }
+            subject_rows.append({
+                'name': subject.name,
+                'code': getattr(subject, 'code', ''),
+                'full': subject_result['full'],
+                'cells': [
+                    {
+                        'label': part['label'],
+                        'value': (
+                            None if parts_by_label.get(part['label']) is None
+                            else _grid_number(parts_by_label[part['label']]['obtained'])
+                        ),
+                    }
+                    for part in part_columns
+                ],
+                # The card prints the real total in the Total column; a part
+                # the student missed leaves a gap, and the grade says whether
+                # the paper was passed.
+                'obtained': (
+                    None if subject_result['absent']
+                    else _grid_number(subject_result['obtained'])
+                ),
+                'grade': '' if subject_result['grade'] == ABSENT else subject_result['grade'],
+                'point': subject_result['point'],
+                'highest': column_highest[index],
+                'is_fourth': subject_result.get('is_fourth_subject', False),
+            })
+
+        # Golden A+ and the two counters follow the result rules: only main
+        # papers count, and a fourth paper never decides pass/fail.
+        main_results = [
+            subject_result for subject_result in result['subject_results']
+            if subject_result.get('counts_toward_main_gpa')
+            and not subject_result.get('not_applicable')
+        ]
+        grade = '' if result['grade'] == ABSENT else result['grade']
+        cards.append({
+            'student': student,
+            'rows': subject_rows,
+            'total': _grid_number(result['total_obtained']) if result['has_marks'] else None,
+            'total_full': result['total_full'],
+            'percentage': result['percentage'],
+            'gpa': '' if result['gpa'] is None else f"{Decimal(result['gpa']):.2f}",
+            'grade': grade,
+            'status': result['status'],
+            'position': result['position'],
+            'a_plus': sum(1 for item in main_results if item['grade'] == 'A+'),
+            'fails': sum(1 for item in main_results if not item['passed']),
+            'golden': (
+                bool(main_results) and result['status'] == 'Pass'
+                and all(item['grade'] == 'A+' for item in main_results)
+            ),
+            'comment': REPORT_CARD_COMMENTS.get(grade, ''),
+            'has_marks': result['has_marks'],
+            'highest_total': total_highest,
+        })
+    return cards, part_columns
+
+
+@login_required
+def exam_report_cards(request, pk):
+    """A4 report cards for a whole exam — one page per student.
+
+    ``?student=<pk>`` prints a single card (a guardian lost theirs, or one page
+    has to be reprinted after a correction); without it the whole cohort is
+    printed in register order.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    students = list(get_exam_students(exam, group=selected_group or None))
+    columns, results = build_exam_results(exam, group=selected_group or None)
+    cards, part_columns = _report_card_rows(
+        exam, students, columns, results, selected_group,
+    )
+
+    selected_student = ''
+    requested_student = (request.GET.get('student') or '').strip()
+    if requested_student.isdigit():
+        wanted = int(requested_student)
+        cards = [card for card in cards if card['student'].pk == wanted]
+        selected_student = requested_student
+
+    return render(request, 'students/exam_report_cards.html', {
+        'exam': exam,
+        'cards': cards,
+        'no_marks_at_all': not any(card['has_marks'] for card in cards),
+        'part_columns': part_columns,
+        'scale_rows': _report_card_scale_rows(),
+        'students': students,
+        'selected_student': selected_student,
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': dict(group_choices).get(selected_group, ''),
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+        'report_group_label': (
+            dict(group_choices).get(selected_group, '') or exam.get_group_display() or ''
+        ),
+        'grid_url': (
+            reverse('marks_grid', kwargs={'pk': exam.pk}) + group_querystring
+        ),
+        'is_published': exam.is_published,
     })
 
 
