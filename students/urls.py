@@ -88,6 +88,11 @@ urlpatterns = [
     path('attendance/summary/', views.attendance_summary, name='attendance_summary'),
     path('audit/', views.audit_log_list, name='audit_log_list'),
     path('audit/<int:pk>/', views.audit_log_detail, name='audit_log_detail'),
+    # Result Grid: the whole class on one sheet (marks entry + live result).
+    path('exams/<int:pk>/grid/', views.marks_grid, name='marks_grid'),
+    path('exams/<int:pk>/grid/save/', views.marks_grid_save, name='marks_grid_save'),
+    # A4 report cards: one printable page per student, from the same results.
+    path('exams/<int:pk>/report-cards/', views.exam_report_cards, name='exam_report_cards'),
     path('exams/<int:pk>/result-sheet/', views.result_sheet, name='result_sheet'),
     path('exams/<int:pk>/result-summary/', views.result_summary, name='exam_result_summary'),
     path('exams/<int:pk>/top-10/', views.top_10, name='top_10'),

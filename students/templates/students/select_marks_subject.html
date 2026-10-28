@@ -67,7 +67,15 @@
         </select>
         <button class="btn btn-navy mt-3">Continue</button>
         <a class="btn btn-outline-navy mt-3" href="{% url 'exam_list' %}">Cancel</a>
+        <a class="btn btn-outline-navy mt-3"
+           href="{% url 'marks_grid' exam.pk %}{% if selected_group %}?group={{ selected_group }}{% endif %}">
+            পুরো ক্লাস এক শীটে (Result Grid)
+        </a>
     </form>
+    <p class="text-muted small mt-2 mb-0">
+        বিষয় একটা একটা করে না দিয়ে সব বিষয় একসাথে টেবিলে দিতে চাইলে <strong>Result Grid</strong> ব্যবহার করুন —
+        শিক্ষার্থী তালিকা এখানকার মতোই পরীক্ষার নিজের ক্লাস/সেকশন/গ্রুপ থেকেই আসে।
+    </p>
     {% endif %}
 </div>
 {% endblock %}

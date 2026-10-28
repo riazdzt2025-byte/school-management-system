@@ -199,11 +199,12 @@ matches every group's subjects until you pick one.
 
 ## 4. Enter the marks
 
-Two routes, same screens:
+Three routes, same store:
 
 - `Exam List → Enter Marks` (subject picker for one exam), or
 - `Exam → Enter Marks` (pick institution, class, group, exam type, session and
-  subject — this creates the exam row if it does not exist yet).
+  subject — this creates the exam row if it does not exist yet), or
+- `Exam List → Grid` — **one sheet for the whole class** (see below).
 
 Rules that matter:
 
@@ -215,6 +216,35 @@ Rules that matter:
 - Boxes are per configured part (CQ / MCQ / Practical / Weekly Test) and the
   total is added up for you. Re-saving a row overwrites it; nothing is appended.
 - Invalid entries are reported per student and skipped, the rest still saves.
+
+### The whole class on one sheet (`Exam List → Grid`)
+
+Enter Marks edits one subject at a time. The Result Grid is the paper register
+instead: every student down the side, every subject and every configured part
+(CQ / MCQ / Practical / Weekly Test) across the top, and the result columns on
+the right.
+
+- **The students are not typed in or imported here.** The grid opens with the
+  exam's own cohort — the same class / section / group (or the hand-picked
+  candidates of a special exam) that Enter Marks and the result sheet use.
+- A student's un-chosen optional subject, and the religion paper of another
+  religion, are blanks with no box: nothing can be entered for a paper that
+  student does not sit.
+- Type a mark and the row is saved on its own (a short pause after the last
+  keystroke); **Enter** / **↑ ↓** move down a column, and Bangla numerals are
+  accepted. `সেভ করুন` flushes anything still queued.
+- A mark above the part's maximum turns the box red and is refused; the rest of
+  the sheet still saves, exactly like the per-subject page.
+- **The Total / GPA / Grade / F/S / A+ / Place columns are the result sheet's
+  own numbers** — recomputed by the server after every save, not by the page.
+- Clearing every box of a subject removes that mark row, so the subject reads
+  as not sat rather than as a stored zero.
+- An empty box is *absent*: with `EXAM_ABSENT_SUBJECT_FAILS` on (the default)
+  that subject grades F and fails the result, so only leave a box empty when
+  the student really did not sit the paper.
+- Publishing locks the grid like every other marks page; the banner's
+  **Unlock to edit published result** is audited, and the corrections should be
+  reprinted.
 
 ### Import from Excel instead
 
@@ -254,7 +284,17 @@ Read them in this order:
    detail links.
 3. **Top 10** — ranking sanity check: ties share a position, and a student whose
    marks sit only in unassigned subjects must not be ranked.
-4. **One result card** — print preview, because that is what parents see.
+4. **A4 report cards** (`Exam List → Grid → A4 রিপোর্ট কার্ড`, or the
+   *A4 Report Cards* button on the result sheet) — one printed page per
+   student, because that is what parents see. The card is built from the same
+   results as the sheet: the school letterhead, every paper with its part
+   marks and its grade/GP, the class highest next to each subject, then Total /
+   GPA / Grade / Merit Place, the pass count and the grade scale. Print the
+   whole class at once, or pick one student in the *একজনের কার্ড* box to
+   reprint a single page. An unpublished exam prints a **DRAFT — RESULT NOT
+   YET PUBLISHED** line at the top of every card.
+5. **One result card** (per-student detail page) — the older single-subject
+   card, kept for a quick look-up.
 
 A student with no entered marks at all shows `No Marks` and is left unranked. A
 student who sat some subjects but not others shows `Fail` with the missed subjects as
