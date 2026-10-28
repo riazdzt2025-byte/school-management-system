@@ -37,6 +37,7 @@ from .forms import (
     PublicAdmissionStatusForm, normalize_application_number,
 )
 from django.contrib.auth.decorators import login_required, permission_required
+from django.middleware.csrf import get_token
 from django.urls import reverse
 from django.utils import timezone
 import importlib
@@ -48,18 +49,21 @@ from datetime import date
 from urllib.parse import urlencode
 from uuid import uuid4
 from .result_utils import (
+    ABSENT,
     SUBJECTS_ALL_DISABLED,
     SUBJECTS_NOT_ASSIGNED,
     SUBJECTS_NO_STUDENT,
     absent_subject_fails_result,
     build_exam_results,
     class_filter_variants,
+    compute_subject_result,
     get_exam_group_choices,
     get_exam_students,
     get_exam_subjects,
     get_exam_subjects_for_students,
     get_student_subject_ids,
     get_subject_marks,
+    marked_subject_ids_for_exam,
     no_subjects_assigned_message,
     published_exams_affected_by_assignment,
     unmarked_assigned_subjects,
@@ -5116,6 +5120,463 @@ def enter_marks(request, pk, subject_pk):
         'total_students': len(rows),
         'religion_paper_subject': subject.pk in religion_by_pk,
         'published_lock': published_lock,
+    })
+
+
+# ---------------- Result Grid — the whole class on one sheet ----------------
+#
+# Enter Marks edits one subject at a time. The office register, on the other
+# hand, is one wide sheet: every student down the side, every subject — and
+# every part of it — across the top. The grid page below is that sheet.
+#
+# It is deliberately *not* a second result engine:
+#   * the students come from get_exam_students(), the same class/section/group
+#     cohort the marks pages and the result sheet already use (nothing is
+#     typed in or imported by hand here);
+#   * the subjects, their parts and their maxima come from Mark Evaluation
+#     through get_subject_marks();
+#   * the Total / GPA / Grade / Position shown on the right are
+#     build_exam_results()' own numbers, so the grid can never disagree with
+#     the published result sheet.
+# The page is a thin input surface over ExamMark: it saves one cell at a time
+# and sends the recounted row back, which is why a teacher sees the new grade
+# and position without reloading.
+
+#: Part key used when a subject has no split (the whole total is one box).
+GRID_WHOLE_TOTAL = 'total'
+#: What a teacher may type to clear a box: blank, A, AB, ABS or ABSENT.
+GRID_ABSENT_TOKENS = {'a', 'ab', 'abs', 'absent'}
+#: Bangla numerals are accepted as marks, like the paper register they copy.
+GRID_BANGLA_DIGITS = str.maketrans('০১২৩৪৫৬৭৮৯', '0123456789')
+
+
+def _grid_number(value):
+    """Decimal/float → int when whole, else 2dp float; ``None`` stays ``None``."""
+    if value is None:
+        return None
+    number = float(value)
+    return int(number) if number.is_integer() else round(number, 2)
+
+
+def _grid_part_value(mark, part):
+    """One box of the grid: a configured part, or the whole total."""
+    if mark is None:
+        return ''
+    if part['key'] == GRID_WHOLE_TOTAL:
+        raw = mark.marks_obtained
+    else:
+        raw = getattr(mark, ExamMark.obtained_field(part['key']), None)
+    return '' if raw is None else _grid_number(raw)
+
+
+def _marks_grid_setup(exam, selected_group):
+    """Students, subject columns and who sits what — the grid's whole shape.
+
+    The student list is the exam's own cohort (the previous method), so the
+    grid opens already filled with the class register; a subject a student did
+    not choose, and the religion paper of another religion, stay blank and
+    read-only instead of being offered as an input.
+    """
+    students = list(get_exam_students(exam, group=selected_group or None))
+    subjects, _is_filtered = get_exam_subjects_for_students(
+        exam, students, group=selected_group or None,
+    )
+    all_subjects, _all_filtered = get_exam_subjects(exam, group=selected_group or None)
+    religion_by_pk = religion_subject_map(exam, all_subjects)
+    student_subject_ids = get_student_subject_ids(
+        exam, students, subjects=all_subjects, group=selected_group or None,
+    )
+
+    columns = []
+    for subject in subjects:
+        marks_config = get_subject_marks(exam, subject, group=selected_group or None)
+        parts = [
+            {'key': part['key'], 'label': part['label'], 'max_marks': part['max_marks']}
+            for part in marks_config.parts
+        ]
+        if not parts:
+            # Nothing split: the whole total is one box, exactly like Enter Marks.
+            parts = [{
+                'key': GRID_WHOLE_TOTAL,
+                'label': 'Total',
+                'max_marks': marks_config.full_marks,
+            }]
+        columns.append({
+            'subject': subject,
+            'config': marks_config,
+            'parts': parts,
+            'is_religion': subject.pk in religion_by_pk,
+            'full_marks': marks_config.full_marks,
+            'pass_marks': marks_config.pass_marks,
+            'parts_match_full_marks': marks_config.parts_match_full_marks,
+        })
+
+    rights = {}
+    for student in students:
+        selected_ids = student_subject_ids.get(student.pk, set())
+        own_religion_paper = religion_paper_for(student, religion_by_pk)
+        row_rights = {}
+        for column in columns:
+            subject = column['subject']
+            if column['is_religion']:
+                # A student sits their own religion paper, never the other one.
+                row_rights[subject.pk] = (
+                    own_religion_paper == subject.pk and subject.pk in selected_ids
+                )
+            else:
+                row_rights[subject.pk] = subject.pk in selected_ids
+        rights[student.pk] = row_rights
+
+    return students, columns, rights
+
+
+def _marks_grid_rows(exam, students, columns, rights, selected_group):
+    """One row per student: every box, every subject total, and the result."""
+    subject_ids = [column['subject'].pk for column in columns]
+    marks = {}
+    if subject_ids:
+        for mark in ExamMark.objects.filter(exam=exam, subject_id__in=subject_ids):
+            marks[(mark.student_id, mark.subject_id)] = mark
+
+    # Overall Total / GPA / Grade / Position are the result sheet's own numbers
+    # (build_exam_results), never a second calculation.
+    _columns, results = build_exam_results(exam, group=selected_group or None)
+    overall = {result['student'].pk: result for result in results}
+    # A subject nobody has a mark for yet is not a result column (see
+    # marked_subject_ids_for_exam), so the grid shows a dash for it instead of
+    # painting the whole class red before a single paper is marked.
+    marked_ids = marked_subject_ids_for_exam(exam, students=students)
+
+    rows = []
+    for student in students:
+        cell_data = []
+        main_cells = []
+        for column in columns:
+            subject = column['subject']
+            applicable = rights.get(student.pk, {}).get(subject.pk, False)
+            mark = marks.get((student.pk, subject.pk))
+            if applicable and subject.pk in marked_ids:
+                computed = compute_subject_result(mark, column['config'])
+            elif applicable:
+                computed = {
+                    'absent': True, 'passed': False, 'grade': '',
+                    'obtained': None, 'percentage': None, 'pending': True,
+                }
+            else:
+                computed = None
+            cell = {
+                'applicable': applicable,
+                'absent': bool(computed and computed['absent']),
+                'passed': bool(computed and computed['passed']),
+                'failed': bool(
+                    computed and not computed['passed']
+                    and not computed.get('pending')
+                ),
+                'pending': bool(computed and computed.get('pending')),
+                'grade': computed['grade'] if computed else '',
+                'obtained': _grid_number(computed['obtained']) if computed else None,
+                'percentage': computed['percentage'] if computed else None,
+            }
+            if applicable and getattr(subject, 'category', '') != 'FOURTH':
+                main_cells.append(cell)
+            cell_data.append({
+                'column': column,
+                'cell': cell,
+                'inputs': [
+                    {'part': part, 'value': _grid_part_value(mark, part)}
+                    for part in column['parts']
+                ],
+            })
+
+        result = overall.get(student.pk, {})
+        gpa = result.get('gpa')
+        grade = result.get('grade', '')
+        status = result.get('status', '')
+        rows.append({
+            'student_pk': student.pk,
+            'roll': student.roll_no if student.roll_no is not None else '',
+            'name': student.name,
+            'cells': cell_data,
+            # A student with nothing entered at all is 'No Marks', not a
+            # total of zero: the sheet stays blank until a paper is marked.
+            'total': (
+                None if status == 'No Marks'
+                else _grid_number(result.get('total_obtained'))
+            ),
+            'percentage': result.get('percentage') if result else None,
+            'gpa': '' if gpa is None else f'{Decimal(gpa):.2f}',
+            'grade': '' if grade == ABSENT else grade,
+            'status': status,
+            'position': result.get('position') or '',
+            # F/S and A+ count the papers actually marked: an empty box is
+            # not yet a failed subject on a working sheet.
+            'fail_count': sum(
+                1 for cell in main_cells if cell['failed'] and not cell['absent']
+            ),
+            'a_plus_count': sum(1 for cell in main_cells if cell['grade'] == 'A+'),
+            # Golden A+ = every main paper A+, nothing failed, nothing blank.
+            'golden': bool(main_cells) and status == 'Pass' and all(
+                cell['grade'] == 'A+' for cell in main_cells
+            ),
+        })
+    return rows
+
+
+def _marks_grid_summary(rows):
+    """The chips above the sheet: headcount, pass/fail and the A+ counts."""
+    total = len(rows)
+    passed = sum(1 for row in rows if row['status'] == 'Pass')
+    return {
+        'total': total,
+        'passed': passed,
+        'failed': sum(1 for row in rows if row['status'] == 'Fail'),
+        'no_marks': sum(1 for row in rows if row['status'] == 'No Marks'),
+        'a_plus': sum(1 for row in rows if row['grade'] == 'A+'),
+        'golden': sum(1 for row in rows if row['golden']),
+        'pass_rate': int(round(100 * passed / total)) if total else 0,
+    }
+
+
+def _marks_grid_row_json(row):
+    """A row as the page's script expects it back after a save."""
+    return {
+        'student': row['student_pk'],
+        'total': row['total'],
+        'percentage': row['percentage'],
+        'gpa': row['gpa'],
+        'grade': row['grade'],
+        'status': row['status'],
+        'position': row['position'],
+        'fails': row['fail_count'],
+        'a_plus': row['a_plus_count'],
+        'golden': row['golden'],
+        'cells': [
+            {
+                'subject': item['column']['subject'].pk,
+                'applicable': item['cell']['applicable'],
+                'absent': item['cell']['absent'],
+                'failed': item['cell']['failed'],
+                'grade': item['cell']['grade'],
+                'obtained': item['cell']['obtained'],
+                'values': {
+                    entry['part']['key']: entry['value'] for entry in item['inputs']
+                },
+            }
+            for item in row['cells']
+        ],
+    }
+
+
+@login_required
+def marks_grid(request, pk):
+    """The whole class on one sheet: every subject, every part, live results."""
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    grid_url = reverse('marks_grid', kwargs={'pk': exam.pk})
+    if selected_group:
+        grid_url += f'?group={selected_group}'
+
+    published_lock = published_marks_lock_state(request, exam)
+    if request.method == 'POST':
+        # Marks themselves travel through marks_grid_save() as JSON; a form
+        # POST here only ever carries the audited unlock.
+        if not request.user.has_perm('students.add_exammark'):
+            raise PermissionDenied
+        if published_lock['applies'] and request.POST.get('unlock_published_marks'):
+            _unlock_published_marks(request, exam, view='marks_grid')
+            messages.success(
+                request,
+                'Published marks unlocked for this exam. Re-check the result sheet '
+                'and reprint anything that has already gone out.',
+            )
+        return redirect(grid_url)
+
+    students, columns, rights = _marks_grid_setup(exam, selected_group)
+    rows = _marks_grid_rows(exam, students, columns, rights, selected_group)
+    for column in columns:
+        # Subject header spans its part boxes plus the derived total.
+        column['colspan'] = len(column['parts']) + 1
+    summary = _marks_grid_summary(rows)
+    no_subjects = not columns
+    save_url = reverse('marks_grid_save', kwargs={'pk': exam.pk})
+    if selected_group:
+        save_url += f'?group={selected_group}'
+    can_edit_marks = request.user.has_perm('students.add_exammark') and not published_lock['locked']
+    return render(request, 'students/marks_grid.html', {
+        'exam': exam,
+        'columns': columns,
+        'rows': rows,
+        'summary': summary,
+        'total_students': len(students),
+        'no_subjects': no_subjects,
+        'no_subjects_message': no_subjects_assigned_message(exam),
+        'subject_assignments_url': subject_assignments_url(exam, selected_group),
+        'subject_help': subject_help_context(request, exam, selected_group),
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': dict(group_choices).get(selected_group, ''),
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': f'?group={selected_group}' if selected_group else '',
+        'absent_subject_fails': absent_subject_fails_result(),
+        'published_lock': published_lock,
+        'can_edit_marks': can_edit_marks,
+        'save_url': save_url,
+        'grid_url': grid_url,
+        'marks_entry_url': reverse('select_marks_subject', kwargs={'pk': exam.pk}),
+        'js_config': {
+            'saveUrl': save_url,
+            'canEdit': can_edit_marks,
+            'csrfToken': get_token(request),
+        },
+    })
+
+
+@login_required
+@require_POST
+def marks_grid_save(request, pk):
+    """Save one batch of grid cells and send the recounted rows back.
+
+    Every change is checked against the same rules the per-subject page
+    enforces — the student must be in the exam's cohort, the subject must be
+    one they actually sit, and a mark may not exceed its part's maximum
+    (which is what makes a wrong entry red instead of silently accepted).
+    """
+    if not request.user.has_perm('students.add_exammark'):
+        raise PermissionDenied
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    published_lock = published_marks_lock_state(request, exam)
+    if published_lock['locked']:
+        _reject_locked_marks_write(request, exam, view='marks_grid')
+        return JsonResponse(
+            {'ok': False, 'locked': True, 'message': PUBLISHED_LOCK_MESSAGE},
+            status=403,
+        )
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse(
+            {'ok': False, 'errors': ['Malformed request body.']}, status=400,
+        )
+    changes = payload.get('changes')
+    if not isinstance(changes, list):
+        changes = []
+
+    students, columns, rights = _marks_grid_setup(exam, selected_group)
+    students_by_pk = {student.pk: student for student in students}
+    columns_by_pk = {column['subject'].pk: column for column in columns}
+
+    errors = []
+    pending = {}
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        try:
+            student_pk = int(change.get('student'))
+            subject_pk = int(change.get('subject'))
+        except (TypeError, ValueError):
+            errors.append('A mark arrived without a valid student or subject.')
+            continue
+        student = students_by_pk.get(student_pk)
+        column = columns_by_pk.get(subject_pk)
+        if student is None or column is None:
+            errors.append('That student or subject is not part of this exam.')
+            continue
+        if not rights.get(student_pk, {}).get(subject_pk):
+            errors.append(
+                f'{student.name}: "{column["subject"].name}" is not one of this '
+                'student\'s subjects.'
+            )
+            continue
+        part_key = str(change.get('part') or '').strip()
+        part = next((p for p in column['parts'] if p['key'] == part_key), None)
+        if part is None:
+            errors.append(f'"{column["subject"].name}" has no "{part_key}" mark.')
+            continue
+        raw = '' if change.get('value') is None else str(change.get('value')).strip()
+        raw = raw.translate(GRID_BANGLA_DIGITS)
+        value = None
+        if raw and raw.lower() not in GRID_ABSENT_TOKENS:
+            try:
+                value = Decimal(raw)
+            except InvalidOperation:
+                errors.append(
+                    f'{student.name} — {column["subject"].name} {part["label"]}: '
+                    'not a number.'
+                )
+                continue
+            if value < 0 or value > Decimal(str(part['max_marks'])):
+                errors.append(
+                    f'{student.name} — {column["subject"].name} {part["label"]}: '
+                    f'must be between 0 and {part["max_marks"]}.'
+                )
+                continue
+        pending.setdefault((student_pk, subject_pk), {})[part_key] = value
+
+    if pending:
+        with transaction.atomic():
+            for (student_pk, subject_pk), values in pending.items():
+                column = columns_by_pk[subject_pk]
+                existing = ExamMark.objects.filter(
+                    exam=exam, student_id=student_pk, subject_id=subject_pk,
+                ).first()
+                if column['parts'][0]['key'] == GRID_WHOLE_TOTAL:
+                    whole_total = values.get(GRID_WHOLE_TOTAL)
+                    if whole_total is None:
+                        # Cleared box = nothing entered, so no row is left behind.
+                        if existing:
+                            existing.delete()
+                        continue
+                    ExamMark.objects.update_or_create(
+                        exam=exam, student_id=student_pk, subject_id=subject_pk,
+                        defaults={
+                            'marks_obtained': whole_total,
+                            **{
+                                ExamMark.obtained_field(model_part['key']): None
+                                for model_part in MARK_PARTS
+                            },
+                        },
+                    )
+                    continue
+                # Parts keep whatever the other boxes already held; only the
+                # box that changed is replaced.
+                current = {}
+                for part in column['parts']:
+                    current[part['key']] = (
+                        getattr(existing, ExamMark.obtained_field(part['key']))
+                        if existing else None
+                    )
+                current.update(values)
+                if all(part_value is None for part_value in current.values()):
+                    # Every box of the subject is blank: the student did not
+                    # sit it, so drop the row rather than store zeroes.
+                    if existing:
+                        existing.delete()
+                    continue
+                defaults = {
+                    'marks_obtained': sum(
+                        (part_value for part_value in current.values()
+                         if part_value is not None),
+                        Decimal('0'),
+                    ),
+                }
+                for model_part in MARK_PARTS:
+                    defaults[ExamMark.obtained_field(model_part['key'])] = current.get(
+                        model_part['key']
+                    )
+                ExamMark.objects.update_or_create(
+                    exam=exam, student_id=student_pk, subject_id=subject_pk,
+                    defaults=defaults,
+                )
+
+    rows = _marks_grid_rows(exam, students, columns, rights, selected_group)
+    return JsonResponse({
+        'ok': not errors,
+        'errors': errors[:10],
+        'error_count': len(errors),
+        'rows': [_marks_grid_row_json(row) for row in rows],
+        'summary': _marks_grid_summary(rows),
     })
 
 

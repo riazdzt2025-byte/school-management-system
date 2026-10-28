@@ -1,0 +1,354 @@
+{% extends 'students/base.html' %}
+{% load static %}
+
+{% block title %}রেজাল্ট গ্রিড - {{ exam.name }} - {{ block.super }}{% endblock %}
+
+{% block print_subtitle %}রেজাল্ট গ্রিড - {{ exam.name }} (Class {{ exam.admission_class }}{% if selected_group_label or exam.group %} · {{ selected_group_label|default:exam.get_group_display }}{% endif %}){% endblock %}
+
+{% block extra_style %}
+    /* ---- Result Grid: the office register, on one sheet ----
+       Every student down the side, every subject and every part across the
+       top, and the result columns on the right. Compact on purpose: the page
+       is meant to be typed into from a paper register and printed from the
+       same screen. */
+    .mg-page { max-width: 100%; }
+    .mg-page .page-header { align-items: flex-start; }
+    .mg-page .page-header h1 { font-size: 1.45rem; }
+    .mg-page .page-header h1 small { color: #6c757d; font-size: .62em; font-weight: 400; }
+    .mg-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .mg-actions .btn { border-radius: 8px; font-weight: 600; }
+
+    .mg-banner {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border-radius: 10px;
+        font-size: .88rem; line-height: 1.45;
+    }
+    .mg-banner.is-locked { border: 1px solid #f1c27d; background: #fff8e8; color: #7a5200; }
+    .mg-banner.is-unlocked { border: 1px solid #b6e2d3; background: #effaf5; color: #0f6b52; }
+    .mg-banner form { margin: 0; }
+
+    .mg-picker { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .mg-picker .form-select { max-width: 220px; }
+
+    .mg-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .mg-chip {
+        padding: 5px 11px; border-radius: 999px; background: #eef3f8; color: var(--navy);
+        font-size: .78rem; font-weight: 600;
+    }
+    .mg-chip b { font-weight: 800; }
+    .mg-chip.is-pass { background: #e7f7ef; color: #0f6b52; }
+    .mg-chip.is-fail { background: #fdecef; color: #a33142; }
+    .mg-chip.is-aplus { background: #fff5dd; color: #8a6410; }
+    .mg-chip.is-golden { background: #fff1c9; color: #7a5200; }
+    .mg-golden { color: #c9a227; font-size: .78rem; }
+
+    .mg-status { min-height: 20px; margin: 2px 0 8px; font-size: .82rem; font-weight: 600; color: #6c757d; }
+    .mg-status.is-pending { color: #8a6410; }
+    .mg-status.is-ok { color: #0f6b52; }
+    .mg-status.is-error { color: #a33142; }
+
+    .mg-card {
+        background: #fff; border: 1px solid #dbe3ea; border-radius: 12px;
+        box-shadow: 0 4px 14px rgba(15, 45, 82, .06); overflow: hidden;
+    }
+    .mg-scroll { overflow: auto; max-height: 72vh; }
+    .mg-scroll table { margin: 0; }
+
+    table.mg-table {
+        border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%;
+        font-size: .76rem; color: #1e2b36;
+    }
+    table.mg-table th, table.mg-table td {
+        border-right: 1px solid #e5ebf0; border-bottom: 1px solid #e5ebf0;
+        padding: 4px 5px; text-align: center; vertical-align: middle; white-space: nowrap;
+    }
+    table.mg-table thead th {
+        background: var(--navy); color: #fff; font-weight: 600; font-size: .7rem;
+        line-height: 1.15; position: sticky; z-index: 12;
+    }
+    table.mg-table thead tr:first-child th { top: 0; height: 40px; }
+    table.mg-table thead tr:nth-child(2) th { top: 40px; height: 30px; }
+    table.mg-table thead th small { display: block; color: #c3d6e6; font-size: .62rem; font-weight: 500; }
+    table.mg-table thead th.mg-subject-head { background: var(--navy-light); }
+    table.mg-table thead th.mg-part-head { background: #1d4b7a; font-weight: 500; }
+    table.mg-table thead th.mg-derived-head { background: #0f2d52; }
+    table.mg-table thead th.mg-overall-head { background: #10243f; }
+
+    /* Sticky Roll and Name: the two columns that identify the row. */
+    table.mg-table .mg-sticky { position: sticky; z-index: 11; background: #fff; }
+    table.mg-table thead .mg-sticky { z-index: 14; background: var(--navy); }
+    table.mg-table .mg-roll { left: 0; width: 56px; min-width: 56px; }
+    table.mg-table .mg-name { left: 56px; width: 190px; min-width: 190px; text-align: left;
+        font-weight: 600; box-shadow: 2px 0 0 #dbe3ea; }
+    table.mg-table tbody tr:nth-child(even) .mg-sticky { background: #f7fafc; }
+
+    table.mg-table tbody tr:hover td { background: #f2f7fb; }
+    table.mg-table tbody tr:hover .mg-sticky { background: #eaf2f9; }
+    table.mg-table tbody tr.mg-current td { background: #fff7e3; }
+    table.mg-table tbody tr.mg-current .mg-sticky { background: #fdf0d2; }
+
+    .mg-cell { padding: 3px 3px !important; }
+    .mg-input {
+        width: 50px; padding: 3px 2px; border: 1px solid #d7e0e8; border-radius: 5px;
+        background: #fff; color: #1e2b36; font-size: .78rem; text-align: center;
+        font-variant-numeric: tabular-nums;
+    }
+    .mg-input:focus { outline: 2px solid rgba(15, 45, 82, .35); border-color: var(--navy); }
+    .mg-input.is-bad { border-color: #d95c6a; background: #fdecef; color: #a33142; }
+    .mg-input.is-locked { background: #f4f6f8; color: #6c757d; }
+    .mg-static { display: inline-block; min-width: 40px; color: #4a5b6a; }
+    .mg-na-mark { color: #c2ccd6; }
+
+    .mg-derived { background: #f7fafc; font-weight: 700; color: var(--navy); }
+    .mg-derived .mg-der-num { display: block; font-size: .8rem; }
+    .mg-derived .mg-grade { display: block; font-size: .6rem; font-weight: 800; letter-spacing: .02em; }
+    .mg-derived.is-fail { background: #fdecef; color: #a33142; }
+    .mg-derived.is-absent { color: #97a4b1; }
+    .mg-derived.is-aplus { background: #fff8e1; color: #8a6410; }
+
+    .mg-total, .mg-gpa, .mg-grade-cell, .mg-overall-num {
+        font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums;
+    }
+    .mg-grade-cell { font-size: .82rem; }
+    .mg-grade-cell.is-fail, .mg-gpa.is-fail { color: #a33142; background: #fdecef; }
+    .mg-grade-cell.is-aplus { color: #8a6410; background: #fff8e1; }
+
+    .mg-empty { padding: 36px 16px !important; color: #6c757d; font-size: .95rem; }
+
+    .mg-note {
+        margin-top: 10px; padding: 9px 12px; border: 1px solid #dbe3ea; border-radius: 9px;
+        background: #fbfdfe; color: #5a6b7a; font-size: .78rem; line-height: 1.5;
+    }
+    .mg-note b { color: var(--navy); }
+
+    @page { size: A4 landscape; margin: 8mm; }
+    @media print {
+        .main { padding: 0 !important; }
+        .mg-card { border: 0; box-shadow: none; }
+        .mg-scroll { max-height: none; overflow: visible; }
+        table.mg-table { width: 100%; font-size: .58rem; }
+        table.mg-table th, table.mg-table td { border-color: #000 !important; padding: 2px; }
+        table.mg-table thead th { background: #fff !important; color: #000 !important; }
+        table.mg-table thead th small { color: #333 !important; }
+        table.mg-table .mg-sticky { position: static; box-shadow: none; background: #fff !important; }
+        .mg-input { border: 0; background: transparent !important; width: 34px; padding: 0; }
+        .mg-input.is-bad { background: transparent !important; }
+        .mg-derived, .mg-grade-cell, .mg-gpa { background: transparent !important; }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+    <div class="page-header d-print-none">
+        <div>
+            <h1>রেজাল্ট গ্রিড <small>Result Grid</small></h1>
+            <div class="subtitle">
+                {{ exam.name }} · {{ exam.get_exam_type_display }}
+                {% if exam.is_special %}
+                    · Special exam ({{ total_students }} candidate{{ total_students|pluralize }})
+                {% else %}
+                    · Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
+                {% endif %}
+                {% if selected_group_label or exam.group %}
+                    · {{ selected_group_label|default:exam.get_group_display }} group
+                {% endif %}
+                · {{ total_students }} শিক্ষার্থী
+            </div>
+        </div>
+        <div class="mg-actions">
+            {% if can_edit_marks %}
+            <button type="button" class="btn btn-sm btn-navy" id="mg-save-all">
+                <i class="bi bi-cloud-arrow-up"></i> সেভ করুন
+            </button>
+            {% endif %}
+            <a class="btn btn-sm btn-outline-navy" href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}">
+                <i class="bi bi-table"></i> Result Sheet
+            </a>
+            <a class="btn btn-sm btn-outline-navy" href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}">
+                <i class="bi bi-bar-chart"></i> Summary
+            </a>
+            <a class="btn btn-sm btn-outline-navy" href="{% url 'top_10' exam.pk %}{{ group_querystring }}">
+                <i class="bi bi-trophy"></i> Top 10
+            </a>
+            <a class="btn btn-sm btn-outline-navy" href="{% url 'select_marks_subject' exam.pk %}{{ group_querystring }}">
+                <i class="bi bi-pencil-square"></i> এক বিষয়ের এন্ট্রি
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-navy" onclick="window.print()">
+                <i class="bi bi-printer"></i> প্রিন্ট
+            </button>
+        </div>
+    </div>
+
+    {% if published_lock.applies %}
+    <div class="mg-banner d-print-none {% if published_lock.locked %}is-locked{% else %}is-unlocked{% endif %}">
+        {% if published_lock.locked %}
+        <div>
+            <strong>🔒 ফল প্রকাশিত — নম্বর লক করা আছে।</strong><br>
+            {{ published_lock.message }} এই অবস্থায় কিছু সেভ হলে প্রকাশিত ফল বদলে যেত।
+        </div>
+        {% if perms.students.add_exammark %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="group" value="{{ selected_group }}">
+            <input type="hidden" name="unlock_published_marks" value="1">
+            <button type="submit" class="btn btn-sm btn-warning">{{ published_lock.unlock_label }}</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <div>
+            <strong>🔓 এই সেশনের জন্য আনলক করা আছে।</strong>
+            এবার করা সংশোধন অডিট লগে লেখা হবে, এবং ছাপা ফল আবার মিলিয়ে দেখতে হবে।
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if show_group_picker %}
+    <form method="get" class="mg-picker d-print-none">
+        <div>
+            <label class="form-label fw-semibold mb-1" for="mg-group">গ্রুপ (Group)</label>
+            <select name="group" id="mg-group" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">— সব গ্রুপ —</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="text-muted small mb-1">
+            এই পরীক্ষায় গ্রুপ দেওয়া নেই, তাই যে গ্রুপ বাছবেন সেই গ্রুপের শিক্ষার্থী ও বিষয়ই দেখানো হবে।
+        </div>
+    </form>
+    {% endif %}
+
+    {% if no_subjects %}
+    <div class="mg-card">
+        <div class="mg-empty">
+            <h5 class="mb-2">এই শ্রেণিতে কোনো বিষয় বরাদ্দ নেই</h5>
+            <p class="mb-3">{{ no_subjects_message }}</p>
+            <a class="btn btn-sm btn-navy" href="{{ subject_assignments_url }}">Subject Assignments</a>
+        </div>
+    </div>
+    {% elif not rows %}
+    <div class="mg-card">
+        <div class="mg-empty">
+            <h5 class="mb-2">কোনো শিক্ষার্থী নেই</h5>
+            <p class="mb-0">
+                Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
+                {% if selected_group_label or exam.group %}· {{ selected_group_label|default:exam.get_group_display }}{% endif %}
+                শ্রেণিতে সক্রিয় শিক্ষার্থী পাওয়া যায়নি। শিক্ষার্থী তালিকা আগের পদ্ধতিতেই (Students) যোগ করুন — এই পেজ নিজে কোনো শিক্ষার্থী বানায় না।
+            </p>
+        </div>
+    </div>
+    {% else %}
+    <div class="mg-summary">
+        <span class="mg-chip">মোট শিক্ষার্থী <b data-summary="total">{{ summary.total }}</b></span>
+        <span class="mg-chip is-pass">পাস <b data-summary="passed">{{ summary.passed }}</b></span>
+        <span class="mg-chip is-fail">ফেল <b data-summary="failed">{{ summary.failed }}</b></span>
+        <span class="mg-chip">নম্বর নেই <b data-summary="no_marks">{{ summary.no_marks }}</b></span>
+        <span class="mg-chip is-aplus">A+ <b data-summary="a_plus">{{ summary.a_plus }}</b></span>
+        <span class="mg-chip is-golden">Golden A+ <b data-summary="golden">{{ summary.golden }}</b></span>
+        <span class="mg-chip">পাসের হার <b><span data-summary="pass_rate">{{ summary.pass_rate }}</span>%</b></span>
+    </div>
+    <div id="mg-status" class="mg-status d-print-none"></div>
+
+    <div class="mg-card">
+        <div class="mg-scroll">
+            <table class="mg-table" id="marks-grid-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="mg-sticky mg-roll">রোল</th>
+                        <th rowspan="2" class="mg-sticky mg-name">শিক্ষার্থীর নাম</th>
+                        {% for column in columns %}
+                        <th colspan="{{ column.colspan }}" class="mg-subject-head">
+                            {{ column.subject.code }} {{ column.subject.name }}
+                            <small>
+                                পূর্ণ {{ column.full_marks }} · পাশ {{ column.pass_marks|floatformat:'-1' }}
+                                {% if column.is_religion %}· নিজের ধর্ম{% endif %}
+                                {% if not column.parts_match_full_marks %}· ⚠ অংশের যোগফল মেলে না{% endif %}
+                            </small>
+                        </th>
+                        {% endfor %}
+                        <th rowspan="2" class="mg-overall-head">মোট</th>
+                        <th rowspan="2" class="mg-overall-head">GPA</th>
+                        <th rowspan="2" class="mg-overall-head">গ্রেড</th>
+                        <th rowspan="2" class="mg-overall-head" title="ফেল করা বিষয়ের সংখ্যা">F/S</th>
+                        <th rowspan="2" class="mg-overall-head" title="A+ পাওয়া বিষয়ের সংখ্যা">A+</th>
+                        <th rowspan="2" class="mg-overall-head">স্থান</th>
+                    </tr>
+                    <tr>
+                        {% for column in columns %}
+                            {% for part in column.parts %}
+                            <th class="mg-part-head">{{ part.label }}<small>{{ part.max_marks }}</small></th>
+                            {% endfor %}
+                            <th class="mg-part-head mg-derived-head">প্রাপ্ত</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr data-student="{{ row.student_pk }}">
+                        <td class="mg-sticky mg-roll">{{ row.roll|default:'—' }}</td>
+                        <td class="mg-sticky mg-name">{{ row.name }}</td>
+                        {% for item in row.cells %}
+                            {% for entry in item.inputs %}
+                            <td class="mg-cell{% if not item.cell.applicable %} mg-na{% endif %}">
+                                {% if not item.cell.applicable %}
+                                <span class="mg-na-mark">·</span>
+                                {% elif can_edit_marks %}
+                                <input class="mg-input" type="text" inputmode="decimal" autocomplete="off"
+                                       value="{{ entry.value }}"
+                                       data-student="{{ row.student_pk }}"
+                                       data-subject="{{ item.column.subject.pk }}"
+                                       data-part="{{ entry.part.key }}"
+                                       data-max="{{ entry.part.max_marks }}"
+                                       data-label="{{ item.column.subject.name }} {{ entry.part.label }}"
+                                       aria-label="{{ row.name }} — {{ item.column.subject.name }} {{ entry.part.label }} (max {{ entry.part.max_marks }})">
+                                {% else %}
+                                <span class="mg-static">{{ entry.value }}</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                            <td class="mg-derived{% if not item.cell.applicable %} mg-na{% elif item.cell.absent %} is-absent{% elif item.cell.failed %} is-fail{% elif item.cell.grade == 'A+' %} is-aplus{% endif %}"
+                                data-grid-cell="{{ row.student_pk }}-{{ item.column.subject.pk }}">
+                                {% if not item.cell.applicable %}·
+                                {% elif item.cell.absent %}—
+                                {% else %}
+                                    <span class="mg-der-num">{{ item.cell.obtained|default_if_none:'' }}</span>
+                                    {% if item.cell.grade %}<span class="mg-grade">{{ item.cell.grade }}</span>{% endif %}
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                        <td class="mg-total" data-grid-overall="total" data-student="{{ row.student_pk }}">{{ row.total|default_if_none:'' }}</td>
+                        <td class="mg-gpa{% if row.status == 'Fail' %} is-fail{% endif %}" data-grid-overall="gpa" data-student="{{ row.student_pk }}">{{ row.gpa }}</td>
+                        <td class="mg-grade-cell{% if row.status == 'Fail' %} is-fail{% elif row.grade == 'A+' %} is-aplus{% endif %}" data-grid-overall="grade" data-student="{{ row.student_pk }}">{{ row.grade|default:'—' }}{% if row.golden %} <span class="mg-golden" title="Golden A+ — সব বিষয়ে A+">★</span>{% endif %}</td>
+                        <td class="mg-overall-num" data-grid-overall="fails" data-student="{{ row.student_pk }}">{{ row.fail_count }}</td>
+                        <td class="mg-overall-num" data-grid-overall="a_plus" data-student="{{ row.student_pk }}">{{ row.a_plus_count }}</td>
+                        <td class="mg-overall-num" data-grid-overall="position" data-student="{{ row.student_pk }}">{{ row.position|default:'—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="mg-note d-print-none">
+        <b>যেভাবে লিখবেন:</b> প্রতিটি ঘরে শুধু নম্বর লিখুন (বাংলা অঙ্কও চলবে — ৪৫ = 45)।
+        উপরের/নিচের ঘরে যেতে <b>Enter</b> বা <b>↑ ↓</b> চাপুন।
+        {% if absent_subject_fails %}
+        ঘর ফাঁকা থাকলে শিক্ষার্থী ওই বিষয়ে অনুপস্থিত — সেটি ফলাফলে F হিসেবেই ধরা হয়, তাই নিশ্চিত হয়ে ফাঁকা রাখুন।
+        {% else %}
+        ঘর ফাঁকা থাকলে ওই বিষয়টি ফলাফলের হিসাবের বাইরে থাকবে (অনুপস্থিত), তাই নিশ্চিত হয়ে ফাঁকা রাখুন।
+        {% endif %}
+        অংশের সর্বোচ্চ (হেডারে দেখানো) ছাড়িয়ে গেলে ঘর লাল হবে এবং সেই মান সেভ হবে না।
+        নম্বর সেভ হওয়ার সাথে সাথেই ডান দিকের মোট, GPA, গ্রেড আর স্থান হালনাগাদ হয় — এগুলো রেজাল্ট শিটেরই হিসাব।
+    </div>
+    {% endif %}
+
+    {% include 'students/_subject_help.html' %}
+</div>
+{% endblock %}
+
+{% block extra_script %}
+{{ js_config|json_script:"marks-grid-config" }}
+<script src="{% static 'students/js/marks_grid.js' %}"></script>
+{% endblock %}
