@@ -80,6 +80,7 @@ A web-based Student Management System built with Python and Django, inspired by 
 - [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — P0-7 live checklist before release.
 - [`docs/SUBJECT_WORKFLOW_BN.md`](docs/SUBJECT_WORKFLOW_BN.md) — বাংলায়: নতুন বিষয় কোথায় যোগ ও assign করবেন, নম্বর বণ্টন কোথায় সেট করবেন, কোথা থেকে নম্বর দেবেন, কোথায় publish করবেন, আর বিষয় না দেখালে কী কী পরীক্ষা করবেন।
 - [`RESULT_PUBLISHING_GUIDE.md`](RESULT_PUBLISHING_GUIDE.md) — marks, CQ/MCQ/Practical/Weekly Test split, pass rules, publishing results, and the Excel import template.
+- [`docs/PROVISIONAL_RESULT_BN.md`](docs/PROVISIONAL_RESULT_BN.md) — বাংলায়: ১০ বিষয়ের পরীক্ষায় ১/২ বিষয়ের নম্বর বাকি থাকলে সবার F আসে কেন, এখনই অস্থায়ী ফল দেখার Provisional পাতা, বিকল্প উপায়, আর বিষয়ে নম্বর দিতে না পারলে কোথায় দেখবেন।
 - [`DEPLOY_NOTES.md`](DEPLOY_NOTES.md) — what to check after a deploy to Render, including the duplicate-subject cleanup.
 - [`GROUP_RULE_DEPLOY_NOTES.md`](GROUP_RULE_DEPLOY_NOTES.md) — group logic (groups only from class 9) and deploy notes.
 
