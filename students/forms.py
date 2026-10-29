@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django import forms
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db.models import F
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
     Institution, InstitutionAccess,
@@ -695,6 +696,24 @@ class ExamForm(forms.ModelForm):
         widget=forms.CheckboxSelectMultiple(),
     )
 
+    # A special exam gets an optional name of its own. Two hand-picked exams
+    # (a 2nd-phase test and a scholarship test) share class + exam type +
+    # session, so the generated title is identical for both and the Exam List
+    # shows two rows nobody can tell apart. Ordinary exams keep the generated
+    # title -- see ExamForm.save.
+    custom_name = forms.CharField(
+        required=False,
+        max_length=100,
+        label='Exam name (optional)',
+        help_text='খালি রাখলে পরীক্ষার নাম নিজে থেকেই তৈরি হবে '
+                  '(যেমন Second Term Examination-2026)। বৃত্তি পরীক্ষার মতো '
+                  'আলাদা নাম দিলে Exam List-এ দুইটা পরীক্ষা সহজে আলাদা করা যায়।',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'যেমন: বৃত্তি পরীক্ষা-২০২৭',
+        }),
+    )
+
     field_order = [
         'institution', 'admission_class', 'section', 'group', 'exam_type', 'session',
         'exam_date', 'is_published', 'is_special', 'special_students', 'special_subjects',
@@ -722,15 +741,26 @@ class ExamForm(forms.ModelForm):
             )
         self._set_class_choices()
         self._set_special_querysets()
+        self._prefill_custom_name()
 
     def _set_special_querysets(self):
-        """Offer only candidates this user may see, and order them usefully."""
+        """Offer only candidates this user may see, in register order.
+
+        The candidate picker is a 300-row table on a real school, so it has to
+        read like the Student List: class -> section -> numeric roll (students
+        without a roll last) -> name. Ordering by name alone (the old
+        behaviour) scattered one section's rolls across the whole list and made
+        ticking fifty pupils by hand far harder than it needed to be.
+        """
         students = Student.objects.filter(is_archived=False, status='ACTIVE')
         if self.allowed_institution_ids is not None:
             students = students.filter(institution_id__in=self.allowed_institution_ids)
         self.fields['special_students'].queryset = students.select_related(
             'institution'
-        ).order_by('institution__name', 'admission_class', 'section', 'name')
+        ).order_by(
+            'institution__name', 'admission_class', 'section',
+            F('roll_no').asc(nulls_last=True), 'name', 'pk',
+        )
 
     def _get_selected_institution(self):
         """The institution this exam belongs to (bound instance or POST choice)."""
@@ -760,6 +790,23 @@ class ExamForm(forms.ModelForm):
         self.fields['admission_class'].choices = [
             (c, c if not c.isdigit() else f'Class {int(c)}') for c in classes
         ]
+
+    def _prefill_custom_name(self):
+        """Show a saved special exam's own title back in the name box.
+
+        Only when it is genuinely a custom title: an exam still carrying the
+        generated name would otherwise look hand-named and freeze that title
+        (changing the exam type would stop renaming it).
+        """
+        exam = self.instance
+        if not exam or not exam.pk or not exam.is_special or not exam.name:
+            return
+        if exam.name != auto_exam_name(exam.exam_type, exam.session):
+            self.fields['custom_name'].initial = exam.name
+
+    def clean_custom_name(self):
+        """Trim the typed title (a blank box means "generate it")."""
+        return (self.cleaned_data.get('custom_name') or '').strip()
 
     def clean_institution(self):
         institution = self.cleaned_data.get('institution')
@@ -816,7 +863,14 @@ class ExamForm(forms.ModelForm):
 
     def save(self, commit=True):
         exam = super().save(commit=False)
-        exam.name = auto_exam_name(exam.exam_type, exam.session)
+        # A special exam may carry its own title -- that is how the 2nd-phase
+        # test and the scholarship test stay apart in the Exam List. An
+        # ordinary exam is always named from its type + session, so the same
+        # exam is never filed under two titles.
+        custom_name = ''
+        if exam.is_special:
+            custom_name = (self.cleaned_data.get('custom_name') or '').strip()
+        exam.name = custom_name or auto_exam_name(exam.exam_type, exam.session)
         if commit:
             exam.save()
             self.save_m2m()

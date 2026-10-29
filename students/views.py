@@ -4451,7 +4451,13 @@ def download_import_template(request):
 # ---------------- Exam Views ----------------
 @login_required
 def exam_list(request):
-    exams = Exam.objects.select_related('institution').order_by('-session', 'admission_class', 'name', 'pk')
+    # A special exam is not defined by its class/section/group columns but by
+    # the candidates and papers ticked on it, so the list names those counts --
+    # otherwise two hand-picked exams of the same class and term read alike.
+    exams = Exam.objects.select_related('institution').annotate(
+        special_candidate_count=Count('special_students', distinct=True),
+        special_paper_count=Count('special_subjects', distinct=True),
+    ).order_by('-session', 'admission_class', 'name', 'pk')
     exams = _filter_by_selected_institution(request, exams)
     pagination = paginate_list(request, exams)
     return render(request, 'students/exam_list.html', {

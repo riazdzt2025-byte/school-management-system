@@ -189,13 +189,59 @@ rendered result pages.
 
 `Exam → Add Exam`. Class, Section and Group are dropdowns; the exam **name is
 generated** from exam type + session (e.g. *Second Term Examination-2026*), it is
-not typed.
+not typed for an ordinary exam.
 
 **Set the group** for classes 9–12. One exam per group is the clean model:
 then marks entry, marks import, seat plan and the result sheet all show exactly
 that group's students and subjects, and no group picker appears. An exam without a
 group still works — every marks page then offers a group picker — but the exam
 matches every group's subjects until you pick one.
+
+### Special exam (বৃত্তি পরীক্ষা / competitive test)
+
+An ordinary exam is a **register**: its cohort is class + section + group, and
+every active student in it sits it — there is no way to leave one pupil out.
+A **special exam** is the opposite: the candidates and the papers are ticked by
+hand, so any student of the institution can sit it whatever their class.
+
+Use it whenever a result must cover *only some* students:
+
+- the class-8 **scholarship / বৃত্তি** test, or
+- a term test where one group of pupils sits the full paper and the rest sit
+  something else — **both** exams have to be special, otherwise the ordinary one
+  picks up the other group's students and prints AB/F (GPA 0.00) for pupils who
+  never sat it.
+
+Tick **Special exam (pick students & subjects by hand)** and two panels open:
+
+| Panel | What to do |
+|---|---|
+| Candidates | Filter by Class / Section, search by name, ID or roll, then tick. *Select all shown* takes everyone the filters leave on screen; the counter above says how many are ticked, and warns when ticks are hidden by a filter. A list of rolls / Student IDs can be pasted into *Quick pick* instead of clicking fifty names. |
+| Papers | Tick every paper the exam is held on — including one the pupils never sit makes them all AB/F. |
+
+Rules that hold for a special exam:
+
+- **Class still matters** — it drives the marks distribution (Mark Evaluation)
+  and the printed heading, even though the cohort ignores it.
+- **Section and group are cleared**: they describe a register, not a hand-picked
+  cohort, and the form blanks them on save.
+- **Every candidate sits every ticked paper**; the per-student optional subject
+  choices of the admission register are not consulted.
+- The picker only offers **active, non-archived** students of the institution,
+  so a TC/discontinued pupil cannot be a candidate.
+
+**Name.** A special exam may take a title of its own (*Exam name (optional)*,
+e.g. *বৃত্তি পরীক্ষা-২০২৬*). Two hand-picked exams of the same class and term
+would otherwise be identical in the Exam List: same generated name, same type,
+same class, same session. Leave the box empty to keep the generated title.
+Ordinary exams ignore the box. The Exam List also prints how many **candidates**
+and **papers** each special exam holds.
+
+Everything downstream — marks entry, Excel import, result sheet, summary, Top 10,
+rank list, seat plan, result cards — reads the same hand-picked cohort and
+papers, so nothing else needs setting up. Use `Exam List → Enter Marks`;
+`Exam → Enter Marks` looks an exam up by type + session and can land on the other
+exam of the same term.
 
 ## 4. Enter the marks
 

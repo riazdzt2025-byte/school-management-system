@@ -54,6 +54,10 @@
                             <span class="badge bg-info text-dark" title="Candidates and papers picked by hand">
                                 Special
                             </span>
+                            <div class="small text-muted">
+                                {{ exam.special_candidate_count }} candidate{{ exam.special_candidate_count|pluralize }}
+                                &middot; {{ exam.special_paper_count }} paper{{ exam.special_paper_count|pluralize }}
+                            </div>
                             {% endif %}
                         </td>
                         <td>{{ exam.get_exam_type_display }}</td>
