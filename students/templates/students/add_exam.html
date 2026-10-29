@@ -2,6 +2,49 @@
 
 {% block title %}{% if exam %}Edit{% else %}New{% endif %} Exam - {{ block.super }}{% endblock %}
 
+{% block extra_style %}
+    .cand-filter-bar {
+        background: #f8f9fb; border: 1px solid #e9ecef; border-radius: 10px;
+        padding: 10px 12px; margin-bottom: 10px;
+        display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+    }
+    .cand-filter-bar .field { display: flex; flex-direction: column; gap: 3px; min-width: 130px; }
+    .cand-filter-bar .field.grow { flex: 1 1 200px; }
+    .cand-filter-bar label { font-size: 0.74rem; color: #6c757d; font-weight: 600; margin: 0; }
+    .cand-count-badge {
+        display: inline-block; min-width: 26px; text-align: center;
+        background: var(--navy); color: #fff; border-radius: 10px;
+        padding: 1px 8px; font-weight: 700; font-size: 0.8rem;
+    }
+    .cand-table-wrapper {
+        border: 1px solid #e9ecef; border-radius: 10px; overflow: auto;
+        max-height: 430px; background: #fff;
+    }
+    .cand-table { width: 100%; border-collapse: collapse; margin: 0; }
+    .cand-table thead th {
+        position: sticky; top: 0; z-index: 2; background: #fff;
+        text-align: left; font-size: 0.74rem; color: #6c757d; text-transform: uppercase;
+        letter-spacing: 0.02em; padding: 8px 10px; border-bottom: 2px solid #eef0f3;
+        white-space: nowrap;
+    }
+    .cand-table td {
+        padding: 6px 10px; border-bottom: 1px solid #f1f3f5;
+        font-size: 0.88rem; vertical-align: middle; white-space: nowrap;
+    }
+    .cand-table tbody tr:hover { background: #f8f9fb; }
+    .cand-table tbody tr.is-selected { background: #eef8ee; }
+    .cand-table tbody tr.is-selected:hover { background: #e3f2e3; }
+    .cand-table .roll-cell { font-weight: 700; color: var(--navy); }
+    .cand-table .name-cell { font-weight: 600; color: var(--navy); white-space: normal; }
+    .cand-table .id-cell { font-family: monospace; font-size: 0.8rem; color: #6c757d; }
+    .cand-empty { text-align: center; color: #6c757d; padding: 28px 12px; font-size: 0.9rem; }
+    .cand-quick-pick summary { cursor: pointer; }
+    .paper-grid {
+        display: grid; gap: 2px 14px;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    }
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <div>
@@ -18,7 +61,7 @@
         {% csrf_token %}
         <div class="row g-3">
             {% for field in form %}
-            {% if field.name == 'is_special' or field.name == 'special_students' or field.name == 'special_subjects' %}
+            {% if field.name == 'is_special' or field.name == 'special_students' or field.name == 'special_subjects' or field.name == 'custom_name' %}
             {% else %}
             <div class="col-md-6" id="{% if field.name == 'group' %}group-field-wrapper{% endif %}">
                 <div class="mb-3">
@@ -50,92 +93,194 @@
 
                     <div id="special-pickers" style="display: none;">
                         <hr>
-                        <div class="row g-3">
-                            <div class="col-lg-7">
-                                <label class="form-label fw-semibold" for="candidate-search">Candidates</label>
-                                <div class="d-flex gap-2 mb-2">
-                                    <input type="text" id="candidate-search" class="form-control form-control-sm"
-                                           placeholder="নাম / ID / Roll দিয়ে খুঁজুন" autocomplete="off">
-                                    <select id="candidate-class-filter" class="form-select form-select-sm" style="max-width: 150px;">
-                                        <option value="">All classes</option>
-                                    </select>
-                                </div>
-                                <div class="d-flex gap-3 align-items-center mb-1 small">
-                                    <div class="form-check mb-0">
-                                        <input type="checkbox" class="form-check-input" id="candidate-select-all">
-                                        <label class="form-check-label" for="candidate-select-all">Select all shown</label>
-                                    </div>
-                                    <span class="text-muted"><span id="candidate-count">0</span> selected</span>
-                                </div>
-                                <div class="border rounded p-2 overflow-auto" style="max-height: 260px;">
-                                    <ul class="list-unstyled mb-0" id="candidate-list">
-                                        {% for student in form.special_students.field.queryset %}
-                                        <li class="candidate-row" data-class="{{ student.admission_class }}"
-                                            data-search="{{ student.name|lower }} {{ student.student_id|lower }} {{ student.roll_no|default_if_none:'' }} {{ student.section|lower }} class {{ student.admission_class }}">
-                                            <div class="form-check">
-                                                <input class="form-check-input candidate-box" type="checkbox"
-                                                       name="special_students" value="{{ student.pk }}"
-                                                       id="candidate-{{ student.pk }}"
-                                                       {% if student.pk in selected_special_student_ids %}checked{% endif %}>
-                                                <label class="form-check-label" for="candidate-{{ student.pk }}">
-                                                    <strong>{{ student.name }}</strong>
-                                                    <span class="text-muted">
-                                                        · {{ student.student_id|default:'no ID' }}
-                                                        · Class {{ student.admission_class }}{% if student.section %} ({{ student.section }}){% endif %}{% if student.roll_no %} · Roll {{ student.roll_no }}{% endif %}
-                                                    </span>
-                                                </label>
-                                            </div>
-                                        </li>
-                                        {% empty %}
-                                        <li class="text-muted small">No active student to pick from.</li>
-                                        {% endfor %}
-                                    </ul>
-                                </div>
-                                {% for error in form.special_students.errors %}
+
+                        <div class="row g-3 mb-2">
+                            <div class="col-lg-6">
+                                <label class="form-label fw-semibold" for="{{ form.custom_name.id_for_label }}">
+                                    <i class="bi bi-tag-fill me-1"></i>{{ form.custom_name.label }}
+                                </label>
+                                {{ form.custom_name }}
+                                <div class="form-text">{{ form.custom_name.help_text }}</div>
+                                {% for error in form.custom_name.errors %}
                                 <div class="text-danger small mt-1">{{ error }}</div>
                                 {% endfor %}
                             </div>
-
-                            <div class="col-lg-5">
-                                <label class="form-label fw-semibold" for="paper-search">Papers</label>
-                                <input type="text" id="paper-search" class="form-control form-control-sm mb-2"
-                                       placeholder="বিষয় খুঁজুন" autocomplete="off">
-                                <div class="d-flex gap-3 align-items-center mb-1 small">
-                                    <div class="form-check mb-0">
-                                        <input type="checkbox" class="form-check-input" id="paper-select-all">
-                                        <label class="form-check-label" for="paper-select-all">Select all shown</label>
-                                    </div>
-                                    <span class="text-muted"><span id="paper-count">0</span> selected</span>
+                            <div class="col-lg-6 d-flex align-items-center">
+                                <div class="alert alert-secondary small mb-0 w-100">
+                                    This exam will be listed as
+                                    <strong id="exam-name-live">&mdash;</strong>
+                                    <span class="text-muted">(a title of its own keeps it apart from the
+                                    other exam of the same class and term)</span>
                                 </div>
-                                <div class="border rounded p-2 overflow-auto" style="max-height: 260px;">
-                                    <ul class="list-unstyled mb-0" id="paper-list">
-                                        {% for subject in form.special_subjects.field.queryset %}
-                                        <li class="paper-row" data-search="{{ subject.name|lower }} {{ subject.code|lower }}">
-                                            <div class="form-check">
-                                                <input class="form-check-input paper-box" type="checkbox"
-                                                       name="special_subjects" value="{{ subject.pk }}"
-                                                       id="paper-{{ subject.pk }}"
-                                                       {% if subject.pk in selected_special_subject_ids %}checked{% endif %}>
-                                                <label class="form-check-label" for="paper-{{ subject.pk }}">
-                                                    {{ subject.name }} <span class="text-muted">({{ subject.code }})</span>
-                                                </label>
-                                            </div>
-                                        </li>
-                                        {% endfor %}
-                                    </ul>
-                                </div>
-                                {% for error in form.special_subjects.errors %}
-                                <div class="text-danger small mt-1">{{ error }}</div>
-                                {% endfor %}
                             </div>
                         </div>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <div class="fw-semibold"><i class="bi bi-people-fill me-1"></i>Candidates</div>
+                            <div class="small text-muted">
+                                <span class="cand-count-badge" id="candidate-count">0</span> selected
+                                &middot; <span id="candidate-visible-count">0</span> shown
+                                <span id="candidate-hidden-note" class="text-warning d-none"></span>
+                                &middot;
+                                <button type="button" class="btn btn-link btn-sm p-0 align-baseline d-none"
+                                        id="candidate-clear-all">Clear all selections</button>
+                            </div>
+                        </div>
+
+                        <div class="cand-filter-bar">
+                            <div class="field grow">
+                                <label for="candidate-search">Search by name / ID / roll</label>
+                                <input type="text" id="candidate-search" class="form-control form-control-sm"
+                                       placeholder="নাম / ID / Roll দিয়ে খুঁজুন" autocomplete="off">
+                            </div>
+                            <div class="field">
+                                <label for="candidate-class-filter">Class</label>
+                                <select id="candidate-class-filter" class="form-select form-select-sm">
+                                    <option value="">All classes</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="candidate-section-filter">Section</label>
+                                <select id="candidate-section-filter" class="form-select form-select-sm">
+                                    <option value="">All sections</option>
+                                </select>
+                            </div>
+                            <div class="field" style="min-width: auto;">
+                                <label>&nbsp;</label>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-navy" id="candidate-select-shown">Select all shown</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="candidate-clear-shown">Clear shown</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <details class="cand-quick-pick mb-2">
+                            <summary class="small text-muted">Quick pick from a list of rolls / Student IDs (matches the rows shown above)</summary>
+                            <div class="border rounded p-2 mt-2">
+                                <textarea id="candidate-quick-pick" class="form-control form-control-sm" rows="2"
+                                          placeholder="রোল বা Student ID পেস্ট করুন — কমা, স্পেস বা নতুন লাইনে আলাদা"></textarea>
+                                <div class="form-text">
+                                    আগে Class / Section / সার্চ দিয়ে তালিকাটা ছোট করে নিন — পেস্ট করা রোল শুধু
+                                    দেখানো শিক্ষার্থীদের মধ্যেই খোঁজা হবে।
+                                </div>
+                                <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
+                                    <button type="button" class="btn btn-sm btn-navy" id="candidate-quick-apply">Tick these</button>
+                                    <span class="small text-muted" id="candidate-quick-result"></span>
+                                </div>
+                            </div>
+                        </details>
+
+                        <div class="cand-table-wrapper">
+                            <table class="cand-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 34px;">
+                                            <input type="checkbox" class="form-check-input" id="candidate-select-all"
+                                                   title="Tick every student shown">
+                                        </th>
+                                        <th>#</th>
+                                        <th>Roll</th>
+                                        <th>Student ID</th>
+                                        <th>Name</th>
+                                        <th>Class</th>
+                                        <th>Section</th>
+                                        <th>Group</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for student in form.special_students.field.queryset %}
+                                    <tr class="candidate-row"
+                                        data-institution="{{ student.institution_id }}"
+                                        data-class="{{ student.admission_class }}"
+                                        data-section="{{ student.section|upper }}"
+                                        data-roll="{{ student.roll_no|default_if_none:'' }}"
+                                        data-student-id="{{ student.student_id|lower }}"
+                                        data-search="{{ student.name|lower }} {{ student.student_id|lower }} {{ student.roll_no|default_if_none:'' }} {{ student.section|lower }} class {{ student.admission_class }}">
+                                        <td>
+                                            <input class="form-check-input candidate-box" type="checkbox"
+                                                   name="special_students" value="{{ student.pk }}"
+                                                   id="candidate-{{ student.pk }}"
+                                                   {% if student.pk in selected_special_student_ids %}checked{% endif %}>
+                                        </td>
+                                        <td class="text-muted small">{{ forloop.counter }}</td>
+                                        <td class="roll-cell">{{ student.roll_no|default:"—" }}</td>
+                                        <td class="id-cell">{{ student.student_id|default:"—" }}</td>
+                                        <td class="name-cell">{{ student.name }}</td>
+                                        <td>{{ student.admission_class }}</td>
+                                        <td>{{ student.section|default:"—" }}</td>
+                                        <td>{{ student.get_group_display|default:"—" }}</td>
+                                        <td>
+                                            {% if student.status == 'TRANSFERRED' %}
+                                            <span class="badge bg-secondary">Transferred</span>
+                                            {% elif student.status == 'DISCONTINUED' %}
+                                            <span class="badge bg-warning text-dark">Discontinued</span>
+                                            {% else %}
+                                            <span class="badge bg-success">Active</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr><td colspan="9" class="cand-empty">No active student to pick from.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <div class="cand-empty" id="candidate-no-match" style="display: none;">
+                                কোনো শিক্ষার্থী এই ফিল্টারে মেলেনি — ফিল্টার মুছে আবার দেখুন।
+                            </div>
+                        </div>
+                        <div class="form-text">
+                            শুধু টিক দেওয়া শিক্ষার্থীরাই এই পরীক্ষায় বসবে — ক্লাস / সেকশন / গ্রুপের বাকি কেউ আসবে না।
+                        </div>
+                        {% for error in form.special_students.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                        {% endfor %}
+
+                        <hr>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <div class="fw-semibold"><i class="bi bi-journal-text me-1"></i>Papers</div>
+                            <div class="small text-muted">
+                                <span class="cand-count-badge" id="paper-count">0</span> selected
+                                &middot; <span id="paper-visible-count">0</span> shown
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <input type="text" id="paper-search" class="form-control form-control-sm"
+                                   placeholder="বিষয় খুঁজুন" autocomplete="off" style="max-width: 260px;">
+                            <button type="button" class="btn btn-sm btn-outline-navy" id="paper-select-shown">Select all shown</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="paper-clear-shown">Clear shown</button>
+                        </div>
+                        <div class="border rounded p-2 overflow-auto" style="max-height: 240px;">
+                            <ul class="paper-grid list-unstyled mb-0" id="paper-list">
+                                {% for subject in form.special_subjects.field.queryset %}
+                                <li class="paper-row" data-search="{{ subject.name|lower }} {{ subject.code|lower }}">
+                                    <div class="form-check mb-0">
+                                        <input class="form-check-input paper-box" type="checkbox"
+                                               name="special_subjects" value="{{ subject.pk }}"
+                                               id="paper-{{ subject.pk }}"
+                                               {% if subject.pk in selected_special_subject_ids %}checked{% endif %}>
+                                        <label class="form-check-label" for="paper-{{ subject.pk }}">
+                                            {{ subject.name }} <span class="text-muted">({{ subject.code }})</span>
+                                        </label>
+                                    </div>
+                                </li>
+                                {% empty %}
+                                <li class="text-muted small">No subject to pick from.</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% for error in form.special_subjects.errors %}
+                        <div class="text-danger small mt-1">{{ error }}</div>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
             <div class="col-md-12">
                 <div class="alert alert-secondary small mb-0">
-                    The exam name is generated automatically from the exam type and session:
+                    An ordinary exam is named from the exam type and session:
                     <strong id="exam-name-preview">&mdash;</strong>
+                    <span class="text-muted">A special exam may take its own name above.</span>
                 </div>
             </div>
         </div>
@@ -196,10 +341,6 @@
     // ---- Special exam: hand-picked candidates + papers ----
     var specialToggle = document.getElementById('{{ form.is_special.id_for_label }}');
     var specialPickers = document.getElementById('special-pickers');
-    var candidateRows = Array.prototype.slice.call(document.querySelectorAll('.candidate-row'));
-    var candidateBoxes = Array.prototype.slice.call(document.querySelectorAll('.candidate-box'));
-    var paperRows = Array.prototype.slice.call(document.querySelectorAll('.paper-row'));
-    var paperBoxes = Array.prototype.slice.call(document.querySelectorAll('.paper-box'));
 
     function toggleSpecialPickers() {
         if (!specialToggle || !specialPickers) return;
@@ -211,89 +352,311 @@
         toggleSpecialPickers();
     }
 
-    function wirePicker(searchId, filterId, selectAllId, countId, rows, boxes) {
-        var search = document.getElementById(searchId);
-        var filter = document.getElementById(filterId);
-        var selectAll = document.getElementById(selectAllId);
-        var count = document.getElementById(countId);
+    // The candidate picker reads like the Student List: one row per pupil in
+    // register order (class -> section -> roll), with Class / Section / search
+    // filters, so fifty names can be ticked out of three hundred. All of this
+    // is client-side convenience only — the server still validates every ticked
+    // id and the institution it belongs to.
+    var candidateRows = Array.prototype.slice.call(document.querySelectorAll('.candidate-row'));
+    var candidateBoxes = Array.prototype.slice.call(document.querySelectorAll('.candidate-box'));
+    var candidateSearch = document.getElementById('candidate-search');
+    var candidateClass = document.getElementById('candidate-class-filter');
+    var candidateSection = document.getElementById('candidate-section-filter');
+    var candidateCount = document.getElementById('candidate-count');
+    var candidateVisible = document.getElementById('candidate-visible-count');
+    var candidateHiddenNote = document.getElementById('candidate-hidden-note');
+    var candidateNoMatch = document.getElementById('candidate-no-match');
+    var candidateSelectAll = document.getElementById('candidate-select-all');
+    var candidateClearAll = document.getElementById('candidate-clear-all');
 
-        function updateCount() {
-            if (count) count.textContent = boxes.filter(function(b) { return b.checked; }).length;
-        }
-
-        function applyFilters() {
-            var term = (search && search.value || '').trim().toLowerCase();
-            var wanted = filter ? filter.value : '';
-            rows.forEach(function(row) {
-                var matchesText = !term || (row.dataset.search || '').indexOf(term) !== -1;
-                var matchesClass = !wanted || row.dataset.class === wanted;
-                row.style.display = matchesText && matchesClass ? '' : 'none';
-            });
-            if (selectAll) {
-                var visible = rows.filter(function(row) { return row.style.display !== 'none'; });
-                selectAll.checked = visible.length > 0 && visible.every(function(row) {
-                    var box = row.querySelector('input[type="checkbox"]');
-                    return box && box.checked;
-                });
-            }
-        }
-
-        if (search) search.addEventListener('input', applyFilters);
-        if (filter) filter.addEventListener('change', applyFilters);
-        if (selectAll) {
-            selectAll.addEventListener('change', function() {
-                rows.forEach(function(row) {
-                    if (row.style.display === 'none') return;
-                    var box = row.querySelector('input[type="checkbox"]');
-                    if (box) box.checked = selectAll.checked;
-                });
-                updateCount();
-            });
-        }
-        boxes.forEach(function(box) { box.addEventListener('change', updateCount); });
-        applyFilters();
-        updateCount();
+    function candidateBoxOf(row) {
+        return row.querySelector('.candidate-box');
     }
 
-    // Class filter options come from the candidates actually offered.
-    var classFilter = document.getElementById('candidate-class-filter');
-    if (classFilter) {
-        var seen = {};
+    function candidateRowOf(box) {
+        return box.closest ? box.closest('.candidate-row') : null;
+    }
+
+    function activeInstitutionId() {
+        return institutionSelect ? institutionSelect.value : '';
+    }
+
+    function candidateMatches(row) {
+        var wantedInstitution = activeInstitutionId();
+        if (wantedInstitution && row.dataset.institution !== wantedInstitution) return false;
+        if (candidateClass && candidateClass.value && row.dataset.class !== candidateClass.value) return false;
+        if (candidateSection && candidateSection.value && row.dataset.section !== candidateSection.value) return false;
+        var term = (candidateSearch && candidateSearch.value || '').trim().toLowerCase();
+        if (term && (row.dataset.search || '').indexOf(term) === -1) return false;
+        return true;
+    }
+
+    function visibleCandidateRows() {
+        return candidateRows.filter(function(row) { return row.style.display !== 'none'; });
+    }
+
+    function refreshCandidateSummary() {
+        var chosen = candidateBoxes.filter(function(box) { return box.checked; });
+        if (candidateCount) candidateCount.textContent = chosen.length;
+        if (candidateVisible) candidateVisible.textContent = visibleCandidateRows().length;
+        if (candidateClearAll) candidateClearAll.classList.toggle('d-none', chosen.length === 0);
+
+        if (candidateHiddenNote) {
+            // A tick that a filter hides is still a tick — say so, or the saved
+            // exam silently ends up with candidates nobody can see.
+            var hidden = chosen.filter(function(box) {
+                var row = candidateRowOf(box);
+                return row && row.style.display === 'none';
+            }).length;
+            candidateHiddenNote.textContent = hidden ? '· ' + hidden + ' selected but hidden by the filters' : '';
+            candidateHiddenNote.classList.toggle('d-none', hidden === 0);
+        }
+
+        candidateBoxes.forEach(function(box) {
+            var row = candidateRowOf(box);
+            if (row) row.classList.toggle('is-selected', box.checked);
+        });
+
+        if (candidateSelectAll) {
+            var shown = visibleCandidateRows();
+            candidateSelectAll.checked = shown.length > 0 && shown.every(function(row) {
+                var box = candidateBoxOf(row);
+                return box && box.checked;
+            });
+        }
+    }
+
+    function applyCandidateFilters() {
         candidateRows.forEach(function(row) {
-            var cls = row.dataset.class || '';
-            if (!cls || seen[cls]) return;
-            seen[cls] = true;
-            var opt = document.createElement('option');
-            opt.value = cls;
-            opt.textContent = 'Class ' + cls;
-            classFilter.appendChild(opt);
+            row.style.display = candidateMatches(row) ? '' : 'none';
+        });
+        if (candidateNoMatch) {
+            candidateNoMatch.style.display = visibleCandidateRows().length ? 'none' : '';
+        }
+        refreshCandidateSummary();
+    }
+
+    function fillCandidateFacet(select, values, allLabel, prefix) {
+        if (!select) return;
+        var previous = select.value;
+        select.innerHTML = '';
+        var all = document.createElement('option');
+        all.value = '';
+        all.textContent = allLabel;
+        select.appendChild(all);
+        Object.keys(values).sort(function(a, b) {
+            var na = parseInt(a, 10);
+            var nb = parseInt(b, 10);
+            if (!isNaN(na) && !isNaN(nb) && String(na) === a && String(nb) === b) return na - nb;
+            return a.localeCompare(b);
+        }).forEach(function(value) {
+            var option = document.createElement('option');
+            option.value = value;
+            option.textContent = prefix + value;
+            if (value === previous) option.selected = true;
+            select.appendChild(option);
+        });
+        if (select.value !== previous) select.value = '';
+    }
+
+    function rebuildCandidateFacets() {
+        var wantedInstitution = activeInstitutionId();
+        var classes = {};
+        var sections = {};
+        candidateRows.forEach(function(row) {
+            if (wantedInstitution && row.dataset.institution !== wantedInstitution) return;
+            if (row.dataset.class) classes[row.dataset.class] = true;
+            if (row.dataset.section) sections[row.dataset.section] = true;
+        });
+        fillCandidateFacet(candidateClass, classes, 'All classes', 'Class ');
+        fillCandidateFacet(candidateSection, sections, 'All sections', '');
+    }
+
+    [candidateSearch, candidateClass, candidateSection].forEach(function(el) {
+        if (el) el.addEventListener(el === candidateSearch ? 'input' : 'change', applyCandidateFilters);
+    });
+
+    if (institutionSelect) {
+        // One exam belongs to one institution, so following the Institution
+        // dropdown keeps another school's pupils out of the picker.
+        institutionSelect.addEventListener('change', function() {
+            rebuildCandidateFacets();
+            applyCandidateFilters();
         });
     }
 
-    wirePicker('candidate-search', 'candidate-class-filter', 'candidate-select-all', 'candidate-count', candidateRows, candidateBoxes);
-    wirePicker('paper-search', null, 'paper-select-all', 'paper-count', paperRows, paperBoxes);
+    if (candidateSelectAll) {
+        candidateSelectAll.addEventListener('change', function() {
+            visibleCandidateRows().forEach(function(row) {
+                var box = candidateBoxOf(row);
+                if (box) box.checked = candidateSelectAll.checked;
+            });
+            refreshCandidateSummary();
+        });
+    }
+
+    var candidateSelectShown = document.getElementById('candidate-select-shown');
+    if (candidateSelectShown) {
+        candidateSelectShown.addEventListener('click', function() {
+            visibleCandidateRows().forEach(function(row) {
+                var box = candidateBoxOf(row);
+                if (box) box.checked = true;
+            });
+            refreshCandidateSummary();
+        });
+    }
+
+    var candidateClearShown = document.getElementById('candidate-clear-shown');
+    if (candidateClearShown) {
+        candidateClearShown.addEventListener('click', function() {
+            visibleCandidateRows().forEach(function(row) {
+                var box = candidateBoxOf(row);
+                if (box) box.checked = false;
+            });
+            refreshCandidateSummary();
+        });
+    }
+
+    if (candidateClearAll) {
+        candidateClearAll.addEventListener('click', function() {
+            candidateBoxes.forEach(function(box) { box.checked = false; });
+            refreshCandidateSummary();
+        });
+    }
+
+    // Paste the rolls / Student IDs a teacher already has in a spreadsheet —
+    // ticking fifty names out of three hundred by hand is what this avoids.
+    var candidateQuickApply = document.getElementById('candidate-quick-apply');
+    if (candidateQuickApply) {
+        candidateQuickApply.addEventListener('click', function() {
+            var input = document.getElementById('candidate-quick-pick');
+            var result = document.getElementById('candidate-quick-result');
+            var tokens = ((input && input.value) || '').split(/[\s,;]+/).filter(Boolean);
+            if (!tokens.length) return;
+
+            var wanted = {};
+            tokens.forEach(function(token) { wanted[token.toLowerCase()] = true; });
+            var found = {};
+            var ticked = 0;
+            // Only the rows the filters leave on screen: pasting a column of
+            // rolls means "these pupils", not "roll 7 in every section".
+            visibleCandidateRows().forEach(function(row) {
+                var box = candidateBoxOf(row);
+                if (!box) return;
+                var studentId = (row.dataset.studentId || '').toLowerCase();
+                var roll = (row.dataset.roll || '').toLowerCase();
+                var hitId = studentId && Object.prototype.hasOwnProperty.call(wanted, studentId);
+                var hitRoll = roll && Object.prototype.hasOwnProperty.call(wanted, roll);
+                if (!hitId && !hitRoll) return;
+                if (hitId) found[studentId] = true;
+                if (hitRoll) found[roll] = true;
+                if (!box.checked) {
+                    box.checked = true;
+                    ticked += 1;
+                }
+            });
+
+            var missing = tokens.filter(function(token) {
+                return !found[token.toLowerCase()];
+            });
+            refreshCandidateSummary();
+            if (result) {
+                var parts = [ticked + ' newly ticked'];
+                if (missing.length) {
+                    parts.push(missing.length + ' not found in the rows shown: '
+                        + missing.slice(0, 6).join(', ') + (missing.length > 6 ? '…' : ''));
+                } else {
+                    parts.push('every value matched');
+                }
+                result.textContent = parts.join(' · ');
+            }
+        });
+    }
+
+    // ---- Papers ----
+    var paperRows = Array.prototype.slice.call(document.querySelectorAll('.paper-row'));
+    var paperBoxes = Array.prototype.slice.call(document.querySelectorAll('.paper-box'));
+    var paperSearch = document.getElementById('paper-search');
+    var paperCount = document.getElementById('paper-count');
+    var paperVisible = document.getElementById('paper-visible-count');
+
+    function visiblePaperRows() {
+        return paperRows.filter(function(row) { return row.style.display !== 'none'; });
+    }
+
+    function refreshPapers() {
+        var term = (paperSearch && paperSearch.value || '').trim().toLowerCase();
+        var shown = 0;
+        paperRows.forEach(function(row) {
+            var matches = !term || (row.dataset.search || '').indexOf(term) !== -1;
+            row.style.display = matches ? '' : 'none';
+            if (matches) shown += 1;
+        });
+        if (paperCount) paperCount.textContent = paperBoxes.filter(function(box) { return box.checked; }).length;
+        if (paperVisible) paperVisible.textContent = shown;
+    }
+
+    if (paperSearch) paperSearch.addEventListener('input', refreshPapers);
+
+    var paperSelectShown = document.getElementById('paper-select-shown');
+    if (paperSelectShown) {
+        paperSelectShown.addEventListener('click', function() {
+            visiblePaperRows().forEach(function(row) {
+                var box = row.querySelector('.paper-box');
+                if (box) box.checked = true;
+            });
+            refreshPapers();
+        });
+    }
+
+    var paperClearShown = document.getElementById('paper-clear-shown');
+    if (paperClearShown) {
+        paperClearShown.addEventListener('click', function() {
+            visiblePaperRows().forEach(function(row) {
+                var box = row.querySelector('.paper-box');
+                if (box) box.checked = false;
+            });
+            refreshPapers();
+        });
+    }
+
+    paperBoxes.forEach(function(box) { box.addEventListener('change', refreshPapers); });
+
+    rebuildCandidateFacets();
+    applyCandidateFilters();
+    refreshPapers();
 
     var examTypeSelect = document.getElementById('id_exam_type');
     var sessionInput   = document.getElementById('id_session');
     var preview        = document.getElementById('exam-name-preview');
 
+    var customNameInput = document.getElementById('{{ form.custom_name.id_for_label }}');
+    var liveName = document.getElementById('exam-name-live');
+
     if (examTypeSelect && sessionInput && preview) {
-        function generateExamName() {
+        function generatedExamName() {
             var selectedOption = examTypeSelect.options[examTypeSelect.selectedIndex];
             var examTypeText = selectedOption ? selectedOption.text.trim() : '';
             if (!examTypeText || examTypeText.indexOf('Select') !== -1) {
-                preview.textContent = '\u2014';
-                return;
+                return '';
             }
             var matches = (sessionInput.value || '').match(/\d{4}/g) || [];
             var year = matches.length ? matches[matches.length - 1] : '';
-            preview.textContent = year
+            return year
                 ? examTypeText + ' Examination-' + year
                 : examTypeText + ' Examination';
         }
 
+        function generateExamName() {
+            var generated = generatedExamName();
+            var typed = customNameInput ? customNameInput.value.trim() : '';
+            preview.textContent = generated || '\u2014';
+            if (liveName) liveName.textContent = typed || generated || '\u2014';
+        }
+
         examTypeSelect.addEventListener('change', generateExamName);
         sessionInput.addEventListener('input', generateExamName);
+        if (customNameInput) customNameInput.addEventListener('input', generateExamName);
         generateExamName();
     }
 })();

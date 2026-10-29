@@ -305,3 +305,213 @@ class SpecialExamFormTests(SpecialExamFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['selected_special_student_ids'], [self.class9_sci.pk])
         self.assertEqual(response.context['selected_special_subject_ids'], [self.math.pk])
+
+
+class SpecialExamCandidatePickerTests(SpecialExamFixtureMixin, TestCase):
+    """The candidate picker is a register-style table, not a name-sorted list.
+
+    Out of 300+ active students the office ticks fifty by hand, so the picker
+    has to read like the Student List: register order, Class/Section filters,
+    a live selected count, and the pupils of another institution never shown.
+    """
+
+    def setUp(self):
+        self.build_fixture()
+        self.client.force_login(self.user)
+        # A second section and a roll-less pupil, to prove the ordering rule.
+        self.class8_a2 = self._student('S8004', 'Rumana', '8')
+        self.class8_a2.section = 'B'
+        self.class8_a2.roll_no = 1
+        self.class8_a2.save()
+        self.class8_a.roll_no = 12
+        self.class8_a.save()
+        self.class8_b.roll_no = 3
+        self.class8_b.save()
+        self.no_roll = self._student('S8005', 'Zobayer', '8')
+        self.no_roll.roll_no = None
+        self.no_roll.save()
+
+    def _candidate_queryset(self):
+        from .forms import ExamForm
+        return ExamForm(user=self.user).fields['special_students'].queryset
+
+    def test_candidates_are_in_register_order(self):
+        """class -> section -> numeric roll, pupils without a roll last."""
+        ordered = [
+            s.name for s in self._candidate_queryset()
+            if s.institution_id == self.institution.pk
+        ]
+        # Section A: roll 3, then roll 12, then the roll-less pupil; section B
+        # after A; the class-9 candidate last because the class sorts first.
+        self.assertEqual(
+            ordered, ['Rakib', 'Ayesha', 'Zobayer', 'Rumana', 'Tania'],
+        )
+
+    def test_picker_renders_a_table_with_class_and_section_filters(self):
+        response = self.client.get(reverse('add_exam'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="candidate-class-filter"')
+        self.assertContains(response, 'id="candidate-section-filter"')
+        self.assertContains(response, 'id="candidate-quick-pick"')
+        self.assertContains(response, 'class="cand-table"')
+        # One checkbox per active candidate, named exactly as the form reads it.
+        self.assertContains(response, 'name="special_students"', count=6)
+        self.assertContains(response, 'data-section="B"')
+
+    def test_each_row_carries_its_institution_so_the_picker_can_hide_it(self):
+        """An unrestricted user sees every institution here; the picker filters.
+
+        The Institution dropdown is required on this form, so as soon as one is
+        chosen the client-side filter hides the other schools' pupils, and the
+        form's own validation still refuses a candidate that belongs elsewhere.
+        """
+        response = self.client.get(reverse('add_exam'))
+        self.assertContains(
+            response, f'data-institution="{self.other_institution.pk}"', count=1,
+        )
+        self.assertContains(
+            response, f'data-institution="{self.institution.pk}"', count=5,
+        )
+
+    def test_discontinued_pupils_are_not_offered(self):
+        self.assertNotIn('Old Student', [s.name for s in self._candidate_queryset()])
+
+    def test_section_is_carried_on_every_row_for_the_filter(self):
+        response = self.client.get(reverse('add_exam'))
+        body = response.content.decode()
+        self.assertIn('data-section="A"', body)
+        self.assertIn('data-section="B"', body)
+
+    def test_edit_form_keeps_the_ticks_after_a_rejected_post(self):
+        """A validation error must not lose the fifty names already ticked."""
+        response = self.client.post(reverse('add_exam'), {
+            'institution': self.institution.pk,
+            'admission_class': '8',
+            'section': '',
+            'group': '',
+            'exam_type': 'SECOND_TERM',
+            'session': '2026',
+            'is_special': 'on',
+            'special_students': [self.class8_a.pk, self.class8_b.pk],
+            'special_subjects': [],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Tick at least one paper')
+        self.assertEqual(
+            sorted(response.context['selected_special_student_ids']),
+            sorted([self.class8_a.pk, self.class8_b.pk]),
+        )
+
+
+class SpecialExamNameTests(SpecialExamFixtureMixin, TestCase):
+    """A special exam may carry a title of its own.
+
+    Two hand-picked exams (a 2nd-phase test, a scholarship test) share class,
+    exam type and session, so the generated title is the same for both and the
+    Exam List shows two rows nobody can tell apart. Only a special exam may
+    override the title — an ordinary exam is a register entry, not a free-form
+    document.
+    """
+
+    def setUp(self):
+        self.build_fixture()
+        self.client.force_login(self.user)
+
+    def _post(self, **overrides):
+        data = {
+            'institution': self.institution.pk,
+            'admission_class': '8',
+            'section': '',
+            'group': '',
+            'exam_type': 'SECOND_TERM',
+            'session': '2026-2027',
+            'is_special': 'on',
+            'special_students': [self.class8_a.pk],
+            'special_subjects': [self.bangla.pk],
+        }
+        data.update(overrides)
+        return self.client.post(reverse('add_exam'), data)
+
+    def test_a_special_exam_keeps_the_name_that_was_typed(self):
+        self._post(custom_name='বৃত্তি পরীক্ষা-২০২৬')
+        exam = Exam.objects.get(is_special=True)
+        self.assertEqual(exam.name, 'বৃত্তি পরীক্ষা-২০২৬')
+
+    def test_an_empty_name_box_still_generates_the_title(self):
+        self._post(custom_name='   ')
+        exam = Exam.objects.get(is_special=True)
+        self.assertEqual(exam.name, 'Second Term Examination-2027')
+
+    def test_an_ordinary_exam_ignores_the_typed_name(self):
+        self._post(
+            is_special='',
+            special_students=[],
+            special_subjects=[],
+            custom_name='My Own Title',
+        )
+        exam = Exam.objects.get(is_special=False)
+        self.assertEqual(exam.name, 'Second Term Examination-2027')
+
+    def test_edit_form_shows_a_saved_custom_title(self):
+        exam = self.build_special_exam([self.class8_a], [self.bangla])
+        exam.name = 'বৃত্তি পরীক্ষা-২০২৬'
+        exam.save()
+        response = self.client.get(reverse('edit_exam', args=[exam.pk]))
+        self.assertEqual(response.context['form'].fields['custom_name'].initial, exam.name)
+
+    def test_edit_form_leaves_the_box_empty_for_a_generated_title(self):
+        """A generated title must not look hand-named, or it would freeze."""
+        from .forms import auto_exam_name
+        exam = self.build_special_exam([self.class8_a], [self.bangla])
+        exam.name = auto_exam_name(exam.exam_type, exam.session)
+        exam.save()
+        response = self.client.get(reverse('edit_exam', args=[exam.pk]))
+        self.assertIn(response.context['form'].fields['custom_name'].initial, (None, ''))
+
+    def test_renaming_an_exam_does_not_touch_the_marks(self):
+        exam = self.build_special_exam([self.class8_a], [self.bangla])
+        ExamMark.objects.create(
+            exam=exam, student=self.class8_a, subject=self.bangla, marks_obtained=72,
+        )
+        response = self.client.post(reverse('edit_exam', args=[exam.pk]), {
+            'institution': self.institution.pk,
+            'admission_class': '8',
+            'section': '',
+            'group': '',
+            'exam_type': 'SECOND_TERM',
+            'session': '2026',
+            'is_special': 'on',
+            'special_students': [self.class8_a.pk],
+            'special_subjects': [self.bangla.pk],
+            'custom_name': 'বৃত্তি পরীক্ষা-২০২৬',
+        })
+        self.assertEqual(response.status_code, 302)
+        exam.refresh_from_db()
+        self.assertEqual(exam.name, 'বৃত্তি পরীক্ষা-২০২৬')
+        self.assertEqual(exam.marks.count(), 1)
+
+
+class ExamListCandidateCountTests(SpecialExamFixtureMixin, TestCase):
+    def setUp(self):
+        self.build_fixture()
+        self.client.force_login(self.user)
+
+    def test_the_list_names_the_candidates_and_papers_of_a_special_exam(self):
+        exam = self.build_special_exam(
+            [self.class8_a, self.class8_b, self.class9_sci], [self.bangla, self.math],
+        )
+        response = self.client.get(reverse('exam_list'))
+        self.assertEqual(response.status_code, 200)
+        listed = next(e for e in response.context['exams'] if e.pk == exam.pk)
+        # Distinct counts: two papers must not multiply the three candidates.
+        self.assertEqual(listed.special_candidate_count, 3)
+        self.assertEqual(listed.special_paper_count, 2)
+        self.assertContains(response, '3 candidates')
+
+    def test_an_ordinary_exam_shows_no_candidate_line(self):
+        Exam.objects.create(
+            name='Second Term Examination-2026', exam_type='SECOND_TERM',
+            institution=self.institution, admission_class='8', session='2026',
+        )
+        response = self.client.get(reverse('exam_list'))
+        self.assertNotContains(response, 'candidates')
