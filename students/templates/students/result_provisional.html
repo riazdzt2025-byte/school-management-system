@@ -1,0 +1,259 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Provisional Result - {{ block.super }}{% endblock %}
+
+{% block extra_style %}
+    .provisional-page .provisional-banner {
+        border-left: 5px solid #e7ac3b;
+        background: #fff9ec;
+    }
+    .provisional-page .provisional-banner h2 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #7a5310;
+        margin-bottom: 4px;
+    }
+    .provisional-page .pending-cell {
+        display: inline-block;
+        min-width: 26px;
+        color: #a15c00;
+        font-weight: 700;
+    }
+    .provisional-page .pending-col {
+        background: #fff6e5 !important;
+    }
+    .provisional-page .not-applicable-cell { color: #adb5bd; }
+    .provisional-page .reported-fail { color: #b53b4c; font-weight: 700; }
+    .provisional-page .status-pending { background: #e7ac3b; color: #2b1c00; }
+    .provisional-page table.sheet { font-size: .88rem; }
+    .provisional-page table.sheet th,
+    .provisional-page table.sheet td { vertical-align: middle; }
+    .provisional-page .note { color: #667684; font-size: .82rem; }
+    .provisional-page tr.pending-row td { background: #fffdf7 !important; }
+    .provisional-page .unconfirmed { color: #a15c00; font-weight: 700; }
+    @page { size: A4 landscape; margin: 10mm; }
+    @media print {
+        html, body { background: #fff !important; color: #000 !important; }
+        .provisional-page .page-header { background: #fff !important; border-color: #000 !important; }
+        .provisional-page .table-card { border: 1px solid #000 !important; border-radius: 0; background: #fff !important; box-shadow: none !important; }
+        .provisional-page .table-responsive { overflow: visible; }
+        .provisional-page table { border-collapse: collapse; }
+        .provisional-page th,
+        .provisional-page td { border: 1px solid #000 !important; color: #000 !important; background: #fff !important; padding: 5px 4px; font-size: 9.5px; }
+        .provisional-page .badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
+        .provisional-page .provisional-banner { border: 1px solid #000 !important; }
+        .provisional-page thead { display: table-header-group; }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="provisional-page">
+    <div class="page-header">
+        <div>
+            <h1>Provisional Result <span class="text-muted fw-normal">/ অস্থায়ী ফলাফল</span></h1>
+            <div class="subtitle">
+                {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
+                {% if result_group_label %} &middot; {{ result_group_label }}{% endif %}
+                &middot; Session {{ exam.session }}
+                {% if not exam.is_published %}<span class="badge bg-secondary ms-2">Not published</span>{% endif %}
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 d-print-none">
+            <button type="button" onclick="window.print()" class="btn btn-outline-navy btn-sm">
+                <i class="bi bi-printer me-1"></i> Print / Save PDF
+            </button>
+            {% if exam.is_published %}
+            <a href="{{ result_sheet_url }}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Official Result Sheet</a>
+            {% endif %}
+            <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back to Exams</a>
+        </div>
+    </div>
+
+    {% if show_group_picker %}
+    <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
+        <div>
+            <label class="form-label fw-semibold mb-1">Group</label>
+            <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-navy">Show</button>
+        {% if selected_group %}<a href="{% url 'result_provisional' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+    </form>
+    {% endif %}
+
+    {% if complete %}
+    <div class="table-card p-4 mb-3 provisional-banner">
+        <h2>All {{ subject_count }} subjects have marks &mdash; this is the final picture</h2>
+        <p class="mb-1">
+            Every assigned subject of this class holds at least one mark, so nothing is withheld.
+            {% if not exam.is_published %}
+            The official result still has to be published from the Exams list before result cards,
+            the rank list and result analysis use it.
+            {% else %}
+            Use the <a href="{{ result_sheet_url }}{{ group_querystring }}">official result sheet</a>
+            for the published figures.
+            {% endif %}
+        </p>
+    </div>
+    {% else %}
+    <div class="table-card p-4 mb-3 provisional-banner">
+        <h2>
+            <i class="bi bi-hourglass-split me-1"></i>
+            Provisional result &mdash; {{ ready_subject_count }} of {{ subject_count }} subjects have marks
+        </h2>
+        <p class="mb-1">
+            {{ pending_columns|length }} subject{{ pending_columns|length|pluralize }} still
+            {{ pending_columns|length|pluralize:"has,have" }} no mark for at least one student
+            ({{ pending_students }} student{{ pending_students|pluralize }} affected). On this page those
+            papers are marked <span class="pending-cell">&mdash;</span> and are
+            <strong>left out of the total, the percentage, the GPA and pass/fail</strong>.
+            That is why this sheet differs from the official one: once every subject is entered,
+            a blank assigned subject is graded <strong>F</strong> there
+            {% if absent_subject_fails %}(current policy) {% endif %}&mdash; so a half-entered exam would
+            show Fail for everybody.
+        </p>
+        <p class="mb-0 note">
+            This page is a working sheet, not a result. No marks are changed, no result is published,
+            and it is available for an unpublished exam on purpose.
+        </p>
+    </div>
+
+    <div class="table-card mb-3">
+        <div class="p-3 pb-2">
+            <strong><i class="bi bi-exclamation-circle me-1"></i> Which subjects still need marks</strong>
+            <div class="note">A subject with no mark for the whole class is normally a setup problem, not a mass absence.</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Code</th>
+                        <th class="text-center">Students with no mark</th>
+                        <th>What it usually means</th>
+                        <th class="d-print-none">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pending in pending_columns %}
+                    <tr>
+                        <td class="fw-semibold">{{ pending.subject.name }}</td>
+                        <td>{{ pending.subject.code }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-warning text-dark">
+                                {{ pending.blank_count }} of {{ pending.student_count }}
+                            </span>
+                        </td>
+                        <td class="small">
+                            {% if pending.fully_unmarked %}
+                            No mark was entered for <em>anybody</em> in this class.
+                            Usually the paper is not offered on Enter Marks
+                            (not assigned to the class, its group does not match,
+                            or <strong>Count</strong> is unticked in Mark Evaluation for this exam type).
+                            {% else %}
+                            Partly entered: the remaining students have no mark for this paper.
+                            {% endif %}
+                        </td>
+                        <td class="d-print-none">
+                            {% if pending.enter_url %}
+                            <a href="{{ pending.enter_url }}" class="btn btn-sm btn-navy">Enter marks</a>
+                            {% elif can_enter_marks %}
+                            <span class="small text-muted">Pick the subject on Enter Marks</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="table-card">
+        <div class="table-responsive">
+            <table class="table table-striped mb-0 sheet">
+                <thead>
+                    <tr>
+                        <th>Roll</th>
+                        <th>ID</th>
+                        <th>Name</th>
+                        {% for column in columns %}
+                        <th class="text-center">
+                            {{ column.subject.code }}
+                            {% if column.full_marks %}<div class="note">{{ column.full_marks }}</div>{% endif %}
+                        </th>
+                        {% endfor %}
+                        <th class="text-center">Total</th>
+                        <th class="text-center">%<div class="note">entered papers</div></th>
+                        <th class="text-center">GPA<div class="note">provisional</div></th>
+                        <th class="text-center">Grade</th>
+                        <th class="text-center">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in results %}
+                    <tr{% if r.pending_subject_count %} class="pending-row"{% endif %}>
+                        <td>{{ r.student.roll_no|default:'-' }}</td>
+                        <td>{{ r.student.student_id }}</td>
+                        <td>{{ r.student.name }}</td>
+                        {% for cell in r.subject_results %}
+                        <td class="text-center{% if cell.pending %} pending-col{% endif %}">
+                            {% if cell.not_applicable %}
+                            <span class="not-applicable-cell" title="This student does not sit this paper">&times;</span>
+                            {% elif cell.pending %}
+                            <span class="pending-cell" title="No mark entered yet">&mdash;</span>
+                            {% else %}
+                            {{ cell.obtained }}
+                            {% if not cell.passed %}<span class="reported-fail" title="Entered and below the pass mark">F</span>{% endif %}
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-center">
+                            {% if r.has_marks %}{{ r.total_obtained }}{% else %}&mdash;{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if r.percentage is not None %}{{ r.percentage }}%
+                            {% if r.pending_subject_count %}<span class="unconfirmed" title="Computed on the {{ r.counted_subject_count }} papers entered so far">&dagger;</span>{% endif %}
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {{ r.gpa|default:'-' }}{% if r.pending_subject_count %}<span class="unconfirmed" title="Provisional: {{ r.pending_subject_count }} paper{{ r.pending_subject_count|pluralize }} still has no mark">&dagger;</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {{ r.grade }}{% if r.pending_subject_count %}<span class="unconfirmed" title="Provisional grade">&dagger;</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if r.status == 'Pass' %}<span class="badge bg-success">Pass</span>
+                            {% elif r.status == 'Fail' %}<span class="badge bg-danger">Fail</span>
+                            {% elif r.status == 'Pending' %}
+                            <span class="badge status-pending">Pending</span>
+                            <div class="note">{{ r.counted_subject_count }}/{{ r.applicable_subject_count }} papers</div>
+                            {% else %}<span class="badge bg-secondary">No Marks</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="{{ columns|length|add:8 }}" class="text-center py-4">No students found for this exam / group.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="table-card p-3 mt-3 note">
+        <strong>How the numbers on this page are made</strong>
+        <ul class="mb-0 ps-3">
+            <li><span class="pending-cell">&mdash;</span> = no mark entered yet. Left out of total, %, GPA and pass/fail here.</li>
+            <li><span class="not-applicable-cell">&times;</span> = this student does not sit that paper (optional not chosen, other religion). Never counted, never a fail.</li>
+            <li><span class="reported-fail">F</span> = a real entered mark below the pass mark. A real 0 is a fail too &mdash; only an empty cell is pending.</li>
+            <li><strong>Position is withheld</strong> while a student has a pending subject: ranking them on 8 papers against a class that sat 10 would be wrong.</li>
+            <li><span class="unconfirmed">&dagger;</span> = provisional figure: percentage, GPA and grade are computed only on the papers entered so far, and the
+                <em>N/M papers</em> line under the status says how many that is.</li>
+            <li>The official result pages are unchanged: a published result still grades a blank assigned subject as F ({{ absent_subject_fails|yesno:"EXAM_ABSENT_SUBJECT_FAILS is ON,EXAM_ABSENT_SUBJECT_FAILS is OFF" }}).</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

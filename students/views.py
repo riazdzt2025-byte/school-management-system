@@ -5218,6 +5218,110 @@ def result_sheet(request, pk):
 
 
 @login_required
+def result_provisional(request, pk):
+    """Provisional result — the sheet while 1-2 subjects still have no marks.
+
+    The official result sheet (result_sheet) is the truth: an assigned subject
+    with no mark is graded F and counted as 0 (``EXAM_ABSENT_SUBJECT_FAILS``),
+    so entering 9 of 10 subjects makes the whole class Fail. That reading is
+    correct for a *published* result and wrong for a sheet the office is still
+    marking — this page exists for the second case, and only for it:
+
+    * works on an **unpublished** exam (nothing has to be published first, and
+      nothing here can change a published result),
+    * a subject with no marks anywhere is still a column, marked ``pending``,
+    * a pending cell is left out of the total/GPA/pass-fail instead of F,
+    * an entered mark — including an entered 0 — is graded exactly as the
+      official sheet grades it, so a real fail still shows as Fail,
+    * Position is withheld for any student with a pending subject, so nobody is
+      ranked on fewer papers than the class sat.
+
+    The page names every subject that still has no marks, so "which one am I
+    missing?" is answered on the screen instead of by trial and error.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    columns, results = build_exam_results(
+        exam, group=selected_group or None, provisional=True,
+    )
+    # Register order (numeric roll, no-roll last) — this is a working sheet,
+    # not a merit list; positions are withheld while marks are pending.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
+    can_enter_marks = request.user.has_perm('students.add_exammark')
+
+    sheet_columns = []
+    pending_columns = []
+    for index, column in enumerate(columns):
+        if getattr(column, 'is_religion_column', False):
+            marks_config = column.header_marks_config(exam, group=selected_group or None)
+        else:
+            marks_config = get_subject_marks(exam, column, group=selected_group or None)
+        sheet_columns.append({
+            'subject': column,
+            'full_marks': marks_config.full_marks if marks_config else None,
+        })
+        applicable = [
+            row for row in results
+            if not row['subject_results'][index].get('not_applicable')
+        ]
+        blank = [
+            row for row in applicable
+            if row['subject_results'][index].get('pending')
+        ]
+        if not blank:
+            continue
+        enter_url = ''
+        if can_enter_marks and not getattr(column, 'is_religion_column', False):
+            enter_url = reverse(
+                'enter_marks', kwargs={'pk': exam.pk, 'subject_pk': column.pk},
+            ) + group_querystring
+        pending_columns.append({
+            'subject': column,
+            'blank_count': len(blank),
+            'student_count': len(applicable),
+            # No mark at all for anybody: the usual reason is that the paper is
+            # not offered on Enter Marks (assignment / Count tick / group), not
+            # that every child was absent.
+            'fully_unmarked': bool(applicable) and len(blank) == len(applicable),
+            'enter_url': enter_url,
+        })
+
+    return render(request, 'students/result_provisional.html', {
+        'exam': exam,
+        'columns': sheet_columns,
+        'results': results,
+        'pending_columns': pending_columns,
+        'complete': not pending_columns,
+        'subject_count': len(columns),
+        'ready_subject_count': len(columns) - len(pending_columns),
+        'student_count': len(results),
+        'pending_students': sum(
+            1 for row in results if row['pending_subject_count']
+        ),
+        'absent_subject_fails': absent_subject_fails_result(),
+        'can_enter_marks': can_enter_marks,
+        'enter_marks_url': reverse('select_marks_subject', kwargs={'pk': exam.pk}),
+        'result_sheet_url': reverse('result_sheet', kwargs={'pk': exam.pk}),
+        'subject_assignments_url': subject_assignments_url(exam, selected_group),
+        'mark_evaluation_url': mark_evaluation_url(exam, selected_group),
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': selected_group_label,
+        'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+    })
+
+
+@login_required
 def result_summary(request, pk):
     """Published Result page for one exam.
 

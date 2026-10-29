@@ -89,6 +89,7 @@ urlpatterns = [
     path('audit/', views.audit_log_list, name='audit_log_list'),
     path('audit/<int:pk>/', views.audit_log_detail, name='audit_log_detail'),
     path('exams/<int:pk>/result-sheet/', views.result_sheet, name='result_sheet'),
+    path('exams/<int:pk>/provisional-result/', views.result_provisional, name='result_provisional'),
     path('exams/<int:pk>/result-summary/', views.result_summary, name='exam_result_summary'),
     path('exams/<int:pk>/top-10/', views.top_10, name='top_10'),
     path('exams/<int:pk>/full-rank-list/', views.full_rank_list, name='full_rank_list'),

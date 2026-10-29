@@ -307,6 +307,36 @@ student who sat some subjects but not others shows `Fail` with the missed subjec
 **AB** — read those before publishing, because a box left empty by mistake costs
 a student their whole result.
 
+### Seeing a result while 1–2 subjects are still unmarked (Provisional Result)
+
+Entering 9 of 10 subjects and opening the Result Sheet is *supposed* to look bad:
+a blank assigned subject is graded **F** and counted as 0, so every student in
+that class reads Fail with GPA 0.00. That is the correct final reading — but it is
+useless as a progress check, and it is dangerous to publish.
+
+`Exam List → Provisional` (or the **Provisional (pending marks)** button on the
+result sheet) opens a read-only working sheet for exactly this moment:
+
+- it works on an **unpublished** exam — no publishing is needed to see it;
+- a subject with no marks *anywhere* stays a **column**, marked `—`, instead of
+  disappearing from the sheet;
+- a `—` cell is left out of the total, the percentage, the GPA and pass/fail;
+- an entered mark is graded exactly as the official sheet grades it, so a real
+  0 or a real low mark **still shows Fail** — provisional never hides bad news;
+- **Position is withheld** for any student who still has a pending subject:
+  ranking someone on 8 papers against a class that sat 10 is meaningless;
+- the top of the page names every subject that still has no marks, how many
+  students it is missing for, and links straight to `Enter Marks` for that paper.
+  A subject missing for the *whole class* is usually a setup problem (not
+  assigned to the class, group mismatch, or **Count** unticked in Mark
+  Evaluation) rather than a mass absence.
+
+The provisional page changes nothing: no mark, no publish flag, no result. As
+soon as every subject has marks it says so and points at the official sheet. The
+official pages keep the F rule (`EXAM_ABSENT_SUBJECT_FAILS`), so a half-entered
+exam is never published green — publish only after the provisional page reports
+all subjects complete. Bengali walkthrough: [`docs/PROVISIONAL_RESULT_BN.md`](docs/PROVISIONAL_RESULT_BN.md).
+
 ## 6. Publish
 
 `Exam List → Publish`. Publishing only gates the result pages (sheet, summary,

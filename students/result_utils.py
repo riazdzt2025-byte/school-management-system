@@ -784,15 +784,31 @@ def _part_breakdown(mark, marks_config):
     return parts
 
 
-def compute_subject_result(mark, marks_config):
+def compute_subject_result(mark, marks_config, blank_is_pending=False):
     """Grade for a single (student, subject) pair.
 
     ``mark`` is None when nothing at all was entered for the subject, which
     means the student did not sit it. That is *not* the same as a 0 — a blank
     row shows as a dash and is left out of the total and the GPA, while a real
     0 is counted and fails the subject.
+
+    ``blank_is_pending`` is the **provisional** reading used only by the
+    "Provisional Result" page (see :func:`build_exam_results`): a blank mark
+    means "the office has not entered it yet", so the cell is marked
+    ``pending`` and is left out of the total, the GPA and pass/fail instead of
+    being graded F. The official result pages never pass this flag, so a
+    published result still counts a blank assigned subject as F
+    (``EXAM_ABSENT_SUBJECT_FAILS``).
     """
     if mark is None:
+        if blank_is_pending:
+            return {
+                'obtained': None, 'full': marks_config.full_marks,
+                'percentage': None, 'grade': ABSENT, 'point': None,
+                'passed': False, 'absent': True, 'pending': True,
+                'failed_parts': [], 'parts': [],
+                'pass_marks': marks_config.pass_marks,
+            }
         if absent_subject_fails_result():
             # Not entered = the paper was not passed: graded F and counted as
             # 0 out of Full Marks, so the total and the percentage tell the
@@ -800,14 +816,16 @@ def compute_subject_result(mark, marks_config):
             return {
                 'obtained': Decimal('0'), 'full': marks_config.full_marks,
                 'percentage': 0.0, 'grade': 'F', 'point': Decimal('0.00'),
-                'passed': False, 'absent': True, 'failed_parts': [],
-                'parts': [], 'pass_marks': marks_config.pass_marks,
+                'passed': False, 'absent': True, 'pending': False,
+                'failed_parts': [], 'parts': [],
+                'pass_marks': marks_config.pass_marks,
             }
         return {
             'obtained': None, 'full': marks_config.full_marks,
             'percentage': None, 'grade': ABSENT, 'point': None,
-            'passed': False, 'absent': True, 'failed_parts': [],
-            'parts': [], 'pass_marks': marks_config.pass_marks,
+            'passed': False, 'absent': True, 'pending': False,
+            'failed_parts': [], 'parts': [],
+            'pass_marks': marks_config.pass_marks,
         }
 
     obtained = Decimal(str(mark.marks_obtained or 0))
@@ -827,7 +845,7 @@ def compute_subject_result(mark, marks_config):
     return {
         'obtained': obtained, 'full': marks_config.full_marks,
         'percentage': round(float(percentage), 2), 'grade': grade, 'point': point,
-        'passed': passed, 'absent': False,
+        'passed': passed, 'absent': False, 'pending': False,
         'failed_parts': [part['label'] for part in failed_parts],
         'parts': parts, 'pass_marks': marks_config.pass_marks,
         'total_passed': total_passed,
@@ -968,7 +986,7 @@ def unmarked_assigned_subjects(exam, group=None):
     return [subject for subject in assigned if subject.pk not in marked]
 
 
-def build_exam_results(exam, group=None):
+def build_exam_results(exam, group=None, provisional=False):
     """Compute every student's result for one exam.
 
     Returns (columns, results). The printed columns are the union of subjects
@@ -997,6 +1015,22 @@ def build_exam_results(exam, group=None):
     Islam). A student whose own paper is not assigned gets a plain dash in that
     column — never a fail, never counted, and never an "absent subject".
     Papers that nobody in the class sits are not printed at all.
+
+    ``provisional=True`` is the **only** other reading, and it exists for one
+    situation: the office wants to see the result while one or two assigned
+    subjects still have no marks entered. The official pages never use it, so
+    nothing here can change a published result.
+
+    * A subject with no marks anywhere stays a **column** and simply shows no
+      marks (the official sheet hides it, see :func:`marked_subject_ids_for_exam`).
+    * A blank mark is ``pending`` instead of F/0: it is left out of the total,
+      the percentage, the GPA and the pass/fail decision, and is counted in
+      ``pending_subject_count`` / ``counted_subject_count``.
+    * A subject that *was* entered and failed still fails, and an entered 0
+      still fails: this is not "ignore the bad news".
+    * ``position`` is withheld (``None``) for any student who still has a
+      pending subject — a half-entered merit order would rank on fewer papers
+      than the class. The page labels the numbers provisional.
     """
     from .models import ExamMark
 
@@ -1011,7 +1045,8 @@ def build_exam_results(exam, group=None):
     # class after the exam was published arrives as an empty column and fails
     # every student in it.
     marked_ids = marked_subject_ids_for_exam(exam, students=students)
-    assigned = [subject for subject in assigned if subject.pk in marked_ids]
+    if not provisional:
+        assigned = [subject for subject in assigned if subject.pk in marked_ids]
 
     student_subject_ids = get_student_subject_ids(
         exam, students, subjects=assigned, group=group,
@@ -1080,7 +1115,10 @@ def build_exam_results(exam, group=None):
                     })
                     continue
                 marks_config = get_subject_marks(exam, paper, group=group)
-                result = compute_subject_result(student_marks.get(paper.pk), marks_config)
+                result = compute_subject_result(
+                    student_marks.get(paper.pk), marks_config,
+                    blank_is_pending=provisional,
+                )
                 result['subject'] = column
                 result['religion_column'] = True
                 result['paper'] = paper
@@ -1101,7 +1139,10 @@ def build_exam_results(exam, group=None):
                     })
                     continue
                 marks_config = get_subject_marks(exam, column, group=group)
-                result = compute_subject_result(student_marks.get(column.pk), marks_config)
+                result = compute_subject_result(
+                    student_marks.get(column.pk), marks_config,
+                    blank_is_pending=provisional,
+                )
                 result['subject'] = column
 
             is_fourth_subject = (
@@ -1139,6 +1180,13 @@ def build_exam_results(exam, group=None):
             row for row in subject_results
             if not row['is_fourth_subject'] and not row['absent']
         ]
+        # Provisional bookkeeping: which cells still have no mark at all, and
+        # how many papers actually went into the total/GPA above.
+        pending_count = sum(1 for row in subject_results if row.get('pending'))
+        counted_count = sum(
+            1 for row in subject_results
+            if not row.get('not_applicable') and not row.get('pending')
+        )
         overall_percentage = (total_obtained / total_full * 100) if total_full else Decimal('0')
         ranking_gpa = None
         if not attempted:
@@ -1166,6 +1214,12 @@ def build_exam_results(exam, group=None):
             # A+ consistently in that case.
             if overall_gpa == GPA_MAXIMUM:
                 overall_grade = 'A+'
+        if provisional and status == 'Pass' and pending_count:
+            # Half a result is not a Pass. The numbers above are computed on
+            # the papers that exist and the page labels them provisional; the
+            # status says out loud that this student's result is not final,
+            # which also keeps them out of the merit ranking below.
+            status = 'Pending'
 
         results.append({
             'student': student, 'subject_results': subject_results,
@@ -1187,7 +1241,13 @@ def build_exam_results(exam, group=None):
                 1 for r in subject_results
                 if r['absent'] and not r.get('not_applicable')
                 and not r.get('religion_unassigned')
+                and not r.get('pending')
             ),
+            # Provisional page only: how much of this result is actually in.
+            'provisional': bool(provisional),
+            'pending_subject_count': pending_count,
+            'counted_subject_count': counted_count,
+            'applicable_subject_count': counted_count + pending_count,
             'position': None,
         })
 
@@ -1197,6 +1257,8 @@ def build_exam_results(exam, group=None):
     # one unique merit order: letter grade, uncapped fourth-subject formula
     # GPA, total marks (including the fourth paper), then lowest numeric roll.
     grade_order = {'A+': 5, 'A': 4, 'A-': 3, 'B': 2, 'C': 1, 'D': 0}
+    # In provisional mode ``status`` is 'Pending' for anyone the office has not
+    # finished marking, so those rows are simply not in this generator.
     ranked = sorted(
         (result for result in results if result['status'] == 'Pass'),
         key=lambda result: (
