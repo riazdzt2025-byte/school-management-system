@@ -2151,6 +2151,25 @@ class ReligionPaperTests(TestCase):
 		self.assertNotIn('<th>Islam &amp; Moral Education', content)
 		self.assertNotIn('<th>Hindu Religion &amp; Moral Education', content)
 
+	def test_provisional_result_uses_bulk_religion_header(self):
+		from .models import SubjectMarkSetting
+		self._marks(self.muslim, self.bangla, 80)
+		self._marks(self.muslim, self.islam, 75)
+		self._marks(self.hindu_kid, self.bangla, 82)
+		# The Hindu paper is assigned but not entered yet. Its merged header
+		# must still resolve the Islam paper's exam override in one bulk map.
+		SubjectMarkSetting.objects.create(
+			institution=self.institution, admission_class='6', subject=self.islam,
+			exam_type='SECOND_TERM', full_marks=50,
+		)
+		response = self.client.get(reverse('result_provisional', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		headers = response.context['columns']
+		religion = next(column['subject'] for column in headers if column['subject'].code == 'REL')
+		self.assertEqual(religion.header_marks_config(self.exam).full_marks, 50)
+		self.assertEqual(next(column['full_marks'] for column in headers if column['subject'].code == 'REL'), 50)
+		self.assertTrue(any(row['pending_subject_count'] for row in response.context['results']))
+
 	def test_marks_entry_only_offers_papers_students_sit(self):
 		from .result_utils import get_exam_subjects_for_students, get_exam_students
 		students = list(get_exam_students(self.exam))

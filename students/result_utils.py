@@ -586,46 +586,59 @@ def get_exam_group_choices(exam):
     return [(code, label) for code, label in Student.GROUP_CHOICES if code in codes]
 
 
-def get_subject_marks(exam, subject, group=None):
-    """
-    Returns the marks configuration for this exam+subject combination — the
-    specific SubjectMarkSetting if one exists, otherwise the subject's own
-    global defaults. Both expose the same interface (see ``MarksConfigMixin``):
-    full_marks, the part columns, pass_marks, parts.
+def get_subject_marks_map(exam, subjects, group=None):
+    """Resolve every paper's marks configuration in one query, not one per cell.
 
-    Resolution chain (group-aware, EX-03):
-      1) group-specific row (institution+class+subject+exam_type+group)
-      2) blank-group default (group='')
-      3) Subject global defaults
-
-    ``group`` overrides ``exam.group`` when the exam was created without a
-    group (the marks pages let the user pick a group). The setting's class is
-    matched zero-padding tolerant ('9' = '09'), with the exam's own spelling
-    preferred, so a setting saved under either form is found and the same one
-    wins every time.
+    Returns ``{subject_pk: SubjectMarkSetting_or_Subject}``.  Priority is
+    exactly :func:`get_subject_marks`: exact group before blank group, then
+    the exam's class spelling before its zero-padding variants, then the
+    Subject defaults.  This is a calculation-local snapshot, never a cached
+    published result: the next calculation sees edited marks/settings.
     """
     from .models import SubjectMarkSetting
 
+    subjects = list(subjects)
+    configs = {subject.pk: subject for subject in subjects}
+    if not configs:
+        return {}
+    institution_id = getattr(exam, 'institution_id', None)
+    if institution_id is None:
+        institution_id = getattr(getattr(exam, 'institution', None), 'pk', None)
+    exam_type = getattr(exam, 'exam_type', '') or ''
+    if not institution_id or not exam_type:
+        return configs
+
     effective_group = (group if group is not None else getattr(exam, 'group', '')) or ''
     exam_class = str(exam.admission_class)
-    class_candidates = [exam_class] + [v for v in class_filter_variants(exam_class) if v != exam_class]
-    # Group candidates in priority order: exact group first, then blank fallback.
-    if effective_group:
-        group_candidates = [effective_group, '']
-    else:
-        group_candidates = ['']
-    for grp in group_candidates:
-        for cls in class_candidates:
-            setting = SubjectMarkSetting.objects.filter(
-                institution=exam.institution,
-                admission_class=cls,
-                subject=subject,
-                exam_type=exam.exam_type,
-                group=grp,
-            ).first()
-            if setting:
-                return setting
-    return subject
+    class_candidates = [exam_class] + [
+        value for value in class_filter_variants(exam_class) if value != exam_class
+    ]
+    group_candidates = [effective_group, ''] if effective_group else ['']
+    group_rank = {value: index for index, value in enumerate(group_candidates)}
+    class_rank = {value: index for index, value in enumerate(class_candidates)}
+    rows = SubjectMarkSetting.objects.filter(
+        institution_id=institution_id,
+        admission_class__in=class_candidates,
+        subject_id__in=configs,
+        exam_type=exam_type,
+        group__in=group_candidates,
+    )
+    priority_by_subject = {}
+    for setting in rows:
+        priority = (group_rank[setting.group], class_rank[setting.admission_class])
+        if setting.subject_id not in priority_by_subject or priority < priority_by_subject[setting.subject_id]:
+            configs[setting.subject_id] = setting
+            priority_by_subject[setting.subject_id] = priority
+    return configs
+
+
+def get_subject_marks(exam, subject, group=None):
+    """Return the exam override or Subject defaults for one paper.
+
+    Shares the bulk resolver with result generation so group/class priority
+    cannot drift between marks entry, imports and published results.
+    """
+    return get_subject_marks_map(exam, [subject], group=group)[subject.pk]
 
 def resolve_mark_setting(institution, admission_class, subject, exam_type, group=''):
     """Low-level helper for the resolution chain used by bulk queries.
@@ -894,15 +907,18 @@ class ReligionColumn:
     def paper_for_label(self, label):
         return self.papers_by_label.get(label)
 
-    def header_marks_config(self, exam, group=None):
-        """Full Marks for the column header: prefer the Islam paper's exam
-        setting, then any other assigned paper — the papers share the same
-        marks structure in every real curriculum."""
-        paper = (
-            self.paper_for_label('Islam')
-            or next(iter(self.papers_by_label.values()), None)
-        )
-        return get_subject_marks(exam, paper, group=group) if paper else None
+    def header_paper(self):
+        """The paper whose configuration supplies the merged column header."""
+        return self.paper_for_label('Islam') or next(iter(self.papers_by_label.values()), None)
+
+    def header_marks_config(self, exam, group=None, marks_configs=None):
+        """Full Marks for the header, optionally from an already bulk-loaded map."""
+        paper = self.header_paper()
+        if not paper:
+            return None
+        if marks_configs is not None:
+            return marks_configs.get(paper.pk, paper)
+        return get_subject_marks(exam, paper, group=group)
 
     def __str__(self):
         return self.name
@@ -1037,14 +1053,20 @@ def build_exam_results(exam, group=None, provisional=False):
     students = list(get_exam_students(exam, group=group))
     assigned, _is_filtered = get_exam_subjects(exam, group=group)
 
+    # Only this cohort's marks are needed.  Do not hydrate a second Student
+    # and Subject for every cell: the authoritative objects are already in
+    # ``students`` / ``assigned``.  On a large exam those joins duplicate text
+    # and photo fields hundreds/thousands of times without being used.
     marks = {}
-    for mark in ExamMark.objects.filter(exam=exam).select_related('student', 'subject'):
+    student_ids = [student.pk for student in students]
+    mark_rows = ExamMark.objects.filter(exam=exam, student_id__in=student_ids) if student_ids else []
+    for mark in mark_rows:
         marks.setdefault(mark.student_id, {})[mark.subject_id] = mark
-    # A subject nobody in this exam has a mark for is not a column: see
-    # marked_subject_ids_for_exam(). Without this, a subject assigned to the
-    # class after the exam was published arrives as an empty column and fails
-    # every student in it.
-    marked_ids = marked_subject_ids_for_exam(exam, students=students)
+    # The mark rows above are already restricted to this exact cohort, so
+    # their subject ids are the same set marked_subject_ids_for_exam() returns.
+    # Reuse them instead of asking the database for the same set again.  A
+    # newly assigned, wholly unmarked paper still cannot become a new F column.
+    marked_ids = {subject_id for student_marks in marks.values() for subject_id in student_marks}
     if not provisional:
         assigned = [subject for subject in assigned if subject.pk in marked_ids]
 
@@ -1083,6 +1105,17 @@ def build_exam_results(exam, group=None, provisional=False):
             continue
         columns.append(subject)
 
+    # A result sheet has students × subjects cells.  Resolving settings inside
+    # that loop used to issue 1–4 SQL queries *per cell* (809 queries for an
+    # 80-pupil, ten-paper exam).  Resolve each assigned paper once instead.
+    # Both merged religion papers are included, even though they share a column.
+    config_subjects = [
+        subject
+        for column in columns
+        for subject in (column.subjects if isinstance(column, ReligionColumn) else [column])
+    ]
+    marks_configs = get_subject_marks_map(exam, config_subjects, group=group)
+
     results = []
     for student in students:
         student_marks = marks.get(student.pk, {})
@@ -1114,7 +1147,7 @@ def build_exam_results(exam, group=None, provisional=False):
                         'failed_parts': [], 'parts': [], 'pass_marks': None,
                     })
                     continue
-                marks_config = get_subject_marks(exam, paper, group=group)
+                marks_config = marks_configs[paper.pk]
                 result = compute_subject_result(
                     student_marks.get(paper.pk), marks_config,
                     blank_is_pending=provisional,
@@ -1138,7 +1171,7 @@ def build_exam_results(exam, group=None, provisional=False):
                         'failed_parts': [], 'parts': [], 'pass_marks': None,
                     })
                     continue
-                marks_config = get_subject_marks(exam, column, group=group)
+                marks_config = marks_configs[column.pk]
                 result = compute_subject_result(
                     student_marks.get(column.pk), marks_config,
                     blank_is_pending=provisional,

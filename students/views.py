@@ -60,6 +60,7 @@ from .result_utils import (
     get_exam_subjects_for_students,
     get_student_subject_ids,
     get_subject_marks,
+    get_subject_marks_map,
     no_subjects_assigned_message,
     published_exams_affected_by_assignment,
     unmarked_assigned_subjects,
@@ -5151,11 +5152,16 @@ def result_sheet(request, pk):
     # the exam's own setting, not the subject's global default (a Mid Term can
     # be marked out of 50).
     sheet_columns = []
+    header_subjects = [
+        column.header_paper() if getattr(column, 'is_religion_column', False) else column
+        for column in columns
+    ]
+    header_configs = get_subject_marks_map(exam, header_subjects, group=selected_group or None)
     for column in columns:
         if getattr(column, 'is_religion_column', False):
-            marks_config = column.header_marks_config(exam, group=selected_group or None)
+            marks_config = column.header_marks_config(exam, marks_configs=header_configs)
         else:
-            marks_config = get_subject_marks(exam, column, group=selected_group or None)
+            marks_config = header_configs[column.pk]
         sheet_columns.append({
             'subject': column,
             'full_marks': marks_config.full_marks if marks_config else None,
@@ -5206,7 +5212,9 @@ def result_sheet(request, pk):
         'unmarked_subjects': unmarked_subjects,
         'no_subjects': no_subjects,
         'no_subjects_message': no_subjects_assigned_message(exam),
-        'subject_help': subject_help_context(request, exam, selected_group),
+        # Only the empty state renders this diagnosis; do not run its extra
+        # curriculum/choice queries on every populated result sheet.
+        'subject_help': subject_help_context(request, exam, selected_group) if no_subjects else {},
         'subject_assignments_url': subject_assignments_url(exam, selected_group),
         'group_choices': group_choices,
         'selected_group': selected_group,
@@ -5259,11 +5267,16 @@ def result_provisional(request, pk):
 
     sheet_columns = []
     pending_columns = []
+    header_subjects = [
+        column.header_paper() if getattr(column, 'is_religion_column', False) else column
+        for column in columns
+    ]
+    header_configs = get_subject_marks_map(exam, header_subjects, group=selected_group or None)
     for index, column in enumerate(columns):
         if getattr(column, 'is_religion_column', False):
-            marks_config = column.header_marks_config(exam, group=selected_group or None)
+            marks_config = column.header_marks_config(exam, marks_configs=header_configs)
         else:
-            marks_config = get_subject_marks(exam, column, group=selected_group or None)
+            marks_config = header_configs[column.pk]
         sheet_columns.append({
             'subject': column,
             'full_marks': marks_config.full_marks if marks_config else None,
