@@ -27,12 +27,24 @@
     .result-page { max-width: 1440px; margin: 0 auto; }
     .result-page, .result-page * { box-sizing: border-box; }
 
+    /* Action bar: floats along the top edge while the long register scrolls. */
     .result-toolbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
         margin-bottom: 18px;
+        position: sticky;
+        top: 0;
+        z-index: 950;
+        padding: 10px 0;
+        background: var(--bg, #f6f7fa);
+        border-bottom: 1px solid transparent;
+        transition: border-color .18s ease, box-shadow .18s ease;
+    }
+    .result-toolbar.is-stuck {
+        border-bottom-color: var(--result-line);
+        box-shadow: 0 10px 18px -14px rgba(18, 60, 90, .55);
     }
     .result-toolbar .toolbar-title {
         color: var(--result-muted);
@@ -194,7 +206,19 @@
         .result-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 768px) {
-        .result-toolbar { align-items: flex-start; flex-direction: column; }
+        .result-toolbar { align-items: stretch; flex-direction: column; gap: 6px; }
+        /* Keep the sticky bar short on phones: one swipeable row of actions. */
+        .result-toolbar .toolbar-title { display: none; }
+        .result-toolbar .toolbar-actions {
+            flex-wrap: nowrap;
+            gap: 6px;
+            width: 100%;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        .result-toolbar .btn { flex: 0 0 auto; border-radius: 8px; padding: 7px 10px; font-size: .82rem; white-space: nowrap; }
         .result-paper { padding: 19px 14px 15px; border-radius: 12px; }
         .result-header { grid-template-columns: 1fr; gap: 14px; }
         .report-card { text-align: left; }
@@ -552,5 +576,35 @@
 {% endblock %}
 
 {% block extra_script %}
+<script>
+    // Add a hairline + shadow only once the action bar is actually pinned.
+    (function () {
+        var bar = document.querySelector('.result-toolbar');
+        if (!bar) return;
+        var anchor = bar.parentElement || bar;
+        var offset = 0;
+        var ticking = false;
+
+        function measure() {
+            offset = anchor.getBoundingClientRect().top + window.scrollY;
+        }
+
+        function sync() {
+            ticking = false;
+            bar.classList.toggle('is-stuck', window.scrollY >= offset);
+        }
+
+        function onScroll() {
+            if (ticking) return;
+            ticking = true;
+            window.requestAnimationFrame(sync);
+        }
+
+        measure();
+        sync();
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('resize', function () { measure(); sync(); });
+    })();
+</script>
 {% if perms.students.add_exammark and exam.is_published %}<script src="{% static 'students/js/result_cell_shortcut.js' %}"></script>{% endif %}
 {% endblock %}
