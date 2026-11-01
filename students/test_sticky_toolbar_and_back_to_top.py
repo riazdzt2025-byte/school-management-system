@@ -110,3 +110,79 @@ class BackToTopTests(TestCase):
         print_block = base.split('@media print {', 1)[1].split('{% block extra_style %}', 1)[0]
         self.assertIn('.back-to-top', print_block)
         self.assertIn('display: none !important', print_block)
+
+
+class PrintReadabilityTests(TestCase):
+    """A printed register has to be legible on paper, not just on screen.
+
+    The print block used to hard-code 8–10px type, which lands at 6–7.5pt on an
+    A4 sheet — the complaint that prompted this. Print type is now expressed in
+    points, and nothing that carries data may go below 9pt (≈ 12px).
+    """
+
+    MIN_BODY_PT = 9.0
+
+    def _print_block(self, template):
+        stylesheet = (TEMPLATES / template).read_text(encoding='utf-8')
+        return stylesheet.split('@media print {', 1)[1]
+
+    def _rule(self, block, selector):
+        return block.split(selector + ' {', 1)[1].split('}', 1)[0]
+
+    def test_register_cells_print_at_least_9pt(self):
+        block = self._print_block('result_sheet.html')
+        for selector in ('.result-table-card td', '.result-table-card td.student-col', '.mark-number'):
+            with self.subTest(selector=selector):
+                rule = self._rule(block, selector)
+                self.assertIn('pt', rule)
+                size = float(rule.split('font-size:', 1)[1].split('pt', 1)[0].strip())
+                self.assertGreaterEqual(size, self.MIN_BODY_PT)
+
+    def test_register_headers_and_school_name_are_larger_than_body_text(self):
+        block = self._print_block('result_sheet.html')
+        header = self._rule(block, '.result-table-card th, .result-table-card th.group-heading')
+        self.assertGreaterEqual(float(header.split('font-size:', 1)[1].split('pt', 1)[0].strip()), 9.0)
+        title = self._rule(block, '.school-identity h1')
+        self.assertGreaterEqual(float(title.split('font-size:', 1)[1].split('pt', 1)[0].strip()), 16.0)
+
+    def test_print_and_provisional_tables_use_points_not_pixels(self):
+        for template in ('result_sheet.html', 'result_provisional.html', 'exam_result_summary.html'):
+            with self.subTest(template=template):
+                block = self._print_block(template)
+                self.assertNotIn('font-size: 9.5px', block)
+                self.assertNotIn('font-size: 10px', block)
+
+    def test_no_data_text_prints_below_7pt(self):
+        """Footnotes may be small, but nothing may shrink to unreadable 6px type."""
+        block = self._print_block('result_sheet.html')
+        import re
+        sizes = [float(value) for value in re.findall(r'font-size:\s*([0-9.]+)pt', block)]
+        self.assertTrue(sizes)
+        self.assertGreaterEqual(min(sizes), 6.5)
+        # Anything sized in px must be layout, never text smaller than 12px.
+        px_sizes = [float(value) for value in re.findall(r'font-size:\s*([0-9.]+)px', block)]
+        self.assertEqual(px_sizes, [])
+
+    def test_page_margins_leave_room_for_larger_type(self):
+        stylesheet = (TEMPLATES / 'result_sheet.html').read_text(encoding='utf-8')
+        self.assertIn('@page { size: A4 landscape; margin: 6mm 6mm 8mm; }', stylesheet)
+
+    def test_ten_subject_sheet_keeps_a_usable_name_and_mark_column(self):
+        """A4 landscape is 297mm wide; at a 6mm margin that is ~1077 CSS px.
+
+        With ten subject columns the browser distributes the fixed percentages,
+        so what matters is that the name column still fits a full Bengali name
+        and a mark column still fits "35" plus a grade badge at 9.5pt.
+        """
+        block = self._print_block('result_sheet.html')
+        widths = {}
+        for column in ('rank-col', 'student-col-width', 'overall-col', 'result-col', 'subject-col'):
+            rule = self._rule(block, '.result-table-card col.' + column)
+            widths[column] = float(rule.split('width:', 1)[1].split('%', 1)[0].strip())
+
+        declared = sum(widths.values()) + 9 * widths['subject-col']
+        sheet_px = (297 - 12) * 96 / 25.4
+        name_px = sheet_px * widths['student-col-width'] / declared
+        subject_px = sheet_px * widths['subject-col'] / declared
+        self.assertGreaterEqual(name_px, 180)      # 'Md. Abdur Rahman Khan' ≈ 152px at 9.5pt/600
+        self.assertGreaterEqual(subject_px, 58)    # mark + gap + grade badge ≈ 40px
