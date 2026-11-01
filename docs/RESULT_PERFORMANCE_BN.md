@@ -72,6 +72,17 @@ python manage.py test students
 node --test students/js/*.test.js
 ```
 
+## GitHub CI ও review gate
+
+Commit `bb0d483`-এর PR run-এ Python 3.12-এর SQLite job সম্পূর্ণ pass; PostgreSQL job-এর
+Django test suite, migration ও deploy guards pass; Node job pass। তবে PostgreSQL
+job-এর পরের **Backup / restore smoke test** fail করেছে (এই PR backup code বদলায়নি)।
+Sandbox-এর allowed-host সীমায় CI log storage খোলা যায়নি, তাই failure-এর মূল কারণ
+এখনো নিশ্চিত নয়। GitHub token-এ failed-job rerun permission-ও নেই। অতএব CI-কে
+সম্পূর্ণ সবুজ বলা হচ্ছে না; merge-এর আগে ওই drill আবার চালিয়ে কারণ যাচাই করতে হবে।
+
+Review: https://github.com/riazdzt2025-byte/school-management-system/pull/75
+
 ## Deploy করার সময়
 
 স্বাভাবিক Render build command-এ অবশ্যই static collection থাকতে হবে:
