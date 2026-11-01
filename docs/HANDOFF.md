@@ -1,5 +1,15 @@
 # Handoff — School Management System
 
+## ২০২৬-১১-০১ · Owner request: রেজাল্ট দেখার delay কমানো
+
+- **Branch/base:** `arena/9e2cd162-school-management-system` / `739ec34`। ব্যবহারকারীর নতুন নির্দেশে result performance নেওয়া হয়েছে; **DB-01 (প্রম্পট ১৭) paused**, সম্পন্ন দাবি করা হয়নি।
+- **Fix:** per-cell marks-setting query-এর বদলে bulk resolution; selected cohort-only marks, unused Student/Subject join বাদ; marked IDs reuse; official/provisional header bulk lookup; populated sheet-এ unused diagnosis বাদ। হিসাব/nীতি অপরিবর্তিত, persistent result cache নেই। Same-version Bootstrap/icons/fonts local; shared layout/login CDN dependency ও Student detail-এর duplicate bundle সরানো হয়েছে।
+- **মাপা প্রমাণ:** ৮০ শিক্ষার্থী × ১০ বিষয়ে calculation **809→9 SQL**, official sheet **842→25**, summary/rank **815→15**, provisional **825→16**, individual detail/card **817→17**। ৮ ও ৮০ জনে নতুন count একই। এগুলো synthetic SQLite query count, live latency নয়।
+- **যাচাই:** পূর্ণ **১০৫৭ Django OK**, **২৯ Node pass**, check 0, migration check clean। Exact production WhiteNoise compressed manifest/collectstatic test pass। Chromium 143-এ synthetic ৮০ জনের official/full-print/summary/provisional/card/mobile যাচাই; JS error/failed বা external request নেই, A4 landscape PDF emitted। বিস্তারিত `docs/RESULT_PERFORMANCE_BN.md`।
+- **সীমা/পরবর্তী ধাপ:** production DB/Render/credentials ছোঁয়া হয়নি; live deployment, hosting latency ও আসল প্রিন্টার যাচাই নয়। Review/merge owner-এর অনুমোদন সাপেক্ষ। Deploy build-এ `collectstatic --noinput` আবশ্যক। Local environment Python 3.11.2/Django 5.2.18 fallback; repo requirements অপরিবর্তিত। Vendor provenance/license `students/static/students/vendor/README.md`।
+
+---
+
 ## সেশন OF-08 — ২০২৬-১০-১৫ · প্রম্পট ১৬/২৮ · Archive / promotion / certificates (audit + fix)
 
 - **Branch:** `arena/f3f3b804-school-management-system` (base `58262d3` = OF-07 merge; prompt-এ লেখা `arena/01a0b7f7-…` stale, branch বদলানো হয়নি)।

@@ -1,0 +1,38 @@
+/* Self-hosted Latin subsets of Inter and Fraunces (SIL OFL 1.1).
+   Bengali and other glyphs continue to use the browser's fallback font.
+   font-display:swap keeps text visible while the small WOFF2 files load. */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('files/inter-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('files/inter-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('files/inter-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Fraunces';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('files/fraunces-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Fraunces';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('files/fraunces-latin-700-normal.woff2') format('woff2');
+}

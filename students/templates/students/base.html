@@ -1,12 +1,15 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Principal Kazi Faruky School And College{% endblock %}</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Same release, served with the app: a slow/unreachable third-party CDN
+         must not block the result table (or any other page) from rendering. -->
+    <link href="{% static 'students/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
+    <link href="{% static 'students/vendor/bootstrap-icons/bootstrap-icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'students/vendor/fonts/fonts.css' %}" rel="stylesheet">
     <style>
         :root {
             --navy: #0F2D52;
@@ -303,7 +306,7 @@
     </footer>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script defer src="{% static 'students/vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
 <script>
     if (window.matchMedia('(max-width: 768px)').matches) {
         document.querySelectorAll('.nav-group > .group-label').forEach(function (label) {
