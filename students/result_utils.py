@@ -1254,8 +1254,20 @@ def build_exam_results(exam, group=None, provisional=False):
             # which also keeps them out of the merit ranking below.
             status = 'Pending'
 
+        # Grade tallies for the register's F / S / A+ columns: how many papers
+        # this student failed, passed, and aced. Papers the student does not
+        # sit (not applicable) and, in the provisional reading, papers still
+        # without a mark are left out of the tally entirely.
+        graded_rows = [
+            row for row in subject_results
+            if not row.get('not_applicable') and not row.get('pending')
+        ]
+
         results.append({
             'student': student, 'subject_results': subject_results,
+            'failed_subject_count': sum(1 for row in graded_rows if not row['passed']),
+            'passed_subject_count': sum(1 for row in graded_rows if row['passed']),
+            'a_plus_count': sum(1 for row in graded_rows if (row.get('grade') or '') == 'A+'),
             'total_obtained': total_obtained, 'total_full': total_full,
             'percentage': round(float(overall_percentage), 2) if overall_percentage is not None else None,
             'gpa': overall_gpa,

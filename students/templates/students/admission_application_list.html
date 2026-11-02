@@ -140,7 +140,7 @@
         const formLink = window.location.origin + "{% url 'public_admission_apply' %}";
         const schoolName = "{{ SCHOOL_INFO.name|default:'Principal Kazi Faruky School And College'|escapejs }}";
         const schoolAddress = "{{ SCHOOL_INFO.address|default:'Rakhalia, Raipur, Lakshmipur'|escapejs }}";
-        const schoolPhone = "{{ SCHOOL_INFO.phone|default:'+880 1234-567890'|escapejs }}";
+        const schoolPhone = "School {{ SCHOOL_INFO.school_phone|default:'01309134783'|escapejs }} \u00b7 College {{ SCHOOL_INFO.college_phone|default:'01309135326'|escapejs }}";
 
         const shareMessage = [
             '🌟 ADMISSIONS OPEN 🌟',

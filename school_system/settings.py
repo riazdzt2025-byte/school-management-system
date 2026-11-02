@@ -361,8 +361,12 @@ EXAM_LOCK_PUBLISHED = os.environ.get('EXAM_LOCK_PUBLISHED', 'True') == 'True'
 
 SCHOOL_INFO = {
     'name': 'Principal Kazi Faruky School And College',
-    'address': 'Rakhalia, Raipur, Lakshmipur',
-    'phone': '+880 1234-567890',
+    'address': 'West Rakhalia, Raipur, Lakshmipur-3700',
+    # The school and the college each have their own number; printed sheets
+    # show both, so they are kept apart and combined only for display.
+    'school_phone': '01309134783',
+    'college_phone': '01309135326',
+    'phone': 'School 01309134783 · College 01309135326',
 }
 
 # Default branding shown in footers and printed sheets. A super admin can
