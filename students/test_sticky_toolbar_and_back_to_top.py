@@ -1,4 +1,4 @@
-"""Long result registers need two chrome affordances.
+"""The result register's print/screen chrome and its paper column layout.
 
 1. The result-sheet action bar (Published / Provisional / Rank / Top 10 /
    Print / Back ...) must stay pinned to the top edge while the register
@@ -17,7 +17,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import Exam, Institution, Student, Subject, SubjectRequirement
+from .models import Exam, ExamMark, Institution, Student, Subject, SubjectRequirement
+from .result_utils import build_exam_results
 
 TEMPLATES = Path(settings.BASE_DIR) / 'students' / 'templates' / 'students'
 
@@ -142,8 +143,8 @@ class PrintReadabilityTests(TestCase):
         block = self._print_block('result_sheet.html')
         header = self._rule(block, '.result-table-card th, .result-table-card th.group-heading')
         self.assertGreaterEqual(float(header.split('font-size:', 1)[1].split('pt', 1)[0].strip()), 9.0)
-        title = self._rule(block, '.school-identity h1')
-        self.assertGreaterEqual(float(title.split('font-size:', 1)[1].split('pt', 1)[0].strip()), 16.0)
+        title = self._rule(block, '.print-masthead h1')
+        self.assertGreaterEqual(float(title.split('font-size:', 1)[1].split('pt', 1)[0].strip()), 14.0)
 
     def test_print_and_provisional_tables_use_points_not_pixels(self):
         for template in ('result_sheet.html', 'result_provisional.html', 'exam_result_summary.html'):
@@ -172,17 +173,159 @@ class PrintReadabilityTests(TestCase):
 
         With ten subject columns the browser distributes the fixed percentages,
         so what matters is that the name column still fits a full Bengali name
-        and a mark column still fits "35" plus a grade badge at 9.5pt.
+        and a mark column still fits "35" plus a grade badge at 9.5pt.  The
+        summary columns are narrower: they only hold "Total", "GPA", "Place".
         """
         block = self._print_block('result_sheet.html')
         widths = {}
-        for column in ('rank-col', 'student-col-width', 'overall-col', 'result-col', 'subject-col'):
+        for column in (
+            'rank-col', 'student-col-width', 'subject-col', 'total-col', 'gpa-col',
+            'grade-col', 'status-col', 'count-col', 'place-col',
+        ):
             rule = self._rule(block, '.result-table-card col.' + column)
             widths[column] = float(rule.split('width:', 1)[1].split('%', 1)[0].strip())
 
-        declared = sum(widths.values()) + 9 * widths['subject-col']
+        declared = (widths['rank-col'] + widths['student-col-width']
+                    + 10 * widths['subject-col'] + widths['total-col'] + widths['gpa-col']
+                    + widths['grade-col'] + widths['status-col']
+                    + 3 * widths['count-col'] + widths['place-col'])
         sheet_px = (297 - 12) * 96 / 25.4
-        name_px = sheet_px * widths['student-col-width'] / declared
-        subject_px = sheet_px * widths['subject-col'] / declared
-        self.assertGreaterEqual(name_px, 180)      # 'Md. Abdur Rahman Khan' ≈ 152px at 9.5pt/600
-        self.assertGreaterEqual(subject_px, 58)    # mark + gap + grade badge ≈ 40px
+        scale = sheet_px / declared
+        self.assertGreaterEqual(widths['student-col-width'] * scale, 175)
+        self.assertGreaterEqual(widths['subject-col'] * scale, 55)
+        self.assertGreaterEqual(widths['place-col'] * scale, 30)
+
+
+class RegisterSummaryColumnTests(TestCase):
+    """The register ends with flat summary columns, like the school's paper sheet:
+    Total | GPA | Grade | Result | F | S | A+ | Place."""
+
+    def setUp(self):
+        self.institution = Institution.objects.create(name='Column School', classes='9')
+        self.admin = get_user_model().objects.create_superuser(
+            username='column-admin', password='password',
+        )
+        self.client.force_login(self.admin)
+        self.subjects = [
+            Subject.objects.create(code=code, name=name, full_marks=100)
+            for code, name in (('BAN', 'Bangla'), ('MAT', 'Mathematics'), ('SCI', 'Science'))
+        ]
+        for subject in self.subjects:
+            SubjectRequirement.objects.create(
+                institution=self.institution, admission_class='9',
+                subject=subject, requirement_type='MANDATORY',
+            )
+        self.exam = Exam.objects.create(
+            name='Column Examination-2026', exam_type='FIRST_TERM',
+            institution=self.institution, admission_class='9', session='2026',
+            is_published=True,
+        )
+        self.topper = Student.objects.create(
+            institution=self.institution, student_id='C1', name='Topper Student',
+            admission_class='9', section='A', roll_no=1, admission_year=2026,
+        )
+        self.failing = Student.objects.create(
+            institution=self.institution, student_id='C2', name='Failing Student',
+            admission_class='9', section='A', roll_no=2, admission_year=2026,
+        )
+        for subject in self.subjects:
+            ExamMark.objects.create(
+                exam=self.exam, student=self.topper, subject=subject, marks_obtained=95,
+            )
+        ExamMark.objects.create(
+            exam=self.exam, student=self.failing, subject=self.subjects[0], marks_obtained=95,
+        )
+        ExamMark.objects.create(
+            exam=self.exam, student=self.failing, subject=self.subjects[1], marks_obtained=10,
+        )
+        ExamMark.objects.create(
+            exam=self.exam, student=self.failing, subject=self.subjects[2], marks_obtained=70,
+        )
+
+    def _row(self, results, student):
+        return next(row for row in results if row['student'].pk == student.pk)
+
+    def test_grade_tallies_count_failed_passed_and_a_plus_papers(self):
+        _columns, results = build_exam_results(self.exam)
+        topper = self._row(results, self.topper)
+        failing = self._row(results, self.failing)
+        for row in (topper, failing):
+            self.assertEqual(
+                row['failed_subject_count'] + row['passed_subject_count'],
+                len(row['subject_results']),
+            )
+        self.assertEqual(topper['failed_subject_count'], 0)
+        self.assertEqual(topper['passed_subject_count'], 3)
+        self.assertGreaterEqual(topper['a_plus_count'], 1)
+        self.assertEqual(failing['failed_subject_count'], 1)
+        self.assertEqual(failing['passed_subject_count'], 2)
+        self.assertEqual(
+            topper['a_plus_count'],
+            sum(1 for sr in topper['subject_results'] if sr.get('grade') == 'A+'),
+        )
+
+    def test_register_prints_the_flat_columns_in_the_paper_order(self):
+        """Roll | Student name | subjects... | Total GPA Grade Result F S A+ Place."""
+        from html.parser import HTMLParser
+
+        class HeaderCells(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.cells = []
+                self._current = None
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if tag == 'th' and self._current is None:
+                    self._current = {
+                        'text': '', 'colspan': int(attrs.get('colspan') or 1),
+                        'rowspan': int(attrs.get('rowspan') or 1),
+                        'class': attrs.get('class') or '',
+                    }
+
+            def handle_endtag(self, tag):
+                if tag == 'th' and self._current is not None:
+                    self._current['text'] = ' '.join(self._current['text'].split())
+                    self.cells.append(self._current)
+                    self._current = None
+
+            def handle_data(self, data):
+                if self._current is not None:
+                    self._current['text'] += data
+
+        response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+        parser = HeaderCells()
+        parser.feed(response.content.decode('utf-8').split('<thead>', 1)[1].split('</thead>', 1)[0])
+        texts = [cell['text'] for cell in parser.cells]
+
+        self.assertEqual(texts[:2], ['Roll', 'Student name'])
+        # Third cell is the grouped heading over the three subject columns.
+        self.assertEqual(parser.cells[2]['colspan'], 3)
+        self.assertEqual(parser.cells[2]['class'], 'group-heading')
+        # Subjects come before the totals, exactly like the paper register; the
+        # subject headers themselves are the second header row.
+        self.assertEqual(texts[3:11],
+                         ['Total', 'GPA', 'Grade', 'Result', 'F', 'S', 'A+', 'Place'])
+        self.assertEqual(texts[11:], ['BAN(100)', 'MAT(100)', 'SCI(100)'])
+        # The eight summary headers each cover both header rows.
+        for cell in parser.cells[3:11]:
+            self.assertEqual(cell['rowspan'], 2)
+
+    def test_summary_cells_carry_the_students_numbers(self):
+        response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
+        html = response.content.decode('utf-8')
+        first_row = html.split('data-result-status="Pass"', 1)[1].split('</tr>', 1)[0]
+        self.assertIn('class="total-col"', first_row)
+        self.assertIn('class="gpa-col"', first_row)
+        self.assertIn('class="place-col"', first_row)
+        self.assertEqual(first_row.count('class="count-col"'), 3)
+        # Topper: nothing failed, three papers passed.
+        self.assertIn('<td class="count-col">0</td>', first_row)
+        self.assertIn('<td class="count-col">3</td>', first_row)
+
+    def test_the_old_stacked_cells_are_gone(self):
+        html = self.client.get(reverse('result_sheet', args=[self.exam.pk])).content.decode('utf-8')
+        self.assertNotIn('overall-stack', html)
+        self.assertNotIn('result-stack', html)
+        self.assertNotIn('Overall<br>standing', html)
+        self.assertNotIn('Final<br>result', html)
