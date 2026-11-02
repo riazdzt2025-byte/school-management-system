@@ -366,7 +366,7 @@
         {# Print-only masthead: the centred sheet header that goes on paper. #}
         <header class="print-masthead">
             <h1>Principal Kazi Faruky School</h1>
-            <p class="masthead-line">Founder: Professor Kazi Faruky Kollan Trust, West Rakhalia, Raipur, Lakshmipur–3711 <span aria-hidden="true">&nbsp;|&nbsp;</span> Mobile: 01850790086</p>
+            <p class="masthead-line">Founder: Professor Kazi Faruky Kollan Trust, West Rakhalia, Raipur, Lakshmipur-3700 <span aria-hidden="true">&nbsp;|&nbsp;</span> School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} <span aria-hidden="true">&nbsp;|&nbsp;</span> College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
             <p class="masthead-exam">{{ exam.name }} <span aria-hidden="true">&nbsp;|&nbsp;</span> Class: {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</p>
             <p class="masthead-title">Result Sheet</p>
         </header>
@@ -378,7 +378,7 @@
                     <p class="school-eyebrow">Academic performance report</p>
                     <h1>Principal Kazi Faruky School</h1>
                     <p class="school-founder">Founder: Professor Kazi Faruky Kollan Trust</p>
-                    <p class="school-address">West Rakhalia, Raipur, Lakshmipur–3711 &nbsp; • &nbsp; Mobile: 01850790086</p>
+                    <p class="school-address">West Rakhalia, Raipur, Lakshmipur-3700 &nbsp; • &nbsp; School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} &nbsp; • &nbsp; College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
                 </div>
             </div>
             <div class="report-card">

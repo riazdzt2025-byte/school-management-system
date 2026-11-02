@@ -308,7 +308,9 @@
     <h1><i class="bi bi-mortarboard-fill me-2"></i>{% now "Y" %}</h1>
     <div class="school-info">
         <strong>{{ SCHOOL_INFO.name|default:"Principal Kazi Faruky School And College" }}</strong><br>
-        {{ SCHOOL_INFO.address|default:"Rakhalia, Raipur, Lakshmipur" }} | Phone: {{ SCHOOL_INFO.phone|default:"+880 1234-567890" }}
+        {{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }}
+        | School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }}
+        &middot; College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}
     </div>
 </div>
 
