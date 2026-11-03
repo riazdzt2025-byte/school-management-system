@@ -1,5 +1,21 @@
 # Handoff — School Management System
 
+## ২০২৬-১১-০৩ · Remaining backlog completion (AT-01 / AT-02 / EM-01 / EM-03, DB-02/DB-03 verification, FN-01)
+
+- **Branch/base:** `arena/e2d5c9b9-school-management-system` / `9ff07f4` (= `origin/main`, PR #78 merged). The user-referenced branch `arena/1928885f-school-management-system` **does not exist** on the remote (checked `git ls-remote --heads origin` and the GitHub branches API). The remaining backlog was completed on this session branch and merged through a PR.
+- **Implemented:**
+  - **AT-01** — per-record attendance correction (`correct_attendance`), mandatory reason, old/new values in `AuditLog`, future-date block, report filters + permission-gated Correct link, Office/Exam permission, invalid status skipped.
+  - **AT-02** — server-rendered monthly attendance calendar + CSV monthly summary; rate `(P+L)/(P+A+L)` with H excluded and no-record never absent; archived students excluded; month rollover; print CSS; summary and employee detail use the same rate helper.
+  - **EM-01** — `TeacherAssignment` model (migration `0052`) + registry UI (filters, add/edit, unassign, delete), validation (class offered, employee in institution, subject in curriculum), conditional unique active row, HR/Office permissions, audit, employee detail Assignments tab, signature-sheet integration.
+  - **EM-03** — `SalarySheet.locked_at/locked_by/lock_reason` (migration `0052`), audited lock/unlock, edit/delete frozen while locked, scoped 404.
+  - **DB-02** — verified `students/migrations/0034` has no agent name; no change needed.
+  - **DB-03** — verified SEC-FU-1 (`CACHES` + `RATE_LIMIT_CACHE=locmem|db`) and SEC-FU-2 (`sync_user_department_permissions` strips HR/Subjects/Audit at login); existing tests pass.
+  - **FN-01** — release verification report `docs/prompts/reports/FN-01.md`.
+- **Evidence:** full `manage.py test students` → **1131 Django OK**; `node --test students/js/*.test.js` → **29 pass**; `check` 0; `makemigrations --check` clean (leaf `0052`). New focused suites: `test_attendance_correction_calendar.py`, `test_teacher_assignment.py`, `test_payroll_lock.py` — **41 pass**.
+- **Not verified / open:** live Render, live Postgres, S3/bucket, cron, real browser/print, production data; EM-02 leave (owner policy); live-only checklists (P0-7, P0-8-live, P1-11-live, P1-10-live, D-8). No production DB/credential touched.
+- **Owner action:** review/merge the PR; run `migrate` (new `0052`) after a backup; decide EM-02 leave policy; run the live checklist before release.
+
+---
 ## ২০২৬-১১-০১ · Owner request: রেজাল্ট দেখার delay কমানো
 
 - **Branch/base:** `arena/9e2cd162-school-management-system` / `739ec34`। ব্যবহারকারীর নতুন নির্দেশে result performance নেওয়া হয়েছে; **DB-01 (প্রম্পট ১৭) paused**, সম্পন্ন দাবি করা হয়নি।

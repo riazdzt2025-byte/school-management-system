@@ -83,6 +83,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="small text-muted mt-2">Attendance % = (Present + Late) ÷ (Present + Absent + Late). Holidays are excluded from the denominator; a day with no record is not counted as absent.</div>
             {% else %}
                 <div class="alert alert-info mb-0">{% if student_summary_count %}No student rows on this page; use the page controls below.{% else %}No student attendance records found for this period.{% endif %}</div>
             {% endif %}

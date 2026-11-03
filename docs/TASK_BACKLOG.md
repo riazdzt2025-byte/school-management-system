@@ -1,6 +1,6 @@
 # Task Backlog — first production release scope
 
-_Last updated: ২০২৬-১০-১২ (PR #61 / OF-05 privacy + deletion outbox merged onto main — **907 Django + 29 Node pass**; cap 1 MB রাখা হয়েছে, বাকি গেট ইস্যুতে ট্র্যাক; আগের: OF-06 PR #63 MERGED, ২০২৬-১০-০৬ OF-04 follow-up PR #59 MERGED)_
+_Last updated: ২০২৬-১১-০৩ (remaining-work session `arena/e2d5c9b9` — AT-01, AT-02, EM-01, EM-03 + DB-02/DB-03 verification + FN-01; **1131 Django + 29 Node pass**; EM-02 remains owner-policy blocked; live ops unverified)_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 
@@ -15,8 +15,27 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Missing** — not built, intentionally deferred (large / destructive) or quick-fix not yet done
 - **Unverified** — needs live Render check, cannot be verified from sandbox (rule 7)
 
----
 
+## Update — 2026-11-03 · remaining-work session (`arena/e2d5c9b9`) · ✅ কোড/টেস্ট সম্পন্ন
+
+**User request:** "arena/1928885f-school-management-system এর বাকী কাজ করে মেইনে মার্জ করে দাও।" The referenced branch **does not exist** on the remote (`git ls-remote --heads origin` + GitHub branches API; 84 branches, none matching). The remaining backlog was completed on the session branch `arena/e2d5c9b9-school-management-system` (base `9ff07f4` = `origin/main`) and merged via PR.
+
+| Task | Status | Evidence |
+|---|---|---|
+| **AT-01** Attendance entry/correction | **Complete** | `correct_attendance` page (Office/Exam + `change_attendancerecord`, mandatory reason, old/new AuditLog, future-date block), report filters + Correct link, invalid status skipped, shared rate helper. New `test_attendance_correction_calendar.py`. |
+| **AT-02** Attendance calendar / accuracy | **Complete** | `attendance_calendar` (server-rendered month grid, P/A/L/H, no-record, month rollover, print CSS) + `attendance_calendar_export` (CSV monthly summary). Rate `(P+L)/(P+A+L)`, H excluded, archived excluded; summary + employee detail use the same helper. |
+| **EM-01** Teacher assignment | **Complete** | `TeacherAssignment` model + migration `0052`, validation (class offered, employee in institution, subject in curriculum), conditional unique active row, registry UI, HR/Office permissions, audit, employee detail tab, signature-sheet integration. New `test_teacher_assignment.py`. |
+| **EM-03** Payroll closed-period lock | **Complete** | `SalarySheet.locked_at/locked_by/lock_reason` (migration `0052`), audited lock/unlock, edit/delete frozen while locked, scoped 404. New `test_payroll_lock.py`. |
+| **DB-02** Developer branding | **Verified clean** | `grep -rn "Arena Agent" students/migrations/` → empty; no change needed. |
+| **DB-03** SEC-FU-1/SEC-FU-2 | **Verified implemented** | `CACHES` + `RATE_LIMIT_CACHE=locmem\|db` (`test_rate_limit_cache.py`); `sync_user_department_permissions` strips HR/Subjects/Audit at login (`test_department_group_sync.py`). |
+| **FN-01** Release verification | **Complete** | `docs/prompts/reports/FN-01.md`; full **1131 Django + 29 Node**, `check` 0, `makemigrations --check` clean (leaf `0052`). Live Render/Postgres/S3/browser **not verified** from sandbox. |
+| **EM-02** Leave | **⛔ Blocked (owner policy)** | No leave model / payroll deduction policy; not implemented. Needs written owner policy before code. |
+
+**Full suite:** `manage.py test students` → **Ran 1131 tests — OK**; `node --test students/js/*.test.js` → **29 pass**; `check` 0; `makemigrations --check` clean. New focused tests: **41 pass** (attendance correction/calendar + teacher assignment + payroll lock).
+
+**Still open (owner/live):** EM-02 leave policy; P0-7, P0-8-live, P1-11-live, P1-10-live, D-8 live checks; real browser/print; Postgres CI; production deploy/backup. No production DB, Render, S3 or credentials touched.
+
+---
 ## Complete backlog at `44cbcc3` (verified 2026-09-17)
 
 | ID | Title | Status | Verified evidence (550 tests) |

@@ -1,0 +1,23 @@
+{% extends 'students/base.html' %}
+
+{% block title %}{% if assignment %}Edit{% else %}New{% endif %} Teacher Assignment - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h1>{% if assignment %}Edit{% else %}Assign{% endif %} Teacher</h1></div>
+    <a href="{% url 'teacher_assignment_list' %}" class="btn btn-outline-navy">Back</a>
+</div>
+
+<div class="table-card p-4">
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+        {{ form.as_p }}
+        <datalist id="teacher-class-options">
+            {% for option in class_options %}<option value="{{ option }}"></option>{% endfor %}
+        </datalist>
+        <button class="btn btn-navy">Save Assignment</button>
+        <a href="{% url 'teacher_assignment_list' %}" class="btn btn-outline-navy">Cancel</a>
+    </form>
+</div>
+{% endblock %}

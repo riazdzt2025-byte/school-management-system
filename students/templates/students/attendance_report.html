@@ -5,8 +5,48 @@
     <div class="card shadow-sm border-0">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <h4 class="mb-0">Attendance Report</h4>
+            <a href="{% url 'attendance_calendar' %}" class="btn btn-sm btn-light">Calendar</a>
         </div>
         <div class="card-body">
+            <form method="get" class="row g-2 align-items-end mb-3">
+                <div class="col-md-2">
+                    <label class="form-label" for="start_date">Start date</label>
+                    <input type="date" class="form-control" id="start_date" name="start_date" value="{{ filters.start_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="end_date">End date</label>
+                    <input type="date" class="form-control" id="end_date" name="end_date" value="{{ filters.end_date|date:'Y-m-d' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="admission_class">Class</label>
+                    <input class="form-control" id="admission_class" name="admission_class" value="{{ filters.admission_class }}" placeholder="e.g. 9">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="section">Section</label>
+                    <input class="form-control" id="section" name="section" value="{{ filters.section }}" placeholder="e.g. A">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="status">Status</label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="">All</option>
+                        {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="target">Target</label>
+                    <select class="form-select" id="target" name="target">
+                        <option value="">Everyone</option>
+                        <option value="STUDENT" {% if filters.target == 'STUDENT' %}selected{% endif %}>Students</option>
+                        <option value="EMPLOYEE" {% if filters.target == 'EMPLOYEE' %}selected{% endif %}>Employees</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <button class="btn btn-primary" type="submit">Filter</button>
+                </div>
+            </form>
+
             {% if records %}
                 <div class="table-responsive">
                     <table class="table table-striped table-bordered align-middle">
@@ -15,8 +55,10 @@
                                 <th>Date</th>
                                 <th>Institution</th>
                                 <th>Student / Employee</th>
+                                <th>Class / Section</th>
                                 <th>Status</th>
                                 <th>Remarks</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -27,14 +69,28 @@
                                 <td>
                                     {% if record.student %}
                                         {{ record.student.name }}
+                                        <div class="small text-muted">{{ record.student.student_id }}</div>
                                     {% elif record.employee %}
                                         {{ record.employee.name }}
+                                        <div class="small text-muted">{{ record.employee.designation }}</div>
                                     {% else %}
                                         N/A
                                     {% endif %}
                                 </td>
+                                <td>
+                                    {% if record.student %}{{ record.student.admission_class }} - {{ record.student.section }}
+                                    {% elif record.employee %}{{ record.employee.department|default:"—" }}
+                                    {% else %}—{% endif %}
+                                </td>
                                 <td>{{ record.get_status_display }}</td>
                                 <td>{{ record.remarks|default:'-' }}</td>
+                                <td>
+                                    {% if can_correct %}
+                                        <a href="{% url 'correct_attendance' record.pk %}" class="btn btn-sm btn-outline-navy">Correct</a>
+                                    {% else %}
+                                        <span class="text-muted small">Ask Office/Exam</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
