@@ -2627,14 +2627,14 @@ class ResultSheetCodeHeaderTests(TestCase):
 		self.assertEqual(
 			{row['student'].pk: row['position'] for row in rows}, expected_places,
 		)
-		self.assertContains(response, '<th rowspan="2">Roll</th>')
+		self.assertContains(response, '<th scope="col">Roll</th>')
 
 	def test_header_uses_codes_and_legend_maps_them_to_names(self):
 		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
 		content = response.content.decode()
 		# Codes in the header row.
-		self.assertIn('<th>BAN1<br>', content)
-		self.assertIn('<th>ENG1<br>', content)
+		self.assertIn('>BAN1<small>(100)</small>', content)
+		self.assertIn('>ENG1<small>(100)</small>', content)
 		# Full names do not appear as column headers.
 		self.assertNotIn('<th>Bangla 1st Paper', content)
 		# Legend under the table.
@@ -2643,15 +2643,14 @@ class ResultSheetCodeHeaderTests(TestCase):
 		self.assertIn('<span class="code">ENG1</span> = English 1st Paper', content)
 
 	def test_student_name_column_is_wide(self):
-		# The register is fixed-layout across the whole sheet, so the name column
-		# holds a set share of the width instead of a pixel min-width; a name
-		# longer than that share ellipsizes rather than stretching the table.
+		# The name column has room beside ten papers. Long names wrap on paper
+		# instead of being ellipsized and losing part of a student's name.
 		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
 		content = response.content.decode()
 		self.assertIn('<col class="student-col-width">', content)
-		self.assertIn('.result-table-card col.student-col-width { width: 15%; }', content)
-		self.assertIn('td.student-col { min-width: 0;', content)
-		self.assertIn('text-overflow: ellipsis', content)
+		self.assertIn('.result-table-card col.student-col-width { width: 18.5%; }', content)
+		self.assertIn('td.student-col { text-align: left; overflow-wrap: anywhere;', content)
+		self.assertNotIn('text-overflow: ellipsis', content)
 
 
 class SubjectAssignmentsConditionalNoteTests(TestCase):
