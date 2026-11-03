@@ -1228,13 +1228,103 @@ class SalarySheet(models.Model):
     date = models.DateField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='UNPAID')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='salary_sheets_created')
+    # EM-03 closed-period control: a locked sheet is the payroll record for a
+    # month that has been finalised. It stays readable/exportable, but the
+    # amount/status/date can no longer be edited or deleted until it is unlocked
+    # (an audited action). Locking is deliberately separate from PAID: a sheet
+    # can be paid and still open for a late correction, and an unpaid sheet can
+    # be locked when the month closes.
+    locked_at = models.DateTimeField(null=True, blank=True)
+    locked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='salary_sheets_locked',
+    )
+    lock_reason = models.CharField(max_length=200, blank=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['employee', 'month'], name='unique_employee_salary_month')]
         ordering = ['-date', '-id']
 
+    @property
+    def is_locked(self):
+        return self.locked_at is not None
+
     def __str__(self):
-        return f"{self.employee.name} - {self.month} - {self.amount} ({self.get_status_display()})"
+        suffix = ' (locked)' if self.is_locked else ''
+        return f"{self.employee.name} - {self.month} - {self.amount} ({self.get_status_display()}){suffix}"
+
+
+class TeacherAssignment(models.Model):
+    """Teacher ↔ class/section/subject registry (EM-01).
+
+    One row says: this employee teaches this subject to this class/section in
+    this session. Rows are never hard-deleted by the UI; an assignment is
+    deactivated (``is_active=False``) so the history of who taught what stays
+    auditable. The database enforces one *active* row per
+    institution+employee+class+section+subject+session.
+    """
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='teacher_assignments')
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='teacher_assignments')
+    admission_class = models.CharField(max_length=10, help_text="e.g. 9, 10, 11, 12")
+    section = models.CharField(max_length=10, blank=True, help_text='Leave blank for a class-wide assignment.')
+    subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name='teacher_assignments')
+    session = models.CharField(max_length=20, help_text='e.g. 2026-2027')
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='teacher_assignments_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['admission_class', 'section', 'subject__name', 'employee__name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['institution', 'employee', 'admission_class', 'section', 'subject', 'session'],
+                condition=models.Q(is_active=True),
+                name='unique_active_teacher_assignment',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['institution', 'admission_class', 'section'], name='teacher_assign_class_idx'),
+            models.Index(fields=['employee', 'is_active'], name='teacher_assign_emp_idx'),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.institution_id and self.employee_id:
+            employee = self.employee
+            if employee.institution_id and employee.institution_id != self.institution_id:
+                errors['employee'] = 'The employee must belong to the selected institution.'
+        if self.institution_id and self.admission_class:
+            classes = [
+                label.strip()
+                for label in (self.institution.classes or '').split(',')
+                if label.strip()
+            ]
+            if classes and self.admission_class not in classes:
+                errors['admission_class'] = (
+                    'Class must be one of the institution classes: %s.' % ', '.join(classes)
+                )
+        if self.institution_id and self.admission_class and self.subject_id:
+            requirements = SubjectRequirement.objects.filter(
+                institution=self.institution,
+                admission_class=self.admission_class,
+            )
+            if requirements.exists() and not requirements.filter(subject_id=self.subject_id).exists():
+                errors['subject'] = (
+                    'This subject is not part of the curriculum for class '
+                    '%s in this institution.' % self.admission_class
+                )
+        if not (self.session or '').strip():
+            errors['session'] = 'Session is required.'
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        scope = self.section or 'All sections'
+        return f"{self.employee.name} — Class {self.admission_class} ({scope}) — {self.subject.name} [{self.session}]"
 
 
 class Fee(models.Model):

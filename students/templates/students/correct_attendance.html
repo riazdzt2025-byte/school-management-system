@@ -1,0 +1,57 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Correct Attendance - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Correct Attendance</h1>
+        <div class="subtitle">{{ record.date|date:"l, M d, Y" }} · {{ record.institution.name }}</div>
+    </div>
+    <a href="{% url 'attendance_report' %}" class="btn btn-outline-navy">Back to Report</a>
+</div>
+
+<div class="row">
+    <div class="col-md-5">
+        <div class="table-card p-4">
+            <h5 class="mb-3">Record</h5>
+            <table class="table table-bordered mb-0">
+                <tr><th>Student / Employee</th><td>{% if record.student %}{{ record.student.name }} ({{ record.student.student_id }}){% else %}{{ record.employee.name }}{% endif %}</td></tr>
+                <tr><th>Date</th><td>{{ record.date|date:"Y-m-d" }}</td></tr>
+                <tr><th>Current status</th><td>{{ record.get_status_display }}</td></tr>
+                <tr><th>Current remarks</th><td>{{ record.remarks|default:"—" }}</td></tr>
+                <tr><th>Marked by</th><td>{{ record.created_by.username|default:"—" }}</td></tr>
+            </table>
+            <div class="alert alert-info mt-3 mb-0 small">
+                The date and the student/employee cannot be changed here. Every correction stores
+                the old value, the new value and your reason in the audit log.
+            </div>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="table-card p-4">
+            <form method="post" novalidate>
+                {% csrf_token %}
+                {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.status.id_for_label }}">{{ form.status.label }}</label>
+                    {{ form.status }}
+                    {% for error in form.status.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.remarks.id_for_label }}">{{ form.remarks.label }}</label>
+                    {{ form.remarks }}
+                    {% for error in form.remarks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.reason.id_for_label }}">{{ form.reason.label }}</label>
+                    {{ form.reason }}
+                    {% for error in form.reason.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <button type="submit" class="btn btn-navy">Save Correction</button>
+                <a href="{% url 'attendance_report' %}" class="btn btn-outline-navy">Cancel</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

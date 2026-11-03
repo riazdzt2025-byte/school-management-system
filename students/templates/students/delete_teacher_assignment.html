@@ -1,0 +1,20 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Delete Teacher Assignment - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header"><div><h1>Delete Teacher Assignment?</h1></div></div>
+<div class="table-card p-4">
+    <p>
+        Remove <strong>{{ assignment.employee.name }}</strong> from
+        Class {{ assignment.admission_class }} ({{ assignment.section|default:"All sections" }}) —
+        {{ assignment.subject.name }} for session {{ assignment.session }}?
+        The deletion is written to the audit log. To keep the history, use <em>Unassign</em> instead.
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        <button class="btn btn-danger">Yes, Delete</button>
+        <a href="{% url 'teacher_assignment_list' %}" class="btn btn-outline-navy">Cancel</a>
+    </form>
+</div>
+{% endblock %}

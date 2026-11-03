@@ -1,0 +1,93 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Teacher Assignments - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Teacher Assignments</h1>
+        <div class="subtitle">Teacher ↔ class / section / subject registry · {{ institution.name|default:"All institutions" }}</div>
+    </div>
+    {% if perms.students.add_teacherassignment %}
+    <a href="{% url 'add_teacher_assignment' %}" class="btn btn-navy">+ Assign Teacher</a>
+    {% endif %}
+</div>
+
+<div class="table-card p-3 mb-4">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Class</label>
+            <input class="form-control" name="admission_class" value="{{ filters.admission_class }}" placeholder="e.g. 9">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Section</label>
+            <input class="form-control" name="section" value="{{ filters.section }}" placeholder="e.g. A">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Subject</label>
+            <select class="form-select" name="subject">
+                <option value="">All subjects</option>
+                {% for subject in subjects %}
+                <option value="{{ subject.pk }}" {% if filters.subject == subject.pk|stringformat:'s' %}selected{% endif %}>{{ subject.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Session</label>
+            <input class="form-control" name="session" value="{{ filters.session }}" placeholder="e.g. 2026-2027">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Status</label>
+            <select class="form-select" name="status">
+                <option value="">All</option>
+                <option value="ACTIVE" {% if filters.status == 'ACTIVE' %}selected{% endif %}>Active</option>
+                <option value="INACTIVE" {% if filters.status == 'INACTIVE' %}selected{% endif %}>Inactive</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-navy w-100" type="submit">Filter</button>
+        </div>
+    </form>
+</div>
+
+<div class="table-card p-3">
+    <div class="table-responsive">
+        <table class="table table-striped table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Teacher</th><th>Class</th><th>Section</th><th>Subject</th><th>Session</th>
+                    <th>Status</th><th>Assigned by</th><th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for assignment in assignments %}
+                <tr>
+                    <td>{{ assignment.employee.name }}<div class="small text-muted">{{ assignment.employee.designation }}</div></td>
+                    <td>{{ assignment.admission_class }}</td>
+                    <td>{{ assignment.section|default:"All" }}</td>
+                    <td>{{ assignment.subject.name }}</td>
+                    <td>{{ assignment.session }}</td>
+                    <td>{% if assignment.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
+                    <td>{{ assignment.created_by.username|default:"—" }}</td>
+                    <td>
+                        {% if perms.students.change_teacherassignment %}
+                        <a href="{% url 'edit_teacher_assignment' assignment.pk %}" class="btn btn-sm btn-outline-navy">Edit</a>
+                        <form method="post" action="{% url 'toggle_teacher_assignment' assignment.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-warning">{% if assignment.is_active %}Unassign{% else %}Reactivate{% endif %}</button>
+                        </form>
+                        {% endif %}
+                        {% if perms.students.delete_teacherassignment %}
+                        <a href="{% url 'delete_teacher_assignment' assignment.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center py-4">No teacher assignments found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% include 'students/_pagination.html' %}
+{% endblock %}

@@ -22,7 +22,7 @@ from .models import (
     Exam, ExamMark, SeatPlan,
     Employee, EmployeeStatusLog, AttendanceRecord, MoneyReceipt, Voucher, SalarySheet,
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
-    StudentSubjectChoice, SectionCapacity,
+    StudentSubjectChoice, SectionCapacity, TeacherAssignment,
     MARK_PARTS, GROUPED_CLASS_LABELS,
     class_supports_group, normalize_guardian_contact, validate_guardian_contact,
     GUARDIAN_CONTACT_ERROR,
@@ -34,6 +34,7 @@ from .forms import (
     ExamForm, auto_exam_name, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm,
     EmployeeStatusChangeForm, MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
     AdmissionApplicationForm, AdmissionPaymentForm, AttendanceMarkingForm, DailyAttendanceSelectionForm,
+    AttendanceCorrectionForm, TeacherAssignmentForm,
     PublicAdmissionStatusForm, normalize_application_number,
 )
 from django.contrib.auth.decorators import login_required, permission_required
@@ -45,6 +46,8 @@ import re
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from datetime import date
+from calendar import monthrange
+import csv
 from urllib.parse import urlencode
 from uuid import uuid4
 from .result_utils import (
@@ -1954,17 +1957,86 @@ def admission_funnel_export(request):
     return response
 
 
+def _attendance_counts(records):
+    """Count P/A/L/H for one student/employee over a set of records.
+
+    The rate denominator is P + A + L: a holiday (H) is not a school day and
+    is excluded, while a late (L) is a day the person attended. This is the
+    single definition used by the summary page, the calendar and the export
+    (AT-02 accuracy requirement).
+    """
+    counts = {'P': 0, 'A': 0, 'L': 0, 'H': 0, 'total': 0}
+    for record in records:
+        if record.status in counts:
+            counts[record.status] += 1
+        counts['total'] += 1
+    return counts
+
+
+def _attendance_rate(counts):
+    # Accept both the P/A/L/H keys used by _attendance_counts and the
+    # present/absent/late keys used by the attendance summary rows.
+    if 'P' in counts:
+        present, absent, late = counts['P'], counts['A'], counts['L']
+    else:
+        present = counts.get('present', 0)
+        absent = counts.get('absent', 0)
+        late = counts.get('late', 0)
+    denominator = present + absent + late
+    if not denominator:
+        return None
+    return round((present + late) / denominator * 100, 1)
+
+
+def _parse_date_param(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @login_required
 def attendance_report(request):
     """Attendance record log (EX-02 matrix: a date-descending *log*, not a
     class register — rows are records, so the register roll-order rule does
-    not apply; the class-wise student list lives in mark_attendance_bulk)."""
+    not apply; the class-wise student list lives in mark_attendance_bulk).
+
+    AT-01 adds the correction entry point and the date/class/section/status
+    filters; the calculation itself stays in the summary/calendar views.
+    """
     institution = _selected_institution_for_request(request)
     records = AttendanceRecord.objects.select_related('student', 'employee', 'institution').order_by('-date', '-created_at', '-pk')
     if institution is not None:
         records = records.filter(institution=institution)
     else:
         records = _scope_by_allowed_institutions(request, records)
+
+    start_date = _parse_date_param(request.GET.get('start_date'))
+    end_date = _parse_date_param(request.GET.get('end_date'))
+    if start_date:
+        records = records.filter(date__gte=start_date)
+    if end_date:
+        records = records.filter(date__lte=end_date)
+    admission_class = (request.GET.get('admission_class') or '').strip()
+    if admission_class:
+        records = records.filter(
+            student__isnull=False,
+            student__admission_class__in=class_filter_variants(admission_class),
+        )
+    section = (request.GET.get('section') or '').strip()
+    if section:
+        records = records.filter(student__section__iexact=section)
+    status = (request.GET.get('status') or '').strip()
+    if status:
+        records = records.filter(status=status)
+    target = (request.GET.get('target') or '').strip().upper()
+    if target == 'STUDENT':
+        records = records.filter(student__isnull=False)
+    elif target == 'EMPLOYEE':
+        records = records.filter(employee__isnull=False)
+
     pagination = paginate_list(request, records)
     return render(request, 'students/attendance_report.html', {
         **pagination,
@@ -1972,7 +2044,269 @@ def attendance_report(request):
         'total_records': pagination['paginator'].count,
         'institution': institution,
         'status_choices': AttendanceRecord.STATUS_CHOICES,
+        'can_correct': request.user.has_perm('students.change_attendancerecord'),
+        'filters': {
+            'start_date': start_date,
+            'end_date': end_date,
+            'admission_class': admission_class,
+            'section': section,
+            'status': status,
+            'target': target,
+        },
     })
+
+
+@login_required
+@_require_department(('Office', 'Exam'))
+@permission_required('students.change_attendancerecord', raise_exception=True)
+def correct_attendance(request, pk):
+    """AT-01: correct one already-marked record, with a mandatory reason.
+
+    The record's date and target are fixed; only status/remarks change. The
+    old and new values plus the reason go to the AuditLog. Future-dated rows
+    are refused (they should not exist because entry blocks them, but a
+    hand-crafted row must not become editable ahead of time).
+    """
+    record = _get_scoped_object_or_404(
+        request, AttendanceRecord, pk, lambda r: r.institution
+    )
+    form = AttendanceCorrectionForm(request.POST or None, record=record)
+    if request.method == 'POST' and form.is_valid():
+        old_status = record.status
+        old_remarks = record.remarks
+        new_status = form.cleaned_data['status']
+        new_remarks = form.cleaned_data['remarks']
+        reason = form.cleaned_data['reason']
+        with transaction.atomic():
+            record.status = new_status
+            record.remarks = new_remarks
+            record.save(update_fields=['status', 'remarks'])
+            record_audit(
+                request.user, 'attendance_corrected', record,
+                snapshot={'status': old_status, 'remarks': old_remarks},
+                details={
+                    'new_status': new_status,
+                    'new_remarks': new_remarks,
+                    'reason': reason,
+                    'date': str(record.date),
+                },
+            )
+        messages.success(request, f'Attendance corrected for {record.date}.')
+        return redirect('attendance_report')
+    return render(request, 'students/correct_attendance.html', {
+        'form': form,
+        'record': record,
+    })
+
+
+def _calendar_month(year, month):
+    """Return (first_date, last_date, prev_year, prev_month, next_year, next_month)."""
+    first = date(year, month, 1)
+    last = date(year, month, monthrange(year, month)[1])
+    prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return first, last, prev_year, prev_month, next_year, next_month
+
+
+def _calendar_filters(request):
+    """Parse the shared month/calendar filters, falling back safely."""
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get('year') or today.year)
+        month = int(request.GET.get('month') or today.month)
+    except (TypeError, ValueError):
+        year, month = today.year, today.month
+    if not (2000 <= year <= 2100) or not (1 <= month <= 12):
+        year, month = today.year, today.month
+    admission_class = (request.GET.get('admission_class') or '').strip()
+    section = (request.GET.get('section') or '').strip()
+    mark_type = (request.GET.get('mark_type') or 'STUDENT').strip().upper()
+    if mark_type not in {'STUDENT', 'EMPLOYEE'}:
+        mark_type = 'STUDENT'
+    return year, month, admission_class, section, mark_type
+
+
+def _calendar_records(request, institution, year, month, admission_class, section, mark_type):
+    first, last = _calendar_month(year, month)[:2]
+    records = AttendanceRecord.objects.filter(date__range=[first, last]).select_related(
+        'student', 'employee', 'institution'
+    )
+    if institution is not None:
+        records = records.filter(institution=institution)
+    else:
+        records = _scope_by_allowed_institutions(request, records)
+    if mark_type == 'EMPLOYEE':
+        records = records.filter(employee__isnull=False)
+    else:
+        # Archived (soft-deleted) students are not part of the live register:
+        # they must not appear in the calendar, the summary or the export.
+        records = records.filter(student__isnull=False, student__is_archived=False)
+        if admission_class:
+            records = records.filter(
+                student__admission_class__in=class_filter_variants(admission_class)
+            )
+        if section:
+            records = records.filter(student__section__iexact=section)
+    return records
+
+
+@login_required
+def attendance_calendar(request):
+    """AT-02: server-rendered monthly attendance grid.
+
+    Each day shows the P/A/L/H counts for the selected class/section (or all
+    classes) and a colour-coded cell. Days with no records are shown as
+    "No record" — never silently counted as absent. A click on a day goes to
+    the correction page when the user holds the permission; otherwise the
+    day cell links to the filtered report.
+    """
+    institution = _selected_institution_for_request(request)
+    year, month, admission_class, section, mark_type = _calendar_filters(request)
+    first, last, prev_year, prev_month, next_year, next_month = _calendar_month(year, month)
+    records = _calendar_records(
+        request, institution, year, month, admission_class, section, mark_type
+    )
+    records = records.order_by('date', 'student__name', 'employee__name')
+
+    by_date = defaultdict(list)
+    for record in records:
+        by_date[record.date].append(record)
+
+    today = timezone.localdate()
+    # Sunday-first grid (Bangladesh convention). Python's weekday() is Monday=0.
+    offset = (first.weekday() + 1) % 7
+    cells = []
+    for index in range(offset):
+        cells.append(None)
+    day = first
+    while day <= last:
+        day_records = by_date.get(day, [])
+        counts = _attendance_counts(day_records)
+        cells.append({
+            'date': day,
+            'day': day.day,
+            'is_today': day == today,
+            'is_future': day > today,
+            'counts': counts,
+            'rate': _attendance_rate(counts),
+            'has_records': bool(day_records),
+            'record_count': len(day_records),
+            'record_ids': [record.pk for record in day_records],
+        })
+        day = date.fromordinal(day.toordinal() + 1)
+    while len(cells) % 7:
+        cells.append(None)
+    weeks = [cells[i:i + 7] for i in range(0, len(cells), 7)]
+
+    # Monthly summary: one row per student/employee, same rate definition.
+    grouped = defaultdict(list)
+    for record in records:
+        if record.student_id:
+            grouped[('student', record.student_id)].append(record)
+        elif record.employee_id:
+            grouped[('employee', record.employee_id)].append(record)
+    summary_rows = []
+    for (kind, object_id), object_records in grouped.items():
+        counts = _attendance_counts(object_records)
+        if kind == 'student':
+            student = next((r.student for r in object_records if r.student), None)
+            if student is None:
+                continue
+            summary_rows.append({
+                'kind': 'student',
+                'object': student,
+                'name': student.name,
+                'identifier': student.student_id,
+                'meta': f'{student.admission_class} - {student.section}',
+                'counts': counts,
+                'rate': _attendance_rate(counts),
+            })
+        else:
+            employee = next((r.employee for r in object_records if r.employee), None)
+            if employee is None:
+                continue
+            summary_rows.append({
+                'kind': 'employee',
+                'object': employee,
+                'name': employee.name,
+                'identifier': '',
+                'meta': employee.designation,
+                'counts': counts,
+                'rate': _attendance_rate(counts),
+            })
+    summary_rows.sort(key=lambda row: (row['name'], row['identifier']))
+
+    month_name = date(year, month, 1).strftime('%B %Y')
+    can_mark = request.user.has_perm('students.add_attendancerecord')
+    can_correct = request.user.has_perm('students.change_attendancerecord')
+    return render(request, 'students/attendance_calendar.html', {
+        'institution': institution,
+        'year': year,
+        'month': month,
+        'month_name': month_name,
+        'first_date': first,
+        'last_date': last,
+        'prev_year': prev_year,
+        'prev_month': prev_month,
+        'next_year': next_year,
+        'next_month': next_month,
+        'weeks': weeks,
+        'summary_rows': summary_rows,
+        'admission_class': admission_class,
+        'section': section,
+        'mark_type': mark_type,
+        'can_mark': can_mark,
+        'can_correct': can_correct,
+        'status_choices': AttendanceRecord.STATUS_CHOICES,
+        'total_records': records.count(),
+        'weekday_labels': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    })
+
+
+@login_required
+def attendance_calendar_export(request):
+    """AT-02: monthly summary CSV (one row per student/employee)."""
+    institution = _selected_institution_for_request(request)
+    year, month, admission_class, section, mark_type = _calendar_filters(request)
+    records = _calendar_records(
+        request, institution, year, month, admission_class, section, mark_type
+    )
+    grouped = defaultdict(list)
+    for record in records:
+        if record.student_id:
+            grouped[('student', record.student_id)].append(record)
+        elif record.employee_id:
+            grouped[('employee', record.employee_id)].append(record)
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="attendance-{year}-{month:02d}.csv"'
+    writer = csv.writer(response)
+    writer.writerow([
+        'Type', 'Student ID', 'Name', 'Class / Section / Designation',
+        'Present', 'Absent', 'Late', 'Holiday', 'Total', 'Attendance %',
+    ])
+    for (kind, object_id), object_records in sorted(grouped.items()):
+        counts = _attendance_counts(object_records)
+        rate = _attendance_rate(counts)
+        if kind == 'student':
+            student = next((r.student for r in object_records if r.student), None)
+            if student is None:
+                continue
+            writer.writerow([
+                'Student', student.student_id, student.name,
+                f'{student.admission_class} - {student.section}',
+                counts['P'], counts['A'], counts['L'], counts['H'], counts['total'],
+                '' if rate is None else rate,
+            ])
+        else:
+            employee = next((r.employee for r in object_records if r.employee), None)
+            if employee is None:
+                continue
+            writer.writerow([
+                'Employee', '', employee.name, employee.designation,
+                counts['P'], counts['A'], counts['L'], counts['H'], counts['total'],
+                '' if rate is None else rate,
+            ])
+    return response
 
 
 @login_required
@@ -2008,7 +2342,12 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
     except (ValueError, TypeError):
         messages.error(request, 'Invalid date format.')
         return redirect('mark_attendance')
-    
+
+    # AT-01: a future date is rejected server-side (not just hidden in the UI).
+    if attendance_date > timezone.localdate():
+        messages.error(request, 'Attendance cannot be marked for a future date.')
+        return redirect('mark_attendance')
+
     if mark_type == 'STUDENT':
         students = Student.objects.filter(
             admission_class=admission_class,
@@ -2032,6 +2371,9 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
                 status_key = f'status_{student.id}'
                 if status_key in request.POST:
                     status = request.POST.get(status_key)
+                    if status not in dict(AttendanceRecord.STATUS_CHOICES):
+                        messages.warning(request, f'Invalid status for {student.name}; skipped.')
+                        continue
                     remarks = request.POST.get(f'remarks_{student.id}', '')
                     try:
                         AttendanceRecord.objects.update_or_create(
@@ -2078,6 +2420,9 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
                 status_key = f'status_{employee.id}'
                 if status_key in request.POST:
                     status = request.POST.get(status_key)
+                    if status not in dict(AttendanceRecord.STATUS_CHOICES):
+                        messages.warning(request, f'Invalid status for {employee.name}; skipped.')
+                        continue
                     remarks = request.POST.get(f'remarks_{employee.id}', '')
                     try:
                         AttendanceRecord.objects.update_or_create(
@@ -2148,9 +2493,10 @@ def attendance_summary(request):
     else:
         records = _scope_by_allowed_institutions(request, records)
     
-    # Student attendance summary
+    # Student attendance summary (archived students are not part of the live
+    # register and must not change the rates).
     student_summary = {}
-    for record in records.filter(student__isnull=False):
+    for record in records.filter(student__isnull=False, student__is_archived=False):
         student_id = record.student_id
         if student_id not in student_summary:
             student_summary[student_id] = {
@@ -2186,14 +2532,12 @@ def attendance_summary(request):
             employee_summary[emp_id]['holiday'] += 1
         employee_summary[emp_id]['total'] += 1
     
-    # Calculate attendance rates
+    # Calculate attendance rates with the shared definition:
+    # (Present + Late) / (Present + Absent + Late); holidays are excluded.
     for summary in student_summary.values():
-        if summary['total'] > 0:
-            summary['attendance_rate'] = round((summary['present'] / summary['total'] * 100), 1)
-    
+        summary['attendance_rate'] = _attendance_rate(summary)
     for summary in employee_summary.values():
-        if summary['total'] > 0:
-            summary['attendance_rate'] = round((summary['present'] / summary['total'] * 100), 1)
+        summary['attendance_rate'] = _attendance_rate(summary)
     
     student_rows = sorted(student_summary.values(), key=lambda x: (x['student'].name, x['student'].pk))
     employee_rows = sorted(employee_summary.values(), key=lambda x: (x['employee'].name, x['employee'].pk))
@@ -2256,19 +2600,21 @@ def employee_detail(request, pk):
         date__gte=thirty_days_ago
     ).order_by('-date', '-pk')
     
-    # Calculate attendance rate
-    attendance_rate = 0
-    if attendance_records.exists():
-        present_count = attendance_records.filter(status='P').count()
-        total_count = attendance_records.count()
-        attendance_rate = round((present_count / total_count * 100), 1) if total_count > 0 else 0
+    # Calculate attendance rate with the shared definition (P+A+L denominator,
+    # H excluded) so the employee page matches the summary and calendar.
+    attendance_rate = _attendance_rate(_attendance_counts(attendance_records)) or 0
     
     # Slice attendance records for display
     attendance_records_display = attendance_records[:30]
     
     # Get salary/finance info if available
     salary_records = employee.salary_sheets.all().order_by('-month', '-pk')[:12] if hasattr(employee, 'salary_sheets') else []
-    
+
+    # EM-01: the teacher assignment registry, newest session first.
+    teacher_assignments = employee.teacher_assignments.select_related(
+        'institution', 'subject'
+    ).order_by('-session', '-is_active', 'admission_class', 'section')
+
     return render(request, 'students/employee_detail.html', {
         **pagination,
         'show_status_history': 'page' in request.GET or 'per_page' in request.GET,
@@ -2277,7 +2623,199 @@ def employee_detail(request, pk):
         'attendance_records': attendance_records_display,
         'attendance_rate': attendance_rate,
         'salary_records': salary_records,
+        'teacher_assignments': teacher_assignments,
     })
+
+# ---------------- Teacher Assignment (EM-01) Views ----------------
+
+@login_required
+@permission_required('students.view_teacherassignment', raise_exception=True)
+def teacher_assignment_list(request):
+    """Registry of teacher ↔ class/section/subject assignments (EM-01)."""
+    institution = _resolve_requested_institution(request, request.GET.get('institution'))
+    assignments = TeacherAssignment.objects.select_related(
+        'employee', 'institution', 'subject', 'created_by'
+    )
+    if institution is not None:
+        assignments = assignments.filter(institution=institution)
+    else:
+        assignments = _scope_by_allowed_institutions(request, assignments)
+
+    admission_class = (request.GET.get('admission_class') or '').strip()
+    if admission_class:
+        assignments = assignments.filter(
+            admission_class__in=class_filter_variants(admission_class)
+        )
+    section = (request.GET.get('section') or '').strip()
+    if section:
+        assignments = assignments.filter(section__iexact=section)
+    subject_id = (request.GET.get('subject') or '').strip()
+    if subject_id:
+        assignments = assignments.filter(subject_id=subject_id)
+    employee_id = (request.GET.get('employee') or '').strip()
+    if employee_id:
+        assignments = assignments.filter(employee_id=employee_id)
+    session = (request.GET.get('session') or '').strip()
+    if session:
+        assignments = assignments.filter(session__iexact=session)
+    status = (request.GET.get('status') or '').strip().upper()
+    if status == 'ACTIVE':
+        assignments = assignments.filter(is_active=True)
+    elif status == 'INACTIVE':
+        assignments = assignments.filter(is_active=False)
+
+    employee_choices = Employee.objects.all()
+    if institution is not None:
+        employee_choices = employee_choices.filter(institution=institution)
+    else:
+        employee_choices = _scope_by_allowed_institutions(request, employee_choices)
+
+    pagination = paginate_list(request, assignments, allow_full_print=True)
+    return render(request, 'students/teacher_assignment_list.html', {
+        **pagination,
+        'assignments': pagination['page_rows'],
+        'total_assignments': pagination['paginator'].count,
+        'institutions': _visible_institutions(request),
+        'institution': institution,
+        'subjects': Subject.objects.all(),
+        'employees': employee_choices,
+        'filters': {
+            'admission_class': admission_class,
+            'section': section,
+            'subject': subject_id,
+            'employee': employee_id,
+            'session': session,
+            'status': status,
+        },
+    })
+
+
+@login_required
+@permission_required('students.add_teacherassignment', raise_exception=True)
+def add_teacher_assignment(request):
+    form = TeacherAssignmentForm(request.POST or None, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        assignment = form.save(commit=False)
+        assignment.created_by = request.user
+        try:
+            assignment.save()
+        except IntegrityError:
+            form.add_error(
+                None,
+                'An active assignment for this teacher, class, section, subject and session already exists.'
+            )
+        else:
+            record_audit(
+                request.user, 'teacher_assignment_created', assignment,
+                details={
+                    'employee': assignment.employee.name,
+                    'class': assignment.admission_class,
+                    'section': assignment.section,
+                    'subject': assignment.subject.name,
+                    'session': assignment.session,
+                },
+            )
+            messages.success(request, 'Teacher assigned.')
+            return redirect('teacher_assignment_list')
+    class_options = []
+    for inst in _visible_institutions(request):
+        for label in [c.strip() for c in (inst.classes or '').split(',') if c.strip()]:
+            if label not in class_options:
+                class_options.append(label)
+    return render(request, 'students/teacher_assignment_form.html', {
+        'form': form,
+        'class_options': class_options,
+    })
+
+
+@login_required
+@permission_required('students.change_teacherassignment', raise_exception=True)
+def edit_teacher_assignment(request, pk):
+    assignment = _get_scoped_object_or_404(
+        request, TeacherAssignment, pk, lambda a: a.institution
+    )
+    form = TeacherAssignmentForm(request.POST or None, instance=assignment, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        changed = sorted(form.changed_data)
+        try:
+            form.save()
+        except IntegrityError:
+            form.add_error(
+                None,
+                'An active assignment for this teacher, class, section, subject and session already exists.'
+            )
+        else:
+            record_audit(
+                request.user, 'teacher_assignment_updated', assignment,
+                details={'changed_fields': changed},
+            )
+            messages.success(request, 'Teacher assignment updated.')
+            return redirect('teacher_assignment_list')
+    class_options = []
+    for inst in _visible_institutions(request):
+        for label in [c.strip() for c in (inst.classes or '').split(',') if c.strip()]:
+            if label not in class_options:
+                class_options.append(label)
+    return render(request, 'students/teacher_assignment_form.html', {
+        'form': form,
+        'assignment': assignment,
+        'class_options': class_options,
+    })
+
+
+@login_required
+@permission_required('students.change_teacherassignment', raise_exception=True)
+@require_POST
+def toggle_teacher_assignment(request, pk):
+    """Unassign (deactivate) or reactivate a registry row without losing history."""
+    assignment = _get_scoped_object_or_404(
+        request, TeacherAssignment, pk, lambda a: a.institution
+    )
+    new_state = not assignment.is_active
+    try:
+        with transaction.atomic():
+            assignment.is_active = new_state
+            assignment.save(update_fields=['is_active', 'updated_at'])
+            record_audit(
+                request.user,
+                'teacher_assignment_toggled', assignment,
+                details={'is_active': new_state},
+            )
+    except IntegrityError:
+        messages.error(
+            request,
+            'Another active assignment already covers this teacher/class/section/subject/session.'
+        )
+        return redirect('teacher_assignment_list')
+    messages.success(request, 'Teacher assignment deactivated.' if not new_state else 'Teacher assignment reactivated.')
+    return redirect('teacher_assignment_list')
+
+
+@login_required
+@permission_required('students.delete_teacherassignment', raise_exception=True)
+def delete_teacher_assignment(request, pk):
+    assignment = _get_scoped_object_or_404(
+        request, TeacherAssignment, pk, lambda a: a.institution
+    )
+    if request.method == 'POST':
+        snapshot = {
+            'employee': assignment.employee.name,
+            'class': assignment.admission_class,
+            'section': assignment.section,
+            'subject': assignment.subject.name,
+            'session': assignment.session,
+        }
+        assignment.delete()
+        record_audit(
+            request.user, 'teacher_assignment_deleted', None,
+            model_name='students.TeacherAssignment',
+            object_id=str(pk),
+            snapshot=snapshot,
+        )
+        messages.success(request, 'Teacher assignment deleted.')
+        return redirect('teacher_assignment_list')
+    return render(request, 'students/delete_teacher_assignment.html', {'assignment': assignment})
+
 
 #---------------- Student Views ----------------
 @login_required
@@ -5599,8 +6137,18 @@ def signature_sheet(request, pk, room_name):
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
         return redirect('seat_plan_list', pk=exam.pk)
+    # EM-01 integration: the active subject teachers for this class/section.
+    assigned_teachers = TeacherAssignment.objects.filter(
+        institution=exam.institution,
+        admission_class__in=class_filter_variants(exam.admission_class),
+        session=exam.session,
+        is_active=True,
+    ).select_related('employee', 'subject')
+    if getattr(exam, 'section', ''):
+        assigned_teachers = assigned_teachers.filter(section__iexact=exam.section)
     return render(request, 'students/signature_sheet.html', {
         'exam': exam, 'room_name': room_name, 'seats': seats,
+        'assigned_teachers': assigned_teachers,
     })
 
 
@@ -5852,6 +6400,12 @@ def edit_salary_sheet(request, pk):
     salary = _get_scoped_object_or_404(
         request, SalarySheet, pk, lambda s: s.employee.institution,
     )
+    if salary.is_locked:
+        messages.error(
+            request,
+            f'Salary sheet for {salary.month} is locked (closed period). Unlock it first to make changes.',
+        )
+        return redirect('salary_sheet_list')
     form = SalarySheetForm(request.POST or None, instance=salary, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
@@ -5866,11 +6420,77 @@ def delete_salary_sheet(request, pk):
     salary = _get_scoped_object_or_404(
         request, SalarySheet, pk, lambda s: s.employee.institution,
     )
+    if salary.is_locked:
+        messages.error(
+            request,
+            f'Salary sheet for {salary.month} is locked (closed period). Unlock it first to delete it.',
+        )
+        return redirect('salary_sheet_list')
     if request.method == 'POST':
         salary.delete()
         messages.success(request, 'Salary sheet deleted.')
         return redirect('salary_sheet_list')
     return render(request, 'students/delete_salary_sheet.html', {'salary': salary})
+
+
+@login_required
+@permission_required('students.change_salarysheet', raise_exception=True)
+@require_POST
+def lock_salary_sheet(request, pk):
+    """EM-03: close the payroll period for one salary sheet.
+
+    Locking freezes the amount/status/date. It is an audited action and is
+    intentionally separate from PAID: a paid sheet can still be corrected, and
+    an unpaid sheet can be closed when the month ends.
+    """
+    salary = _get_scoped_object_or_404(
+        request, SalarySheet, pk, lambda s: s.employee.institution,
+    )
+    if not salary.is_locked:
+        reason = (request.POST.get('reason') or '').strip()[:200]
+        with transaction.atomic():
+            salary.locked_at = timezone.now()
+            salary.locked_by = request.user
+            salary.lock_reason = reason
+            salary.save(update_fields=['locked_at', 'locked_by', 'lock_reason'])
+            record_audit(
+                request.user, 'salary_sheet_locked', salary,
+                details={'month': salary.month, 'reason': reason},
+            )
+        messages.success(request, f'Salary sheet for {salary.month} locked.')
+    else:
+        messages.info(request, 'This salary sheet is already locked.')
+    return redirect('salary_sheet_list')
+
+
+@login_required
+@permission_required('students.change_salarysheet', raise_exception=True)
+@require_POST
+def unlock_salary_sheet(request, pk):
+    """EM-03: reopen a closed period. The unlock itself is audited."""
+    salary = _get_scoped_object_or_404(
+        request, SalarySheet, pk, lambda s: s.employee.institution,
+    )
+    if salary.is_locked:
+        with transaction.atomic():
+            previous = {
+                'locked_at': salary.locked_at.isoformat() if salary.locked_at else None,
+                'locked_by': salary.locked_by_id,
+                'lock_reason': salary.lock_reason,
+            }
+            salary.locked_at = None
+            salary.locked_by = None
+            salary.lock_reason = ''
+            salary.save(update_fields=['locked_at', 'locked_by', 'lock_reason'])
+            record_audit(
+                request.user, 'salary_sheet_unlocked', salary,
+                snapshot=previous,
+                details={'month': salary.month},
+            )
+        messages.success(request, f'Salary sheet for {salary.month} unlocked.')
+    else:
+        messages.info(request, 'This salary sheet is not locked.')
+    return redirect('salary_sheet_list')
 
 
 @login_required
