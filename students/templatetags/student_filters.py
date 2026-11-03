@@ -19,6 +19,36 @@ def get_nested(obj, attr):
     return None
 
 
+@register.filter
+def ordinal(value):
+    """Format a merit position for the paper register (1st, 2nd, 11th…).
+
+    Keep the calculated position numeric in the view; this is display-only.
+    Unranked students retain the register's em dash, not a made-up place.
+    """
+    if value is None or value == '':
+        return '—'
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return value
+    if number < 1:
+        return value
+    suffix = 'th' if number % 100 in (11, 12, 13) else {1: 'st', 2: 'nd', 3: 'rd'}.get(number % 10, 'th')
+    return f'{number}{suffix}'
+
+
+@register.filter
+def class_label(value):
+    """Spell out a numeric class on the printed heading, as on the school's sheet."""
+    labels = {
+        '1': 'One', '2': 'Two', '3': 'Three', '4': 'Four', '5': 'Five',
+        '6': 'Six', '7': 'Seven', '8': 'Eight', '9': 'Nine', '10': 'Ten',
+        '11': 'Eleven', '12': 'Twelve',
+    }
+    return labels.get(str(value), value)
+
+
 @register.simple_tag(takes_context=True)
 def retained_list_filters(context, exclude=''):
     """Keep repeated/escaped GET filters, but reset page when a filter changes.

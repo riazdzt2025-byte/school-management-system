@@ -1,33 +1,17 @@
 {% extends 'students/base.html' %}
-{% load static %}
+{% load static student_filters %}
 
 {% block title %}Result Sheet - {{ block.super }}{% endblock %}
-
 {% block print_subtitle %}Result Sheet - {{ exam.name }}{% endblock %}
 
 {% block extra_style %}
-    /* Result sheet: a print-first academic register with a calmer, modern visual hierarchy. */
-    :root {
-        --result-navy: #123c5a;
-        --result-deep: #0b2d45;
-        --result-teal: #0f8b7a;
-        --result-teal-soft: #eaf7f4;
-        --result-gold: #e7ac3b;
-        --result-ink: #1e2b36;
-        --result-muted: #667684;
-        --result-line: #dce5ea;
-        --result-paper: #fff;
-        --result-canvas: #edf2f5;
-        --result-danger: #b53b4c;
-    }
-
-    .main > .print-header { display: none !important; }
-    /* The result sheet has its own school identity header. */
-    .school-header { display: none !important; }
-    .result-page { max-width: 1440px; margin: 0 auto; }
+    /* The school's paper register: white paper, black rules and inline grades.
+       The screen preview uses the same table as the printout. */
+    .main > .print-header, .school-header { display: none !important; }
+    .result-page { max-width: 1440px; margin: 0 auto; color: #000; }
     .result-page, .result-page * { box-sizing: border-box; }
 
-    /* Action bar: floats along the top edge while the long register scrolls. */
+    /* Keep report actions reachable while scrolling a long class register. */
     .result-toolbar {
         display: flex;
         align-items: center;
@@ -42,288 +26,116 @@
         border-bottom: 1px solid transparent;
         transition: border-color .18s ease, box-shadow .18s ease;
     }
-    .result-toolbar.is-stuck {
-        border-bottom-color: var(--result-line);
-        box-shadow: 0 10px 18px -14px rgba(18, 60, 90, .55);
-    }
-    .result-toolbar .toolbar-title {
-        color: var(--result-muted);
-        font-size: .83rem;
-        font-weight: 600;
-    }
+    .result-toolbar.is-stuck { border-bottom-color: #ccd4da; box-shadow: 0 8px 14px -12px #333; }
+    .result-toolbar .toolbar-title { color: #596570; font-size: .83rem; font-weight: 600; }
     .result-toolbar .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .result-toolbar .btn { border-radius: 9px; padding: 8px 12px; font-weight: 600; }
+    .result-toolbar .btn { border-radius: 7px; padding: 8px 12px; font-weight: 600; }
 
     .result-paper {
-        position: relative;
-        overflow: hidden;
-        padding: 26px 28px 18px;
-        background: var(--result-paper);
-        border: 1px solid #d6e0e6;
-        border-radius: 16px;
-        box-shadow: 0 16px 38px rgba(18, 60, 90, .10);
+        padding: 20px 18px;
+        background: #fff;
+        border: 1px solid #d5dadd;
+        font-family: Arial, Helvetica, 'Noto Sans Bengali', sans-serif;
     }
-    .result-paper::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 6px;
-        background: linear-gradient(90deg, var(--result-navy) 0 52%, var(--result-teal) 52% 83%, var(--result-gold) 83%);
-    }
+    .print-masthead { margin: 0 0 10px; color: #000; text-align: center; break-inside: avoid; }
+    .print-masthead h1 { margin: 0; color: #000; font-family: Arial, Helvetica, sans-serif; font-size: 18pt; font-weight: 700; line-height: 1.2; letter-spacing: 0; }
+    .print-masthead .masthead-line { margin: 4px 0 0; color: #000; font-size: 9pt; line-height: 1.3; }
+    .print-masthead .masthead-exam { margin: 3px 0 0; color: #000; font-size: 12pt; font-weight: 700; line-height: 1.25; }
+    .print-masthead .masthead-title { margin: 7px 0 0; color: #000; font-size: 9.5pt; font-weight: 700; line-height: 1.2; }
+    .print-meta { margin: 8px 0 14px; color: #596570; text-align: center; font-size: 9pt; }
+    .print-meta span + span::before { content: " · "; margin: 0 6px; }
+    .print-meta strong { margin-right: 4px; }
 
-    .result-header {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 275px;
-        gap: 26px;
-        align-items: center;
-        padding-bottom: 18px;
-        border-bottom: 1px solid var(--result-line);
-    }
-    .school-identity { display: flex; align-items: center; gap: 15px; min-width: 0; }
-    .school-seal {
-        display: grid;
-        place-items: center;
-        flex: 0 0 78px;
-        width: 78px;
-        height: 78px;
-        border: 1px solid #c8dfe0;
-        border-radius: 20px;
-        color: var(--result-navy);
-        background: linear-gradient(145deg, #f7fcfc, #e5f1f1);
-        box-shadow: inset 0 0 0 5px rgba(255,255,255,.60);
-    }
-    .school-seal img { width: 70px; height: 76px; object-fit: contain; display: block; }
-    .school-seal span { display: block; margin-bottom: -2px; font-family: Georgia, serif; font-size: 23px; font-weight: 800; letter-spacing: -2px; }
-    .school-seal small { color: var(--result-teal); font-size: 8px; font-weight: 800; letter-spacing: 1.4px; }
-    .school-eyebrow { margin: 0 0 5px; color: var(--result-teal); font-size: 10px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; }
-    .school-identity h1 { margin: 0; color: var(--result-deep); font-size: clamp(1.55rem, 2.6vw, 2.25rem); line-height: 1.08; letter-spacing: -.7px; }
-    .school-founder { margin: 6px 0 0; color: var(--result-navy); font-size: .82rem; font-weight: 700; }
-    .school-address { margin: 3px 0 0; color: var(--result-muted); font-size: .73rem; line-height: 1.4; }
+    .result-notice { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #d6b665; color: #665019; background: #fff9e8; font-size: .8rem; line-height: 1.45; }
+    .empty-result { padding: 28px 16px; border: 1px solid #ccd4da; text-align: center; }
+    .empty-result h3 { margin: 0 0 10px; font-family: Arial, sans-serif; font-size: 1.1rem; }
 
-    .report-card {
-        padding: 16px 17px;
-        border-radius: 12px;
-        color: #fff;
-        background: linear-gradient(135deg, var(--result-deep), var(--result-navy));
-        box-shadow: 0 9px 18px rgba(18, 60, 90, .18);
-        text-align: right;
-    }
-    .report-card .report-label { display: block; color: #bcd8df; font-size: 9px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
-    .report-card strong { display: block; margin: 6px 0 8px; color: #fff; font-family: Georgia, serif; font-size: 1.25rem; line-height: 1.15; }
-    .report-card .report-session { display: inline-block; padding: 5px 9px; border: 1px solid rgba(255,255,255,.22); border-radius: 99px; color: #e8f7f3; font-size: .7rem; font-weight: 700; }
-
-    .result-summary {
-        display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 9px;
-        margin: 17px 0 21px;
-    }
-    .result-summary-card { min-height: 58px; padding: 10px 12px; border: 1px solid var(--result-line); border-radius: 10px; background: #fbfdfe; }
-    .result-summary-card.accent { border-color: #bce2dc; background: var(--result-teal-soft); }
-    .result-summary-card .summary-label { display: block; color: var(--result-muted); font-size: 9px; font-weight: 800; letter-spacing: .75px; text-transform: uppercase; }
-    .result-summary-card .summary-value { display: block; margin-top: 4px; overflow: hidden; color: var(--result-deep); font-size: 1rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-    .result-summary-card.accent .summary-value { color: var(--result-teal); }
-    .print-meta { display: none; }
-    .print-masthead { display: none; }
-
-    .result-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
-    .result-section-heading h2 { margin: 0; color: var(--result-deep); font-size: 1rem; letter-spacing: -.1px; }
-    .result-section-heading p { margin: 3px 0 0; color: var(--result-muted); font-size: .72rem; }
-    .result-count { padding: 6px 10px; border-radius: 99px; color: var(--result-navy); background: #f0f5f7; font-size: .68rem; font-weight: 800; white-space: nowrap; }
-
-    .result-notice { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #f2d89c; border-radius: 9px; color: #775514; background: #fff9e8; font-size: .76rem; line-height: 1.45; }
-    .result-notice strong { color: #5b430e; }
-    .result-notice .badge { margin-left: 4px; color: #fff; background: #6c757d; }
-    .empty-result { padding: 36px 20px; border: 1px solid var(--result-line); border-radius: 12px; color: var(--result-muted); background: #fbfdfe; text-align: center; }
-    .empty-result h3 { margin: 0 0 6px; color: var(--result-navy); font-size: 1.1rem; }
-
-    .result-table-card { overflow: hidden; border: 1px solid #cbd9e0; border-radius: 11px; background: #fff; }
+    .result-table-card { border: 0; background: #fff; }
     .result-table-wrap { overflow-x: auto; }
-    .result-table-card table { width: 100%; min-width: 1080px; margin: 0; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
-    /* Roll | name | one column per subject | Total GPA Grade Result F S A+ Place */
-    .result-table-card col.rank-col { width: 3.6%; }
-    .result-table-card col.student-col-width { width: 15%; }
-    .result-table-card col.subject-col { width: 5.9%; }
-    .result-table-card col.total-col { width: 5.4%; }
-    .result-table-card col.gpa-col { width: 4.8%; }
-    .result-table-card col.grade-col { width: 5%; }
-    .result-table-card col.status-col { width: 6.4%; }
-    .result-table-card col.count-col { width: 3.4%; }
-    .result-table-card col.place-col { width: 5.5%; }
-    .result-table-card th { padding: 7px 4px; border-right: 1px solid rgba(255,255,255,.18); border-bottom: 1px solid rgba(255,255,255,.18); color: #fff; background: var(--result-navy); font-size: .64rem; line-height: 1.15; text-align: center; vertical-align: middle; position: sticky; top: 0; z-index: 10; }
-    .result-table-card th.group-heading { color: #d7e9ef; background: var(--result-deep); font-size: .62rem; letter-spacing: .7px; text-transform: uppercase; }
-    .result-table-card th small { color: #bad2da; font-size: .6rem; font-weight: 600; }
-    .result-table-card th:first-child { border-top-left-radius: 10px; }
-    .result-table-card th:last-child { border-right: 0; border-top-right-radius: 10px; }
-    .result-table-card td { padding: 6px 3px; border-right: 1px solid var(--result-line); border-bottom: 1px solid var(--result-line); color: var(--result-ink); background: #fff; font-size: .66rem; text-align: center; vertical-align: middle; }
-    .result-table-card tbody tr:nth-child(even) td { background: #f7fafb; }
-    .result-table-card tbody tr:last-child td { border-bottom: 0; }
-    .result-table-card td:last-child { border-right: 0; }
-    .result-table-card td.student-col { min-width: 0; color: var(--result-deep); font-size: .72rem; font-weight: 700; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .result-table-card td.failed-row { background: #fff8f8; }
-    .roll-badge { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; color: var(--result-navy); background: #e8f0f4; font-size: .7rem; font-weight: 900; }
-    /* Flat summary columns: Total, GPA, Grade, Result, F, S, A+, Place. */
-    .result-table-card td.total-col, .result-table-card td.gpa-col { color: var(--result-deep); font-weight: 800; }
-    .result-table-card td.count-col { color: var(--result-muted); font-weight: 700; }
-    .result-table-card td.place-col { color: var(--result-teal); font-weight: 900; }
-    .result-table-card th.count-head { letter-spacing: 0; }
-    .result-table-card td.status-col .status-badge { padding: 2px 5px; font-size: .52rem; white-space: nowrap; }
-    .grade-label { font-size: .78rem; font-weight: 900; }
-    .mark-cell { position: relative; }
-    .mark-row { display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
-    .mark-number { color: var(--result-deep); font-size: .75rem; font-weight: 800; }
-    .grade-badge { display: inline-block; min-width: 23px; padding: 3px 4px; border-radius: 4px; font-size: .57rem; font-weight: 900; line-height: 1; }
-    .grade-a-plus { color: #0b7661; background: #dff5ee; }
-    .grade-a { color: #236e9a; background: #e3f0f8; }
-    .grade-a-minus { color: #86651a; background: #fff3ce; }
-    .grade-b { color: #8a5b13; background: #ffecd5; }
-    .grade-c { color: #9c4c2d; background: #fbe6dc; }
-    .grade-f { color: #a33142; background: #fde0e5; }
-    .grade-muted { color: #687681; background: #edf1f3; }
-    .status-badge { display: inline-block; margin-top: 3px; padding: 3px 6px; border-radius: 99px; font-size: .56rem; font-weight: 800; }
-    .status-pass { color: #087f66; background: #dff5ee; }
-    .status-fail { color: #a33142; background: #fde0e5; }
-    .status-muted { color: #687681; background: #edf1f3; }
-    .absent-mark { color: #a33142 !important; background: #fff1f1 !important; font-weight: 800; }
-    .failed-mark { color: #b02a37 !important; background: #fff1f1 !important; font-weight: 700; }
-    .not-applicable-mark { color: transparent !important; background: #fff !important; }
-    .not-applicable-mark .mark-number { color: transparent !important; }
-    .fail-star { display: block; margin-top: 2px; color: var(--result-danger); font-size: .65rem; font-weight: 900; }
+    .result-table-card table { width: 100%; min-width: 1080px; margin: 0; border-collapse: collapse; border-spacing: 0; table-layout: fixed; color: #000; }
+    /* Ten-paper proportions follow the supplied register. Other subject counts
+       share the same proportions without changing any examination data. */
+    .result-table-card col.rank-col { width: 3.5%; }
+    .result-table-card col.student-col-width { width: 18.5%; }
+    .result-table-card col.subject-col { width: 5.8%; }
+    .result-table-card col.total-col { width: 4%; }
+    .result-table-card col.gpa-col { width: 3.8%; }
+    .result-table-card col.grade-col { width: 4.2%; }
+    .result-table-card col.count-col { width: 2.5%; }
+    .result-table-card col.place-col { width: 4.5%; }
+    .result-table-card th { padding: 5px 3px; border: 1px solid #000; color: #000; background: #fff; font-size: 9.5pt; font-weight: 700; line-height: 1.15; text-align: center; vertical-align: middle; }
+    .result-table-card th small { display: block; margin-top: 2px; color: #000; font-size: 9pt; font-weight: 700; }
+    .result-table-card td { height: 27px; padding: 3px 4px; border: 1px solid #000; color: #000; background: #fff; font-size: 9.5pt; font-weight: 400; line-height: 1.2; text-align: center; vertical-align: middle; }
+    .result-table-card td.student-col { text-align: left; overflow-wrap: anywhere; white-space: normal; }
+    .result-table-card td.student-col .student-name { display: block; }
+    .result-table-card td.mark-cell { padding-left: 5px; text-align: left; }
+    .mark-row { display: inline; white-space: nowrap; }
+    .mark-number, .grade-badge { color: #000; background: transparent; font-size: inherit; font-weight: inherit; }
+    .grade-badge { padding: 0; border: 0; border-radius: 0; }
+    .failed-mark .mark-row, .absent-mark.subject-failed .mark-row { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+    .result-table-card td.grade-col { font-weight: 700; }
+    .result-table-card td.place-col { padding-right: 6px; text-align: right; }
+    .result-table-card thead { display: table-header-group; }
+    .result-table-card tr { break-inside: avoid; page-break-inside: avoid; }
+    /* With extra papers, keep the marks readable and let the grade wrap rather
+       than clipping a mark or forcing a wider-than-paper table. */
+    .result-table-card.many-subjects .mark-row { white-space: normal; }
+    .result-table-card.many-subjects th { overflow-wrap: anywhere; }
 
-    .subject-codes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 10px; color: var(--result-muted); font-size: .68rem; line-height: 1.55; }
-    .subject-codes strong { color: var(--result-navy); }
-    .subject-codes .code { padding: 2px 5px; border: 1px solid #cde1e1; border-radius: 4px; color: var(--result-teal); background: var(--result-teal-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .64rem; font-weight: 800; }
-    .subject-codes .legend-item { margin-right: 5px; }
+    .subject-codes { display: flex; flex-wrap: wrap; gap: 4px 7px; margin-top: 12px; color: #596570; font-size: .75rem; line-height: 1.5; }
+    .subject-codes strong, .subject-codes .code { color: #123c5a; }
+    .subject-codes .code { font-weight: 700; }
+    .result-help { font-size: .75rem; line-height: 1.5; }
+    .result-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 9px; border-top: 1px solid #d5dadd; color: #596570; font-size: .68rem; }
 
-    .result-bottom { display: grid; grid-template-columns: 1.2fr .8fr; gap: 15px; margin-top: 15px; }
-    .grading-box, .verification-box { padding: 12px 14px; border: 1px solid var(--result-line); border-radius: 10px; background: #fbfdfe; }
-    .box-title { margin: 0 0 8px; color: var(--result-deep); font-size: .66rem; font-weight: 900; letter-spacing: .85px; text-transform: uppercase; }
-    .grading-list { display: flex; flex-wrap: wrap; gap: 7px 11px; }
-    .grading-item { display: inline-flex; align-items: center; gap: 5px; color: var(--result-muted); font-size: .63rem; }
-    .grading-item .grade-badge { min-width: 24px; text-align: center; }
-    .verification-box { display: flex; flex-direction: column; justify-content: space-between; }
-    .verification-box p { margin: 0; color: var(--result-muted); font-size: .64rem; line-height: 1.45; }
-    .signature-line { width: 145px; margin: 21px 0 0 auto; padding-top: 5px; border-top: 1px solid #77858e; color: var(--result-navy); font-size: .63rem; text-align: center; }
-    .result-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 9px; border-top: 1px solid var(--result-line); color: var(--result-muted); font-size: .6rem; }
-    .result-footer strong { color: var(--result-navy); }
-
-    @media (max-width: 1050px) {
-        .result-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    }
     @media (max-width: 768px) {
         .result-toolbar { align-items: stretch; flex-direction: column; gap: 6px; }
-        /* Keep the sticky bar short on phones: one swipeable row of actions. */
         .result-toolbar .toolbar-title { display: none; }
-        .result-toolbar .toolbar-actions {
-            flex-wrap: nowrap;
-            gap: 6px;
-            width: 100%;
-            overflow-x: auto;
-            padding-bottom: 2px;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
-        }
-        .result-toolbar .btn { flex: 0 0 auto; border-radius: 8px; padding: 7px 10px; font-size: .82rem; white-space: nowrap; }
-        .result-paper { padding: 19px 14px 15px; border-radius: 12px; }
-        .result-header { grid-template-columns: 1fr; gap: 14px; }
-        .report-card { text-align: left; }
-        .result-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .result-bottom { grid-template-columns: 1fr; }
-        .result-footer { align-items: flex-start; flex-direction: column; }
+        .result-toolbar .toolbar-actions { flex-wrap: nowrap; gap: 6px; width: 100%; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+        .result-toolbar .btn { flex: 0 0 auto; padding: 7px 10px; font-size: .82rem; white-space: nowrap; }
+        .result-paper { padding: 14px 10px; }
+        .print-masthead h1 { font-size: 15pt; }
+        .print-masthead .masthead-line { font-size: 8pt; }
+        .print-meta { font-size: 8pt; }
+        .result-footer { flex-direction: column; }
     }
 
-    /* Print sheet: A4 landscape, sized to be read on paper. Type is set in points
-       (1pt = 1.333px) so the register looks the same in any browser's print
-       preview and in a saved PDF, instead of shrinking with the screen styles. */
     @page { size: A4 landscape; margin: 6mm 6mm 8mm; }
     @media print {
         html, body { background: #fff !important; color: #000 !important; }
         .result-page { max-width: none; color: #000 !important; }
         .result-toolbar, .d-print-none { display: none !important; }
-        .result-paper { margin: 0; padding: 0; border: 0; border-radius: 0; background: #fff !important; box-shadow: none !important; }
-        .result-paper::before { display: none; }
-
-        /* Masthead: the compact, centred sheet header used on paper. */
+        .result-paper { margin: 0; padding: 0; border: 0; background: #fff !important; box-shadow: none !important; }
         .print-masthead { display: block !important; margin: 0 0 7px; color: #000 !important; text-align: center; break-inside: avoid; }
-        .print-masthead h1 { margin: 0; color: #000 !important; font-family: 'Inter', Arial, sans-serif; font-size: 15pt; font-weight: 700; line-height: 1.15; letter-spacing: 0; }
-        .print-masthead .masthead-line { margin: 2px 0 0; color: #000 !important; font-size: 7.5pt; line-height: 1.3; }
-        .print-masthead .masthead-exam { margin: 5px 0 0; color: #000 !important; font-size: 10pt; font-weight: 700; line-height: 1.2; }
-        .print-masthead .masthead-title { margin: 1px 0 0; color: #000 !important; font-size: 8pt; font-weight: 700; letter-spacing: .4px; }
-        /* The on-screen school header + exam card are replaced by the masthead. */
-        .result-header { display: none !important; }
+        .print-masthead h1 { margin: 0; color: #000 !important; font-family: Arial, Helvetica, sans-serif; font-size: 18pt; font-weight: 700; line-height: 1.15; letter-spacing: 0; }
+        .print-masthead .masthead-line { margin: 3px 0 0; color: #000 !important; font-size: 9.5pt; line-height: 1.2; }
+        .print-masthead .masthead-exam { margin: 2px 0 0; color: #000 !important; font-size: 12pt; font-weight: 700; line-height: 1.2; }
+        .print-masthead .masthead-title { margin: 6px 0 0; color: #000 !important; font-size: 10pt; font-weight: 700; }
 
-        /* The screen summary cards become one compact metadata strip. */
-        .result-summary { display: none !important; }
-        .print-meta { display: block !important; margin: 5px 0 9px; border: 0 !important; background: #fff !important; color: #000 !important; text-align: center; font-size: 7.5pt; line-height: 1.35; break-inside: avoid; }
-        .print-meta span { display: inline; padding: 0; border: 0 !important; color: #000 !important; font-size: 7.5pt; white-space: nowrap; }
-        .print-meta span + span::before { content: "\2022"; margin: 0 7px; }
-        .print-meta strong { display: inline; margin: 0 3px 0 0; color: #000 !important; font-size: 7.5pt; letter-spacing: 0; text-transform: none; }
-
-        .result-section-heading { margin-bottom: 6px; }
-        .result-section-heading h2, .result-section-heading p, .result-count { color: #000 !important; }
-        .result-section-heading h2 { font-size: 11.5pt; }
-        .result-section-heading p { margin-top: 1px; font-size: 8pt; }
-        .result-count { padding: 3px 6px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; font-size: 8pt; }
-        .result-notice { margin-bottom: 6px; padding: 5px 7px; border-color: #000 !important; border-radius: 0; color: #000 !important; background: #fff !important; font-size: 8pt; }
-        .result-notice strong, .result-notice .badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
-
-        /* Register table — the widest part of the sheet. */
-        .result-table-card { overflow: visible; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; }
+        .result-table-card { overflow: visible; border: 0; background: #fff !important; }
         .result-table-wrap { overflow: visible; }
-        .result-table-card table { width: 100%; min-width: 0; border-collapse: collapse; line-height: 1.2; }
-        /* Fixed layout: the browser scales these when a class has many subjects,
-           so the name column keeps its room and the mark columns share the rest.
-           The percentages below add up to ~100 for a ten-subject class. */
+        .result-table-card table { width: 100%; min-width: 0; border-collapse: collapse; line-height: 1.15; }
         .result-table-card col.rank-col { width: 3.5%; }
-        .result-table-card col.student-col-width { width: 17.5%; }
-        .result-table-card col.subject-col { width: 5.7%; }
-        .result-table-card col.total-col { width: 3.4%; }
-        .result-table-card col.gpa-col { width: 3%; }
-        .result-table-card col.grade-col { width: 3.6%; }
-        .result-table-card col.status-col { width: 4.4%; }
-        .result-table-card col.count-col { width: 1.6%; }
-        .result-table-card col.place-col { width: 3.3%; }
-        .result-table-card th, .result-table-card th.group-heading { padding: 4px 3px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 9.5pt; line-height: 1.2; }
-        .result-table-card th small { color: #000 !important; font-size: 7pt; font-weight: 600; }
-        .result-table-card td { height: auto; padding: 3px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 9.5pt; line-height: 1.2; }
-        .result-table-card td.student-col { min-width: 0; max-width: 0; color: #000 !important; font-size: 9.5pt; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .result-table-card tbody tr { break-inside: avoid; }
-        .result-table-card tbody tr:nth-child(even) td, .result-table-card td.failed-mark, .result-table-card td.absent-mark, .result-table-card td.not-applicable-mark { color: #000 !important; background: #fff !important; }
-
-        /* Plain roll numbers instead of individual rounded boxes. */
-        .roll-badge { display: inline; width: auto; height: auto; padding: 0; border: 0 !important; border-radius: 0; color: #000 !important; background: transparent !important; font-size: 9.5pt; }
-        /* Flat summary columns: Total, GPA, Grade, Result, F, S, A+, Place. */
-        .result-table-card td.total-col, .result-table-card td.gpa-col,
-        .result-table-card td.grade-col, .result-table-card td.status-col,
-        .result-table-card td.count-col, .result-table-card td.place-col,
-        .mark-number, .grade-label { color: #000 !important; }
-        .result-table-card td.total-col, .result-table-card td.gpa-col { font-size: 9.5pt; font-weight: 700; }
-        .result-table-card td.place-col { font-size: 9.5pt; font-weight: 700; }
-        .result-table-card td.count-col { font-size: 9pt; }
-        .mark-number { font-size: 9.5pt; }
-        .grade-label { font-size: 9.5pt; }
-        .result-table-card th.count-head { font-size: 8.5pt; }
-        .mark-row { gap: 2px; }
-        .grade-badge { min-width: 22px; padding: 1px 2px; border-radius: 2px; color: #000 !important; background: #fff !important; border: 1px solid #000 !important; font-size: 7pt; }
-        .status-badge { display: inline; margin-top: 0; padding: 0; color: #000 !important; background: transparent !important; border: 0 !important; font-size: 7pt; }
-        .status-muted { display: none !important; }
-        .fail-star { color: #000 !important; font-size: 7pt; }
-
-        .subject-codes { gap: 3px 5px; margin-top: 6px; color: #000 !important; font-size: 7.5pt; }
-        .subject-codes strong, .subject-codes .code { color: #000 !important; background: #fff !important; border-color: #000 !important; }
-        .subject-codes .code { padding: 1px 3px; font-size: 6.5pt; }
-        .result-bottom { gap: 8px; margin-top: 8px; }
-        .grading-box, .verification-box { padding: 5px 7px; border: 1px solid #000 !important; border-radius: 0; background: #fff !important; break-inside: avoid; }
-        .box-title { margin-bottom: 3px; color: #000 !important; font-size: 7.5pt; }
-        .grading-list { gap: 4px 7px; }
-        .grading-item, .verification-box p, .signature-line { color: #000 !important; font-size: 7.5pt; }
-        .signature-line { width: 120px; margin-top: 8px; padding-top: 3px; border-color: #000 !important; }
-        .result-footer { margin-top: 6px; padding-top: 4px; border-color: #000 !important; color: #000 !important; font-size: 7.5pt; break-inside: avoid; }
-        .result-footer strong { color: #000 !important; }
-        .result-notice { break-inside: avoid; }
+        .result-table-card col.student-col-width { width: 18.5%; }
+        .result-table-card col.subject-col { width: 5.8%; }
+        .result-table-card col.total-col { width: 4%; }
+        .result-table-card col.gpa-col { width: 3.8%; }
+        .result-table-card col.grade-col { width: 4.2%; }
+        .result-table-card col.count-col { width: 2.5%; }
+        .result-table-card col.place-col { width: 4.5%; }
+        .result-table-card th { padding: 5px 2px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 9.5pt; font-weight: 700; line-height: 1.15; }
+        .result-table-card th small { color: #000 !important; font-size: 9.5pt; font-weight: 700; }
+        .result-table-card td { height: 7mm; padding: 2px 3px; border: 1px solid #000 !important; color: #000 !important; background: #fff !important; font-size: 9.5pt; font-weight: 400; line-height: 1.15; }
+        .result-table-card td.student-col { color: #000 !important; font-size: 9.5pt; font-weight: 400; text-align: left; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+        .result-table-card td.mark-cell { padding-left: 5px; text-align: left; }
+        .result-table-card td.grade-col { font-weight: 700; }
+        .result-table-card td.place-col { padding-right: 6px; text-align: right; }
+        .mark-number { color: #000 !important; font-size: 9.5pt; }
+        .grade-badge { color: #000 !important; background: transparent !important; border: 0 !important; font-size: 9.5pt; }
+        .failed-mark .mark-row, .absent-mark.subject-failed .mark-row { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
         .result-table-card thead { display: table-header-group; }
+        .result-table-card tbody tr { break-inside: avoid; page-break-inside: avoid; }
+        .result-notice { border-color: #000; color: #000; background: #fff; font-size: 9.5pt; break-inside: avoid; }
     }
 {% endblock %}
 
@@ -339,6 +151,7 @@
             {% if can_result_analysis %}<a href="{% url 'result_analysis_subject_fail' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-exclamation-triangle me-1"></i> Subject Fail List</a>{% endif %}
             <a href="{{ subject_assignments_url }}" class="btn btn-outline-navy btn-sm"><i class="bi bi-journal-check me-1"></i> Subject Assignments</a>
             {% if perms.students.add_exammark and exam.is_published %}<a href="{% url 'select_marks_subject' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm correction-entry" target="_blank" rel="noopener">Correct marks (choose subject)</a>{% endif %}
+            {% if not is_print_view %}<button type="button" onclick="window.print()" class="btn btn-navy btn-sm"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>{% endif %}
             {% include 'students/_print_all.html' %}
             <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back</a>
         </div>
@@ -346,8 +159,7 @@
 
     {% if show_group_picker %}
     <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
-    {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
-
+        {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
         <div>
             <label class="form-label fw-semibold mb-1">Group</label>
             <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -363,47 +175,18 @@
     {% endif %}
 
     <div class="result-paper">
-        {# Print-only masthead: the centred sheet header that goes on paper. #}
         <header class="print-masthead">
             <h1>Principal Kazi Faruky School</h1>
-            <p class="masthead-line">Founder: Professor Kazi Faruky Kollan Trust, West Rakhalia, Raipur, Lakshmipur-3700 <span aria-hidden="true">&nbsp;|&nbsp;</span> School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} <span aria-hidden="true">&nbsp;|&nbsp;</span> College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
-            <p class="masthead-exam">{{ exam.name }} <span aria-hidden="true">&nbsp;|&nbsp;</span> Class: {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</p>
+            <p class="masthead-line">Founder: Principal Kazi Faruky Welfare Trust, {{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} <span aria-hidden="true">|</span> School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} <span aria-hidden="true">|</span> College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
+            <p class="masthead-exam">{{ exam.name }} <span aria-hidden="true">|</span> Class: {{ exam.admission_class|class_label }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} <span aria-hidden="true">|</span> {{ result_group_label }}{% endif %}</p>
             <p class="masthead-title">Result Sheet</p>
         </header>
 
-        <header class="result-header">
-            <div class="school-identity">
-                <div class="school-seal"><img src="{% static 'students/img/school_logo.png' %}" alt="School emblem"></div>
-                <div>
-                    <p class="school-eyebrow">Academic performance report</p>
-                    <h1>Principal Kazi Faruky School</h1>
-                    <p class="school-founder">Founder: Professor Kazi Faruky Kollan Trust</p>
-                    <p class="school-address">West Rakhalia, Raipur, Lakshmipur-3700 &nbsp; • &nbsp; School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} &nbsp; • &nbsp; College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
-                </div>
-            </div>
-            <div class="report-card">
-                <span class="report-label">Student result sheet</span>
-                <strong>{{ exam.get_exam_type_display }} Results</strong>
-                <span class="report-session">{{ exam.name }} &nbsp;·&nbsp; Session {{ exam.session }}</span>
-            </div>
-        </header>
-
-        <section class="result-summary" aria-label="Exam summary">
-            <div class="result-summary-card"><span class="summary-label">Session</span><span class="summary-value">{{ exam.session }}</span></div>
-            <div class="result-summary-card"><span class="summary-label">Class</span><span class="summary-value">{{ exam.admission_class }}</span></div>
-            <div class="result-summary-card"><span class="summary-label">Section / Group</span><span class="summary-value">{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if result_group_label %} · {{ result_group_label }}{% endif %}</span></div>
-            <div class="result-summary-card"><span class="summary-label">Students</span><span class="summary-value">{{ total_results }}</span></div>
-            <div class="result-summary-card"><span class="summary-label">Subjects</span><span class="summary-value">{{ columns|length }}</span></div>
-            <div class="result-summary-card accent"><span class="summary-label">Pass rate</span><span class="summary-value" id="passRate">{{ pass_rate }}%</span></div>
-        </section>
-
-        <div class="print-meta" aria-label="Printable exam details">
+        <div class="print-meta d-print-none" aria-label="Exam summary">
             <span><strong>Session</strong>{{ exam.session }}</span>
-            <span><strong>Class</strong>{{ exam.admission_class }}</span>
-            <span><strong>Section / Group</strong>{% if exam.section %}{{ exam.section }}{% else %}All Sections{% endif %}{% if result_group_label %} · {{ result_group_label }}{% endif %}</span>
             <span><strong>Students</strong>{{ total_results }}</span>
             <span><strong>Subjects</strong>{{ columns|length }}</span>
-            <span><strong>Pass rate</strong><span id="printPassRate">{{ pass_rate }}%</span></span>
+            <span><strong>Pass rate</strong><span id="passRate">{{ pass_rate }}%</span></span>
         </div>
 
         {% if no_subjects %}
@@ -423,14 +206,10 @@
                 <div class="small mt-1">
                     A subject only joins the result once the first mark is entered. If this subject
                     <em>was</em> examined, enter its marks under
-                    {% if perms.students.add_exammark %}
-                    <a href="{% url 'select_marks_subject' exam.pk %}">Enter Marks</a>
-                    {% else %}
-                    Enter Marks (ask the <strong>Exam</strong> department &mdash; you do not have permission)
-                    {% endif %}
+                    {% if perms.students.add_exammark %}<a href="{% url 'select_marks_subject' exam.pk %}">Enter Marks</a>
+                    {% else %}Enter Marks (ask the <strong>Exam</strong> department &mdash; you do not have permission){% endif %}
                     and it will appear here. If it was assigned to the class only after this exam was
-                    published, nothing needs doing &mdash; leaving it out is what keeps this published
-                    result unchanged.
+                    published, nothing needs doing &mdash; leaving it out keeps this published result unchanged.
                 </div>
             </div>
         </div>
@@ -441,17 +220,12 @@
             <i class="bi bi-exclamation-triangle-fill"></i>
             <div>
                 <strong>Some students have no mark</strong> in:
-                {% for row in missing_mark_subjects %}
-                    <span class="badge bg-warning text-dark">{{ row.subject }} &mdash; {{ row.count }} student(s)</span>
-                {% endfor %}
+                {% for row in missing_mark_subjects %}<span class="badge bg-warning text-dark">{{ row.subject }} &mdash; {{ row.count }} student(s)</span>{% endfor %}
                 <div class="small mt-1">
                     This exam is <strong>published</strong>, and a student with no mark in an examined subject is
                     graded F, which fails their whole result. Enter the missing marks under
-                    {% if perms.students.add_exammark %}
-                    <a href="{% url 'select_marks_subject' exam.pk %}">Enter Marks</a>
-                    {% else %}
-                    Enter Marks (ask the <strong>Exam</strong> department &mdash; you do not have permission)
-                    {% endif %}
+                    {% if perms.students.add_exammark %}<a href="{% url 'select_marks_subject' exam.pk %}">Enter Marks</a>
+                    {% else %}Enter Marks (ask the <strong>Exam</strong> department &mdash; you do not have permission){% endif %}
                     before treating this register as final.
                 </div>
             </div>
@@ -461,25 +235,17 @@
         {% if ignored_subjects %}
         <div class="result-notice">
             <i class="bi bi-exclamation-triangle-fill"></i>
-            <div>Marks exist for subject(s) that are not assigned to any student in this exam (not assigned to its class/group), so they are <strong>not counted here</strong>:
+            <div>Marks exist for subject(s) not assigned to its class/group (no student in this exam is assigned the subject), so they are <strong>not counted here</strong>:
                 {% for subject in ignored_subjects %}<span class="badge bg-secondary">{{ subject.name }}</span>{% endfor %}
                 &mdash; fix the admission subject assignments or correct the marks under Enter Marks.
             </div>
         </div>
         {% endif %}
 
-        <section aria-labelledby="register-title">
-            <div class="result-section-heading">
-                <div>
-                    <h2 id="register-title">Class Performance Register</h2>
-                    <p>Subject-wise marks, letter grades and overall standing · Roll order</p>
-                </div>
-                <span class="result-count">{{ total_results }} students · {{ columns|length }} subjects</span>
-            </div>
-
-            <div class="result-table-card" {% if perms.students.add_exammark and exam.is_published %}data-enter-marks-base="{{ enter_marks_base_url }}"{% endif %}>
+        <section aria-label="Class result sheet">
+            <div class="result-table-card {% if columns|length > 10 %}many-subjects{% endif %}" {% if perms.students.add_exammark and exam.is_published %}data-enter-marks-base="{{ enter_marks_base_url }}"{% endif %}>
                 <div class="result-table-wrap">
-                    <table>
+                    <table aria-label="Subject-wise marks and class results">
                         <colgroup>
                             <col class="rank-col">
                             <col class="student-col-width">
@@ -487,7 +253,6 @@
                             <col class="total-col">
                             <col class="gpa-col">
                             <col class="grade-col">
-                            <col class="status-col">
                             <col class="count-col">
                             <col class="count-col">
                             <col class="count-col">
@@ -495,70 +260,49 @@
                         </colgroup>
                         <thead>
                             <tr>
-                                <th rowspan="2">Roll</th>
-                                <th rowspan="2" class="student-col">Student name</th>
-                                <th colspan="{{ columns|length }}" class="group-heading">Subject-wise performance · full marks 100</th>
-                                <th rowspan="2">Total</th>
-                                <th rowspan="2">GPA</th>
-                                <th rowspan="2">Grade</th>
-                                <th rowspan="2">Result</th>
-                                <th rowspan="2" class="count-head" title="Subjects failed">F</th>
-                                <th rowspan="2" class="count-head" title="Subjects passed">S</th>
-                                <th rowspan="2" class="count-head" title="Subjects graded A+">A+</th>
-                                <th rowspan="2">Place</th>
-                            </tr>
-                            <tr>
+                                <th scope="col">Roll</th>
+                                <th scope="col" class="student-col">Name of Student</th>
                                 {% for column in columns %}
-                                <th>{{ column.subject.code }}<br><small>({{ column.full_marks }}{% if column.parts_summary %} &middot; {{ column.parts_summary }}{% endif %})</small></th>
+                                <th scope="col" title="{{ column.subject.name }}{% if column.parts_summary %} &middot; {{ column.parts_summary }}{% endif %}">{{ column.subject.code }}<small>({{ column.full_marks|default_if_none:"—" }})</small></th>
                                 {% endfor %}
+                                <th scope="col">Total</th>
+                                <th scope="col">GPA</th>
+                                <th scope="col">Grade</th>
+                                <th scope="col" class="count-head" title="Number of subjects failed">F</th>
+                                <th scope="col" class="count-head" title="Number of subjects passed">S</th>
+                                <th scope="col" class="count-head" title="Number of subjects graded A+">A+</th>
+                                <th scope="col">Place</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for r in results %}
                             <tr data-result-status="{{ r.status }}">
-                                <td><span class="roll-badge">{{ r.student.roll_no|default_if_none:"—" }}</span></td>
-                                <td class="student-col">{{ r.student.name }}</td>
+                                <td>{{ r.student.roll_no|default_if_none:"—" }}</td>
+                                <td class="student-col"><span class="student-name">{{ r.student.name }}</span></td>
                                 {% for sr in r.subject_results %}
                                 {% if sr.religion_unassigned or sr.subject_unassigned %}
-                                <td class="mark-cell not-applicable-mark" title="This subject was not selected for this student at admission and is not counted">
-                                    <div class="mark-row"><span class="mark-number">&nbsp;</span></div>
-                                </td>
+                                <td class="mark-cell not-applicable-mark" title="This subject was not selected for this student at admission and is not counted">&nbsp;</td>
                                 {% else %}
-                                <td class="mark-cell {% if sr.absent %}absent-mark{% elif not sr.passed %}failed-mark{% endif %}"
+                                <td class="mark-cell {% if sr.absent %}absent-mark{% endif %}{% if not sr.absent and not sr.passed %} subject-failed failed-mark{% elif sr.absent and absent_subject_fails %} subject-failed{% endif %}"
                                     {% if perms.students.add_exammark and exam.is_published %}
                                     data-subject-pk="{% if sr.paper %}{{ sr.paper.pk }}{% else %}{{ sr.subject.pk }}{% endif %}"
                                     data-group="{{ selected_group }}"
                                     {% endif %}
                                     title="{% if sr.absent %}AB - no mark entered - {% if absent_subject_fails %}counted as F (0 / {{ sr.full }}){% else %}not counted (EXAM_ABSENT_SUBJECT_FAILS off){% endif %}{% else %}Pass mark {{ sr.pass_marks }}{% if sr.paper %} &middot; {{ sr.paper.name }}{% endif %}{% if sr.parts %} &middot; {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% if sr.failed_parts %} &middot; failed: {{ sr.failed_parts|join:', ' }}{% endif %}{% if not sr.total_passed %} &middot; below pass mark{% endif %}{% endif %}{% if perms.students.add_exammark %} &middot; Ctrl/Cmd+Click opens this subject's marks in a new tab{% endif %}">
-                                    <div class="mark-row">
-                                        {% if sr.absent %}
-                                        <span class="mark-number">AB</span>
-                                        <span class="grade-badge {% if sr.grade == 'F' %}grade-f{% else %}grade-muted{% endif %}">{{ sr.grade }}</span>
-                                        {% else %}
-                                        <span class="mark-number">{{ sr.obtained|floatformat:"-2" }}</span>
-                                        <span class="grade-badge {% if sr.grade == 'A+' %}grade-a-plus{% elif sr.grade == 'A' %}grade-a{% elif sr.grade == 'A-' %}grade-a-minus{% elif sr.grade == 'B' %}grade-b{% elif sr.grade == 'C' %}grade-c{% elif sr.grade == 'F' %}grade-f{% else %}grade-muted{% endif %}">{{ sr.grade|default:"—" }}</span>
-                                        {% endif %}
-                                    </div>
-                                    {% if sr.absent %}<span class="fail-star">AB</span>{% elif not sr.passed %}<span class="fail-star">*</span>{% endif %}
+                                    <span class="mark-row">{% if sr.absent %}<span class="mark-number">AB</span>{% else %}<span class="mark-number">{{ sr.obtained|floatformat:"-2" }}</span>{% endif %} (<span class="grade-badge {% if sr.grade == 'F' %}grade-f{% elif not sr.passed or sr.absent %}grade-muted{% endif %}">{{ sr.grade|default:"—" }}</span>)</span>
                                 </td>
                                 {% endif %}
                                 {% endfor %}
                                 <td class="total-col">{% if r.has_marks %}{{ r.total_obtained|floatformat:"-2" }}{% else %}—{% endif %}</td>
-                                <td class="gpa-col">{{ r.gpa|default:"—" }}</td>
-                                <td class="grade-col">
-                                    {% if r.status == 'No Marks' %}—
-                                    {% else %}<span class="grade-label {% if r.grade == 'A+' %}grade-a-plus{% elif r.grade == 'A' %}grade-a{% elif r.grade == 'A-' %}grade-a-minus{% elif r.grade == 'B' %}grade-b{% elif r.grade == 'C' %}grade-c{% elif r.grade == 'F' %}grade-f{% else %}grade-muted{% endif %}">{{ r.grade|default:"—" }}</span>{% endif %}
-                                </td>
-                                <td class="status-col">
-                                    {% if r.status != 'No Marks' %}<span class="status-badge {% if r.status == 'Pass' %}status-pass{% elif r.status == 'Fail' %}status-fail{% else %}status-muted{% endif %}">{{ r.status }}</span>{% else %}—{% endif %}
-                                </td>
+                                <td class="gpa-col">{{ r.gpa|default_if_none:"—" }}</td>
+                                <td class="grade-col" title="Result: {{ r.status }}" aria-label="{{ r.grade|default:'—' }} — {{ r.status }}">{% if r.status == 'No Marks' %}—{% else %}<span class="grade-label">{{ r.grade|default:"—" }}</span>{% endif %}</td>
                                 <td class="count-col">{% if r.status == 'No Marks' %}—{% else %}{{ r.failed_subject_count }}{% endif %}</td>
                                 <td class="count-col">{% if r.status == 'No Marks' %}—{% else %}{{ r.passed_subject_count }}{% endif %}</td>
                                 <td class="count-col">{% if r.status == 'No Marks' %}—{% else %}{{ r.a_plus_count }}{% endif %}</td>
-                                <td class="place-col">{{ r.position|default:"—" }}</td>
+                                <td class="place-col">{{ r.position|ordinal }}</td>
                             </tr>
                             {% empty %}
-                            <tr><td colspan="{{ columns|length|add:10 }}" class="text-center py-4">No results yet.</td></tr>
+                            <tr><td colspan="{{ columns|length|add:9 }}" class="text-center py-4">No results yet.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -566,78 +310,48 @@
             </div>
         </section>
 
-        <div class="subject-codes">
+        <div class="subject-codes d-print-none">
             <strong>Subject codes</strong> &middot;
-            {% for column in columns %}
-                {% if forloop.last %}and {% endif %}<span class="code">{{ column.subject.code }}</span> = {{ column.subject.name }}{% if not forloop.last %}, {% endif %}
-            {% endfor %}
+            {% for column in columns %}{% if forloop.last %}and {% endif %}<span class="code">{{ column.subject.code }}</span> = {{ column.subject.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
         </div>
-
-        <div class="result-bottom">
-            <div class="grading-box">
-                <h3 class="box-title">Internal grading system</h3>
-                <div class="grading-list">
-                    <span class="grading-item"><span class="grade-badge grade-a-plus">A+</span> 80%+ · 5.00</span>
-                    <span class="grading-item"><span class="grade-badge grade-a">A</span> 70–79% · 4.00</span>
-                    <span class="grading-item"><span class="grade-badge grade-a-minus">A-</span> 60–69% · 3.50</span>
-                    <span class="grading-item"><span class="grade-badge grade-b">B</span> 50–59% · 3.00</span>
-                    <span class="grading-item"><span class="grade-badge grade-c">C</span> 40–49% · 2.00</span>
-                    <span class="grading-item"><span class="grade-badge grade-f">F</span> 00–39% · 0.00</span>
-                </div>
-            </div>
-            <div class="verification-box">
-                <div>
-                    <h3 class="box-title">Verification</h3>
-                    <p>This result sheet is generated from the school examination record. Please contact the office if any information requires correction.</p>
-                </div>
-                <div class="signature-line">Guide Teacher</div>
-            </div>
-        </div>
-
-        <p class="text-muted small mt-2 d-print-none result-help">
-            <strong>AB</strong> = Absent (no mark entered). {% if absent_subject_fails %}It is graded <strong>F</strong> and counted as 0 out of its Full Marks — overall result shows <strong>Fail</strong>.{% else %}It is left out of the total and the GPA (<strong>EXAM_ABSENT_SUBJECT_FAILS</strong> is off) — the student can still pass on the papers they sat.{% endif %}
-            * = the subject did not pass; hover a cell for the part breakdown and pass mark.
-            {% if perms.students.add_exammark %}<span class="d-print-none"><strong>Ctrl/Cmd + Click</strong> a subject cell to correct that subject's marks in a new tab — this register stays open. Plain/Shift/middle clicks and touch do not open correction. Use the visible Correct marks link if needed; marks remain locked until explicitly unlocked.</span>{% endif %}
+        <p class="result-help text-muted mt-2 d-print-none">
+            <strong>AB</strong> = Absent (no mark entered). {% if absent_subject_fails %}It is graded <strong>F</strong> and counted as 0 out of its Full Marks — overall result is <strong>Fail</strong>.{% else %}It is left out of the total and the GPA (<strong>EXAM_ABSENT_SUBJECT_FAILS</strong> is off).{% endif %}
+            Failed marks are <strong><u>bold and underlined</u></strong>, as in the paper register. Hover a cell for the part breakdown and pass mark.
+            {% if perms.students.add_exammark %}<strong>Ctrl/Cmd + Click</strong> a subject cell to correct that subject's marks in a new tab. Marks remain locked until explicitly unlocked.{% endif %}
             <strong>REL (Religion &amp; Moral Education)</strong> is one column for both religion papers: each student is graded on their own paper.
+            <strong>F / S / A+</strong> count failed / passed / A+ subjects.
         </p>
         {% endif %}
 
-        <footer class="result-footer">
+        <footer class="result-footer d-print-none">
             <span>Print date: <strong>{% now "d-M-Y · g:i a" %}</strong></span>
             <span><strong>Print user:</strong> {{ request.user.username }}</span>
             <span>Copyright © {% now "Y" %} {{ COPYRIGHT_HOLDER }} · Software by {{ DEVELOPER_NAME }}</span>
         </footer>
     </div>
 </div>
-
 {% include 'students/_pagination.html' %}
 {% endblock %}
 
 {% block extra_script %}
 <script>
-    // Add a hairline + shadow only once the action bar is actually pinned.
+    // Add a rule only once the action bar is actually pinned.
     (function () {
         var bar = document.querySelector('.result-toolbar');
         if (!bar) return;
         var anchor = bar.parentElement || bar;
         var offset = 0;
         var ticking = false;
-
-        function measure() {
-            offset = anchor.getBoundingClientRect().top + window.scrollY;
-        }
-
+        function measure() { offset = anchor.getBoundingClientRect().top + window.scrollY; }
         function sync() {
             ticking = false;
             bar.classList.toggle('is-stuck', window.scrollY >= offset);
         }
-
         function onScroll() {
             if (ticking) return;
             ticking = true;
             window.requestAnimationFrame(sync);
         }
-
         measure();
         sync();
         window.addEventListener('scroll', onScroll, { passive: true });

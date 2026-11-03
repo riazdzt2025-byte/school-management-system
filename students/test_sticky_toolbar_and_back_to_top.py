@@ -139,9 +139,10 @@ class PrintReadabilityTests(TestCase):
                 size = float(rule.split('font-size:', 1)[1].split('pt', 1)[0].strip())
                 self.assertGreaterEqual(size, self.MIN_BODY_PT)
 
-    def test_register_headers_and_school_name_are_larger_than_body_text(self):
+    def test_register_headers_are_bold_and_school_name_is_larger_than_body_text(self):
         block = self._print_block('result_sheet.html')
-        header = self._rule(block, '.result-table-card th, .result-table-card th.group-heading')
+        header = self._rule(block, '.result-table-card th')
+        self.assertIn('font-weight: 700', header)
         self.assertGreaterEqual(float(header.split('font-size:', 1)[1].split('pt', 1)[0].strip()), 9.0)
         title = self._rule(block, '.print-masthead h1')
         self.assertGreaterEqual(float(title.split('font-size:', 1)[1].split('pt', 1)[0].strip()), 14.0)
@@ -180,14 +181,14 @@ class PrintReadabilityTests(TestCase):
         widths = {}
         for column in (
             'rank-col', 'student-col-width', 'subject-col', 'total-col', 'gpa-col',
-            'grade-col', 'status-col', 'count-col', 'place-col',
+            'grade-col', 'count-col', 'place-col',
         ):
             rule = self._rule(block, '.result-table-card col.' + column)
             widths[column] = float(rule.split('width:', 1)[1].split('%', 1)[0].strip())
 
         declared = (widths['rank-col'] + widths['student-col-width']
                     + 10 * widths['subject-col'] + widths['total-col'] + widths['gpa-col']
-                    + widths['grade-col'] + widths['status-col']
+                    + widths['grade-col']
                     + 3 * widths['count-col'] + widths['place-col'])
         sheet_px = (297 - 12) * 96 / 25.4
         scale = sheet_px / declared
@@ -198,7 +199,7 @@ class PrintReadabilityTests(TestCase):
 
 class RegisterSummaryColumnTests(TestCase):
     """The register ends with flat summary columns, like the school's paper sheet:
-    Total | GPA | Grade | Result | F | S | A+ | Place."""
+    Total | GPA | Grade | F | S | A+ | Place."""
 
     def setUp(self):
         self.institution = Institution.objects.create(name='Column School', classes='9')
@@ -265,7 +266,7 @@ class RegisterSummaryColumnTests(TestCase):
         )
 
     def test_register_prints_the_flat_columns_in_the_paper_order(self):
-        """Roll | Student name | subjects... | Total GPA Grade Result F S A+ Place."""
+        """Roll | Name of Student | subjects... | Total GPA Grade F S A+ Place."""
         from html.parser import HTMLParser
 
         class HeaderCells(HTMLParser):
@@ -298,18 +299,15 @@ class RegisterSummaryColumnTests(TestCase):
         parser.feed(response.content.decode('utf-8').split('<thead>', 1)[1].split('</thead>', 1)[0])
         texts = [cell['text'] for cell in parser.cells]
 
-        self.assertEqual(texts[:2], ['Roll', 'Student name'])
-        # Third cell is the grouped heading over the three subject columns.
-        self.assertEqual(parser.cells[2]['colspan'], 3)
-        self.assertEqual(parser.cells[2]['class'], 'group-heading')
-        # Subjects come before the totals, exactly like the paper register; the
-        # subject headers themselves are the second header row.
-        self.assertEqual(texts[3:11],
-                         ['Total', 'GPA', 'Grade', 'Result', 'F', 'S', 'A+', 'Place'])
-        self.assertEqual(texts[11:], ['BAN(100)', 'MAT(100)', 'SCI(100)'])
-        # The eight summary headers each cover both header rows.
-        for cell in parser.cells[3:11]:
-            self.assertEqual(cell['rowspan'], 2)
+        self.assertEqual(texts, [
+            'Roll', 'Name of Student', 'BAN(100)', 'MAT(100)', 'SCI(100)',
+            'Total', 'GPA', 'Grade', 'F', 'S', 'A+', 'Place',
+        ])
+        # The supplied school sheet has one header row, not a grouped heading
+        # or a separate Result column. Grade F plus the F count convey a fail.
+        for cell in parser.cells:
+            self.assertEqual(cell['rowspan'], 1)
+            self.assertEqual(cell['colspan'], 1)
 
     def test_summary_cells_carry_the_students_numbers(self):
         response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
