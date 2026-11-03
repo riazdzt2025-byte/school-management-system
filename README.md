@@ -43,6 +43,17 @@ A web-based Student Management System built with Python and Django, inspired by 
    - Employee salary sheets
    - Finance dashboard with collection and expense aggregates
    - Bulk student promotion by class and section
+- **Attendance Correction & Calendar**
+   - Per-record correction with a mandatory reason and old/new audit trail
+   - Monthly calendar with colour-coded P/A/L/H days and no-record state
+   - Monthly summary and CSV export; holidays excluded from the rate
+- **Teacher Assignment Registry**
+   - Teacher ↔ class/section/subject/session assignment with validation
+   - HR/Office permissions, audit trail, employee assignment tab
+   - Assigned teachers printed on the exam signature sheet
+- **Payroll Period Lock**
+   - Lock a salary sheet to freeze its amount/status/date
+   - Audited lock/unlock; edit and delete refused while locked
 - **Access Control**
    - Django authentication and permission-protected operations
    - Department groups for Admission, Exam, HR, and Accounts
