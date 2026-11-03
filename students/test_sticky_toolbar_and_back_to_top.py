@@ -167,7 +167,11 @@ class PrintReadabilityTests(TestCase):
 
     def test_page_margins_leave_room_for_larger_type(self):
         stylesheet = (TEMPLATES / 'result_sheet.html').read_text(encoding='utf-8')
-        self.assertIn('@page { size: A4 landscape; margin: 6mm 6mm 8mm; }', stylesheet)
+        # The bottom margin must leave room for the guide-teacher signature
+        # footer that is printed on every page (@page @bottom-center).
+        self.assertIn('@page { size: A4 landscape; margin: 6mm 6mm 24mm;', stylesheet)
+        self.assertIn('@bottom-center', stylesheet)
+        self.assertIn('গাইড শিক্ষকের স্বাক্ষর', stylesheet)
 
     def test_ten_subject_sheet_keeps_a_usable_name_and_mark_column(self):
         """A4 landscape is 297mm wide; at a 6mm margin that is ~1077 CSS px.
