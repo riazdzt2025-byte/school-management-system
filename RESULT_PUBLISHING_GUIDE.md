@@ -296,11 +296,26 @@ Read them in this order:
    pass mark. A yellow notice at the top lists marks held in **subjects that are
    not assigned to this exam** (they are deliberately excluded from the numbers —
    fix the assignments or the marks, then re-check).
-2. **Result Summary** — Pass/Fail counts, totals, positions, and per-student
-   detail links.
+2. **Result Summary / Published Result** — Pass/Fail counts, totals, positions,
+   and per-student detail links. It prints in **roll order** (see below).
 3. **Top 10** — ranking sanity check: ties share a position, and a student whose
    marks sit only in unassigned subjects must not be ranked.
 4. **One result card** — print preview, because that is what parents see.
+
+### Published Result print order (owner decision, 2026-11-03)
+
+The **Published Result** page is a register, not a merit list. Its rows follow
+numeric roll order — students without a roll last, ties broken by name then
+record ID — on screen, in **Print all / Save PDF** (`?print=1`) and in a normal
+browser print; position never decides the row order. Fail / No Marks students
+therefore stay in their own roll slot instead of being pushed to a tail.
+
+The computed merit position is still printed, but as the table's **last** column
+(after Status), so the printed sheet opens with Roll / ID / Name, like the Result
+Sheet's "Place" column. Sorting the rows does not recalculate or change any
+student's position. **Top 10** and **Full Rank List** remain merit-ordered
+ranking reports. This supersedes the one `exam_result_summary` row of the EX-02
+ordering matrix.
 
 A student with no entered marks at all shows `No Marks` and is left unranked. A
 student who sat some subjects but not others shows `Fail` with the missed subjects as

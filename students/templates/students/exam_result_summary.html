@@ -62,15 +62,15 @@
             <table class="table table-striped mb-0">
                 <thead>
                     <tr>
-                        <th>Position</th><th>Roll</th><th>ID</th><th>Name</th>
+                        <th>Roll</th><th>ID</th><th>Name</th>
                         <th>Total</th><th>Percentage</th><th>GPA</th><th>Grade</th><th>Status</th>
+                        <th>Position</th>
                         <th class="d-print-none">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in results %}
                     <tr>
-                        <td>{{ r.position|default:'-' }}</td>
                         <td>{{ r.student.roll_no }}</td>
                         <td>{{ r.student.student_id }}</td>
                         <td>{{ r.student.name }}</td>
@@ -83,6 +83,7 @@
                             {% elif r.status == 'Fail' %}<span class="badge bg-danger">Fail</span>
                             {% else %}<span class="badge bg-secondary">No Marks</span>{% endif %}
                         </td>
+                        <td>{{ r.position|default:'-' }}</td>
                         <td class="d-print-none">
                             {% if r.has_marks %}
                             <a href="{% url 'student_result_detail' exam.pk r.student.pk %}" class="btn btn-sm btn-outline-navy">Details</a>

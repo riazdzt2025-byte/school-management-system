@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f2d52">
+<title>ফলাফল পত্র ব্যবস্থাপক</title>
+<!-- App name: Result Sheet Manager. Single file, no backend, no build step. -->
+<style>
+:root { --navy:#0f2d52; --gold:#c9a227; --line:#d8dee8; --muted:#5b6779; --bg:#f3f6fa; }
+* { box-sizing:border-box; }
+html, body { margin:0; padding:0; }
+body { font-family: system-ui, "Noto Sans Bengali", "Kalpurush", Arial, sans-serif; background:var(--bg); color:#17212f; font-size:14px; }
+button, input, select { font-family:inherit; font-size:14px; }
+button { cursor:pointer; }
+h1, h2, h3 { margin:0; }
+#app { display:flex; flex-direction:column; min-height:100vh; }
+.topbar { background:var(--navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.topbar h1 { font-size:19px; border-left:4px solid var(--gold); padding-left:10px; }
+.topbar .hint { font-size:12px; opacity:.85; margin-left:auto; }
+.panel { background:#fff; border:1px solid var(--line); border-radius:8px; margin:10px 12px 0; padding:10px 12px; }
+.panel h2 { font-size:15px; color:var(--navy); margin-bottom:8px; }
+.info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px; }
+.info-grid label { display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--muted); font-weight:600; }
+.info-grid input { border:1px solid var(--line); border-radius:5px; padding:7px 8px; background:#fff; color:#17212f; }
+.tabs { display:flex; gap:4px; flex-wrap:wrap; padding:10px 12px 0; }
+.tabs button { border:1px solid var(--line); background:#fff; color:var(--navy); padding:8px 12px; border-radius:6px 6px 0 0; font-weight:600; }
+.tabs button.active { background:var(--navy); color:#fff; border-color:var(--navy); }
+.tab-panel { display:none; margin:0 12px 12px; background:#fff; border:1px solid var(--line); border-radius:0 8px 8px 8px; padding:12px; }
+.tab-panel.active { display:block; }
+.toolbar { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+.btn { border:1px solid #b9c4d2; background:#fff; color:#17212f; padding:7px 10px; border-radius:6px; }
+.btn:hover { background:#eef3fa; }
+.btn.primary { background:var(--navy); color:#fff; border-color:var(--navy); }
+.btn.warn { background:#fff3f3; color:#a11; border-color:#e3b8b8; }
+.btn.gold { background:var(--gold); color:#231b00; border-color:var(--gold); font-weight:700; }
+.btn.small { padding:4px 7px; font-size:12px; }
+.note { color:var(--muted); font-size:12px; line-height:1.5; }
+.grid-wrap { overflow:auto; max-height:60vh; border:1px solid var(--line); border-radius:6px; background:#fff; }
+#grid { border-collapse:separate; border-spacing:0; font-size:13px; min-width:max-content; }
+#grid th, #grid td { border-right:1px solid var(--line); border-bottom:1px solid var(--line); padding:5px 7px; height:34px; white-space:nowrap; text-align:center; }
+#grid thead th { position:sticky; top:0; z-index:4; background:#e8eef7; color:var(--navy); font-weight:700; cursor:pointer; user-select:none; }
+#grid thead th.active-col { background:#d3e2ff; }
+#grid td.cell { background:#fff; cursor:cell; outline:none; min-width:70px; }
+#grid td.sticky-roll { position:sticky; left:0; z-index:3; background:#fff; font-weight:700; }
+#grid td.sticky-name { position:sticky; left:72px; z-index:3; background:#fff; }
+#grid th.sticky-roll { left:0; z-index:5; }
+#grid th.sticky-name { left:72px; z-index:5; }
+#grid tr.active-row td { background:#fff7df !important; }
+#grid td.cell.selected { background:#dbeafe !important; box-shadow:inset 0 0 0 2px #2563eb; }
+#grid td.cell.active-cell { box-shadow:inset 0 0 0 3px #1d4ed8; z-index:2; }
+#grid td.cell.invalid { color:#c1121f !important; border:2px solid #c1121f !important; font-weight:700; }
+.status-bar { position:sticky; bottom:0; background:var(--navy); color:#fff; padding:8px 12px; display:flex; gap:18px; flex-wrap:wrap; font-size:13px; border-radius:0 0 6px 6px; }
+.status-bar b { color:#ffe9a8; }
+table.data { width:100%; border-collapse:collapse; font-size:13px; }
+table.data th, table.data td { border:1px solid var(--line); padding:6px 7px; text-align:center; }
+table.data th { background:#e8eef7; color:var(--navy); }
+table.data td.left { text-align:left; }
+table.data tr.bad td { background:#fff2f2; }
+.scroll-x { overflow:auto; }
+.cards { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
+.card { border:1px solid var(--line); border-radius:7px; padding:9px 12px; min-width:110px; background:#fbfcfe; }
+.card .k { font-size:12px; color:var(--muted); }
+.card .v { font-size:20px; font-weight:800; color:var(--navy); }
+.subject-table input[type=text], .subject-table input[type=number], .scale-table input[type=text], .scale-table input[type=number] { width:100%; border:1px solid var(--line); border-radius:4px; padding:5px; }
+.file-input { display:none; }
+#toast { position:fixed; right:16px; bottom:16px; z-index:10000; background:var(--navy); color:#fff; padding:10px 14px; border-radius:7px; box-shadow:0 6px 20px rgba(0,0,0,.25); display:none; max-width:80vw; }
+.print-overlay { position:fixed; inset:0; z-index:9999; background:#fff; overflow:auto; }
+.print-overlay[hidden] { display:none; }
+.print-bar { position:sticky; top:0; z-index:2; display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px 14px; background:#eef2f7; border-bottom:1px solid var(--line); }
+.print-bar strong { color:var(--navy); }
+.print-bar select, .print-bar button { padding:7px 10px; border:1px solid #b9c4d2; border-radius:6px; background:#fff; }
+.print-bar button.print-now { background:var(--navy); color:#fff; border-color:var(--navy); font-weight:700; }
+#printContent { padding:12px 16px 30px; }
+#printCss, #pageRule { display:none; }
+@media (max-width:640px) {
+  .topbar h1 { font-size:16px; }
+  .topbar .hint { display:none; }
+  .panel, .tab-panel { margin-left:8px; margin-right:8px; padding:8px; }
+  #grid { font-size:12px; }
+  .status-bar { font-size:12px; }
+}
+</style>
+<style id="printCss"></style>
+<style id="pageRule"></style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1>ফলাফল পত্র ব্যবস্থাপক</h1>
+    <span class="hint">স্বয়ংক্রিয় সংরক্ষণ · অফলাইনে কাজ করে</span>
+  </header>
+
+  <section class="panel">
+    <h2>বিদ্যালয় ও পরীক্ষার তথ্য</h2>
+    <div class="info-grid">
+      <label>বিদ্যালয়ের নাম<input data-info="school" type="text"></label>
+      <label>ঠিকানা<input data-info="address" type="text"></label>
+      <label>পরীক্ষা<input data-info="exam" type="text"></label>
+      <label>শিক্ষাবর্ষ<input data-info="year" type="text"></label>
+      <label>শ্রেণি<input data-info="class" type="text"></label>
+      <label>বিভাগ<input data-info="group" type="text"></label>
+    </div>
+  </section>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="input" class="active">নম্বর ইনপুট</button>
+    <button data-tab="subjects">বিষয় ও গ্রেড</button>
+    <button data-tab="results">লাইভ ফলাফল</button>
+    <button data-tab="io">আমদানি / রপ্তানি</button>
+    <button data-tab="print">ছাপা / পিডিএফ</button>
+  </nav>
+
+  <section class="tab-panel active" id="tab-input">
+    <div class="toolbar">
+      <button class="btn primary" data-act="add-end">শিক্ষার্থী যোগ</button>
+      <button class="btn" data-act="add-above">উপরে সন্নিবেশ</button>
+      <button class="btn" data-act="add-below">নিচে সন্নিবেশ</button>
+      <button class="btn warn" data-act="del-student">শিক্ষার্থী মুছুন</button>
+      <button class="btn" data-act="sort-roll">রোল অনুযায়ী সাজান</button>
+      <button class="btn" data-act="undo">পূর্বাবস্থা</button>
+      <button class="btn" data-act="redo">পুনরায় করুন</button>
+      <button class="btn warn" data-act="clear-students">নমুনা শিক্ষার্থী মুছুন</button>
+    </div>
+    <p class="note">ঘর টিপে টেনে বা Shift+টিপে একাধিক ঘর বাছুন; কলামের শিরোনাম টিপলে পুরো কলাম বাছা হয়। Ctrl+C / Ctrl+X / Ctrl+V, Delete, Ctrl+Z / Ctrl+Y কাজ করে। এক্সেল থেকে সরাসরি পেস্ট করা যায়; অক্ষর ও ঋণাত্মক মান বাদ যায়, সর্বোচ্চের বেশি মান লাল হয়।</p>
+    <div class="grid-wrap"><table id="grid"></table></div>
+    <div class="status-bar">
+      <span>রোল: <b id="sbRoll">—</b></span>
+      <span>নাম: <b id="sbName">—</b></span>
+      <span>কলাম: <b id="sbCol">—</b></span>
+      <span>বাছাই: <b id="sbCount">১</b> টি ঘর</span>
+    </div>
+  </section>
+
+  <section class="tab-panel" id="tab-subjects">
+    <h2>বিষয় সেটিংস</h2>
+    <div class="toolbar">
+      <button class="btn primary" data-act="add-subject">বিষয় যোগ</button>
+      <button class="btn" data-act="save-template">টেমপ্লেট সংরক্ষণ</button>
+      <button class="btn" data-act="load-template">টেমপ্লেট খুলুন</button>
+      <input class="file-input" id="templateFile" type="file" accept=".json,application/json">
+    </div>
+    <div class="scroll-x">
+      <table class="data subject-table" id="subjectTable">
+        <thead><tr>
+          <th>বিষয়ের নাম</th><th>পূর্ণমান</th><th>পাস নম্বর</th><th>মধ্য সর্বোচ্চ</th><th>সাপ্তাহিক সর্বোচ্চ</th><th>ঐচ্ছিক</th><th>ক্রম / মুছুন</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h2 style="margin-top:16px">গ্রেড স্কেল</h2>
+    <div class="toolbar"><button class="btn" data-act="add-scale">সারি যোগ</button></div>
+    <div class="scroll-x">
+      <table class="data scale-table" id="scaleTable">
+        <thead><tr><th>ন্যূনতম শতাংশ</th><th>গ্রেড</th><th>জিপি</th><th>মুছুন</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note">ঐচ্ছিক বিষয়ে অনুত্তীর্ণ হলে শিক্ষার্থী অনুত্তীর্ণ হয় না; খালি ঐচ্ছিক বিষয় গণনায় আসে না।</p>
+  </section>
+
+  <section class="tab-panel" id="tab-results">
+    <h2>লাইভ ফলাফল</h2>
+    <div class="cards" id="summaryCards"></div>
+    <div class="scroll-x"><table class="data" id="resultTable"></table></div>
+    <h2 style="margin-top:14px">গ্রেড অনুযায়ী সংখ্যা</h2>
+    <div class="scroll-x"><table class="data" id="gradeTable"></table></div>
+  </section>
+
+  <section class="tab-panel" id="tab-io">
+    <h2>আমদানি</h2>
+    <div class="toolbar">
+      <button class="btn primary" data-act="import">এক্সেল / সিএসভি আমদানি</button>
+      <input class="file-input" id="importFile" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt">
+    </div>
+    <p class="note">হেডারের নাম দেখে কলাম মেলানো হয়: রোল, নাম, আইডি, মন্তব্য এবং প্রতি বিষয়ের «মধ্য» / «সাপ্তাহিক»। অতিরিক্ত কলাম উপেক্ষা করা হয়। এক্সেল (.xlsx) অফলাইনেই পড়া যায়; পুরনো .xls হলে অনলাইনে লাইব্রেরি ছাড়া সিএসভি হিসেবে সংরক্ষণ করুন।</p>
+    <h2 style="margin-top:16px">রপ্তানি</h2>
+    <div class="toolbar">
+      <button class="btn" data-act="export-csv">সিএসভি রপ্তানি</button>
+      <button class="btn gold" data-act="export-xlsx">এক্সেল রপ্তানি (সূত্রসহ)</button>
+    </div>
+    <p class="note">এক্সেল ফাইলে ইনপুট, ফলাফল, প্রকাশিত ফলাফল, মার্কশিট, শীর্ষ দশ, নম্বর পত্র ও বিদ্যালয় তথ্য — সাতটি শিট থাকে। মোট, জিপিএ, গ্রেড, এফ/এস ও স্থান লাইভ সূত্র, তাই নম্বর বদলালে শিট নিজে থেকে পুনঃগণনা করে। অনলাইনে ExcelJS (CDN) ব্যবহার হয়; অফলাইনে অন্তর্নির্মিত এক্সেল লেখক একই সূত্র লেখে।</p>
+  </section>
+
+  <section class="tab-panel" id="tab-print">
+    <h2>ছাপার নথি</h2>
+    <div class="toolbar" id="docButtons"></div>
+    <p class="note">প্রতিটি নথি পূর্ণ পর্দায় প্রিভিউ খোলে; «প্রিন্ট / পিডিএফ» বাটনে বাকি সব পাতার বিষয়বস্তু লুকোনো থাকে। A4, ১০ মিমি মার্জিন, টেবিলের হেডার প্রতি পাতায় পুনরাবৃত্ত, সারি ভাঙা যাবে না।</p>
+  </section>
+</div>
+
+<div id="printOverlay" class="print-overlay" hidden>
+  <div class="print-bar no-print">
+    <strong id="printTitle"></strong>
+    <select id="printSelect"></select>
+    <button class="print-now" id="btnDoPrint">প্রিন্ট / পিডিএফ</button>
+    <button id="btnClosePrint">বন্ধ</button>
+  </div>
+  <div id="printContent"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =====================================================================
+   * Core: pure data, calculation, file builders and printable documents.
+   * No DOM access here, so the same code runs in a test harness.
+   * ===================================================================== */
+  const STORAGE_KEY = 'rsm.state.v1';
+  const AUTO_COMMENTS = {
+    'F': 'Badly Fail', 'A+': 'Excellent Result', 'A': 'Good Enough',
+    'A-': 'Average Result', 'B': 'Honorable Mention', 'C': 'Satisfactory Result',
+    'D': 'Needs Improvement'
+  };
+  const DOC_META = {
+    report:    { title: 'মার্কশিট / ফলাফল কার্ড', landscape: false },
+    published: { title: 'প্রকাশিত ফলাফল',        landscape: false },
+    table:     { title: 'ফলাফল ছক',            landscape: true  },
+    summary:   { title: 'সারাংশ',              landscape: false },
+    topten:    { title: 'শীর্ষ দশ',            landscape: false },
+    numbers:   { title: 'নম্বর পত্র',          landscape: true  }
+  };
+  const SHEET_NAMES = {
+    input: 'ইনপুট', result: 'ফলাফল', published: 'প্রকাশিত ফলাফল',
+    cards: 'মার্কশিট', top: 'শীর্ষ দশ', numbers: 'নম্বর পত্র', info: 'বিদ্যালয় তথ্য'
+  };
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function round2(n) { return Math.round((Number(n) + Number.EPSILON) * 100) / 100; }
+  function num(v) {
+    if (v === null || v === undefined || String(v).trim() === '') return null;
+    const n = Number(String(v).replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : null;
+  }
+  function defaultScale() {
+    return [
+      { min: 80, grade: 'A+', gp: 5 }, { min: 70, grade: 'A', gp: 4 },
+      { min: 60, grade: 'A-', gp: 3.5 }, { min: 50, grade: 'B', gp: 3 },
+      { min: 40, grade: 'C', gp: 2 }, { min: 33, grade: 'D', gp: 1 },
+      { min: 0, grade: 'F', gp: 0 }
+    ];
+  }
+  function sampleState() {
+    const subjects = [
+      { id: 'sub-ban', name: 'বাংলা', full: 100, pass: 33, midMax: 70, weeklyMax: 30, optional: false },
+      { id: 'sub-eng', name: 'ইংরেজি', full: 100, pass: 33, midMax: 70, weeklyMax: 30, optional: false },
+      { id: 'sub-mat', name: 'গণিত', full: 100, pass: 33, midMax: 70, weeklyMax: 30, optional: false },
+      { id: 'sub-sci', name: 'বিজ্ঞান', full: 100, pass: 33, midMax: 70, weeklyMax: 30, optional: false },
+      { id: 'sub-soc', name: 'সামাজিক বিজ্ঞান', full: 100, pass: 33, midMax: 70, weeklyMax: 30, optional: false },
+      { id: 'sub-rel', name: 'ধর্ম শিক্ষা', full: 100, pass: 33, midMax: 70, weeklyMax: 30, optional: false },
+      { id: 'sub-ict', name: 'তথ্য প্রযুক্তি', full: 100, pass: 33, midMax: 50, weeklyMax: 50, optional: true }
+    ];
+    const names = ['আরিফ হোসেন', 'সুমাইয়া আক্তার', 'তানভীর আহমেদ', 'নুসরাত জাহান',
+      'মাহমুদুল হাসান', 'শাহিনা বেগম', 'রাকিবুল ইসলাম', 'ফারহানা ইয়াসমিন',
+      'সাজিদুর রহমান', 'মেহেদী হাসান'];
+    const targets = [95, 85, 85, 75, 65, 55, 45, 35, 30, 30];
+    const students = names.map((name, i) => {
+      const marks = {};
+      subjects.forEach(s => {
+        let t = targets[i];
+        if (s.optional) t = i === 8 ? null : (i === 4 ? 20 : 80);
+        if (i === 9 && s.id === 'sub-mat') t = 20;
+        if (i === 8 && s.id === 'sub-sci') t = null;
+        if (t === null) { marks[s.id] = { mid: '', weekly: '' }; return; }
+        const mid = Math.min(s.midMax, Math.round(t * s.midMax / (s.midMax + s.weeklyMax)));
+        const weekly = Math.min(s.weeklyMax, t - mid);
+        marks[s.id] = { mid: String(mid), weekly: String(weekly) };
+      });
+      return {
+        roll: String(i + 1), id: 'STU-' + (1001 + i), name: name,
+        marks: marks, comment: i === 6 ? 'নিজের মন্তব্য' : ''
+      };
+    });
+    return {
+      info: { school: 'আদর্শ উচ্চ বিদ্যালয়', address: 'মাইজদী, নোয়াখালী', exam: 'বার্ষিক পরীক্ষা', year: '২০২৬', class: 'দশম', group: 'বিজ্ঞান' },
+      subjects: subjects, students: students, scale: defaultScale()
+    };
+  }
+  function normalizeState(raw) {
+    const base = sampleState();
+    if (!raw || typeof raw !== 'object') return base;
+    const info = Object.assign({}, base.info, raw.info || {});
+    const subjects = Array.isArray(raw.subjects) ? raw.subjects.map((s, i) => ({
+      id: String(s.id || ('sub-' + i)), name: String(s.name || ('বিষয় ' + (i + 1))),
+      full: num(s.full) === null ? 100 : num(s.full),
+      pass: num(s.pass) === null ? 33 : num(s.pass),
+      midMax: num(s.midMax) === null ? 70 : num(s.midMax),
+      weeklyMax: num(s.weeklyMax) === null ? 30 : num(s.weeklyMax),
+      optional: !!s.optional
+    })) : base.subjects;
+    const students = Array.isArray(raw.students) ? raw.students.map((st, i) => {
+      const marks = {};
+      subjects.forEach(s => {
+        const m = (st.marks && st.marks[s.id]) || {};
+        marks[s.id] = { mid: String(m.mid === undefined || m.mid === null ? '' : m.mid),
+          weekly: String(m.weekly === undefined || m.weekly === null ? '' : m.weekly) };
+      });
+      return { roll: String(st.roll === undefined || st.roll === null ? i + 1 : st.roll),
+        id: String(st.id || ''), name: String(st.name || ''), marks: marks, comment: String(st.comment || '') };
+    }) : base.students;
+    const scale = Array.isArray(raw.scale) && raw.scale.length ? raw.scale.map(r => ({
+      min: num(r.min) === null ? 0 : num(r.min), grade: String(r.grade || 'F'),
+      gp: num(r.gp) === null ? 0 : num(r.gp)
+    })) : base.scale;
+    return { info: info, subjects: subjects, students: students, scale: scale };
+  }
+  function gradeFromPercent(pct, scale) {
+    const rows = scale.slice().sort((a, b) => b.min - a.min);
+    for (const row of rows) {
+      if (pct + 1e-9 >= Number(row.min)) return { grade: row.grade, gp: Number(row.gp) };
+    }
+    return { grade: 'F', gp: 0 };
+  }
+  function finalGradeFromGpa(gpa) {
+    if (gpa >= 5) return 'A+';
+    if (gpa >= 4) return 'A';
+    if (gpa >= 3.5) return 'A-';
+    if (gpa >= 3) return 'B';
+    if (gpa >= 2) return 'C';
+    if (gpa >= 1) return 'D';
+    return 'F';
+  }
+  function autoComment(grade) { return AUTO_COMMENTS[grade] || ''; }
+  function computeSubject(student, subject, scale) {
+    const m = student.marks[subject.id] || {};
+    const mid = num(m.mid), weekly = num(m.weekly);
+    const full = Number(subject.full) || 100;
+    const pass = Number(subject.pass) || 0;
+    const empty = mid === null || weekly === null;
+    const total = empty ? null : round2(mid + weekly);
+    const pct = total === null ? null : round2(total / full * 100);
+    const g = total === null ? { grade: 'F', gp: 0 } : gradeFromPercent(pct, scale);
+    const fail = total === null || total < pass || Number(g.gp) === 0;
+    return { id: subject.id, name: subject.name, mid: mid, weekly: weekly, total: total,
+      full: full, pass: pass, pct: pct, grade: total === null ? '—' : g.grade,
+      gp: Number(g.gp), fail: fail, empty: empty, optional: !!subject.optional };
+  }
+  function computeStudent(student, subjects, scale) {
+    const rows = subjects.map(s => computeSubject(student, s, scale));
+    const compulsory = rows.filter(r => !r.optional);
+    const F = compulsory.filter(r => r.fail).length;
+    const S = compulsory.filter(r => !r.fail).length;
+    const failed = F > 0;
+    const counted = rows.filter(r => !r.empty);
+    const total = round2(counted.reduce((a, r) => a + (r.total || 0), 0));
+    const gpValues = compulsory.map(r => r.gp);
+    const gpa = failed || !gpValues.length ? 0 : round2(gpValues.reduce((a, b) => a + b, 0) / gpValues.length);
+    const grade = failed ? 'F' : finalGradeFromGpa(gpa);
+    const aPlus = counted.filter(r => r.grade === 'A+').length;
+    const golden = !failed && counted.length > 0 && counted.every(r => r.grade === 'A+');
+    const manual = String(student.comment || '').trim();
+    const comment = manual || autoComment(grade);
+    return { roll: student.roll, id: student.id, name: student.name, rows: rows,
+      F: F, S: S, failed: failed, total: total, gpa: gpa, grade: grade,
+      aPlus: aPlus, golden: golden, comment: comment, manual: manual, place: null };
+  }
+  function rankResults(results) {
+    const passing = results.filter(r => !r.failed);
+    const sorted = passing.slice().sort((a, b) =>
+      b.gpa - a.gpa || b.total - a.total || (num(a.roll) || 0) - (num(b.roll) || 0));
+    let lastKey = null, lastPlace = 0;
+    sorted.forEach((r, i) => {
+      const key = r.gpa + '|' + r.total;
+      if (key === lastKey) r.place = lastPlace;
+      else { r.place = i + 1; lastPlace = i + 1; lastKey = key; }
+    });
+    results.forEach(r => { if (r.failed) r.place = null; });
+    return results;
+  }
+  function computeResults(S) {
+    const results = rankResults(S.students.map(st => computeStudent(st, S.subjects, S.scale)));
+    return { results: results, summary: buildSummary(results, S.subjects, S.scale) };
+  }
+  function buildSummary(results, subjects, scale) {
+    const gradeCounts = {};
+    scale.forEach(s => { gradeCounts[s.grade] = 0; });
+    gradeCounts['F'] = gradeCounts['F'] || 0;
+    results.forEach(r => { gradeCounts[r.grade] = (gradeCounts[r.grade] || 0) + 1; });
+    const pass = results.filter(r => !r.failed).length;
+    const fail = results.length - pass;
+    const passRate = results.length ? round2(pass / results.length * 100) : 0;
+    const subjectCounts = subjects.map((s, i) => {
+      const rows = results.map(r => r.rows[i]);
+      const attempted = rows.filter(r => !r.empty);
+      return { id: s.id, name: s.name, optional: s.optional,
+        passed: attempted.filter(r => !r.fail).length,
+        failed: attempted.filter(r => r.fail).length,
+        absent: rows.filter(r => r.empty).length,
+        aPlus: attempted.filter(r => r.grade === 'A+').length,
+        average: attempted.length ? round2(attempted.reduce((a, r) => a + (r.pct || 0), 0) / attempted.length) : 0 };
+    });
+    return { total: results.length, pass: pass, fail: fail, passRate: passRate,
+      gradeCounts: gradeCounts, subjectCounts: subjectCounts,
+      golden: results.filter(r => r.golden).length,
+      aPlusTotal: results.reduce((a, r) => a + r.aPlus, 0) };
+  }
+
+  /* ---- Delimited text and header mapping ---- */
+  function detectDelimiter(text) {
+    const head = String(text).split(/\r?\n/).slice(0, 3).join('\n');
+    const counts = { '\t': (head.match(/\t/g) || []).length,
+      ',': (head.match(/,/g) || []).length, ';': (head.match(/;/g) || []).length };
+    let best = '\t', bestN = -1;
+    Object.keys(counts).forEach(k => { if (counts[k] > bestN) { bestN = counts[k]; best = k; } });
+    return best;
+  }
+  function parseDelimited(text, delim) {
+    const d = delim || detectDelimiter(text);
+    const s = String(text).replace(/^\uFEFF/, '');
+    const rows = []; let row = [], field = '', quoted = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (quoted) {
+        if (ch === '"') { if (s[i + 1] === '"') { field += '"'; i++; } else quoted = false; }
+        else field += ch;
+      } else if (ch === '"') quoted = true;
+      else if (ch === d) { row.push(field); field = ''; }
+      else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (ch !== '\r') field += ch;
+    }
+    row.push(field); rows.push(row);
+    return rows;
+  }
+  function mapHeaders(headers, subjects) {
+    const norm = h => String(h || '').toLowerCase().replace(/[\s_\-()\/\\.,:]/g, '');
+    return headers.map(h => {
+      const n = norm(h);
+      if (/রোল|roll|ক্রমিক/.test(n)) return { type: 'roll' };
+      if (/আইডি|studentid|idnumber|^id$/.test(n)) return { type: 'id' };
+      if (/নাম|name/.test(n)) return { type: 'name' };
+      if (/মন্তব্য|comment|remarks/.test(n)) return { type: 'comment' };
+      for (const s of subjects) {
+        const sn = norm(s.name);
+        if (sn && n.indexOf(sn) >= 0) {
+          if (/সাপ্তাহিক|weekly|নৈমিত্তিক/.test(n)) return { type: 'weekly', subjectId: s.id };
+          if (/মধ্য|mid|মৌখিক|অর্ধবার্ষিক/.test(n)) return { type: 'mid', subjectId: s.id };
+        }
+      }
+      return null;
+    });
+  }
+  function applyImport(S, matrix) {
+    const headerIndex = matrix.findIndex(row => row.some(v => String(v).trim() !== ''));
+    if (headerIndex < 0) return { students: [], ignored: matrix.length };
+    const map = mapHeaders(matrix[headerIndex], S.subjects);
+    const students = []; let ignored = 0;
+    for (let i = headerIndex + 1; i < matrix.length; i++) {
+      const row = matrix[i];
+      if (!row.some(v => String(v).trim() !== '')) continue;
+      const st = { roll: '', id: '', name: '', marks: {}, comment: '' };
+      let matched = false;
+      map.forEach((m, ci) => {
+        if (!m) return;
+        const raw = String(row[ci] === undefined ? '' : row[ci]).trim();
+        if (m.type === 'roll') { st.roll = raw; if (raw) matched = true; }
+        else if (m.type === 'id') st.id = raw;
+        else if (m.type === 'name') { st.name = raw; if (raw) matched = true; }
+        else if (m.type === 'comment') st.comment = raw;
+        else {
+          if (raw === '') return;
+          const n = Number(raw.replace(/,/g, ''));
+          if (!Number.isFinite(n) || n < 0) { ignored++; return; }
+          if (!st.marks[m.subjectId]) st.marks[m.subjectId] = { mid: '', weekly: '' };
+          st.marks[m.subjectId][m.type] = String(n);
+        }
+      });
+      if (matched) students.push(st);
+    }
+    return { students: students, ignored: ignored };
+  }
+
+  /* ---- CSV export ---- */
+  function csvCell(v) {
+    const s = String(v === null || v === undefined ? '' : v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function buildCsv(S) {
+    const R = computeResults(S);
+    const head = ['রোল', 'নাম', 'আইডি'];
+    S.subjects.forEach(s => { head.push(s.name + ' মোট'); head.push(s.name + ' গ্রেড'); });
+    head.push('মোট নম্বর', 'জিপিএ', 'গ্রেড', 'এফ', 'এস', 'এ+ সংখ্যা', 'স্বর্ণ এ+', 'স্থান', 'অবস্থা', 'মন্তব্য');
+    const rows = [head];
+    R.results.forEach(r => {
+      const line = [r.roll, r.name, r.id];
+      r.rows.forEach(x => { line.push(x.total === null ? '' : x.total); line.push(x.grade); });
+      line.push(r.total, r.gpa.toFixed(2), r.grade, r.F, r.S, r.aPlus,
+        r.golden ? 'হ্যাঁ' : '', r.place === null ? '' : r.place,
+        r.failed ? 'অনুত্তীর্ণ' : 'উত্তীর্ণ', r.comment);
+      rows.push(line);
+    });
+    return '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+  }
+
+  /* ---- Workbook model consumed by both ExcelJS and the offline writer ---- */
+  function colLetter(n) {
+    let s = '';
+    while (n > 0) { n--; s = String.fromCharCode(65 + n % 26) + s; n = Math.floor(n / 26); }
+    return s;
+  }
+  function qsheet(name) { return "'" + String(name).replace(/'/g, "''") + "'"; }
+  function sheetRef(name, addr) { return qsheet(name) + '!' + addr; }
+  function formula(v, f) { return { v: v, f: f }; }
+  function buildWorkbookModel(S) {
+    const R = computeResults(S);
+    const subjects = S.subjects, n = subjects.length, N = S.students.length;
+    const last = Math.max(2, N + 1);
+    const A = (c, r) => colLetter(c + 1) + r;
+    const absCol = c => '$' + colLetter(c + 1);
+    const absRange = (c, first, lastRow) => absCol(c) + '$' + first + ':' + absCol(c) + '$' + lastRow;
+    const input = SHEET_NAMES.input, result = SHEET_NAMES.result;
+    const sheets = [];
+
+    /* Input sheet: roll, name, id, mid/weekly per subject, comment. */
+    const inCols = [{ header: 'রোল', width: 8 }, { header: 'নাম', width: 22 }, { header: 'আইডি', width: 14 }];
+    subjects.forEach(s => {
+      inCols.push({ header: s.name + ' (মধ্য)', width: 15 });
+      inCols.push({ header: s.name + ' (সাপ্তাহিক)', width: 15 });
+    });
+    const inCommentCol = 3 + 2 * n;
+    inCols.push({ header: 'মন্তব্য', width: 26 });
+    const inRows = [inCols.map(c => c.header)];
+    S.students.forEach(st => {
+      const line = [num(st.roll) === null ? st.roll : num(st.roll), st.name, st.id];
+      subjects.forEach(s => {
+        const m = st.marks[s.id] || {};
+        line.push(num(m.mid) === null ? '' : num(m.mid));
+        line.push(num(m.weekly) === null ? '' : num(m.weekly));
+      });
+      line.push(st.comment || '');
+      inRows.push(line);
+    });
+    sheets.push({ name: input, columns: inCols, rows: inRows, landscape: true, printTitleRows: '1:1' });
+
+    /* Result sheet: live formulas for total, grade, GP, F/S, GPA, place. */
+    const resCols = [{ header: 'রোল', width: 8 }, { header: 'নাম', width: 22 }];
+    subjects.forEach(s => {
+      resCols.push({ header: s.name + ' মোট', width: 14 });
+      resCols.push({ header: s.name + ' গ্রেড', width: 12 });
+      resCols.push({ header: s.name + ' জিপি', width: 11 });
+    });
+    const totalCol = 2 + 3 * n;
+    const fCol = totalCol + 1, sCol = totalCol + 2, gpaCol = totalCol + 3;
+    const gradeCol = totalCol + 4, placeCol = totalCol + 5, aplusCol = totalCol + 6;
+    const goldenCol = totalCol + 7, commentCol = totalCol + 8;
+    ['মোট নম্বর', 'এফ', 'এস', 'জিপিএ', 'গ্রেড', 'স্থান', 'এ+ সংখ্যা', 'স্বর্ণ এ+', 'মন্তব্য']
+      .forEach(h => resCols.push({ header: h, width: h === 'মন্তব্য' ? 26 : 13 }));
+    const resRows = [resCols.map(c => c.header)];
+    const gpaRange = absRange(gpaCol, 2, last);
+    const totRange = absRange(totalCol, 2, last);
+    R.results.forEach((res, i) => {
+      const r = i + 2;
+      const line = [];
+      line.push(formula(res.roll, sheetRef(input, A(0, r))));
+      line.push(formula(res.name, sheetRef(input, A(1, r))));
+      const totalCells = [], gradeCells = [], compulsoryGp = [], countedParts = [];
+      subjects.forEach((s, si) => {
+        const tc = 2 + 3 * si, gc = tc + 1, pc = tc + 2;
+        const im = 3 + 2 * si, iw = im + 1;
+        const totalRef = A(tc, r);
+        const gradeRows = S.scale.filter(x => String(x.grade).toUpperCase() !== 'F')
+          .sort((a, b) => b.min - a.min);
+        let gExpr = '"F"', pExpr = '0';
+        for (let k = gradeRows.length - 1; k >= 0; k--) {
+          const t = round2(Number(s.full) * Number(gradeRows[k].min) / 100);
+          gExpr = 'IF(' + totalRef + '>=' + t + ',"' + gradeRows[k].grade + '",' + gExpr + ')';
+          pExpr = 'IF(' + totalRef + '>=' + t + ',' + Number(gradeRows[k].gp) + ',' + pExpr + ')';
+        }
+        const sumRange = sheetRef(input, A(im, r) + ':' + A(iw, r));
+        const row = res.rows[si];
+        line.push(formula(row.total === null ? 0 : row.total, 'SUM(' + sumRange + ')'));
+        line.push(formula(row.grade, 'IF(' + totalRef + '<' + Number(s.pass) + ',"F",' + gExpr + ')'));
+        line.push(formula(row.gp, 'IF(' + totalRef + '<' + Number(s.pass) + ',0,' + pExpr + ')'));
+        totalCells.push(totalRef); gradeCells.push(A(gc, r));
+        if (!s.optional) compulsoryGp.push(A(pc, r));
+        countedParts.push('IF(' + totalRef + '>0,1,0)');
+      });
+      const fFormula = compulsoryGp.length ? '=' + compulsoryGp.map(c => 'IF(' + c + '=0,1,0)').join('+') : '=0';
+      const sFormula = compulsoryGp.length ? '=' + compulsoryGp.map(c => 'IF(' + c + '>0,1,0)').join('+') : '=0';
+      const avg = 'AVERAGE(' + compulsoryGp.join(',') + ')';
+      const gradeFormula = 'IF(' + A(fCol, r) + '>0,"F",IF(' + A(gpaCol, r) + '>=5,"A+",IF(' +
+        A(gpaCol, r) + '>=4,"A",IF(' + A(gpaCol, r) + '>=3.5,"A-",IF(' + A(gpaCol, r) +
+        '>=3,"B",IF(' + A(gpaCol, r) + '>=2,"C",IF(' + A(gpaCol, r) + '>=1,"D","F")))))))';
+      const placeFormula = 'IF(' + A(fCol, r) + '>0,"",SUMPRODUCT((' + gpaRange + '>' +
+        A(gpaCol, r) + ')*1)+SUMPRODUCT((' + gpaRange + '=' + A(gpaCol, r) + ')*(' +
+        totRange + '>' + A(totalCol, r) + ')*1)+1)';
+      const aplusFormula = '=' + gradeCells.map(c => 'IF(' + c + '="A+",1,0)').join('+');
+      const goldenFormula = 'IF(AND(' + A(fCol, r) + '=0,' + A(aplusCol, r) + '>0,' +
+        A(aplusCol, r) + '=(' + countedParts.join('+') + ')),"হ্যাঁ","")';
+      let commentFormula = '""';
+      Object.keys(AUTO_COMMENTS).forEach(g => {
+        commentFormula = 'IF(' + A(gradeCol, r) + '="' + g + '","' + AUTO_COMMENTS[g] + '",' + commentFormula + ')';
+      });
+      commentFormula = 'IF(' + sheetRef(input, A(inCommentCol, r)) + '<>"",' +
+        sheetRef(input, A(inCommentCol, r)) + ',' + commentFormula + ')';
+      line.push(formula(res.total, 'SUM(' + totalCells.join(',') + ')'));
+      line.push(formula(res.F, fFormula.slice(1)));
+      line.push(formula(res.S, sFormula.slice(1)));
+      line.push(formula(res.gpa, 'IF(' + A(fCol, r) + '>0,0,ROUND(' + avg + ',2))'));
+      line.push(formula(res.grade, gradeFormula));
+      line.push(formula(res.place === null ? '' : res.place, placeFormula));
+      line.push(formula(res.aPlus, aplusFormula.slice(1)));
+      line.push(formula(res.golden ? 'হ্যাঁ' : '', goldenFormula));
+      line.push(formula(res.comment, commentFormula));
+      resRows.push(line);
+    });
+    sheets.push({ name: result, columns: resCols, rows: resRows, landscape: true, printTitleRows: '1:1' });
+
+    /* Published result sheet: references into the result sheet. */
+    const pubCols = ['রোল', 'নাম', 'গ্রেড', 'জিপিএ', 'মোট নম্বর', 'স্থান', 'এ+ সংখ্যা',
+      'স্বর্ণ এ+', 'অনুত্তীর্ণ', 'মন্তব্য'].map(h => ({ header: h, width: h === 'মন্তব্য' ? 28 : 14 }));
+    const pubRows = [pubCols.map(c => c.header)];
+    R.results.forEach((res, i) => {
+      const r = i + 2;
+      const ref = c => sheetRef(result, A(c, r));
+      pubRows.push([
+        formula(res.roll, ref(0)), formula(res.name, ref(1)), formula(res.grade, ref(gradeCol)),
+        formula(res.gpa, ref(gpaCol)), formula(res.total, ref(totalCol)),
+        formula(res.place === null ? '' : res.place, ref(placeCol)), formula(res.aPlus, ref(aplusCol)),
+        formula(res.golden ? 'হ্যাঁ' : '', ref(goldenCol)),
+        formula(res.failed ? 'হ্যাঁ' : 'না', 'IF(' + ref(fCol) + '>0,"হ্যাঁ","না")'),
+        formula(res.comment, ref(commentCol))
+      ]);
+    });
+    sheets.push({ name: SHEET_NAMES.published, columns: pubCols, rows: pubRows,
+      landscape: false, printTitleRows: '1:1' });
+
+    /* Report card sheet: one block per student, formulas into input/result. */
+    const cardCols = [{ header: 'বিবরণ', width: 24 }, { header: 'মান', width: 24 },
+      { header: 'বিবরণ', width: 24 }, { header: 'মান', width: 24 },
+      { header: 'বিবরণ', width: 24 }, { header: 'মান', width: 24 },
+      { header: 'মন্তব্য', width: 26 }];
+    const cardRows = [[S.info.school + ' — ' + DOC_META.report.title]];
+    R.results.forEach((res, i) => {
+      const r = i + 2;
+      cardRows.push(['রোল', formula(res.roll, sheetRef(input, A(0, r))),
+        'নাম', formula(res.name, sheetRef(input, A(1, r))),
+        'আইডি', formula(res.id, sheetRef(input, A(2, r))), S.info.exam]);
+      cardRows.push(['বিষয়', 'পূর্ণমান', 'মধ্য', 'সাপ্তাহিক', 'মোট', 'গ্রেড', 'জিপি']);
+      subjects.forEach((s, si) => {
+        const im = 3 + 2 * si, iw = im + 1;
+        cardRows.push([s.name, s.full,
+          formula(num(S.students[i].marks[s.id].mid) === null ? '' : num(S.students[i].marks[s.id].mid), sheetRef(input, A(im, r))),
+          formula(num(S.students[i].marks[s.id].weekly) === null ? '' : num(S.students[i].marks[s.id].weekly), sheetRef(input, A(iw, r))),
+          formula(res.rows[si].total === null ? 0 : res.rows[si].total, sheetRef(result, A(2 + 3 * si, r))),
+          formula(res.rows[si].grade, sheetRef(result, A(3 + 3 * si, r))),
+          formula(res.rows[si].gp, sheetRef(result, A(4 + 3 * si, r)))]);
+      });
+      cardRows.push(['মোট নম্বর', formula(res.total, sheetRef(result, A(totalCol, r))),
+        'জিপিএ', formula(res.gpa, sheetRef(result, A(gpaCol, r))),
+        'গ্রেড', formula(res.grade, sheetRef(result, A(gradeCol, r))),
+        formula(res.comment, sheetRef(result, A(commentCol, r)))]);
+      cardRows.push(['স্থান', formula(res.place === null ? '' : res.place, sheetRef(result, A(placeCol, r))),
+        'এ+ সংখ্যা', formula(res.aPlus, sheetRef(result, A(aplusCol, r))),
+        'ফলাফল', formula(res.failed ? 'অনুত্তীর্ণ' : 'উত্তীর্ণ', 'IF(' + sheetRef(result, A(fCol, r)) + '>0,"অনুত্তীর্ণ","উত্তীর্ণ")'),
+        'গাইড শিক্ষক', '']);
+      cardRows.push([]);
+    });
+    sheets.push({ name: SHEET_NAMES.cards, columns: cardCols, rows: cardRows,
+      landscape: false, printTitleRows: '1:1' });
+
+    /* Top ten sheet: live references to the current top ten result rows. */
+    const topCols = ['স্থান', 'রোল', 'নাম', 'জিপিএ', 'মোট নম্বর', 'গ্রেড', 'এ+ সংখ্যা', 'মন্তব্য']
+      .map(h => ({ header: h, width: h === 'মন্তব্য' ? 28 : 15 }));
+    const topRows = [topCols.map(c => c.header)];
+    R.results.filter(r => !r.failed && r.place !== null)
+      .sort((a, b) => a.place - b.place || b.total - a.total).slice(0, 10).forEach(res => {
+        const r = R.results.indexOf(res) + 2;
+        const ref = c => sheetRef(result, A(c, r));
+        topRows.push([formula(res.place, ref(placeCol)), formula(res.roll, ref(0)),
+          formula(res.name, ref(1)), formula(res.gpa, ref(gpaCol)),
+          formula(res.total, ref(totalCol)), formula(res.grade, ref(gradeCol)),
+          formula(res.aPlus, ref(aplusCol)), formula(res.comment, ref(commentCol))]);
+      });
+    sheets.push({ name: SHEET_NAMES.top, columns: topCols, rows: topRows,
+      landscape: false, printTitleRows: '1:1' });
+
+    /* Number sheet: roll/name filled, subject columns intentionally blank. */
+    const numCols = [{ header: 'রোল', width: 8 }, { header: 'নাম', width: 24 }];
+    subjects.forEach(s => numCols.push({ header: s.name, width: 16 }));
+    numCols.push({ header: 'মোট', width: 12 });
+    const numRows = [numCols.map(c => c.header)];
+    S.students.forEach(st => {
+      const line = [num(st.roll) === null ? st.roll : num(st.roll), st.name];
+      subjects.forEach(() => line.push(''));
+      line.push('');
+      numRows.push(line);
+    });
+    sheets.push({ name: SHEET_NAMES.numbers, columns: numCols, rows: numRows,
+      landscape: true, printTitleRows: '1:1' });
+
+    /* School info sheet. */
+    const infoCols = [{ header: 'ক্ষেত্র', width: 24 }, { header: 'মান', width: 46 },
+      { header: 'ক্ষেত্র', width: 24 }, { header: 'মান', width: 24 },
+      { header: 'মন্তব্য', width: 26 }];
+    const infoRows = [infoCols.map(c => c.header)];
+    [['বিদ্যালয়ের নাম', S.info.school], ['ঠিকানা', S.info.address], ['পরীক্ষা', S.info.exam],
+     ['শিক্ষাবর্ষ', S.info.year], ['শ্রেণি', S.info.class], ['বিভাগ', S.info.group],
+     ['মোট শিক্ষার্থী', R.summary.total], ['উত্তীর্ণ', R.summary.pass],
+     ['অনুত্তীর্ণ', R.summary.fail], ['পাসের হার (%)', R.summary.passRate]].forEach(p => {
+      infoRows.push([p[0], p[1], '', '', '']);
+    });
+    infoRows.push(['ন্যূনতম শতাংশ', 'গ্রেড', 'জিপি', '', '']);
+    S.scale.forEach(s => infoRows.push([s.min, s.grade, s.gp, '', '']));
+    infoRows.push(['বিষয়', 'পূর্ণমান', 'পাস নম্বর', 'মধ্য সর্বোচ্চ', 'সাপ্তাহিক সর্বোচ্চ']);
+    subjects.forEach(s => infoRows.push([s.name, s.full, s.pass, s.midMax, s.weeklyMax]));
+    sheets.push({ name: SHEET_NAMES.info, columns: infoCols, rows: infoRows,
+      landscape: false, printTitleRows: '1:1' });
+    return { sheets: sheets };
+  }
+
+  /* ---- ExcelJS workbook builder (used when the CDN is reachable) ---- */
+  function buildExcelJsWorkbook(model, ExcelJS) {
+    const wb = new ExcelJS.Workbook();
+    wb.calcProperties.fullCalcOnLoad = true;
+    model.sheets.forEach(m => {
+      const ws = wb.addWorksheet(m.name.slice(0, 31), {
+        views: [{ state: 'frozen', ySplit: 1, xSplit: 0 }]
+      });
+      ws.columns = m.columns.map(c => ({ width: Math.min(40, Math.max(8, c.width || 14)) }));
+      m.rows.forEach((row, ri) => {
+        const excelRow = ws.addRow([]);
+        row.forEach((raw, ci) => {
+          if (raw === undefined || raw === null) return;
+          const cell = (typeof raw === 'object' && raw !== null && 'v' in raw) ? raw : { v: raw };
+          const target = excelRow.getCell(ci + 1);
+          if (cell.f) target.value = { formula: cell.f, result: cell.v };
+          else if (cell.v === '' || cell.v === null || cell.v === undefined) target.value = null;
+          else target.value = cell.v;
+          if (ri === 0) target.font = { bold: true };
+        });
+      });
+      ws.pageSetup = {
+        paperSize: 9, orientation: m.landscape ? 'landscape' : 'portrait',
+        fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+        printTitlesRow: m.printTitleRows || '1:1',
+        margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 }
+      };
+    });
+    return wb;
+  }
+
+  /* ---- Minimal XLSX writer: offline fallback, formulas, print titles ---- */
+  let CRC_TABLE = null;
+  function crcTable() {
+    if (CRC_TABLE) return CRC_TABLE;
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    CRC_TABLE = t; return t;
+  }
+  function crc32(bytes) {
+    const t = crcTable(); let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = t[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function zipStore(files) {
+    const enc = new TextEncoder();
+    const parts = [], central = [];
+    let offset = 0, centralSize = 0;
+    files.forEach(f => {
+      const name = enc.encode(f.name);
+      const data = f.data;
+      const crc = crc32(data);
+      const local = new Uint8Array(30 + name.length + data.length);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0, true);
+      lv.setUint16(8, 0, true); lv.setUint16(10, 0, true); lv.setUint16(12, 0, true);
+      lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true);
+      lv.setUint16(26, name.length, true); lv.setUint16(28, 0, true);
+      local.set(name, 30); local.set(data, 30 + name.length);
+      parts.push(local);
+      const cd = new Uint8Array(46 + name.length);
+      const cv = new DataView(cd.buffer);
+      cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0, true); cv.setUint16(10, 0, true); cv.setUint16(12, 0, true);
+      cv.setUint16(14, 0, true); cv.setUint32(16, crc, true);
+      cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true);
+      cv.setUint16(28, name.length, true); cv.setUint16(30, 0, true); cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true); cv.setUint16(36, 0, true); cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      cd.set(name, 46);
+      central.push(cd);
+      centralSize += cd.length;
+      offset += local.length;
+    });
+    const end = new Uint8Array(22);
+    const ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true); ev.setUint16(4, 0, true); ev.setUint16(6, 0, true);
+    ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+    ev.setUint32(12, centralSize, true); ev.setUint32(16, offset, true); ev.setUint16(20, 0, true);
+    const all = parts.concat(central, [end]);
+    let size = 0; all.forEach(p => { size += p.length; });
+    const out = new Uint8Array(size); let p = 0;
+    all.forEach(chunk => { out.set(chunk, p); p += chunk.length; });
+    return out;
+  }
+  function cellXml(ref, raw, style) {
+    const s = style ? ' s="' + style + '"' : '';
+    const cell = (raw && typeof raw === 'object' && 'v' in raw) ? raw : { v: raw };
+    if (cell.f) {
+      const v = cell.v === null || cell.v === undefined ? '' : cell.v;
+      const t = typeof v === 'string' ? ' t="str"' : '';
+      return '<c r="' + ref + '"' + s + t + '><f>' + esc(cell.f) + '</f><v>' + esc(v) + '</v></c>';
+    }
+    if (cell.v === null || cell.v === undefined || cell.v === '') return '<c r="' + ref + '"' + s + '/>';
+    if (typeof cell.v === 'number') return '<c r="' + ref + '"' + s + '><v>' + cell.v + '</v></c>';
+    return '<c r="' + ref + '"' + s + ' t="inlineStr"><is><t xml:space="preserve">' + esc(cell.v) + '</t></is></c>';
+  }
+  function sheetXml(m, index) {
+    const maxCols = Math.max(1, m.columns.length);
+    const maxRows = Math.max(1, m.rows.length);
+    const cols = m.columns.map((c, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) +
+      '" width="' + (c.width || 14) + '" customWidth="1"/>').join('');
+    const rows = m.rows.map((row, ri) => {
+      const cells = row.map((raw, ci) => cellXml(colLetter(ci + 1) + (ri + 1), raw, ri === 0 ? 1 : 0)).join('');
+      return '<row r="' + (ri + 1) + '">' + cells + '</row>';
+    }).join('');
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
+      '<dimension ref="A1:' + colLetter(maxCols) + maxRows + '"/>' +
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="15"/><cols>' + cols + '</cols><sheetData>' + rows + '</sheetData>' +
+      '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>' +
+      '<pageSetup paperSize="9" orientation="' + (m.landscape ? 'landscape' : 'portrait') +
+      '" fitToWidth="1" fitToHeight="0"/></worksheet>';
+  }
+  function writeMinimalXlsx(model) {
+    const enc = new TextEncoder();
+    const files = [];
+    const add = (name, text) => files.push({ name: name, data: enc.encode(text) });
+    const sheetParts = model.sheets.map((m, i) => 'xl/worksheets/sheet' + (i + 1) + '.xml');
+    let types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+    sheetParts.forEach((p, i) => {
+      types += '<Override PartName="/' + p + '" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+    });
+    types += '</Types>';
+    add('[Content_Types].xml', types);
+    add('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>');
+    let book = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
+    model.sheets.forEach((m, i) => {
+      book += '<sheet name="' + esc(m.name.slice(0, 31)) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+    });
+    book += '</sheets><definedNames>';
+    model.sheets.forEach((m, i) => {
+      const rows = (m.printTitleRows || '1:1').split(':');
+      book += '<definedName name="_xlnm.Print_Titles" localSheetId="' + i + '">' +
+        esc(qsheet(m.name.slice(0, 31)) + '!$' + rows[0] + ':$' + (rows[1] || rows[0])) + '</definedName>';
+    });
+    book += '</definedNames><calcPr calcId="171027" fullCalcOnLoad="1"/></workbook>';
+    add('xl/workbook.xml', book);
+    let rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+    sheetParts.forEach((p, i) => {
+      rels += '<Relationship Id="rId' + (i + 1) +
+        '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+    });
+    rels += '<Relationship Id="rId' + (sheetParts.length + 1) +
+      '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+    add('xl/_rels/workbook.xml.rels', rels);
+    add('xl/styles.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+      '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>');
+    model.sheets.forEach((m, i) => add(sheetParts[i], sheetXml(m, i)));
+    return zipStore(files);
+  }
+
+  /* ---- Printable documents ---- */
+  const PRINT_CSS = [
+    '@page { size: A4 portrait; margin: 10mm; }',
+    '.doc { color:#000; background:#fff; font-family: "Noto Sans Bengali", "Kalpurush", "SolaimanLipi", Arial, sans-serif; font-size:18px; line-height:1.25; }',
+    '.doc * { box-sizing:border-box; }',
+    '.doc-head { text-align:center; margin-bottom:4mm; }',
+    '.doc-head h2 { font-size:23px; margin:0 0 2mm; }',
+    '.doc-head h3 { font-size:19px; margin:3mm 0 0; text-decoration:underline; }',
+    '.doc-head .meta { font-size:14px; margin:1mm 0; }',
+    '.doc table { width:100%; border-collapse:collapse; font-size:18px; margin-bottom:2mm; }',
+    '.doc.compact table { font-size:12px; }',
+    '.doc th, .doc td { border:1px solid #000; padding:1.4mm 2mm; text-align:center; vertical-align:middle; }',
+    '.doc th { font-weight:bold; }',
+    '.doc td.left, .doc th.left { text-align:left; }',
+    '.doc thead { display:table-header-group; }',
+    '.doc tr { break-inside:avoid; page-break-inside:avoid; }',
+    '.doc .failed { font-weight:bold; text-decoration:underline; }',
+    '.doc .signature { display:table; width:100%; margin-top:5mm; break-inside:avoid; page-break-inside:avoid; }',
+    '.doc .signature div { display:table-cell; width:25%; border-top:1px solid #000; text-align:center; padding-top:2mm; font-size:13px; }',
+    '.doc .subhead { font-size:17px; font-weight:bold; margin:4mm 0 1mm; }',
+    '.doc .report-card { break-after:page; page-break-after:always; min-height:235mm; }',
+    '.doc .report-card:last-child { break-after:auto; page-break-after:auto; }',
+    '.doc .report-card, .doc .report-card * { background:transparent !important; color:#000 !important; }',
+    '.doc .report-card table, .doc .report-card th, .doc .report-card td { border:1px solid #000 !important; }',
+    '@media print {',
+    '  html, body { margin:0; padding:0; background:#fff !important; }',
+    '  body.preview-open > #app { display:none !important; }',
+    '  #printOverlay { position:static !important; inset:auto !important; display:block !important; overflow:visible !important; background:#fff !important; }',
+    '  #printOverlay .print-bar { display:none !important; }',
+    '  #printContent { padding:0 !important; }',
+    '}'
+  ].join('\n');
+  function printCss() { return PRINT_CSS; }
+  function docHead(S, title, extra) {
+    const i = S.info || {};
+    const year = String(i.year || '').trim();
+    return '<div class="doc-head"><h2>' + esc(i.school || '') + '</h2>' +
+      '<div class="meta">' + esc(i.address || '') + '</div>' +
+      '<div class="meta">' + esc(i.exam || '') + (year ? ' — ' + esc(year) : '') + '</div>' +
+      '<div class="meta">শ্রেণি: ' + esc(i.class || '') + ' | বিভাগ: ' + esc(i.group || '') + '</div>' +
+      (extra ? '<div class="meta">' + extra + '</div>' : '') +
+      '<h3>' + esc(title) + '</h3></div>';
+  }
+  function signature(names) {
+    return '<div class="signature">' + names.map(n => '<div>' + esc(n) + '</div>').join('') + '</div>';
+  }
+  function docTable(headers, rows, opts) {
+    const o = opts || {};
+    return '<table' + (o.cls ? ' class="' + o.cls + '"' : '') + '><thead><tr>' +
+      headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>' +
+      rows.map(row => '<tr>' + row.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') +
+      '</tbody></table>';
+  }
+  function reportCardBody(R, S) {
+    return R.results.map(r => {
+      const info = docTable(['রোল', 'আইডি', 'শ্রেণি', 'বিভাগ', 'নাম'], [[
+        esc(r.roll), esc(r.id), esc(S.info.class || ''), esc(S.info.group || ''), esc(r.name)
+      ]]);
+      const subjects = docTable(['বিষয়', 'পূর্ণমান', 'মধ্য', 'সাপ্তাহিক', 'মোট', 'গ্রেড', 'জিপি'],
+        r.rows.map(x => {
+          const cls = x.fail ? 'failed' : '';
+          const wrap = v => cls ? '<span class="failed">' + esc(v) + '</span>' : esc(v);
+          return [esc(x.name), esc(x.full), wrap(x.mid === null ? '—' : x.mid),
+            wrap(x.weekly === null ? '—' : x.weekly), wrap(x.total === null ? '—' : x.total),
+            wrap(x.grade), wrap(x.gp)];
+        }));
+      const summary = docTable(['মোট নম্বর', 'জিপিএ', 'গ্রেড', 'স্থান', 'এ+', 'স্বর্ণ এ+', 'ফলাফল'], [[
+        esc(r.total), esc(r.gpa.toFixed(2)), '<b>' + esc(r.grade) + '</b>',
+        esc(r.place === null ? '—' : r.place), esc(r.aPlus),
+        esc(r.golden ? 'হ্যাঁ' : 'না'), esc(r.failed ? 'অনুত্তীর্ণ' : 'উত্তীর্ণ')
+      ]]);
+      return '<section class="report-card">' + docHead(S, DOC_META.report.title) + info + subjects +
+        '<p>মন্তব্য: ' + esc(r.comment) + '</p>' + summary +
+        signature(['অভিভাবক', 'গাইড শিক্ষক', 'পরীক্ষা নিয়ন্ত্রক', 'প্রধান শিক্ষক']) + '</section>';
+    }).join('');
+  }
+  function publishedBody(R, S) {
+    const headers = ['রোল', 'নাম', 'গ্রেড', 'জিপিএ', 'মোট নম্বর', 'স্থান', 'এ+', 'স্বর্ণ এ+', 'অনুত্তীর্ণ', 'মন্তব্য'];
+    const rows = R.results.map(r => [esc(r.roll), esc(r.name), esc(r.grade), esc(r.gpa.toFixed(2)),
+      esc(r.total), esc(r.place === null ? '—' : r.place), esc(r.aPlus),
+      esc(r.golden ? 'হ্যাঁ' : '—'), esc(r.failed ? 'হ্যাঁ' : '—'), esc(r.comment)]);
+    return docHead(S, DOC_META.published.title) + docTable(headers, rows) +
+      signature(['গাইড শিক্ষক', 'শ্রেণি শিক্ষক', 'পরীক্ষা নিয়ন্ত্রক', 'প্রধান শিক্ষক']);
+  }
+  function tableBody(R, S) {
+    const headers = ['রোল', 'নাম'];
+    S.subjects.forEach(s => {
+      headers.push(s.name + ' মধ্য', s.name + ' সাপ্তাহিক', s.name + ' মোট', s.name + ' গ্রেড');
+    });
+    headers.push('মোট নম্বর', 'জিপিএ', 'গ্রেড', 'এফ', 'এস', 'স্থান');
+    const rows = R.results.map(r => {
+      const line = [esc(r.roll), esc(r.name)];
+      r.rows.forEach(x => {
+        const w = v => x.fail ? '<span class="failed">' + esc(v) + '</span>' : esc(v);
+        line.push(w(x.mid === null ? '—' : x.mid), w(x.weekly === null ? '—' : x.weekly),
+          w(x.total === null ? '—' : x.total), w(x.grade));
+      });
+      line.push(esc(r.total), esc(r.gpa.toFixed(2)), esc(r.grade), esc(r.F), esc(r.S),
+        esc(r.place === null ? '—' : r.place));
+      return line;
+    });
+    return docHead(S, DOC_META.table.title) + docTable(headers, rows) +
+      signature(['গাইড শিক্ষক', 'শ্রেণি শিক্ষক', 'পরীক্ষা নিয়ন্ত্রক', 'প্রধান শিক্ষক']);
+  }
+  function summaryBody(R, S) {
+    const sum = R.summary;
+    const overall = docTable(['মোট শিক্ষার্থী', 'উত্তীর্ণ', 'অনুত্তীর্ণ', 'পাসের হার', 'স্বর্ণ এ+', 'মোট এ+'], [[
+      esc(sum.total), esc(sum.pass), esc(sum.fail), esc(sum.passRate) + '%',
+      esc(sum.golden), esc(sum.aPlusTotal)
+    ]]);
+    const grades = Object.keys(sum.gradeCounts).map(g => [esc(g), esc(sum.gradeCounts[g])]);
+    const subjectRows = sum.subjectCounts.map(s => [esc(s.name), esc(s.optional ? 'হ্যাঁ' : 'না'),
+      esc(s.passed), esc(s.failed), esc(s.absent), esc(s.aPlus), esc(s.average) + '%']);
+    return docHead(S, DOC_META.summary.title) +
+      '<div class="subhead">সামগ্রিক</div>' + overall +
+      '<div class="subhead">গ্রেড অনুযায়ী সংখ্যা</div>' + docTable(['গ্রেড', 'সংখ্যা'], grades) +
+      '<div class="subhead">বিষয়ভিত্তিক সংখ্যা</div>' +
+      docTable(['বিষয়', 'ঐচ্ছিক', 'উত্তীর্ণ', 'অনুত্তীর্ণ', 'অনুপস্থিত', 'এ+', 'গড় শতাংশ'], subjectRows) +
+      signature(['গাইড শিক্ষক', 'শ্রেণি শিক্ষক', 'পরীক্ষা নিয়ন্ত্রক', 'প্রধান শিক্ষক']);
+  }
+  function topTenBody(R, S) {
+    const rows = R.results.filter(r => !r.failed && r.place !== null)
+      .sort((a, b) => a.place - b.place || b.total - a.total).slice(0, 10)
+      .map(r => [esc(r.place), esc(r.roll), esc(r.name), esc(r.gpa.toFixed(2)),
+        esc(r.total), esc(r.grade), esc(r.aPlus), esc(r.comment)]);
+    return docHead(S, DOC_META.topten.title) +
+      docTable(['স্থান', 'রোল', 'নাম', 'জিপিএ', 'মোট নম্বর', 'গ্রেড', 'এ+', 'মন্তব্য'], rows) +
+      signature(['গাইড শিক্ষক', 'শ্রেণি শিক্ষক', 'পরীক্ষা নিয়ন্ত্রক', 'প্রধান শিক্ষক']);
+  }
+  function numberSheetBody(R, S) {
+    const headers = ['রোল', 'নাম'];
+    S.subjects.forEach(s => headers.push(s.name));
+    headers.push('মোট');
+    const rows = R.results.map(r => {
+      const line = [esc(r.roll), esc(r.name)];
+      S.subjects.forEach(() => line.push('&nbsp;'));
+      line.push('&nbsp;');
+      return line;
+    });
+    return docHead(S, DOC_META.numbers.title) + docTable(headers, rows) +
+      signature(['গাইড শিক্ষক', 'শ্রেণি শিক্ষক', 'পরীক্ষা নিয়ন্ত্রক', 'প্রধান শিক্ষক']);
+  }
+  function printBody(kind, S) {
+    const R = computeResults(S);
+    if (kind === 'report') return reportCardBody(R, S);
+    if (kind === 'published') return publishedBody(R, S);
+    if (kind === 'table') return tableBody(R, S);
+    if (kind === 'summary') return summaryBody(R, S);
+    if (kind === 'topten') return topTenBody(R, S);
+    return numberSheetBody(R, S);
+  }
+  function printDocument(kind, S) {
+    const meta = DOC_META[kind] || DOC_META.published;
+    const compact = (S.subjects.length > 5 && (kind === 'table' || kind === 'numbers' || kind === 'published'));
+    return { title: meta.title, landscape: meta.landscape,
+      html: '<div class="doc' + (compact ? ' compact' : '') + '">' + printBody(kind, S) + '</div>' };
+  }
+  function printPage(kind, S) {
+    const d = printDocument(kind, S);
+    const pageRule = '@page { size: A4 ' + (d.landscape ? 'landscape' : 'portrait') + '; margin: 10mm; }';
+    const css = PRINT_CSS.replace('@page { size: A4 portrait; margin: 10mm; }', pageRule);
+    return '<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><style>' + css +
+      '</style></head><body>' + d.html + '</body></html>';
+  }
+
+  const Core = {
+    STORAGE_KEY, AUTO_COMMENTS, DOC_META, SHEET_NAMES, esc, round2, num, defaultScale,
+    sampleState, normalizeState, gradeFromPercent, finalGradeFromGpa, autoComment,
+    computeSubject, computeStudent, computeResults, buildSummary, detectDelimiter,
+    parseDelimited, mapHeaders, applyImport, buildCsv, colLetter, qsheet, sheetRef,
+    buildWorkbookModel, buildExcelJsWorkbook, writeMinimalXlsx, printCss, printDocument,
+    printPage, docHead, signature, docTable
+  };
+  if (typeof globalThis !== 'undefined') globalThis.RSMCore = Core;
+  if (typeof document === 'undefined') return;
+
+  /* =====================================================================
+   * UI: state, spreadsheet, settings, import/export and print preview.
+   * ===================================================================== */
+  const $ = id => document.getElementById(id);
+  const overlay = $('printOverlay');
+  const grid = $('grid');
+  let S;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    S = raw ? Core.normalizeState(JSON.parse(raw)) : Core.sampleState();
+  } catch (err) { S = Core.sampleState(); }
+
+  const undoStack = [], redoStack = [];
+  let pendingSnapshot = null;
+  let internalClipboard = null;
+  const sel = { anchor: { r: 0, c: 0 }, focus: { r: 0, c: 0 }, active: { r: 0, c: 0 },
+    dragging: false, columnMode: false };
+  let currentDoc = 'published';
+  let toastTimer = null;
+
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(S)); } catch (err) { /* private mode */ }
+  }
+  function toast(msg) {
+    const box = $('toast');
+    box.textContent = msg; box.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { box.style.display = 'none'; }, 2600);
+  }
+  function snapshot() {
+    return JSON.stringify({ info: S.info, subjects: S.subjects, students: S.students, scale: S.scale });
+  }
+  function pushHistory(snap) {
+    undoStack.push(snap === undefined ? snapshot() : snap);
+    if (undoStack.length > 60) undoStack.shift();
+    redoStack.length = 0;
+  }
+  function restore(snap) {
+    S = Core.normalizeState(JSON.parse(snap));
+    clampSelection(); renderAll(); saveState();
+    focusCell(sel.active.r, sel.active.c);
+  }
+  function undo() {
+    if (!undoStack.length) { toast('পূর্বাবস্থার তথ্য নেই'); return; }
+    redoStack.push(snapshot()); restore(undoStack.pop()); toast('পূর্বাবস্থায় ফেরা হয়েছে');
+  }
+  function redo() {
+    if (!redoStack.length) { toast('পুনরায় করার তথ্য নেই'); return; }
+    undoStack.push(snapshot()); restore(redoStack.pop()); toast('পুনরায় করা হয়েছে');
+  }
+
+  function getCols() {
+    const cols = [
+      { key: 'roll', label: 'রোল', type: 'number', width: '72px', sticky: 'sticky-roll' },
+      { key: 'name', label: 'নাম', type: 'text', width: '170px', sticky: 'sticky-name' },
+      { key: 'id', label: 'আইডি', type: 'text', width: '110px' }
+    ];
+    S.subjects.forEach(s => {
+      cols.push({ key: s.id + ':mid', label: s.name + ' (মধ্য)', type: 'mark',
+        max: Number(s.midMax), width: '118px' });
+      cols.push({ key: s.id + ':weekly', label: s.name + ' (সাপ্তাহিক)', type: 'mark',
+        max: Number(s.weeklyMax), width: '118px' });
+    });
+    cols.push({ key: 'comment', label: 'মন্তব্য', type: 'text', width: '190px' });
+    return cols;
+  }
+  function readCell(st, col) {
+    if (col.key === 'roll') return st.roll;
+    if (col.key === 'id') return st.id;
+    if (col.key === 'name') return st.name;
+    if (col.key === 'comment') return st.comment;
+    const parts = col.key.split(':');
+    const m = st.marks[parts[0]] || {};
+    return m[parts[1]] === undefined || m[parts[1]] === null ? '' : m[parts[1]];
+  }
+  function writeCell(st, col, value) {
+    if (col.key === 'roll') { st.roll = value; return; }
+    if (col.key === 'id') { st.id = value; return; }
+    if (col.key === 'name') { st.name = value; return; }
+    if (col.key === 'comment') { st.comment = value; return; }
+    const parts = col.key.split(':');
+    if (!st.marks[parts[0]]) st.marks[parts[0]] = { mid: '', weekly: '' };
+    st.marks[parts[0]][parts[1]] = value;
+  }
+  function isInvalid(col, value) {
+    const n = Core.num(value);
+    return col.type === 'mark' && n !== null && n > (Number(col.max) || 0);
+  }
+  function sanitizeNumeric(v) {
+    let s = String(v).replace(/[^0-9.]/g, '');
+    const first = s.indexOf('.');
+    if (first >= 0) s = s.slice(0, first + 1) + s.slice(first + 1).replace(/\./g, '');
+    return s;
+  }
+  function blankStudent(roll) {
+    return { roll: String(roll || ''), id: '', name: '', marks: {}, comment: '' };
+  }
+  function nextRoll() {
+    let max = 0;
+    S.students.forEach(st => { const n = Core.num(st.roll); if (n !== null && n > max) max = n; });
+    return max + 1;
+  }
+  function clampSelection() {
+    const cols = getCols().length, rows = S.students.length;
+    const fix = p => ({ r: Math.max(0, Math.min(Math.max(0, rows - 1), p.r)),
+      c: Math.max(0, Math.min(cols - 1, p.c)) });
+    sel.anchor = fix(sel.anchor); sel.focus = fix(sel.focus); sel.active = fix(sel.active);
+  }
+  function selRect() {
+    if (sel.columnMode) return { r0: 0, r1: Math.max(0, S.students.length - 1),
+      c0: sel.active.c, c1: sel.active.c };
+    return { r0: Math.min(sel.anchor.r, sel.focus.r), r1: Math.max(sel.anchor.r, sel.focus.r),
+      c0: Math.min(sel.anchor.c, sel.focus.c), c1: Math.max(sel.anchor.c, sel.focus.c) };
+  }
+  function focusCell(r, c) {
+    const td = grid.querySelector('td.cell[data-r="' + r + '"][data-c="' + c + '"]');
+    if (!td) return;
+    td.focus();
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(td); range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+    } catch (err) { /* caret placement is optional */ }
+  }
+  function paintSelection() {
+    const rect = selRect();
+    grid.querySelectorAll('td.cell').forEach(td => {
+      const r = Number(td.dataset.r), c = Number(td.dataset.c);
+      td.classList.toggle('selected', r >= rect.r0 && r <= rect.r1 && c >= rect.c0 && c <= rect.c1);
+      td.classList.toggle('active-cell', r === sel.active.r && c === sel.active.c);
+      td.parentElement.classList.toggle('active-row', r === sel.active.r);
+    });
+    grid.querySelectorAll('th').forEach(th => {
+      th.classList.toggle('active-col', Number(th.dataset.c) === sel.active.c);
+    });
+    $('sbCount').textContent = String((rect.r1 - rect.r0 + 1) * (rect.c1 - rect.c0 + 1));
+  }
+  function updateStatus() {
+    const cols = getCols(), st = S.students[sel.active.r], col = cols[sel.active.c];
+    $('sbRoll').textContent = st && String(st.roll).trim() ? st.roll : '—';
+    $('sbName').textContent = st && String(st.name).trim() ? st.name : '—';
+    $('sbCol').textContent = col ? col.label.replace(/\n/g, ' ') : '—';
+  }
+  function renderGrid() {
+    const keepFocus = grid.contains(document.activeElement);
+    const cols = getCols();
+    const head = '<tr>' + cols.map((c, i) =>
+      '<th data-c="' + i + '"' + (c.sticky ? ' class="' + c.sticky + '"' : '') +
+      ' style="min-width:' + c.width + '">' + Core.esc(c.label) + '</th>').join('') + '</tr>';
+    const body = S.students.map((st, r) => '<tr data-r="' + r + '">' + cols.map((c, i) => {
+      const v = readCell(st, c);
+      return '<td class="cell' + (c.sticky ? ' ' + c.sticky : '') +
+        (isInvalid(c, v) ? ' invalid' : '') + '" contenteditable="true" spellcheck="false" ' +
+        'data-r="' + r + '" data-c="' + i + '" style="min-width:' + c.width + '">' +
+        Core.esc(v) + '</td>';
+    }).join('') + '</tr>').join('');
+    grid.innerHTML = '<thead>' + head + '</thead><tbody>' + body + '</tbody>';
+    clampSelection(); paintSelection(); updateStatus();
+    if (keepFocus) focusCell(sel.active.r, sel.active.c);
+  }
+  function renderInfo() {
+    document.querySelectorAll('[data-info]').forEach(input => {
+      input.value = S.info[input.dataset.info] || '';
+    });
+  }
+  function renderSubjectSettings() {
+    $('subjectTable').querySelector('tbody').innerHTML = S.subjects.map((s, i) =>
+      '<tr>' +
+      '<td><input type="text" data-sub="' + i + '" data-field="name" value="' + Core.esc(s.name) + '"></td>' +
+      '<td><input type="number" min="0" data-sub="' + i + '" data-field="full" value="' + s.full + '"></td>' +
+      '<td><input type="number" min="0" data-sub="' + i + '" data-field="pass" value="' + s.pass + '"></td>' +
+      '<td><input type="number" min="0" data-sub="' + i + '" data-field="midMax" value="' + s.midMax + '"></td>' +
+      '<td><input type="number" min="0" data-sub="' + i + '" data-field="weeklyMax" value="' + s.weeklyMax + '"></td>' +
+      '<td><input type="checkbox" data-sub="' + i + '" data-field="optional"' + (s.optional ? ' checked' : '') + '></td>' +
+      '<td><button class="btn small" data-subact="up" data-i="' + i + '">↑</button> ' +
+      '<button class="btn small" data-subact="down" data-i="' + i + '">↓</button> ' +
+      '<button class="btn small warn" data-subact="del" data-i="' + i + '">✕</button></td></tr>').join('');
+  }
+  function renderScale() {
+    $('scaleTable').querySelector('tbody').innerHTML = S.scale.map((r, i) =>
+      '<tr><td><input type="number" step="0.01" data-scale="' + i + '" data-field="min" value="' + r.min + '"></td>' +
+      '<td><input type="text" data-scale="' + i + '" data-field="grade" value="' + Core.esc(r.grade) + '"></td>' +
+      '<td><input type="number" step="0.01" data-scale="' + i + '" data-field="gp" value="' + r.gp + '"></td>' +
+      '<td><button class="btn small warn" data-scaleact="del" data-i="' + i + '">✕</button></td></tr>').join('');
+  }
+  function renderResults() {
+    const R = Core.computeResults(S), sum = R.summary;
+    const cards = [['মোট শিক্ষার্থী', sum.total], ['উত্তীর্ণ', sum.pass], ['অনুত্তীর্ণ', sum.fail],
+      ['পাসের হার', sum.passRate + '%'], ['স্বর্ণ এ+', sum.golden], ['মোট এ+', sum.aPlusTotal]];
+    $('summaryCards').innerHTML = cards.map(c =>
+      '<div class="card"><div class="k">' + Core.esc(c[0]) + '</div><div class="v">' + Core.esc(c[1]) + '</div></div>').join('');
+    const head = ['রোল', 'নাম'];
+    S.subjects.forEach(s => { head.push(s.name + ' মোট'); head.push(s.name + ' গ্রেড'); });
+    head.push('মোট নম্বর', 'জিপিএ', 'গ্রেড', 'এফ', 'এস', 'এ+', 'স্বর্ণ এ+', 'স্থান', 'অবস্থা', 'মন্তব্য');
+    const rows = R.results.map(r => {
+      const line = ['<b>' + Core.esc(r.roll) + '</b>', '<span class="left">' + Core.esc(r.name) + '</span>'];
+      r.rows.forEach(x => {
+        line.push(x.total === null ? '—' : Core.esc(x.total));
+        line.push(x.fail ? '<b style="color:#c1121f">' + Core.esc(x.grade) + '</b>' : Core.esc(x.grade));
+      });
+      line.push(Core.esc(r.total), Core.esc(r.gpa.toFixed(2)), '<b>' + Core.esc(r.grade) + '</b>',
+        Core.esc(r.F), Core.esc(r.S), Core.esc(r.aPlus), Core.esc(r.golden ? 'হ্যাঁ' : '—'),
+        Core.esc(r.place === null ? '—' : r.place),
+        r.failed ? '<span style="color:#c1121f">অনুত্তীর্ণ</span>' : '<span style="color:#137333">উত্তীর্ণ</span>',
+        '<span class="left">' + Core.esc(r.comment) + '</span>');
+      return '<tr' + (r.failed ? ' class="bad"' : '') + '>' + line.map(v => '<td>' + v + '</td>').join('') + '</tr>';
+    }).join('');
+    $('resultTable').innerHTML = '<thead><tr>' + head.map(h => '<th>' + Core.esc(h) + '</th>').join('') +
+      '</tr></thead><tbody>' + rows + '</tbody>';
+    $('gradeTable').innerHTML = '<thead><tr><th>গ্রেড</th><th>সংখ্যা</th></tr></thead><tbody>' +
+      Object.keys(sum.gradeCounts).map(g => '<tr><td>' + Core.esc(g) + '</td><td>' +
+        Core.esc(sum.gradeCounts[g]) + '</td></tr>').join('') + '</tbody>';
+  }
+  function renderAll() {
+    renderInfo(); renderGrid(); renderSubjectSettings(); renderScale(); renderResults();
+  }
+
+  function clearCellsInRect(rect) {
+    const cols = getCols();
+    for (let r = rect.r0; r <= rect.r1; r++) {
+      for (let c = rect.c0; c <= rect.c1; c++) {
+        if (!S.students[r] || !cols[c]) continue;
+        writeCell(S.students[r], cols[c], '');
+        const td = grid.querySelector('td.cell[data-r="' + r + '"][data-c="' + c + '"]');
+        if (td) { td.textContent = ''; td.classList.remove('invalid'); }
+      }
+    }
+    saveState(); renderResults(); paintSelection(); updateStatus();
+  }
+  function copySelection(cut) {
+    const rect = selRect(), rows = [];
+    for (let r = rect.r0; r <= rect.r1; r++) {
+      const line = [];
+      for (let c = rect.c0; c <= rect.c1; c++) {
+        const td = grid.querySelector('td.cell[data-r="' + r + '"][data-c="' + c + '"]');
+        line.push(td ? td.textContent : '');
+      }
+      rows.push(line);
+    }
+    internalClipboard = rows;
+    const text = rows.map(r => r.join('\t')).join('\n');
+    try { if (navigator.clipboard) navigator.clipboard.writeText(text); } catch (err) { /* clipboard may be blocked */ }
+    if (cut) { pushHistory(); clearCellsInRect(rect); toast('কাটা হয়েছে'); }
+    else toast('কপি হয়েছে');
+  }
+  function applyPaste(matrix) {
+    if (!matrix || !matrix.length) return;
+    pushHistory();
+    const cols = getCols();
+    const startR = sel.columnMode ? 0 : sel.active.r;
+    const startC = sel.active.c;
+    while (S.students.length < startR + matrix.length) S.students.push(blankStudent(nextRoll()));
+    let rejected = 0;
+    matrix.forEach((row, ri) => {
+      row.forEach((raw, ci) => {
+        const r = startR + ri, c = startC + ci;
+        if (c >= cols.length || !S.students[r]) return;
+        const col = cols[c];
+        let val = String(raw === undefined || raw === null ? '' : raw).trim();
+        if (col.type !== 'text' && val !== '') {
+          const n = Number(val.replace(/,/g, ''));
+          if (!Number.isFinite(n) || n < 0 || /[A-Za-z\u0980-\u09FF]/.test(val)) { rejected++; return; }
+          val = col.type === 'roll' ? String(Math.trunc(n)) : String(n);
+        }
+        writeCell(S.students[r], col, val);
+      });
+    });
+    renderGrid(); saveState(); renderResults();
+    toast(rejected ? rejected + ' টি অবৈধ মান বাদ দেওয়া হয়েছে' : 'পেস্ট হয়েছে');
+  }
+  function moveActive(key) {
+    let r = sel.active.r, c = sel.active.c;
+    const cols = getCols().length, rows = S.students.length;
+    if (key === 'ArrowUp') r = Math.max(0, r - 1);
+    else if (key === 'ArrowDown') r = Math.min(Math.max(0, rows - 1), r + 1);
+    else if (key === 'ArrowLeft') c = Math.max(0, c - 1);
+    else if (key === 'ArrowRight' || key === 'Tab') c = Math.min(cols - 1, c + 1);
+    else if (key === 'Enter') r = Math.min(Math.max(0, rows - 1), r + 1);
+    sel.anchor = { r: r, c: c }; sel.focus = { r: r, c: c }; sel.active = { r: r, c: c };
+    sel.columnMode = false; focusCell(r, c); paintSelection(); updateStatus();
+  }
+  function addStudent(where) {
+    pushHistory();
+    let index = S.students.length;
+    if (where === 'above') index = sel.active.r;
+    if (where === 'below') index = sel.active.r + 1;
+    S.students.splice(index, 0, blankStudent(nextRoll()));
+    sel.anchor = { r: index, c: 0 }; sel.focus = { r: index, c: 0 };
+    sel.active = { r: index, c: 0 }; sel.columnMode = false;
+    renderGrid(); saveState(); renderResults(); focusCell(index, 0);
+  }
+  function deleteStudents() {
+    const rect = selRect();
+    pushHistory();
+    S.students = S.students.filter((st, i) => i < rect.r0 || i > rect.r1);
+    renderAll(); saveState(); toast('শিক্ষার্থী মুছে ফেলা হয়েছে');
+  }
+  function sortByRoll() {
+    pushHistory();
+    S.students.sort((a, b) => {
+      const x = Core.num(a.roll), y = Core.num(b.roll);
+      if (x === null && y === null) return String(a.name).localeCompare(String(b.name), 'bn');
+      if (x === null) return 1;
+      if (y === null) return -1;
+      return x - y || String(a.name).localeCompare(String(b.name), 'bn');
+    });
+    renderGrid(); saveState(); renderResults(); toast('রোল অনুযায়ী সাজানো হয়েছে');
+  }
+
+  /* ---- Spreadsheet events ---- */
+  grid.addEventListener('mousedown', e => {
+    const td = e.target.closest('td.cell');
+    if (!td) return;
+    e.preventDefault();
+    const r = Number(td.dataset.r), c = Number(td.dataset.c);
+    if (e.shiftKey) sel.focus = { r: r, c: c };
+    else { sel.anchor = { r: r, c: c }; sel.focus = { r: r, c: c }; }
+    sel.active = { r: r, c: c }; sel.columnMode = false; sel.dragging = true;
+    focusCell(r, c); paintSelection(); updateStatus();
+  });
+  grid.addEventListener('mouseover', e => {
+    if (!sel.dragging) return;
+    const td = e.target.closest('td.cell');
+    if (!td) return;
+    sel.focus = { r: Number(td.dataset.r), c: Number(td.dataset.c) };
+    sel.active = { r: sel.focus.r, c: sel.focus.c };
+    paintSelection(); updateStatus();
+  });
+  document.addEventListener('mouseup', () => { sel.dragging = false; });
+  grid.addEventListener('click', e => {
+    const th = e.target.closest('th');
+    if (!th) return;
+    const c = Number(th.dataset.c);
+    sel.anchor = { r: 0, c: c };
+    sel.focus = { r: Math.max(0, S.students.length - 1), c: c };
+    sel.active = { r: 0, c: c }; sel.columnMode = true;
+    focusCell(0, c); paintSelection(); updateStatus();
+  });
+  grid.addEventListener('focusin', e => {
+    if (e.target.closest && e.target.closest('td.cell')) pendingSnapshot = snapshot();
+  });
+  grid.addEventListener('input', e => {
+    const td = e.target.closest('td.cell');
+    if (!td) return;
+    if (pendingSnapshot) { pushHistory(pendingSnapshot); pendingSnapshot = null; }
+    const col = getCols()[Number(td.dataset.c)];
+    let val = td.textContent;
+    if (col && col.type !== 'text') {
+      const cleaned = sanitizeNumeric(val);
+      if (cleaned !== val) { val = cleaned; td.textContent = val; focusCell(Number(td.dataset.r), Number(td.dataset.c)); }
+    }
+    const st = S.students[Number(td.dataset.r)];
+    if (!st || !col) return;
+    writeCell(st, col, val.trim());
+    if (col && td) td.classList.toggle('invalid', isInvalid(col, val));
+    saveState(); renderResults(); updateStatus();
+  });
+  document.addEventListener('keydown', e => {
+    const ctrl = e.ctrlKey || e.metaKey;
+    const key = String(e.key).toLowerCase();
+    if (ctrl && key === 'p') {
+      e.preventDefault();
+      if (overlay.hidden) openPrint(currentDoc);
+      setTimeout(() => window.print(), 120);
+      return;
+    }
+    const inGrid = !!(e.target.closest && e.target.closest('#grid'));
+    if (!inGrid) return;
+    if (ctrl && key === 'c') { e.preventDefault(); copySelection(false); return; }
+    if (ctrl && key === 'x') { e.preventDefault(); copySelection(true); return; }
+    if (ctrl && key === 'v') return;
+    if (ctrl && key === 'z') { e.preventDefault(); undo(); return; }
+    if (ctrl && key === 'y') { e.preventDefault(); redo(); return; }
+    if (e.key === 'Delete') { e.preventDefault(); pushHistory(); clearCellsInRect(selRect()); return; }
+    if (e.key === 'Escape') {
+      sel.columnMode = false; sel.anchor = { r: sel.active.r, c: sel.active.c };
+      sel.focus = { r: sel.active.r, c: sel.active.c }; paintSelection(); return;
+    }
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'].indexOf(e.key) >= 0) {
+      e.preventDefault(); moveActive(e.key);
+    }
+  });
+  document.addEventListener('paste', e => {
+    const inGrid = !!(e.target.closest && e.target.closest('#grid'));
+    if (!inGrid) return;
+    e.preventDefault();
+    const data = e.clipboardData || window.clipboardData;
+    const text = data ? data.getData('text/plain') : '';
+    if (text) applyPaste(Core.parseDelimited(text));
+    else if (internalClipboard) applyPaste(internalClipboard);
+  });
+
+  /* ---- Info, subject and scale editors ---- */
+  document.querySelectorAll('[data-info]').forEach(input => {
+    input.addEventListener('input', () => {
+      S.info[input.dataset.info] = input.value; saveState();
+    });
+  });
+  $('subjectTable').addEventListener('input', e => {
+    const t = e.target, i = t.dataset.sub;
+    if (i === undefined || t.dataset.field === 'optional') return;
+    const field = t.dataset.field;
+    S.subjects[Number(i)][field] = /full|pass|midMax|weeklyMax/.test(field) ? (Number(t.value) || 0) : t.value;
+    saveState(); renderGrid(); renderResults();
+  });
+  $('subjectTable').addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.field === 'optional') {
+      pushHistory(); S.subjects[Number(t.dataset.sub)].optional = t.checked;
+      saveState(); renderResults();
+    }
+  });
+  $('subjectTable').addEventListener('click', e => {
+    const btn = e.target.closest('[data-subact]');
+    if (!btn) return;
+    pushHistory();
+    const i = Number(btn.dataset.i), act = btn.dataset.subact;
+    if (act === 'del') S.subjects.splice(i, 1);
+    else if (act === 'up' && i > 0) {
+      const tmp = S.subjects[i - 1]; S.subjects[i - 1] = S.subjects[i]; S.subjects[i] = tmp;
+    } else if (act === 'down' && i < S.subjects.length - 1) {
+      const tmp = S.subjects[i + 1]; S.subjects[i + 1] = S.subjects[i]; S.subjects[i] = tmp;
+    }
+    renderAll(); saveState();
+  });
+  $('scaleTable').addEventListener('input', e => {
+    const t = e.target, i = t.dataset.scale;
+    if (i === undefined) return;
+    const field = t.dataset.field;
+    S.scale[Number(i)][field] = field === 'grade' ? t.value : (Number(t.value) || 0);
+    saveState(); renderResults();
+  });
+  $('scaleTable').addEventListener('click', e => {
+    const btn = e.target.closest('[data-scaleact]');
+    if (!btn) return;
+    pushHistory(); S.scale.splice(Number(btn.dataset.i), 1);
+    renderScale(); renderResults(); saveState();
+  });
+
+  /* ---- Download and lazy CDN helpers ---- */
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  function loadScript(url, ms) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      let done = false;
+      const timer = setTimeout(() => { if (!done) { done = true; s.remove(); reject(new Error('timeout')); } }, ms || 5000);
+      s.src = url; s.async = true;
+      s.onload = () => { if (!done) { done = true; clearTimeout(timer); resolve(); } };
+      s.onerror = () => { if (!done) { done = true; clearTimeout(timer); reject(new Error('network')); } };
+      document.head.appendChild(s);
+    });
+  }
+  async function getExcelJS() {
+    if (window.ExcelJS) return window.ExcelJS;
+    const urls = [
+      'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js'
+    ];
+    for (const url of urls) {
+      try { await loadScript(url, 5000); if (window.ExcelJS) return window.ExcelJS; } catch (err) { /* try next */ }
+    }
+    return null;
+  }
+  async function getSheetJS() {
+    if (window.XLSX) return window.XLSX;
+    try {
+      await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', 5000);
+      return window.XLSX || null;
+    } catch (err) { return null; }
+  }
+
+  /* ---- Minimal offline XLSX reader ---- */
+  async function inflateRaw(bytes) {
+    if (typeof DecompressionStream === 'undefined') throw new Error('No decompression support');
+    let stream;
+    try { stream = new DecompressionStream('deflate-raw'); }
+    catch (err) { stream = new DecompressionStream('deflate'); }
+    const out = new Blob([bytes]).stream().pipeThrough(stream);
+    return new Uint8Array(await new Response(out).arrayBuffer());
+  }
+  async function unzipXlsx(bytes) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let eocd = -1;
+    for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('Invalid zip');
+    const count = dv.getUint16(eocd + 10, true);
+    let p = dv.getUint32(eocd + 16, true);
+    const entries = [];
+    for (let i = 0; i < count; i++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      const method = dv.getUint16(p + 10, true);
+      const compSize = dv.getUint32(p + 20, true);
+      const nameLen = dv.getUint16(p + 28, true);
+      const extraLen = dv.getUint16(p + 30, true);
+      const commentLen = dv.getUint16(p + 32, true);
+      const local = dv.getUint32(p + 42, true);
+      const name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nameLen));
+      entries.push({ name: name, method: method, compSize: compSize, local: local });
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    const files = {};
+    for (const e of entries) {
+      const nameLen = dv.getUint16(e.local + 26, true);
+      const extraLen = dv.getUint16(e.local + 28, true);
+      const start = e.local + 30 + nameLen + extraLen;
+      const data = bytes.subarray(start, start + e.compSize);
+      let raw = data;
+      if (e.method === 8) raw = await inflateRaw(data);
+      files[e.name] = new TextDecoder().decode(raw);
+    }
+    return files;
+  }
+  function parseXlsxMatrix(files) {
+    const parser = new DOMParser();
+    const shared = [];
+    if (files['xl/sharedStrings.xml']) {
+      const doc = parser.parseFromString(files['xl/sharedStrings.xml'], 'application/xml');
+      Array.from(doc.getElementsByTagName('si')).forEach(si => {
+        shared.push(Array.from(si.getElementsByTagName('t')).map(t => t.textContent).join(''));
+      });
+    }
+    const key = Object.keys(files).filter(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort()[0];
+    if (!key) throw new Error('No worksheet');
+    const doc = parser.parseFromString(files[key], 'application/xml');
+    const rows = [];
+    Array.from(doc.getElementsByTagName('row')).forEach(rowEl => {
+      const cells = [];
+      Array.from(rowEl.getElementsByTagName('c')).forEach(c => {
+        const ref = c.getAttribute('r') || '';
+        const letters = (ref.match(/^[A-Za-z]+/) || [''])[0];
+        let idx = 0;
+        for (const ch of letters) idx = idx * 26 + (ch.toUpperCase().charCodeAt(0) - 64);
+        idx = Math.max(0, idx - 1);
+        const t = c.getAttribute('t');
+        let val = '';
+        if (t === 'inlineStr') val = Array.from(c.getElementsByTagName('t')).map(x => x.textContent).join('');
+        else {
+          const v = c.getElementsByTagName('v')[0];
+          val = v ? v.textContent : '';
+          if (t === 's') val = shared[Number(val)] || '';
+        }
+        while (cells.length < idx) cells.push('');
+        cells[idx] = val;
+      });
+      rows.push(cells);
+    });
+    return rows;
+  }
+  async function readWorkbookMatrix(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const files = await unzipXlsx(bytes);
+    return parseXlsxMatrix(files);
+  }
+
+  /* ---- Import / export actions ---- */
+  async function importFile(file) {
+    const ext = String(file.name).split('.').pop().toLowerCase();
+    let matrix = null;
+    if (ext === 'xlsx' || ext === 'xls') {
+      try { matrix = await readWorkbookMatrix(file); }
+      catch (err) {
+        const XLSX = await getSheetJS();
+        if (XLSX) {
+          const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+          matrix = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+        }
+      }
+      if (!matrix) { toast('এক্সেল পড়া যায়নি; সিএসভি ব্যবহার করুন'); return; }
+    } else {
+      matrix = Core.parseDelimited(await file.text());
+    }
+    const outcome = Core.applyImport(S, matrix);
+    if (!outcome.students.length) { toast('কোনো শিক্ষার্থীর সারি পাওয়া যায়নি'); return; }
+    pushHistory();
+    S.students = outcome.students.map((st, i) => Core.normalizeState({ info: S.info,
+      subjects: S.subjects, scale: S.scale, students: [st] }).students[0]);
+    renderAll(); saveState();
+    toast(S.students.length + ' জন শিক্ষার্থী আমদানি হয়েছে' +
+      (outcome.ignored ? ' · ' + outcome.ignored + ' টি অবৈধ মান বাদ' : ''));
+  }
+  function exportCsv() {
+    downloadBlob(new Blob([Core.buildCsv(S)], { type: 'text/csv;charset=utf-8' }), 'result-sheet.csv');
+    toast('সিএসভি তৈরি হয়েছে');
+  }
+  async function exportXlsx() {
+    toast('এক্সেল তৈরি হচ্ছে…');
+    const model = Core.buildWorkbookModel(S);
+    const E = await getExcelJS();
+    if (E) {
+      try {
+        const wb = Core.buildExcelJsWorkbook(model, E);
+        const buffer = await wb.xlsx.writeBuffer();
+        downloadBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'result-sheet-formulas.xlsx');
+        toast('এক্সেল (ExcelJS) তৈরি হয়েছে');
+        return;
+      } catch (err) { /* fall through to the offline writer */ }
+    }
+    try {
+      const bytes = Core.writeMinimalXlsx(model);
+      downloadBlob(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'result-sheet-formulas.xlsx');
+      toast('অফলাইন এক্সেল তৈরি হয়েছে');
+    } catch (err) { toast('এক্সেল তৈরি করা যায়নি'); }
+  }
+  function saveTemplate() {
+    const data = { info: S.info, subjects: S.subjects, scale: S.scale };
+    downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'subject-template.json');
+    toast('টেমপ্লেট সংরক্ষিত');
+  }
+  async function loadTemplate(file) {
+    try {
+      const data = JSON.parse(await file.text());
+      pushHistory();
+      S = Core.normalizeState({ info: data.info || S.info, subjects: data.subjects || S.subjects,
+        scale: data.scale || S.scale, students: S.students });
+      renderAll(); saveState(); toast('টেমপ্লেট খোলা হয়েছে');
+    } catch (err) { toast('টেমপ্লেট পড়া যায়নি'); }
+  }
+
+  /* ---- Print preview ---- */
+  function openPrint(kind) {
+    currentDoc = DOC_META[kind] ? kind : 'published';
+    const doc = Core.printDocument(currentDoc, S);
+    $('printContent').innerHTML = doc.html;
+    $('printTitle').textContent = doc.title;
+    $('printSelect').value = currentDoc;
+    $('pageRule').textContent = '@page { size: A4 ' + (doc.landscape ? 'landscape' : 'portrait') + '; margin: 10mm; }';
+    overlay.hidden = false;
+    document.body.classList.add('preview-open');
+    overlay.scrollTop = 0;
+  }
+  function closePrint() {
+    overlay.hidden = true;
+    document.body.classList.remove('preview-open');
+  }
+
+  /* ---- Toolbar routing ---- */
+  const actions = {
+    'add-end': () => addStudent('end'), 'add-above': () => addStudent('above'),
+    'add-below': () => addStudent('below'), 'del-student': deleteStudents,
+    'sort-roll': sortByRoll, undo: undo, redo: redo,
+    'clear-students': () => {
+      if (!confirm('সব শিক্ষার্থী মুছে ফেলবেন?')) return;
+      pushHistory(); S.students = []; renderAll(); saveState(); toast('শিক্ষার্থী মুছে ফেলা হয়েছে');
+    },
+    'add-subject': () => {
+      pushHistory();
+      S.subjects.push({ id: 'sub-' + Date.now().toString(36), name: 'নতুন বিষয়', full: 100,
+        pass: 33, midMax: 70, weeklyMax: 30, optional: false });
+      renderAll(); saveState();
+    },
+    'add-scale': () => {
+      pushHistory(); S.scale.push({ min: 0, grade: 'F', gp: 0 });
+      renderScale(); renderResults(); saveState();
+    },
+    'save-template': saveTemplate,
+    'load-template': () => $('templateFile').click(),
+    'import': () => $('importFile').click(),
+    'export-csv': exportCsv, 'export-xlsx': exportXlsx
+  };
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-act]');
+    if (btn && actions[btn.dataset.act]) actions[btn.dataset.act]();
+  });
+  $('tabs').addEventListener('click', e => {
+    const btn = e.target.closest('[data-tab]');
+    if (!btn) return;
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.tab-panel').forEach(p =>
+      p.classList.toggle('active', p.id === 'tab-' + btn.dataset.tab));
+  });
+  $('docButtons').innerHTML = Object.keys(DOC_META).map(k =>
+    '<button class="btn' + (k === 'report' ? ' primary' : '') + '" data-doc="' + k + '">' +
+    Core.esc(DOC_META[k].title) + '</button>').join('');
+  $('printSelect').innerHTML = Object.keys(DOC_META).map(k =>
+    '<option value="' + k + '">' + Core.esc(DOC_META[k].title) + '</option>').join('');
+  $('docButtons').addEventListener('click', e => {
+    const btn = e.target.closest('[data-doc]');
+    if (btn) openPrint(btn.dataset.doc);
+  });
+  $('printSelect').addEventListener('change', e => openPrint(e.target.value));
+  $('btnDoPrint').addEventListener('click', () => window.print());
+  $('btnClosePrint').addEventListener('click', closePrint);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !overlay.hidden) closePrint();
+  });
+  $('importFile').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) importFile(file);
+    e.target.value = '';
+  });
+  $('templateFile').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) loadTemplate(file);
+    e.target.value = '';
+  });
+
+  $('printCss').textContent = Core.printCss();
+  renderAll();
+  saveState();
+})();
+</script>
+</body>
+</html>
