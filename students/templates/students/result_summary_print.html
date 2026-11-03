@@ -1,0 +1,138 @@
+{% extends 'students/base.html' %}
+{% load static student_filters %}
+
+{% block title %}Result Summary - {{ block.super }}{% endblock %}
+{% block print_subtitle %}Result Summary - {{ exam.name }}{% endblock %}
+
+{% block extra_style %}
+    .result-summary-report { max-width: 900px; margin: 0 auto; color: #000; font-family: Arial, Helvetica, 'Noto Sans Bengali', sans-serif; }
+    .result-summary-report, .result-summary-report * { box-sizing: border-box; }
+    .print-masthead { margin: 0 0 8px; color: #000; text-align: center; break-inside: avoid; }
+    .print-masthead h1 { margin: 0; color: #000; font-size: 17pt; font-weight: 700; line-height: 1.2; }
+    .print-masthead .masthead-line { margin: 3px 0 0; color: #000; font-size: 9pt; line-height: 1.35; }
+    .print-masthead .masthead-exam { margin: 3px 0 0; color: #000; font-size: 12pt; font-weight: 700; line-height: 1.25; }
+    .print-meta { margin: 8px 0 12px; color: #333; text-align: center; font-size: 8.5pt; }
+    .print-meta span + span::before { content: " · "; margin: 0 6px; }
+
+    h1.summary-heading { font-size: 13pt; font-weight: 700; margin: 0 0 8px; text-align: center; border-bottom: 1px solid #000; padding-bottom: 4px; }
+
+    table.summary-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9pt; }
+    table.summary-table th, table.summary-table td { border: 1px solid #000; padding: 5px 6px; text-align: center; background: #fff; color: #000; }
+    table.summary-table th { font-weight: 700; background: #f2f4f7; }
+    table.summary-table td.label-col { text-align: left; font-weight: 700; }
+    table.summary-table tr.total-row td { font-weight: 700; background: #f2f4f7; }
+
+    .summary-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+    .summary-actions .btn { border-radius: 6px; padding: 7px 12px; font-weight: 600; }
+
+        /* Print page setup for the separate summary report */
+    @page { size: A4 portrait; margin: 12mm 12mm 14mm; }
+    @media print {
+        html, body { background: #fff !important; color: #000 !important; }
+        .result-summary-report { color: #000 !important; max-width: none; }
+        .summary-actions, .d-print-none { display: none !important; }
+        table.summary-table { border-color: #000 !important; }
+        table.summary-table th, table.summary-table td { border-color: #000 !important; background: #fff !important; color: #000 !important; }
+        table.summary-table tr.total-row td { background: #fff !important; }
+        .print-masthead { display: block !important; margin: 0 0 7px; }
+        .print-masthead h1 { color: #000 !important; }
+        .print-masthead .masthead-line,
+        .print-masthead .masthead-exam { color: #000 !important; }
+        .print-meta { color: #333 !important; }
+        /* সংক্ষিপ্ত সামারি প্রথম পেইজে, বিষয়ভিত্তিক সামারি আলাদা শেষ পেইজে */
+        .summary-subjects { break-before: page; break-inside: avoid; }
+    }
+
+    @media (max-width: 768px) {
+        .print-masthead h1 { font-size: 14pt; }
+        table.summary-table { font-size: 8pt; }
+        table.summary-table th, table.summary-table td { padding: 4px 5px; }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="result-summary-report">
+    <header class="print-masthead">
+        <h1>Principal Kazi Faruky School</h1>
+        <p class="masthead-line">Founder: Principal Kazi Faruky Welfare Trust, {{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} <span aria-hidden="true">|</span> School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} <span aria-hidden="true">|</span> College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
+        <p class="masthead-exam">{{ exam.name }} <span aria-hidden="true">|</span> Class: {{ exam.admission_class|class_label }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} <span aria-hidden="true">|</span> {{ result_group_label }}{% endif %}</p>
+    </header>
+    <div class="print-meta">
+        <span><strong>Session</strong>{{ exam.session }}</span>
+        <span><strong>Total Students</strong>{{ brief_summary.total_students }}</span>
+        <span><strong>Subjects</strong>{{ columns|length }}</span>
+        <span><strong>Pass rate</strong>{{ brief_summary.pass_rate }}%</span>
+    </div>
+
+    <!-- পেইজ 1 :: সংক্ষিপ্ত সামারি (কোহোর্ট tornò) -->
+    <section class="summary-brief">
+        <h1 class="summary-heading">শিক্ষার্থী রেজাল্ট :: সংক্ষিপ্ত সামারি</h1>
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th style="width: 34%;">বিবরণ</th>
+                    <th style="width: 16%;">মূল্য</th>
+                    <th style="width: 34%;">বিবরণ</th>
+                    <th style="width: 16%;">মূল্য</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td class="label-col">মোট শিক্ষার্থী</td><td>{{ brief_summary.total_students }}</td><td class="label-col">উত্তীর্ণ (Pass) শিক্ষার্থী</td><td>{{ brief_summary.pass_count }}</td></tr>
+                <tr><td class="label-col">ফেল (Fail) শিক্ষার্থী</td><td>{{ brief_summary.fail_count }}</td><td class="label-col">কোনো নম্বর নেই (No Marks)</td><td>{{ brief_summary.no_marks_count }}</td></tr>
+                <tr><td class="label-col">এ+ পায়ে শিক্ষার্থী</td><td>{{ brief_summary.a_plus_students }}</td><td class="label-col">মোট বিষয়ভিত্তিক এ+</td><td>{{ brief_summary.total_subject_a_plus }}</td></tr>
+                <tr><td class="label-col">পাশের হার</td><td>{{ brief_summary.pass_rate }}%</td><td class="label-col">ফেলের হার</td><td>{{ brief_summary.fail_rate }}%</td></tr>
+                {% if absent_subject_fails %}
+                <tr><td class="label-col">অনুপস্থিতির নীতি</td><td colspan="3">নিখোঁজ নম্বর ফেল (F) হিসেবে गणনা করা হয় (EXAM_ABSENT_SUBJECT_FAILS সক্রিয়)</td></tr>
+                {% else %}
+                <tr><td class="label-col">অনুপস্থিতির নীতি</td><td colspan="3">নিখোঁজ নম্বর মোট ও জিপিএ থেকে বাদ পড়ে (EXAM_ABSENT_SUBJECT_FAILS বন্ধ)</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+        <p class="sign-off-note" style="text-align:center; font-size:8pt; margin-top:8px;">{{ exam.name }} · ক্লাস {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} · {{ result_group_label }}{% endif %} · সেশন {{ exam.session }} · প্রিন্ট: {% now "d-M-Y" %}</p>
+    </section>
+
+    <!-- পেইজ 2 :: বিষয়ভিত্তিক সামারি -->
+    <section class="summary-subjects">
+        <h1 class="summary-heading">বিষয়ভিত্তিক সামারি</h1>
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th>সংকেত</th>
+                    <th>বিষয়</th>
+                    <th>পূর্ণ নম্বর</th>
+                    <th>উপস্থিত</th>
+                    <th>উত্তীর্ণ</th>
+                    <th>ফেল</th>
+                    <th>এ+</th>
+                    <th>পাসহার %</th>
+                    <th>গড় %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in subject_summary %}
+                <tr>
+                    <td>{{ row.subject.code }}</td>
+                    <td style="text-align:left;">{{ row.subject.name }}</td>
+                    <td>{{ row.full_marks|default:"—" }}</td>
+                    <td>{{ row.sat }}</td>
+                    <td>{{ row.passed }}</td>
+                    <td>{{ row.failed }}</td>
+                    <td>{{ row.a_plus }}</td>
+                    <td>{{ row.pass_rate }}%</td>
+                    <td>{{ row.average }}%</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center py-4">কোনো বিষয়ের সামারি নেই।</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <div class="summary-actions d-print-none">
+        <button type="button" onclick="window.print()" class="btn btn-navy"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
+        <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy">ফলপত্রে ফিরে যান</a>
+        <a href="{% url 'exam_list' %}" class="btn btn-outline-navy">Exam List</a>
+    </div>
+</div>
+{% endblock %}
+{% block extra_script %}{% endblock %}

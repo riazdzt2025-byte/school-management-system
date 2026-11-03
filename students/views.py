@@ -69,6 +69,7 @@ from .result_utils import (
     unmarked_assigned_subjects,
     religion_paper_for,
     religion_subject_map,
+    result_summary_totals,
     subject_availability_diagnosis,
     unassigned_mark_subjects,
     failed_subject_rows,
@@ -5751,9 +5752,14 @@ def result_sheet(request, pk):
     ).removesuffix('0/') if request.user.has_perm('students.add_exammark') else ''
     pass_rate = int(100 * sum(r['status'] == 'Pass' for r in results) / len(results) + 0.5) if results else 0
     pagination = paginate_list(request, results, allow_full_print=True)
+    # Cohort and subject-wise summary for the printed register's closing page
+    # and for the separate brief / subject-wise summary report.
+    brief_summary, subject_summary = result_summary_totals(results, sheet_columns)
     return render(request, 'students/result_sheet.html', {
         **pagination,
         'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': pagination['page_rows'],
+        'brief_summary': brief_summary,
+        'subject_summary': subject_summary,
         'total_results': len(results), 'pass_rate': pass_rate,
         'absent_subject_fails': absent_subject_fails_result(),
         'enter_marks_base_url': enter_marks_base_url,
@@ -5927,6 +5933,64 @@ def result_summary(request, pk):
         'result_group_label': result_group_label,
         'show_group_picker': not exam.group and bool(group_choices),
         'group_querystring': group_querystring,
+    })
+
+
+@login_required
+def exam_result_print_summary(request, pk):
+    """Print-only result summary on separate pages.
+
+    Page 1 shows the cohort brief (total students, Pass / Fail / No Marks,
+    A+ students, pass rate) and page 2 shows the subject-wise summary
+    (sat / pass / fail / A+ / pass rate / average for every paper). Each
+    section starts on its own page, so browser Print / Save PDF yields the
+    brief summary and the subject-wise summary as separate sheets.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    columns, results = build_exam_results(exam, group=selected_group or None)
+    # Register order follows numeric rolls, matching the result sheet.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
+    # Same column / marks configuration as the result sheet, so the subject
+    # summary displays the same full marks as the register.
+    header_subjects = [
+        column.header_paper() if getattr(column, 'is_religion_column', False) else column
+        for column in columns
+    ]
+    header_configs = get_subject_marks_map(exam, header_subjects, group=selected_group or None)
+    sheet_columns = []
+    for column in columns:
+        if getattr(column, 'is_religion_column', False):
+            marks_config = column.header_marks_config(exam, marks_configs=header_configs)
+        else:
+            marks_config = header_configs[column.pk]
+        sheet_columns.append({
+            'subject': column,
+            'full_marks': marks_config.full_marks if marks_config else None,
+            'parts_summary': ' + '.join(
+                f"{part['label']} {part['max_marks']}" for part in marks_config.parts
+            ) if marks_config else '',
+        })
+    brief_summary, subject_summary = result_summary_totals(results, sheet_columns)
+    return render(request, 'students/result_summary_print.html', {
+        'exam': exam, 'columns': sheet_columns, 'results': results,
+        'brief_summary': brief_summary, 'subject_summary': subject_summary,
+        'group_choices': group_choices, 'selected_group': selected_group,
+        'selected_group_label': selected_group_label, 'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+        'absent_subject_fails': absent_subject_fails_result(),
     })
 
 

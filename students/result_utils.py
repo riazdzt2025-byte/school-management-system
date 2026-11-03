@@ -1321,6 +1321,73 @@ def build_exam_results(exam, group=None, provisional=False):
     return columns, ranked + [result for result in results if result['position'] is None]
 
 
+def result_summary_totals(results, sheet_columns):
+    """
+    Brief and subject-wise result statistics for one printed register.
+
+    ``results`` is the full (unpaginated) list of :func:`build_exam_results`
+    rows and ``sheet_columns`` is the ``{'subject': ..., 'full_marks': ...}``
+    list the result sheet view builds from it, so column ``i`` of every
+    student's ``subject_results`` lines up with ``sheet_columns[i]``.
+
+    Returns ``(brief, subject_wise)``:
+
+    * ``brief`` — cohort-level counts: total students, Pass / Fail / No Marks,
+      students whose overall grade is A+, pass rate and the total number of
+      subject-level A+ grades.
+    * ``subject_wise`` — one row per printed column: how many students sat the
+      paper, passed, failed, scored A+, the subject pass rate and the average
+      percentage of those who sat it.
+    """
+    total_students = len(results)
+    pass_count = sum(1 for r in results if r['status'] == 'Pass')
+    fail_count = sum(1 for r in results if r['status'] == 'Fail')
+    no_marks_count = sum(1 for r in results if r['status'] == 'No Marks')
+    a_plus_students = sum(
+        1 for r in results if (r.get('grade') or '') == 'A+'
+    )
+    pass_rate = int(100 * pass_count / total_students + 0.5) if total_students else 0
+    fail_rate = int(100 * fail_count / total_students + 0.5) if total_students else 0
+    total_subject_a_plus = sum(int(r.get('a_plus_count') or 0) for r in results)
+
+    brief = {
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'fail_count': fail_count,
+        'no_marks_count': no_marks_count,
+        'a_plus_students': a_plus_students,
+        'pass_rate': pass_rate,
+        'fail_rate': fail_rate,
+        'total_subject_a_plus': total_subject_a_plus,
+    }
+
+    subject_wise = []
+    for index, entry in enumerate(sheet_columns):
+        cells = [result['subject_results'][index] for result in results]
+        sat = [
+            cell for cell in cells
+            if not cell['absent'] and not cell.get('pending') and not cell.get('not_applicable')
+        ]
+        passed = [cell for cell in sat if cell['passed']]
+        a_plus = [cell for cell in sat if (cell.get('grade') or '') == 'A+']
+        percentages = [
+            float(cell['percentage'])
+            for cell in sat
+            if cell.get('percentage') is not None
+        ]
+        subject_wise.append({
+            'subject': entry['subject'],
+            'full_marks': entry.get('full_marks'),
+            'sat': len(sat),
+            'passed': len(passed),
+            'failed': len(sat) - len(passed),
+            'a_plus': len(a_plus),
+            'pass_rate': int(100 * len(passed) / len(sat) + 0.5) if sat else 0,
+            'average': round(sum(percentages) / len(percentages), 2) if percentages else 0,
+        })
+    return brief, subject_wise
+
+
 def failed_subject_rows(exam, group=None):
     """Return one row for every failed applicable subject in an exam.
 
