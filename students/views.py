@@ -5338,11 +5338,16 @@ def result_provisional(request, pk):
 def result_summary(request, pk):
     """Published Result page for one exam.
 
-    Ordering rule (EX-02 matrix): this is a *ranking* output — rows stay in
-    merit position order (ties share a position), with unranked Fail / No
-    Marks students following in register roll order (numeric roll, None
-    last). The Position column is the page's first column on purpose; the
-    register-style view is result_sheet.
+    Ordering rule (owner decision, 2026-11-03): the printed register follows
+    **numeric roll order** — roll ``None`` last, then name and pk as stable
+    tie-breaks — on screen, in the ``?print=1`` full-print view and in the
+    browser's own print/PDF output. Merit position no longer decides the row
+    order; it is still calculated and printed, but as the table's **last**
+    column (like the Result Sheet's "Place" column), never the leading one.
+
+    This deliberately supersedes the EX-02 matrix entry that pinned this page
+    to merit/position order. Ranking outputs that remain in merit order are
+    ``full_rank_list``, ``top_10`` and the merit slides.
     """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
@@ -5353,6 +5358,15 @@ def result_summary(request, pk):
     selected_group_label = dict(group_choices).get(selected_group, '')
     result_group_label = selected_group_label or exam.get_group_display() or ''
     _, results = build_exam_results(exam, group=selected_group or None)
+    # Register order, not merit: build_exam_results() already assigned each
+    # student's position, and sorting the rows does not change any place. Fail /
+    # No Marks students stay in their roll slot instead of trailing the list.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
     pagination = paginate_list(request, results, allow_full_print=True)
     return render(request, 'students/exam_result_summary.html', {
         **pagination,

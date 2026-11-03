@@ -193,7 +193,9 @@
 **Docs updated this session:** `docs/prompts/reports/EX-02.md` (নতুন — ordering matrix সহ), `docs/prompts/PROGRESS.md` (সারি ০৩ + header),
 `docs/PROJECT_STATUS.md` (E3 হালনাগাদ), `docs/TASK_BACKLOG.md` (বাকি-তালিকা হালনাগাদ), `docs/HANDOFF.md` (এই নোট)।
 
-**Owner করণীয়:** PR #41 ✅ MERGED — `exam_result_summary`/`attendance_summary` ক্রম আগের মতোই; ভিন্ন পছন্দ হলে জানালে এক-লাইনের বদল।
+**Owner করণীয়:** PR #41 ✅ MERGED — `attendance_summary` ক্রম আগের মতোই; `exam_result_summary` নিচের ২০২৬-১১-০৩ আপডেটে বদলেছে।
+
+**২০২৬-১১-০৩ আপডেট (owner-সিদ্ধান্ত — Published Result print):** `exam_result_summary` ("Published Result") এখন **numeric roll order** (None শেষে, tie name→pk) — স্ক্রিন, `?print=1` Print all/Save PDF ও browser print, সবখানে একই ক্রম; merit position আর সারি ক্রম ঠিক করে না। **Position কলাম প্রথম থেকে সরে শেষ কলামে** (Status-এর পরে) গেছে, তবে position-এর গণনা অপরিবর্তিত ও মুদ্রিত। Fail/No Marks ছাত্ররাও নিজের roll slot-এ থাকে, আর তলায় ঠেলে দেওয়া হয় না। বদল: `views.result_summary` + `exam_result_summary.html`; নতুন pin: `students/test_register_roll_order.py`; EX-02 matrix-এর ওই একটি সারি বাতিল (`docs/prompts/reports/EX-02.md` শীর্ষ)। `full_rank_list` / `top_10` / merit slides merit ক্রমেই আছে।
 **পরের প্রম্পট:** ০৪/২৮ (EX-03 — Group-based Mark Evaluation) — `SubjectMarkSetting`-এ group field নেই ⇒ নতুন field + append-only migration + UI + test; **owner-সিদ্ধান্ত ৩টি আগে দরকার** (prompt-04 §৮)। কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
 
 ---
