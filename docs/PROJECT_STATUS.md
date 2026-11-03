@@ -28,6 +28,23 @@ _Previous: OF-06 public success slip + status page (PR #63 MERGED, 873 Django + 
 
 > **২০২৬-১০-১২ OF-06 সম্পন্ন (প্রম্পট ১৪/২৮, owner-সিদ্ধান্ত ৩টি — যাচাই = application no. + guardian contact-এর শেষ ৪ ডিজিট · REJECTED = সাধারণ বার্তা + অফিসে যোগাযোগ · lookback = সব session):** public success page এখন **ছাপার-উপযোগী slip** — application number, জমার তারিখ, requested class/section/session, masked guardian contact, “What happens next”, `@media print` + Print slip, Copy details + WhatsApp share; পেজে থাকা পুরোনো **internal `dashboard` link সরানো**। **নতুন public status/progress page `admission/status/`** (`public_admission_status`) — number + contact-tail, ৪-ধাপ timeline (তারিখসহ), masked name/contact, ENROLLED-এ Student ID, REJECTED-এ শালীন বার্তা + অফিসে যোগাযোগের পথ (কারণ/remark নয়)। Privacy pinned: ভুল number/ভুল tail/malformed input সবেতেই একই generic বার্তা ও একই byte-body (enumeration oracle নয়), cross-applicant isolation দুই দিকেই, remarks/actor/amount কখনো render হয় না, তিন public template-এ `noindex, nofollow`; throttle = P1-9 helper-এ **৩০ lookup/১০মিনিট per address + ৫ ভুল/১৫মিনিট per (address, application number)** (XFF spoof bypass হয় না, `RATE_LIMIT_CACHE=db`-তেও কাজ করে); email/SMS/payment কিছুই সক্রিয় করা হয়নি। **প্রমাণ:** নতুন `students/test_public_admission_status.py` **৩৫**, regression ৬ মডিউলে **১১৭**, পূর্ণ **৮৭৩ Django + ২৯ Node pass**, `check` 0, `makemigrations --check` clean (leaf 0047)। রিপোর্ট `docs/prompts/reports/OF-06.md` · **PR #63 (OPEN, owner merge সাপেক্ষ)**। যাচাই হয়নি: আসল ব্রাউজারে print/clipboard/WhatsApp deep-link (তবে লোকাল `runserver`-এ curl দিয়ে form→slip→status round-trip ও REJECTED/no-leak যাচাই করা), live Render, postgres:16 (CI) — এবং `Institution`-এ contact phone field না থাকায় “অফিসে যোগাযোগ” বার্তায় স্কুলের নম্বর নেই (নতুন field = owner সিদ্ধান্ত)।
 
+## 2026-11-03 — Remaining backlog completion (session `arena/e2d5c9b9`)
+
+**Scope:** finish the remaining backlog and merge to `main`. The user-referenced branch `arena/1928885f-school-management-system` does not exist on the remote; the session branch `arena/e2d5c9b9-school-management-system` (base `9ff07f4` = `origin/main`) was used.
+
+| Item | Result |
+|---|---|
+| **AT-01** Attendance correction | **Complete** — correction page with mandatory reason + AuditLog old/new, future-date block, report filters, permission gate |
+| **AT-02** Attendance calendar | **Complete** — monthly grid, P+A+L rate (H excluded), archived excluded, CSV summary, print CSS |
+| **EM-01** Teacher assignment | **Complete** — `TeacherAssignment` model + UI + validation + audit + employee tab + signature sheet |
+| **EM-03** Payroll lock | **Complete** — audited lock/unlock, edit/delete frozen, scoped 404 |
+| **DB-02** Branding | **Verified clean** — no agent name in migrations |
+| **DB-03** SEC-FU-1/2 | **Verified implemented** — shared cache flag + group sync tests |
+| **FN-01** Release verification | **Complete** — report + go/no-go |
+| **EM-02** Leave | **Blocked** — owner policy required |
+
+**Evidence:** `manage.py test students` → **1131 OK**; `node --test` → **29 pass**; `check` 0; `makemigrations --check` clean (leaf `0052`). New focused tests: **41 pass**. Live Render/Postgres/S3/browser **not verified** from this sandbox; no production DB or credentials touched.
+
 ## 1. Verification performed this session (2026-09-17, সেশন ০১)
 
 | Check | Result | Evidence |

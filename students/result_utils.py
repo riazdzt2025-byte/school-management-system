@@ -65,7 +65,7 @@ def special_exam_subjects(exam, group=None):
     kept = list(active_exam_subject_ids(exam, picked_ids, group=effective_group))
     if not kept:
         return [], True
-    return list(Subject.objects.filter(pk__in=kept).order_by('code', 'name')), True
+    return list(Subject.objects.filter(pk__in=kept).order_by('display_order', 'code', 'name')), True
 
 
 def get_exam_students(exam, group=None):
@@ -159,7 +159,7 @@ def get_exam_subjects(exam, group=None):
     # (101, 102, 107, 108, 136, 150 in the school's result format), not
     # alphabetical subject names. This keeps marks entry, imports and the
     # result sheet in the same predictable order.
-    return list(Subject.objects.filter(pk__in=subject_ids).order_by('code', 'name')), True
+    return list(Subject.objects.filter(pk__in=subject_ids).order_by('display_order', 'code', 'name')), True
 
 
 def active_exam_subject_ids(exam, subject_ids, group=None):
@@ -950,7 +950,7 @@ def unassigned_mark_subjects(exam, subjects, group=None):
     if marks.exists():
         return Subject.objects.filter(
             id__in=marks.values_list('subject_id', flat=True).distinct(),
-        ).exclude(id__in=assigned_ids).order_by('name')
+        ).exclude(id__in=assigned_ids).order_by('display_order', 'name')
     return Subject.objects.none()
 
 

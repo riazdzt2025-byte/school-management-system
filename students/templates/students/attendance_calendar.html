@@ -1,0 +1,146 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Attendance Calendar - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Attendance Calendar</h1>
+        <div class="subtitle">{{ month_name }} · {{ institution.name|default:"All institutions" }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="?year={{ prev_year }}&month={{ prev_month }}&admission_class={{ admission_class }}&section={{ section }}&mark_type={{ mark_type }}" class="btn btn-outline-navy">‹ Previous</a>
+        <a href="?year={{ next_year }}&month={{ next_month }}&admission_class={{ admission_class }}&section={{ section }}&mark_type={{ mark_type }}" class="btn btn-outline-navy">Next ›</a>
+        <a href="{% url 'attendance_calendar_export' %}?year={{ year }}&month={{ month }}&admission_class={{ admission_class }}&section={{ section }}&mark_type={{ mark_type }}" class="btn btn-navy">Export CSV</a>
+    </div>
+</div>
+
+<div class="table-card p-3 mb-4">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label" for="id_admission_class">Class</label>
+            <input class="form-control" id="id_admission_class" name="admission_class" value="{{ admission_class }}" placeholder="e.g. 9">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="id_section">Section</label>
+            <input class="form-control" id="id_section" name="section" value="{{ section }}" placeholder="e.g. A">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="id_mark_type">Target</label>
+            <select class="form-select" id="id_mark_type" name="mark_type">
+                <option value="STUDENT" {% if mark_type == 'STUDENT' %}selected{% endif %}>Students</option>
+                <option value="EMPLOYEE" {% if mark_type == 'EMPLOYEE' %}selected{% endif %}>Employees</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <button class="btn btn-navy w-100" type="submit">Apply</button>
+        </div>
+    </form>
+</div>
+
+<div class="table-card p-3 mb-4">
+    <div class="d-flex flex-wrap gap-3 small mb-2">
+        <span class="badge bg-success">P Present</span>
+        <span class="badge bg-danger">A Absent</span>
+        <span class="badge bg-warning">L Late</span>
+        <span class="badge bg-info">H Holiday</span>
+        <span class="badge bg-secondary">No record</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm align-middle mb-0 calendar-grid">
+            <thead class="table-light">
+                <tr>{% for label in weekday_labels %}<th class="text-center">{{ label }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+                {% for week in weeks %}
+                <tr>
+                    {% for cell in week %}
+                    <td class="calendar-cell {% if not cell %}empty{% elif cell.is_future %}future{% endif %}">
+                        {% if cell %}
+                        <div class="d-flex justify-content-between align-items-start">
+                            <span class="fw-bold">{{ cell.day }}</span>
+                            {% if cell.is_today %}<span class="badge bg-primary">Today</span>{% endif %}
+                        </div>
+                        {% if cell.has_records %}
+                            <div class="small mt-1">
+                                <span class="badge bg-success">{{ cell.counts.P }}P</span>
+                                <span class="badge bg-danger">{{ cell.counts.A }}A</span>
+                                <span class="badge bg-warning">{{ cell.counts.L }}L</span>
+                                <span class="badge bg-info">{{ cell.counts.H }}H</span>
+                            </div>
+                            <div class="small mt-1">
+                                {% if cell.rate is not None %}<strong>{{ cell.rate }}%</strong>{% else %}—{% endif %}
+                                <span class="text-muted">({{ cell.record_count }})</span>
+                            </div>
+                            <div class="mt-1">
+                                {% if can_correct and cell.record_count == 1 and cell.record_ids.0 %}
+                                    <a href="{% url 'correct_attendance' cell.record_ids.0 %}" class="small">Correct</a>
+                                {% else %}
+                                    <a href="{% url 'attendance_report' %}?start_date={{ cell.date|date:'Y-m-d' }}&end_date={{ cell.date|date:'Y-m-d' }}&admission_class={{ admission_class }}&section={{ section }}" class="small">View</a>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <div class="small text-muted mt-1">No record</div>
+                        {% endif %}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="small text-muted mt-2">
+        Rate = (Present + Late) ÷ (Present + Absent + Late). Holidays are excluded from the
+        denominator; a day with no record is not counted as absent. Total records this month: {{ total_records }}.
+    </div>
+</div>
+
+<div class="table-card p-3">
+    <h5 class="mb-3">Monthly Summary</h5>
+    {% if summary_rows %}
+    <div class="table-responsive">
+        <table class="table table-striped table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Type</th><th>Identifier</th><th>Name</th><th>Class / Designation</th>
+                    <th class="text-center">P</th><th class="text-center">A</th><th class="text-center">L</th>
+                    <th class="text-center">H</th><th class="text-center">Total</th><th class="text-center">Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in summary_rows %}
+                <tr>
+                    <td>{{ row.kind }}</td>
+                    <td>{{ row.identifier|default:"—" }}</td>
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.meta }}</td>
+                    <td class="text-center">{{ row.counts.P }}</td>
+                    <td class="text-center">{{ row.counts.A }}</td>
+                    <td class="text-center">{{ row.counts.L }}</td>
+                    <td class="text-center">{{ row.counts.H }}</td>
+                    <td class="text-center">{{ row.counts.total }}</td>
+                    <td class="text-center">{% if row.rate is not None %}{{ row.rate }}%{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0">No attendance records for this month and filter.</div>
+    {% endif %}
+</div>
+
+<style>
+    .calendar-cell { min-width: 118px; height: 92px; vertical-align: top; }
+    .calendar-cell.empty { background: #f8f9fa; }
+    .calendar-cell.future { color: #adb5bd; }
+    @media print {
+        .no-print, .page-header .btn, form { display: none !important; }
+        .calendar-cell { min-width: 0; height: auto; }
+        body { background: #fff; }
+    }
+</style>
+{% endblock %}

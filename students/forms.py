@@ -4,12 +4,13 @@ from decimal import Decimal
 from django import forms
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models import F
+from django.utils import timezone
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
     Institution, InstitutionAccess,
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
-    AdmissionApplication, SectionCapacity,
+    AdmissionApplication, SectionCapacity, TeacherAssignment,
     RELIGION_CHOICES, student_religion,
     normalize_guardian_contact, validate_guardian_contact,
 )
@@ -1072,3 +1073,106 @@ class DailyAttendanceSelectionForm(forms.Form):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Mark Attendance For'
     )
+
+class AttendanceCorrectionForm(forms.Form):
+    """AT-01: correct one already-marked attendance record.
+
+    The date and the student/employee are fixed by the record; only the
+    status/remarks can change, and a reason is mandatory so the AuditLog row
+    explains why the register was altered.
+    """
+    status = forms.ChoiceField(
+        choices=AttendanceRecord.STATUS_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Corrected status',
+    )
+    remarks = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'maxlength': 200}),
+        label='Remarks',
+    )
+    reason = forms.CharField(
+        required=True,
+        max_length=200,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'maxlength': 200}),
+        label='Reason for correction (required, stored in the audit log)',
+    )
+
+    def __init__(self, *args, record=None, **kwargs):
+        self.record = record
+        super().__init__(*args, **kwargs)
+        if record is not None:
+            self.initial.setdefault('status', record.status)
+            self.initial.setdefault('remarks', record.remarks)
+
+    def clean(self):
+        cleaned = super().clean()
+        record = self.record
+        if record is not None and record.date and record.date > timezone.localdate():
+            raise forms.ValidationError(
+                'A future attendance date cannot be corrected. Please wait until the date has passed.'
+            )
+        return cleaned
+
+
+class TeacherAssignmentForm(forms.ModelForm):
+    """EM-01: assign one teacher to one class/section/subject for a session."""
+    class Meta:
+        model = TeacherAssignment
+        fields = ['institution', 'employee', 'admission_class', 'section', 'subject', 'session', 'is_active']
+        widgets = {
+            'institution': forms.Select(attrs={'class': 'form-select'}),
+            'employee': forms.Select(attrs={'class': 'form-select'}),
+            'admission_class': forms.TextInput(attrs={'class': 'form-control', 'list': 'teacher-class-options', 'placeholder': 'e.g. 9'}),
+            'section': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. A (optional)'}),
+            'subject': forms.Select(attrs={'class': 'form-select'}),
+            'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2026-2027'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['institution'].queryset = Institution.objects.filter(pk__in=self.allowed_institution_ids)
+            self.fields['employee'].queryset = Employee.objects.filter(institution_id__in=self.allowed_institution_ids)
+        else:
+            self.fields['employee'].queryset = Employee.objects.all()
+        self.fields['employee'].label_from_instance = lambda obj: f'{obj.name} — {obj.designation}'
+        # The class datalist is rendered by the template from the allowed
+        # institutions; the model still validates the exact class server-side.
+        self.fields['admission_class'].required = True
+        self.fields['session'].required = True
+
+    def clean(self):
+        cleaned = super().clean()
+        institution = cleaned.get('institution')
+        admission_class = (cleaned.get('admission_class') or '').strip()
+        if institution and admission_class:
+            classes = [label.strip() for label in (institution.classes or '').split(',') if label.strip()]
+            if classes and admission_class not in classes:
+                self.add_error('admission_class', 'Select a class offered by this institution.')
+        employee = cleaned.get('employee')
+        if employee and institution and employee.institution_id != institution.pk:
+            self.add_error('employee', 'The employee must belong to the selected institution.')
+        # Friendly duplicate message before the database constraint fires; the
+        # view still catches IntegrityError as a race-safe fallback.
+        if institution and employee and admission_class and cleaned.get('subject') and cleaned.get('session'):
+            duplicates = TeacherAssignment.objects.filter(
+                institution=institution,
+                employee=employee,
+                admission_class=admission_class,
+                section=cleaned.get('section') or '',
+                subject=cleaned['subject'],
+                session=cleaned['session'],
+                is_active=True,
+            )
+            if self.instance and self.instance.pk:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                self.add_error(
+                    None,
+                    'An active assignment for this teacher, class, section, subject and session already exists.',
+                )
+        return cleaned
