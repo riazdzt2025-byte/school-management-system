@@ -115,10 +115,13 @@ class TopTenSheetTests(TestCase):
     def test_sheet_ends_with_the_two_signatures(self):
         _response, html = self.get_page()
         self.assertEqual(html.count('Controller of Exam'), 1)
-        signs = html.split('class="pr-signs-only"', 1)[1]
+        signs = html.split('class="pr-sign-row"', 1)[1]
+        self.assertIn('Guide Teacher', signs)
         self.assertIn('Controller of Exam', signs)
         self.assertIn('Head Teacher', signs)
-        self.assertLess(html.index('Plain Student'), html.index('class="pr-signs-only"'))
+        # Guide Teacher leads the row: the school's signatures sit to its right.
+        self.assertLess(signs.index('Guide Teacher'), signs.index('Controller of Exam'))
+        self.assertLess(html.index('Plain Student'), html.index('class="pr-sign-row"'))
 
     def test_sheet_prints_on_a4_portrait(self):
         _response, html = self.get_page()

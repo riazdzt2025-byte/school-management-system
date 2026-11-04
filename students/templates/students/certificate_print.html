@@ -1,9 +1,11 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Certificate - {{ student.name }}</title>
     <style>
+    .letterhead-logo { width: 58px; height: auto; display: block; margin: 0 auto 6px; }
         @page { size: A4 landscape; margin: 12mm; }
         :root { --navy: #0F2D52; --gold: #C9A227; }
         body { background: #F6F7FA; color: #17212b; font-family: Georgia, serif; margin: 0; padding: 24px; }
@@ -25,14 +27,14 @@
 <body>
 <div class="actions"><button onclick="window.print()">Print Certificate</button> <a href="{% url 'certificate_list' student.pk %}">Back</a></div>
 <div class="certificate">
-    <div class="letterhead"><h1>Principal Kazi Faruky School And College</h1><p>Empowering Education Through Technology</p></div>
+    <div class="letterhead"><img class="letterhead-logo" src="{% static 'students/img/school_logo.png' %}" alt=""><h1>{{ SCHOOL_INFO.school_name|default:"Principal Kazi Faruky School" }}</h1><p>Empowering Education Through Technology</p></div>
     <div class="cert-title">{{ cert.get_certificate_type_display }}</div>
     <div class="cert-number"><span><strong>Certificate No:</strong> {{ cert.certificate_number }}</span><span><strong>Date:</strong> {{ cert.issue_date|date:'d F, Y' }}</span></div>
     <div class="cert-body">
         <p>This is to certify that <span class="value">{{ student.name }}</span>, son/daughter of <span class="value">{{ student.father_name|default:'-' }}</span>, is/was a student of this institution in Class <span class="value">{{ student.admission_class }}</span>, Section <span class="value">{{ student.section|default:'-' }}</span>, with Student ID <span class="value">{{ student.student_id }}</span>.</p>
         <p>Purpose: <span class="value">{{ cert.purpose|default:'-' }}</span></p>
     </div>
-    <div class="signature-row"><div class="signature-box">Issued By ({{ cert.issued_by|default:'-' }})</div><div class="signature-box">Principal's Signature</div></div>
+    <div class="signature-row"><div class="signature-box">Issued By ({{ cert.issued_by|default:'-' }})</div><div class="signature-box">Head Teacher's Signature</div></div>
 </div>
 </body>
 </html>

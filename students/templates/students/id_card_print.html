@@ -1,3 +1,4 @@
+{% load static student_filters %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ID Card - {{ student.name }}</title>
     <style>
+        .band-logo { width: 34px; height: auto; display: block; margin: 0 auto 4px; }
         @page { size: A4; margin: 12mm; }
         :root { --navy: #0f2d52; --gold: #c9a227; }
         body { background: #f6f7fa; color: #17212b; font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 24px; }
@@ -56,7 +58,8 @@
     <div class="card-wrap">
         <div class="id-card front">
             <div class="band">
-                <h2>Principal Kazi Faruky School And College</h2>
+                <img class="band-logo" src="{% static 'students/img/school_logo.png' %}" alt="">
+                <h2>{{ SCHOOL_INFO.school_name|default:"Principal Kazi Faruky School" }}</h2>
                 <p>Professor Kazi Faruky Kallan Trust</p>
             </div>
             <div class="body">
@@ -74,14 +77,14 @@
             </div>
             <div class="footer">
                 <span>Father: {{ student.father_name|default:"-" }}</span>
-                <span>{{ student.institution.name }}</span>
+                <span>{{ student.institution.name|school_only }}</span>
             </div>
         </div>
 
         <div class="id-card back">
             <div class="rules">
                 <strong>If found, please return to:</strong>
-                <p style="margin:4px 0 8px;">{{ student.institution.name }}</p>
+                <p style="margin:4px 0 8px;">{{ student.institution.name|school_only }}</p>
                 <ul style="padding-left: 16px;">
                     <li>This card is the property of the institution.</li>
                     <li>Must be carried at all times on campus.</li>
@@ -91,7 +94,7 @@
             </div>
             <div class="sig">
                 <div>Class Teacher</div>
-                <div>Head of Institution</div>
+                <div>Head Teacher</div>
             </div>
         </div>
     </div>

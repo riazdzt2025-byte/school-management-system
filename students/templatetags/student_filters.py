@@ -1,3 +1,5 @@
+import re
+
 from django import template
 
 register = template.Library()
@@ -60,6 +62,35 @@ def class_padded_label(value):
     if raw.isdigit():
         return f'{int(raw):02d} ({class_label(raw)})'
     return raw
+
+
+@register.filter
+def school_only(value):
+    """The school part of an institution name on a printed document.
+
+    Institution rows are named for the whole organisation ("… School And
+    College"), but a school paper must never print the college: the printed
+    headings show "… School" alone, and the college keeps its own name where a
+    college document is printed.
+    """
+    raw = '' if value is None else str(value).strip()
+    stripped = re.sub(r'\s*(?:&|and)\s*college\s*$', '', raw, flags=re.IGNORECASE).strip()
+    return stripped or raw
+
+
+@register.filter
+def college_only(value):
+    """The college counterpart of :func:`school_only`.
+
+    "… School And College" prints as "… College", so a college document never
+    carries the school's name either — the two are always kept apart.
+    """
+    raw = '' if value is None else str(value).strip()
+    match = re.search(r'^(?P<base>.*?)\s*(?:&|and)\s*college\s*$', raw, flags=re.IGNORECASE)
+    if not match:
+        return raw
+    base = re.sub(r'\s+school$', '', match.group('base').strip(), flags=re.IGNORECASE).strip()
+    return f'{base} College' if base else raw
 
 
 @register.simple_tag(takes_context=True)

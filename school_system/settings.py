@@ -360,7 +360,11 @@ EXAM_ABSENT_SUBJECT_FAILS = os.environ.get('EXAM_ABSENT_SUBJECT_FAILS', 'True') 
 EXAM_LOCK_PUBLISHED = os.environ.get('EXAM_LOCK_PUBLISHED', 'True') == 'True'
 
 SCHOOL_INFO = {
+    # Kept for the app chrome. A *document* never prints this combined form:
+    # school papers show 'school_name', college papers 'college_name'.
     'name': 'Principal Kazi Faruky School And College',
+    'school_name': 'Principal Kazi Faruky School',
+    'college_name': 'Principal Kazi Faruky College',
     'address': 'West Rakhalia, Raipur, Lakshmipur-3700',
     # The school and the college each have their own number; printed sheets
     # show both, so they are kept apart and combined only for display.

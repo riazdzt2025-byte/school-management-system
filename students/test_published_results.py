@@ -203,9 +203,12 @@ class PublishedResultsSheetTests(TestCase):
         self.assertEqual(html.count('Principal Kazi Faruky School</h1>'), 2)
         self.assertEqual(html.count('</div>Guide Teacher</div>'), 2)
         self.assertEqual(html.count('<th>Roll No.</th>'), 2)
-        # The closing summary/signatures belong on the last sheet only.
+        # The closing summary box belongs on the last sheet only; the bottom
+        # signature row (Guide Teacher · Controller of Exam · Head Teacher) is
+        # repeated so every printed page is signed.
         self.assertEqual(html.count('Total Student</td>'), 1)
-        self.assertEqual(html.count('Controller of Exam'), 1)
+        self.assertEqual(html.count('Controller of Exam'), 2)
+        self.assertEqual(html.count('class="pr-sign-row"'), 2)
 
     @mock.patch('students.views.PUBLISHED_RESULTS_ROWS_PER_PAGE', 2)
     def test_rows_split_across_sheets_in_roll_order(self):

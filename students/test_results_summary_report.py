@@ -142,8 +142,18 @@ class ResultsSummaryReportTests(TestCase):
         head = matrix.split('<thead>', 1)[1].split('</thead>', 1)[0]
         headers = re.findall(r'<th>(.*?)</th>', head, re.S)
         self.assertEqual([re.sub(r'<[^>]+>', ' ', cell).split()[0] for cell in headers],
-                         ['Grade', 'BNG1', 'ENG1', 'Total'])
+                         ['Grade', 'BNG1', 'ENG1'])
         self.assertIn('(100)', headers[1])
+
+    def test_matrix_drops_the_trailing_total_column_and_row(self):
+        """A sum of grade counts across subjects says nothing a reader can use."""
+        _response, html = self.get_report()
+        matrix = html.split('<table class="pr-table rsm-matrix">', 1)[1].split('</table>', 1)[0]
+        self.assertNotIn('>Total<', matrix)
+        self.assertNotIn('<tfoot>', matrix)
+        self.assertNotIn('rsm-total', html)
+        # The grade counts themselves are untouched.
+        self.assertIn('<td class="rsm-row-label">A Plus (A+)</td>\n                        <td>2</td><td>1</td>', matrix)
 
     def test_matrix_counts_per_subject_and_totals(self):
         response, _html = self.get_report()

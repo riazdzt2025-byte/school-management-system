@@ -180,7 +180,9 @@ class AdmissionFunnelReportTests(TestCase):
         response = self.client.get(reverse(FUNNEL_PAGE))
         body = response.content.decode()
         self.assertIn('<div class="print-header">', body)
-        self.assertIn('<p>Admission Funnel Report</p>', body)
+        # The printed masthead: school badge + identity, then the page title.
+        self.assertIn('school_logo.png', body)
+        self.assertIn('<p class="print-subtitle">Admission Funnel Report</p>', body)
         # Filters / Excel / print buttons are marked so @media print hides them,
         # while the scope + date line above stays on the paper.
         self.assertIn('class="page-actions d-flex gap-2 d-print-none"', body)

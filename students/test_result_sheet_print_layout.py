@@ -130,13 +130,16 @@ class PaperRegisterLayoutTests(TestCase):
         _response, html = self.get_sheet()
         masthead = html.split('<header class="print-masthead">', 1)[1].split('</header>', 1)[0]
         self.assertIn('<h1>Principal Kazi Faruky School</h1>', masthead)
-        self.assertIn('Principal Kazi Faruky Welfare Trust', masthead)
+        self.assertIn('Founder: Kazi Faruky Welfare Trust', masthead)
+        self.assertNotIn('Welfare Trust,  ', masthead)
         self.assertIn('Mid Term (3) Examination-2026', masthead)
         self.assertIn('Class: Eight', masthead)
         self.assertIn('Result Sheet', masthead)
-        # A layout change must not bring back the superseded phone number.
+        # A layout change must not bring back the superseded phone number,
+        # and a school paper carries the school's number only.
         self.assertIn(settings.SCHOOL_INFO['school_phone'], masthead)
-        self.assertIn(settings.SCHOOL_INFO['college_phone'], masthead)
+        self.assertNotIn(settings.SCHOOL_INFO['college_phone'], masthead)
+        self.assertNotIn('College', masthead)
         self.assertNotIn('01755881139', masthead)
 
     def test_one_header_row_with_the_exact_paper_column_order(self):
@@ -190,7 +193,10 @@ class PaperRegisterLayoutTests(TestCase):
             block = html.split('class="' + selector, 1)[1].split('>', 1)[0]
             self.assertIn('d-print-none', block)
         self.assertNotIn('Internal grading system', html)
-        self.assertNotIn('Guide Teacher', html)
+        # The sign-off block is page content (Guide Teacher first, signature
+        # lines under the labels), not screen chrome.
+        self.assertIn('Summary and Signatures', html)
+        self.assertLess(html.index('Guide Teacher'), html.index('Controller of Exam'))
         stylesheet = (Path(settings.BASE_DIR) / 'students/templates/students/result_sheet.html').read_text()
         print_css = stylesheet.split('@media print {', 1)[1]
         self.assertIn('.result-table-card thead { display: table-header-group; }', print_css)
@@ -198,6 +204,20 @@ class PaperRegisterLayoutTests(TestCase):
         self.assertIn('.failed-mark .mark-row, .absent-mark.subject-failed .mark-row { font-weight: 700; text-decoration: underline;', print_css)
         self.assertIn('background: #fff !important', print_css)
         self.assertNotIn('text-overflow: ellipsis', stylesheet)
+
+    def test_signature_block_sits_at_the_foot_of_the_last_page(self):
+        _response, html = self.get_sheet()
+        stylesheet = (Path(settings.BASE_DIR) / 'students/templates/students/result_sheet.html').read_text()
+        print_css = stylesheet.split('@media print {', 1)[1]
+        self.assertIn('display: flex; flex-direction: column; min-height:', print_css)
+        self.assertIn('.result-sign-off .sign-off-rows { margin-top: auto; }', print_css)
+        self.assertIn('break-before: page; break-inside: avoid;', print_css)
+        # Guide Teacher signs on the far left, the leaders follow to the right.
+        rows = html.split('class="sign-off-rows"', 1)[1].split('</section>', 1)[0]
+        order = [rows.index(label) for label in (
+            '>Guide Teacher<', '>Controller of Exam<', '>Convener<', '>Head Teacher<')]
+        self.assertEqual(order, sorted(order))
+        self.assertEqual(html.count('Signature &amp; Date'), 4)
 
     def test_full_print_keeps_the_layout_and_includes_every_student(self):
         Student.objects.bulk_create([
