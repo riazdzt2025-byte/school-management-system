@@ -18,6 +18,19 @@ from .models import (
 )
 
 
+def _paper(html):
+    """The printed paper of a report page, without the app chrome.
+
+    The sidebar and the on-screen school header are ``d-print-none`` chrome and
+    are deliberately out of scope for "what the paper says".
+    """
+    for marker in ('<div class="pr-page', '<div class="result-paper">',
+                   '<section class="pr-sheet"', '<div class="card-print"', '<main class="sheet">'):
+        if marker in html:
+            return html.split(marker, 1)[1]
+    return html
+
+
 def _field(html, label):
     match = re.search(r'<td class="pr-info-label">' + label + r'</td><td>([^<]*)</td>', html)
     return match.group(1) if match else None
@@ -93,13 +106,7 @@ class ResultSheetChromeTests(TestCase):
         for name, url in self.pages().items():
             with self.subTest(page=name):
                 html = self.client.get(url).content.decode()
-                paper = html
-                for marker in ('<div class="pr-page', '<div class="result-paper">',
-                               '<section class="pr-sheet"', '<div class="card-print"'):
-                    if marker in paper:
-                        paper = paper.split(marker, 1)[1]
-                        break
-                self.assertNotIn('School And College', paper)
+                self.assertNotIn('School And College', _paper(html))
 
     def test_signatures_sit_at_the_foot_with_guide_teacher_on_the_left(self):
         for name in ('published_results', 'top_10', 'exam_result_print_summary'):
@@ -109,6 +116,44 @@ class ResultSheetChromeTests(TestCase):
                 # Guide Teacher is the first (left-most) signature in the row,
                 # the others follow on the right.
                 self.assertLess(row.index('Guide Teacher'), row.index('Controller of Exam'))
+
+    def test_full_mark_sheet_prints_in_english_only(self):
+        """The landscape Full Mark Sheet was the last Bengali document."""
+        html = self.client.get(self.pages()['result_sheet']).content.decode()
+        self.assertIsNone(
+            re.search(r'[\u0980-\u09FF]', html),
+            'the Full Mark Sheet must print in English only',
+        )
+        self.assertIn('Summary and Signatures', html)
+        self.assertIn('Total Students', html)
+        self.assertIn('Pass Rate', html)
+
+    def test_school_papers_print_the_school_phone_only(self):
+        """A school result is the school's paper: the college has no part in it."""
+        college_phone = settings.SCHOOL_INFO['college_phone']
+        school_phone = settings.SCHOOL_INFO['school_phone']
+        for name in ('result_sheet', 'published_results', 'exam_result_summary',
+                     'top_10', 'exam_result_print_summary'):
+            with self.subTest(page=name):
+                paper = _paper(self.client.get(self.pages()[name]).content.decode())
+                self.assertNotIn(college_phone, paper)
+                self.assertNotIn('College:', paper)
+                self.assertIn(school_phone, paper)
+
+    def test_no_report_signs_as_a_principal(self):
+        """A school is led by a Head Teacher; "Principal" has no place on a paper."""
+        for name in ('result_sheet', 'published_results', 'top_10',
+                     'exam_result_print_summary'):
+            with self.subTest(page=name):
+                paper = _paper(self.client.get(self.pages()[name]).content.decode())
+                self.assertIn('Head Teacher', paper)
+                # "Principal" survives only inside the institution's own name
+                # ("Principal Kazi Faruky School"); it is never a signatory.
+                for match in re.finditer('Principal', paper):
+                    self.assertTrue(
+                        paper.startswith('Principal Kazi Faruky', match.start()),
+                        f'"Principal" used as a role on {name}',
+                    )
 
     def test_signature_row_is_pinned_to_the_bottom_of_the_sheet(self):
         html = self.client.get(self.pages()['published_results']).content.decode()
@@ -163,3 +208,11 @@ class CertificateAndCardChromeTests(TestCase):
                 self.assertIn('school_logo.png', html)
                 self.assertNotIn('School And College', html)
                 self.assertIn('Principal Kazi Faruky School', html)
+
+    def test_certificate_is_signed_by_the_head_teacher(self):
+        """A school certificate is signed by the Head Teacher, not a Principal."""
+        html = self.client.get(
+            reverse('view_certificate', args=[self.certificate.pk])
+        ).content.decode()
+        self.assertIn("Head Teacher's Signature", html)
+        self.assertNotIn("Principal's Signature", html)

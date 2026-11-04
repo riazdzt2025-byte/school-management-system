@@ -34,7 +34,7 @@
         <p>This is to certify that <span class="value">{{ student.name }}</span>, son/daughter of <span class="value">{{ student.father_name|default:'-' }}</span>, is/was a student of this institution in Class <span class="value">{{ student.admission_class }}</span>, Section <span class="value">{{ student.section|default:'-' }}</span>, with Student ID <span class="value">{{ student.student_id }}</span>.</p>
         <p>Purpose: <span class="value">{{ cert.purpose|default:'-' }}</span></p>
     </div>
-    <div class="signature-row"><div class="signature-box">Issued By ({{ cert.issued_by|default:'-' }})</div><div class="signature-box">Principal's Signature</div></div>
+    <div class="signature-row"><div class="signature-box">Issued By ({{ cert.issued_by|default:'-' }})</div><div class="signature-box">Head Teacher's Signature</div></div>
 </div>
 </body>
 </html>

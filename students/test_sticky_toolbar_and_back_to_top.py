@@ -10,6 +10,7 @@
 Both are pure presentation concerns, so these tests assert the rendered markup
 and CSS contracts rather than driving a browser.
 """
+import re
 from pathlib import Path
 
 from django.conf import settings
@@ -171,7 +172,10 @@ class PrintReadabilityTests(TestCase):
         # footer that is printed on every page (@page @bottom-center).
         self.assertIn('@page { size: A4 landscape; margin: 6mm 6mm 24mm;', stylesheet)
         self.assertIn('@bottom-center', stylesheet)
-        self.assertIn('গাইড শিক্ষকের স্বাক্ষর', stylesheet)
+        # The printed footer is English, like the rest of the sheet.
+        self.assertIn("Guide Teacher's signature", stylesheet)
+        self.assertIsNone(re.search(r'[\u0980-\u09FF]', stylesheet),
+                          'the Full Mark Sheet must print in English only')
 
     def test_ten_subject_sheet_keeps_a_usable_name_and_mark_column(self):
         """A4 landscape is 297mm wide; at a 6mm margin that is ~1077 CSS px.

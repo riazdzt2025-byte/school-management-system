@@ -331,7 +331,7 @@
             <img class="print-logo" src="{% static 'students/img/school_logo.png' %}" alt="">
             <div class="print-identity">
                 <h2>{{ SCHOOL_INFO.school_name|default:"Principal Kazi Faruky School" }}</h2>
-                <p class="print-address">{{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} &middot; School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} &middot; College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
+                <p class="print-address">{{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} &middot; {{ SCHOOL_INFO.school_phone|default:"01309134783" }}</p>
                 <p class="print-subtitle">{% block print_subtitle %}{% endblock %}</p>
             </div>
         </div>

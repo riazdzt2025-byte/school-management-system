@@ -89,14 +89,14 @@
     .result-help { font-size: .75rem; line-height: 1.5; }
     .result-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 9px; border-top: 1px solid #d5dadd; color: #596570; font-size: .68rem; }
 
-    /* চূড়ান্ত পৃষ্ঠার সামারি ও স্বাক্ষর ব্লক */
+    /* Summary and signature block of the final page */
     .result-sign-off { break-inside: avoid; margin-top: 18px; font-family: Arial, Helvetica, 'Noto Sans Bengali', sans-serif; }
     .result-sign-off .sign-off-title { font-size: 11pt; font-weight: 700; margin: 0 0 10px; text-align: center; border-bottom: 1px solid #000; padding-bottom: 4px; }
     .brief-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; border: 1px solid #000; padding: 8px; background: #fff; }
     .stat { border: 1px solid #000; padding: 6px 8px; min-width: 150px; text-align: center; background: #fff; }
     .stat-value { font-size: 13pt; font-weight: 700; }
     .stat-label { font-size: 7.5pt; color: #333; }
-    .sign-off-rows { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 16px; justify-content: center; }
+    .sign-off-rows { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 16px; justify-content: space-between; }
     .sig-col { flex: 1; min-width: 210px; }
     .sig-line { border-bottom: 1px solid #000; height: 10px; margin: 0 auto 4px; width: 210px; }
     .sig-label { font-weight: 700; font-size: 10pt; text-align: center; }
@@ -116,9 +116,9 @@
     }
 
     @page { size: A4 landscape; margin: 6mm 6mm 24mm;
-        /* প্রতি মুদ্রিত পৃষ্ঠার নিচে গাইড শিক্ষকের স্বাক্ষরের জায়গা */
+        /* Signature space for the Guide Teacher under every printed page */
         @bottom-center {
-            content: "গাইড শিক্ষকের স্বাক্ষর : ________________________________________";
+            content: "Guide Teacher's signature : ________________________________________";
             font-family: Arial, Helvetica, 'Noto Sans Bengali', sans-serif;
             font-size: 8pt;
             color: #000;
@@ -159,8 +159,10 @@
         .failed-mark .mark-row, .absent-mark.subject-failed .mark-row { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
         .result-table-card thead { display: table-header-group; }
         .result-table-card tbody tr { break-inside: avoid; page-break-inside: avoid; }
-        /* শেষ পৃষ্ঠার সামারি ও স্বাক্ষর ব্লক আলাদা শেষ পেইজে রাখা হয় */
-        .result-sign-off { break-before: page; break-inside: avoid; }
+        /* The summary and signature block is kept on its own last page, with
+           the four signature columns pushed down to the foot of that page. */
+        .result-sign-off { break-before: page; break-inside: avoid; display: flex; flex-direction: column; min-height: 158mm; }
+        .result-sign-off .sign-off-rows { margin-top: auto; }
         .result-notice { border-color: #000; color: #000; background: #fff; font-size: 9.5pt; break-inside: avoid; }
     }
 {% endblock %}
@@ -206,7 +208,7 @@
         <header class="print-masthead">
             <img class="masthead-logo" src="{% static 'students/img/school_logo.png' %}" alt="">
             <h1>Principal Kazi Faruky School</h1>
-            <p class="masthead-line">Founder: Principal Kazi Faruky Welfare Trust, {{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} <span aria-hidden="true">|</span> School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} <span aria-hidden="true">|</span> College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
+            <p class="masthead-line">Founder: Kazi Faruky Welfare Trust, {{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} <span aria-hidden="true">|</span> Mobile: {{ SCHOOL_INFO.school_phone|default:"01309134783" }}</p>
             <p class="masthead-exam">{{ exam.name }} <span aria-hidden="true">|</span> Class: {{ exam.admission_class|class_label }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} <span aria-hidden="true">|</span> {{ result_group_label }}{% endif %}</p>
             <p class="masthead-title">Result Sheet</p>
         </header>
@@ -352,59 +354,59 @@
         </p>
         {% endif %}
 
-        <!-- শেষ পৃষ্ঠা: সংক্ষিপ্ত সামারি এবং স্বাক্ষর ব্লক -->
+        <!-- Final page: summary and signatures -->
         <section class="result-sign-off">
-            <h2 class="sign-off-title">শেষ পৃষ্ঠা :: সংক্ষিপ্ত সামারি ও স্বাক্ষর</h2>
+            <h2 class="sign-off-title">Summary and Signatures</h2>
             <div class="brief-stats">
                 <div class="stat">
                     <div class="stat-value">{{ brief_summary.total_students }}</div>
-                    <div class="stat-label">মোট শিক্ষার্থী</div>
+                    <div class="stat-label">Total Students</div>
                 </div>
                 <div class="stat">
                     <div class="stat-value">{{ brief_summary.pass_count }}</div>
-                    <div class="stat-label">উত্তীর্ণ (Pass)</div>
+                    <div class="stat-label">Passed</div>
                 </div>
                 <div class="stat">
                     <div class="stat-value">{{ brief_summary.fail_count }}</div>
-                    <div class="stat-label">ফেল (Fail)</div>
+                    <div class="stat-label">Failed</div>
                 </div>
                 <div class="stat">
                     <div class="stat-value">{{ brief_summary.a_plus_students }}</div>
-                    <div class="stat-label">এ+ পায়েছেন</div>
+                    <div class="stat-label">A+ Students</div>
                 </div>
                 <div class="stat">
                     <div class="stat-value">{{ brief_summary.pass_rate }}%</div>
-                    <div class="stat-label">পাশের হার</div>
+                    <div class="stat-label">Pass Rate</div>
                 </div>
                 <div class="stat">
                     <div class="stat-value">{{ brief_summary.total_subject_a_plus }}</div>
-                    <div class="stat-label">বিষয়ভিত্তিক এ+ মোট</div>
+                    <div class="stat-label">Total Subject A+</div>
                 </div>
             </div>
             <div class="sign-off-rows">
                 <div class="sig-col">
                     <div class="sig-line"></div>
-                    <div class="sig-label">গাইড শিক্ষক</div>
-                    <div class="sig-note">স্বাক্ষর ও তারিখ</div>
+                    <div class="sig-label">Guide Teacher</div>
+                    <div class="sig-note">Signature &amp; Date</div>
                 </div>
                 <div class="sig-col">
                     <div class="sig-line"></div>
-                    <div class="sig-label">পরীক্ষা নিয়ন্ত্রক</div>
-                    <div class="sig-note">স্বাক্ষর ও তারিখ</div>
+                    <div class="sig-label">Controller of Exam</div>
+                    <div class="sig-note">Signature &amp; Date</div>
                 </div>
                 <div class="sig-col">
                     <div class="sig-line"></div>
-                    <div class="sig-label">আহ্বায়ক</div>
-                    <div class="sig-note">স্বাক্ষর ও তারিখ</div>
+                    <div class="sig-label">Convener</div>
+                    <div class="sig-note">Signature &amp; Date</div>
                 </div>
                 <div class="sig-col">
                     <div class="sig-line"></div>
-                    <div class="sig-label">প্রধান শিক্ষক</div>
-                    <div class="sig-note">স্বাক্ষর ও তারিখ</div>
+                    <div class="sig-label">Head Teacher</div>
+                    <div class="sig-note">Signature &amp; Date</div>
                 </div>
             </div>
-            <p class="sign-off-note">{{ exam.name }} · ক্লাস {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} · সেশন {{ exam.session }}
-                {% if result_group_label %} · {{ result_group_label }}{% endif %} · প্রিন্ট: {% now "d-M-Y" %}</p>
+            <p class="sign-off-note">{{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %} &middot; Session {{ exam.session }}
+                {% if result_group_label %} · {{ result_group_label }}{% endif %} &middot; Print: {% now "d-M-Y" %}</p>
         </section>
 
         <footer class="result-footer d-print-none">

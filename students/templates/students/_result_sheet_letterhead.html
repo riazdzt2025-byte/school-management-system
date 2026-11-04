@@ -14,7 +14,7 @@ e.g. "Top Ten (10)".
         <h1 class="pr-school">Principal Kazi Faruky School</h1>
         <p class="pr-line">Founder: Professor Kazi Faruky Kallan Trust</p>
         <p class="pr-line">{{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }}</p>
-        <p class="pr-line">Mobile: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} &middot; {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
+        <p class="pr-line">Mobile: {{ SCHOOL_INFO.school_phone|default:"01309134783" }}</p>
         <p class="pr-exam">{{ exam.name }}</p>
         {% if sheet_subtitle %}<p class="pr-exam-sub">{{ sheet_subtitle }}</p>{% endif %}
     </div>

@@ -1,8 +1,8 @@
 """The school's contact details are printed on paper, so they live in one place.
 
-The school and the college each have their own number, and every surface that
-carries the letterhead (screen header, printed register masthead, admission
-printout) must show the current pair — never a stale placeholder.
+The school and the college each have their own number. The app header shows
+both, because it fronts the whole institution; a printed school paper shows the
+school's number only, since the college has no part in a school document.
 """
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -65,9 +65,10 @@ class ContactDetailsOnPagesTests(TestCase):
         self.assertIn(f'School: {SCHOOL_PHONE}', html)
         self.assertIn(f'College: {COLLEGE_PHONE}', html)
 
-    def test_printed_register_masthead_shows_both_numbers(self):
+    def test_printed_register_masthead_shows_the_school_number_only(self):
         html = self.client.get(reverse('result_sheet', args=[self.exam.pk])).content.decode('utf-8')
         masthead = html.split('class="print-masthead"', 1)[1].split('</header>', 1)[0]
-        self.assertIn(f'School: {SCHOOL_PHONE}', masthead)
-        self.assertIn(f'College: {COLLEGE_PHONE}', masthead)
+        self.assertIn(SCHOOL_PHONE, masthead)
+        self.assertNotIn(COLLEGE_PHONE, masthead)
+        self.assertNotIn('College', masthead)
         self.assertIn('Lakshmipur-3700', masthead)

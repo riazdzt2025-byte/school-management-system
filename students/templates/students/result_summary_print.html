@@ -31,8 +31,6 @@
     .rsm-matrix td { height: 4.6mm; font-size: 8.5pt; }
     .rsm-matrix .rsm-row-label { text-align: left; white-space: nowrap; }
     .rsm-matrix .rsm-marks { font-weight: 400; }
-    .rsm-matrix .rsm-total { font-weight: 700; background: #f7f7f7; }
-    .rsm-matrix tfoot td { font-weight: 700; background: #f0f0f0; }
 
     /* ---- Section summary + signatures ---- */
     .rsm-close { margin-top: 6mm; align-items: flex-start; }
@@ -107,7 +105,6 @@
                         {% for column in columns %}
                         <th>{{ column.subject.code }}<br><span class="rsm-marks">({% if column.full_marks %}{{ column.full_marks|floatformat:"-2" }}{% else %}-{% endif %})</span></th>
                         {% endfor %}
-                        <th>Total</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -115,17 +112,9 @@
                     <tr>
                         <td class="rsm-row-label">{{ row.label }}</td>
                         {% for count in row.counts %}<td>{{ count }}</td>{% endfor %}
-                        <td class="rsm-total">{{ row.total }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
-                <tfoot>
-                    <tr>
-                        <td class="rsm-row-label">Total</td>
-                        {% for total in grade_report.column_totals %}<td>{{ total }}</td>{% endfor %}
-                        <td>{{ grade_report.matrix_total }}</td>
-                    </tr>
-                </tfoot>
             </table>
         </div>
 
@@ -142,7 +131,7 @@
         <div class="pr-sign-row">
             <div class="pr-sign"><div class="pr-sign-line"></div>Guide Teacher</div>
             <div class="pr-signs">
-                <div class="pr-sign"><div class="pr-sign-line"></div>Principal</div>
+                <div class="pr-sign"><div class="pr-sign-line"></div>Head Teacher</div>
                 <div class="pr-sign"><div class="pr-sign-line"></div>Controller of Exam</div>
             </div>
         </div>
