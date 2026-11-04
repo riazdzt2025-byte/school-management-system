@@ -5890,6 +5890,23 @@ def result_provisional(request, pk):
     })
 
 
+# Rows per printed page of the Published Result (?print=1) view.  A portrait
+# A4 sheet at 8pt holds this many single-line rows under the header strip and
+# above the footer, so the view chunks explicitly instead of leaving the page
+# breaks to the browser — every sheet then carries a real "Page x of y".
+SUMMARY_PRINT_ROWS_PER_PAGE = 40
+
+
+def _summary_print_sheets(rows, per_page):
+    """Split the register into fixed-size printed sheets for the print view."""
+    chunks = [rows[i:i + per_page] for i in range(0, len(rows), per_page)] or [[]]
+    total_pages = len(chunks)
+    return [
+        {'rows': sheet_rows, 'page_no': number, 'total_pages': total_pages}
+        for number, sheet_rows in enumerate(chunks, start=1)
+    ]
+
+
 @login_required
 def result_summary(request, pk):
     """Published Result page for one exam.
@@ -5924,9 +5941,30 @@ def result_summary(request, pk):
         row['student'].pk,
     ))
     pagination = paginate_list(request, results, allow_full_print=True)
+    total_students = len(results)
+    pass_count = sum(1 for row in results if row['status'] == 'Pass')
     return render(request, 'students/exam_result_summary.html', {
         **pagination,
         'exam': exam, 'results': pagination['page_rows'],
+        # Print layout: the full-print view is chunked into fixed sheets so the
+        # portrait pages break where the paper does, with "Page x of y".
+        'print_sheets': (
+            _summary_print_sheets(results, SUMMARY_PRINT_ROWS_PER_PAGE)
+            if pagination['is_print_view'] else []
+        ),
+        'exam_year': _published_result_year(exam),
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'fail_count': total_students - pass_count,
+        'pass_rate_class': int(100 * pass_count / total_students) if total_students else 0,
+        'pass_rate_exact': (
+            f'{100 * pass_count / total_students:.2f}' if total_students else '0.00'
+        ),
+        'a_plus_students': sum(1 for r in results if (r.get('grade') or '') == 'A+'),
+        'golden_a_plus': sum(1 for r in results if _golden_a_plus_result(r)),
+        'section_group_label': ' / '.join(
+            part for part in (exam.section, result_group_label) if part
+        ) or 'All',
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': selected_group_label,
@@ -5994,10 +6032,40 @@ def exam_result_print_summary(request, pk):
     })
 
 
+def _merit_comment(result):
+    """The 'Comments' cell of the Top Ten sheet.
+
+    ``Golden``    — A+ in every graded paper (a Golden A Plus, GPA 5.00).
+    ``Potential`` — exactly one paper short of that: the student is one mark
+    improvement away from a Golden A Plus.
+
+    Anything further behind stays blank; the column marks the two cases the
+    office acts on, it does not grade the rest of the class.
+    """
+    graded = [
+        cell for cell in result.get('subject_results', [])
+        if not cell.get('not_applicable') and not cell.get('pending')
+    ]
+    if not graded:
+        return ''
+    a_plus = sum(1 for cell in graded if (cell.get('grade') or '') == 'A+')
+    if a_plus == len(graded):
+        return 'Golden'
+    if a_plus == len(graded) - 1:
+        return 'Potential'
+    return ''
+
+
 @login_required
 def top_10(request, pk):
-    """Top-10 list — merit position order, intentionally (EX-02 rule:
-    ranking output). Rolls never decide this order."""
+    """Top Ten — merit position order, intentionally (EX-02 rule: ranking).
+
+    Printed as the school's "Top Ten (10)" sheet: the shared letterhead with
+    the class info box, one row per ranked student in merit order with the
+    place as an ordinal (1st, 2nd, 10th…), the A+ subject count, the failed
+    subject count and a Comments cell (Golden / Potential), closed by the
+    Controller of Exam / Head Teacher signatures.
+    """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
@@ -6007,9 +6075,23 @@ def top_10(request, pk):
     selected_group_label = dict(group_choices).get(selected_group, '')
     result_group_label = selected_group_label or exam.get_group_display() or ''
     _, results = build_exam_results(exam, group=selected_group or None)
+    top_rows = [r for r in results if r['position']][:10]
+    for row in top_rows:
+        row['comment'] = _merit_comment(row)
+    total_students = len(results)
+    pass_count = sum(1 for r in results if r['status'] == 'Pass')
     return render(request, 'students/top10.html', {
         'exam': exam,
-        'results': [r for r in results if r['position']][:10],
+        'results': top_rows,
+        'exam_year': _published_result_year(exam),
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'pass_rate_class': int(100 * pass_count / total_students) if total_students else 0,
+        'a_plus_students': sum(1 for r in results if (r.get('grade') or '') == 'A+'),
+        'golden_a_plus': sum(1 for r in results if _golden_a_plus_result(r)),
+        'section_group_label': ' / '.join(
+            part for part in (exam.section, result_group_label) if part
+        ) or 'All',
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': selected_group_label,

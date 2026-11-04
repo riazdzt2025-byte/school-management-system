@@ -2319,7 +2319,10 @@ class AdmissionSubjectScopeTests(TestCase):
 		self.assertContains(response, '150')
 		self.assertNotContains(response, '150 / 300')
 		self.assertContains(response, 'class="d-print-none"')
-		self.assertContains(response, 'A4 landscape')
+		# The Published Result is a portrait register printout (the landscape
+		# sheet is the separate Full Mark Sheet).
+		self.assertContains(response, 'A4 portrait')
+		self.assertNotContains(response, 'A4 landscape')
 
 
 class ResultCountingRulesTests(TestCase):

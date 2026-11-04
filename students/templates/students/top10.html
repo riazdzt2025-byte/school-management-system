@@ -1,74 +1,88 @@
 {% extends 'students/base.html' %}
+{% load student_filters %}
 
 {% block title %}Top 10 - {{ block.super }}{% endblock %}
+{% block print_subtitle %}Top Ten (10) - {{ exam.name }}{% endblock %}
 
 {% block extra_style %}
-    .rank-badge { background: var(--gold); color: #0f2d52; border-radius: 50%; display: inline-flex;
-                  width: 30px; height: 30px; align-items: center; justify-content: center; font-weight: 700; }
-    .rank-badge.rank-1 { background: #FFD700; color: #000; box-shadow: 0 0 8px rgba(255,215,0,0.5); }
-    .rank-badge.rank-2 { background: #C0C0C0; color: #000; }
-    .rank-badge.rank-3 { background: #CD7F32; color: #fff; }
+    {% include 'students/_result_sheet_styles.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <h1>Top 10 &mdash; {{ exam.name }}</h1>
-        <div class="subtitle">
-            Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}
-            {% if result_group_label %} &middot; {{ result_group_label }} group{% elif exam.group %} &middot; {{ exam.get_group_display }} group{% endif %} &middot; Session {{ exam.session }}
+<div class="pr-page">
+    <div class="pr-toolbar d-print-none">
+        <div class="toolbar-title">
+            Top Ten &middot; {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} &middot; {{ result_group_label }}{% endif %}
+        </div>
+        <div class="toolbar-actions">
+            <button type="button" onclick="window.print()" class="btn btn-outline-navy btn-sm">🖨️ Print / Save PDF</button>
+            <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm">Full Rank List</a>
+            <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
+            <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Published Result</a>
+            {% if can_result_analysis %}<a href="{% url 'result_analysis_merit_slides' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-easel me-1"></i> Merit Slides</a>{% endif %}
+            <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Back to Exams</a>
         </div>
     </div>
-</div>
 
-{% if show_group_picker %}
-<form method="get" class="table-card p-3 mb-3 d-flex align-items-end gap-2 flex-wrap">
-    <div>
-        <label class="form-label fw-semibold mb-1">Group</label>
-        <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
-            <option value="">All Groups</option>
-            {% for code, label in group_choices %}
-            <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <button type="submit" class="btn btn-sm btn-outline-navy">Show Top 10</button>
-    {% if selected_group %}<a href="{% url 'top_10' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
-</form>
-{% endif %}
-
-<div class="table-card">
-    <div class="table-responsive">
-        <table class="table table-striped mb-0">
-            <thead>
-                <tr><th>Rank</th><th>Roll</th><th>Name</th><th>Total</th><th>GPA</th><th>Grade</th></tr>
-            </thead>
-            <tbody>
-                {% for r in results %}
-                <tr>
-                    <td><span class="rank-badge {% if r.position <= 3 %}rank-{{ r.position }}{% endif %}">{{ r.position }}</span></td>
-                    <td>{{ r.student.roll_no }}</td>
-                    <td>
-                        <a href="{% url 'student_result_detail' exam.pk r.student.pk %}">{{ r.student.name }}</a>
-                        {% if r.absent_subject_count %}<span class="text-muted small">({{ r.absent_subject_count }} absent)</span>{% endif %}
-                    </td>
-                    <td>{{ r.total_obtained }} / {{ r.total_full }}</td>
-                    <td>{{ r.gpa }}</td>
-                    <td>{{ r.grade }}</td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="6" class="text-center py-4">No results yet.</td></tr>
+    {% if show_group_picker %}
+    <form method="get" class="pr-group-picker d-print-none mb-3 d-flex align-items-end gap-2 flex-wrap">
+        {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
+        <div>
+            <label class="form-label fw-semibold mb-1" for="top10-group-select">Group</label>
+            <select name="group" id="top10-group-select" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-navy">Show Top 10</button>
+        {% if selected_group %}<a href="{% url 'top_10' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+    </form>
+    {% endif %}
 
-<div class="mt-3 d-flex gap-2 flex-wrap">
-    <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm"><i class="bi bi-list-ol me-1"></i> Full Rank List</a>
-    <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
-    <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Published Result</a>
-    {% if can_result_analysis %}<a href="{% url 'result_analysis_merit_slides' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-easel me-1"></i> Merit Slides</a>{% endif %}
-    <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Back to Exams</a>
+    <section class="pr-sheet" aria-label="Top ten results">
+        {% include 'students/_result_sheet_letterhead.html' with sheet_subtitle="Top Ten (10)" %}
+
+        <div class="pr-table-wrap">
+            <table class="pr-table">
+                <colgroup>
+                    <col style="width: 8%"><col style="width: 10%"><col style="width: 26%">
+                    <col style="width: 7%"><col style="width: 6%"><col style="width: 6.5%">
+                    <col style="width: 6.5%"><col style="width: 6.5%"><col style="width: 5.5%">
+                    <col style="width: 18%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Roll No.</th><th>ID No.</th><th>Student Name</th><th>Grade</th>
+                        <th>GP</th><th>Total</th><th>Place</th><th>A Plus</th><th>Fail</th><th>Comments</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in results %}
+                    <tr>
+                        <td>{{ r.student.roll_no|default:'-' }}</td>
+                        <td>{{ r.student.student_id }}</td>
+                        <td class="pr-name">{{ r.student.name }}</td>
+                        <td class="pr-grade">{{ r.grade }}</td>
+                        <td>{{ r.gpa|floatformat:2|default:"0.00" }}</td>
+                        <td>{{ r.total_obtained|floatformat:"-2" }}</td>
+                        <td>{{ r.position|ordinal }}</td>
+                        <td>{{ r.a_plus_count }}</td>
+                        <td>{{ r.failed_subject_count }}</td>
+                        <td>{{ r.comment }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10" class="text-center py-4">No results yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pr-signs-only">
+            <div class="pr-sign"><div class="pr-sign-line"></div>Controller of Exam</div>
+            <div class="pr-sign"><div class="pr-sign-line"></div>Head Teacher</div>
+        </div>
+    </section>
 </div>
 {% endblock %}
