@@ -1,0 +1,216 @@
+{% extends 'students/base.html' %}
+{% load static student_filters %}
+
+{% block title %}Published Results - {{ block.super }}{% endblock %}
+{% block print_subtitle %}Published Results - {{ exam.name }}{% endblock %}
+
+{% block extra_style %}
+    /* Published Results — the office's printed result sheet: white paper,
+       black rules, red letterhead, and a repeated header/footer per page so
+       "Page x of y" matches what comes out of the printer. */
+    .main > .print-header, .school-header { display: none !important; }
+    .pr-page { max-width: 210mm; margin: 0 auto; color: #000; padding: 16px 0; }
+    .pr-page, .pr-page * { box-sizing: border-box; }
+
+    .pr-toolbar {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .pr-toolbar .toolbar-title { color: #596570; font-size: .85rem; font-weight: 600; }
+    .pr-toolbar .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .pr-sheet {
+        display: flex; flex-direction: column;
+        width: 210mm; min-height: 272mm; padding: 5mm;
+        margin: 0 auto 18px;
+        background: #fff; border: 1px solid #000;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, .16);
+        font-family: Arial, Helvetica, sans-serif;
+    }
+
+    /* ---- Letterhead: badge | red identity | class info box ---- */
+    .pr-head { display: flex; align-items: flex-start; gap: 4mm; margin-bottom: 2.5mm; }
+    .pr-logo { width: 22mm; flex: 0 0 auto; }
+    .pr-logo img { width: 100%; height: auto; }
+    .pr-identity { flex: 1 1 auto; min-width: 0; padding-top: 1mm; text-align: center; color: #a32121; }
+    .pr-school { margin: 0; font-size: 15pt; font-weight: 700; line-height: 1.2; letter-spacing: 0; }
+    .pr-line {
+        margin: 1.2mm 0 0; font-family: 'Courier New', Courier, monospace;
+        font-size: 9pt; font-weight: 700; line-height: 1.3;
+    }
+    .pr-exam { margin: 2mm 0 0; font-size: 11pt; font-weight: 700; text-decoration: underline; }
+    .pr-info { width: 55mm; flex: 0 0 auto; border-collapse: collapse; }
+    .pr-info td { border: 1px solid #000; padding: 1mm 1.5mm; font-size: 8.5pt; line-height: 1.25; }
+    .pr-info .pr-info-label { width: 58%; font-weight: 700; }
+
+    /* ---- Register: Roll No. | ID No. | Student Name | Grade | GP | Total |
+            Place | A Plus | Fail | Comments ---- */
+    .pr-table-wrap { width: 100%; overflow-x: auto; }
+    .pr-table { width: 100%; min-width: 170mm; border-collapse: collapse; table-layout: fixed; }
+    .pr-table th {
+        border: 1px solid #000; padding: 1mm 1mm; font-size: 9pt; font-weight: 700;
+        line-height: 1.15; text-align: center; vertical-align: middle;
+    }
+    .pr-table td {
+        height: 5mm; padding: 0.7mm 1mm; border: 1px solid #000; font-size: 9pt;
+        line-height: 1.15; text-align: center; vertical-align: middle;
+    }
+    .pr-table .pr-name { text-align: left; overflow-wrap: anywhere; }
+    .pr-table .pr-grade { font-weight: 700; }
+
+    /* ---- Closing block: Section/Group summary + signatures (last page) ---- */
+    .pr-close { display: flex; align-items: center; justify-content: space-between; gap: 6mm; margin-top: 3mm; padding: 0 3mm; }
+    .pr-summary { width: 52mm; border-collapse: collapse; }
+    .pr-summary td { border: 1px solid #000; padding: 1mm 1.5mm; font-size: 8.5pt; line-height: 1.25; }
+    .pr-summary .pr-info-label { width: 55%; font-weight: 700; }
+    .pr-signs { flex: 1 1 auto; display: flex; justify-content: space-around; }
+    .pr-sign { text-align: center; font-size: 9pt; }
+    .pr-sign-line { width: 40mm; margin: 0 auto 1mm; border-top: 1px solid #000; }
+
+    /* ---- Page footer: Guide Teacher · Page x of y / print meta / copyright ---- */
+    .pr-foot { margin-top: auto; }
+    .pr-foot-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10mm; }
+    .pr-guide { margin-left: 8mm; font-size: 9pt; }
+    .pr-guide-line { width: 40mm; margin-bottom: 1mm; border-top: 1px solid #000; }
+    .pr-page-no { font-size: 10pt; }
+    .pr-foot-rule { margin: 1.5mm 0 1mm; border-top: 1px solid #000; }
+    .pr-print-meta { font-size: 8.5pt; }
+    .pr-copyright { margin-top: 1mm; text-align: center; font-size: 8pt; }
+
+    @page { size: A4 portrait; margin: 6mm; }
+    @media print {
+        html, body { background: #fff !important; color: #000 !important; }
+        .pr-page { max-width: none; padding: 0; }
+        .pr-toolbar, .pr-group-picker { display: none !important; }
+        .pr-sheet {
+            width: auto; min-height: 268mm; margin: 0 !important;
+            padding: 4mm !important; box-shadow: none !important;
+            border: 1px solid #000;
+            page-break-after: always; break-after: page;
+        }
+        .pr-sheet:last-of-type { page-break-after: auto; break-after: auto; }
+        .pr-table-wrap { overflow: visible; }
+        .pr-table th, .pr-table td { border-color: #000 !important; color: #000 !important; background: #fff !important; }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="pr-page">
+    <div class="pr-toolbar d-print-none">
+        <div class="toolbar-title">Published Results &middot; {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} &middot; {{ result_group_label }}{% endif %}</div>
+        <div class="toolbar-actions">
+            <button type="button" onclick="window.print()" class="btn btn-outline-navy btn-sm">🖨️ Print / Save PDF</button>
+            <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-info btn-sm">Full Mark Sheet</a>
+            <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Published Result</a>
+            <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm">Full Rank List</a>
+            <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Back to Exams</a>
+        </div>
+    </div>
+
+    {% if show_group_picker %}
+    <form method="get" class="pr-group-picker d-print-none mb-3 d-flex align-items-end gap-2 flex-wrap">
+        {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
+        <div>
+            <label class="form-label fw-semibold mb-1" for="pr-group-select">Group</label>
+            <select name="group" id="pr-group-select" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-navy">Show</button>
+        {% if selected_group %}<a href="{% url 'published_results' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+    </form>
+    {% endif %}
+
+    {% for sheet in sheets %}
+    <section class="pr-sheet" aria-label="Published result page {{ sheet.page_no }} of {{ sheet.total_pages }}">
+        <header class="pr-head">
+            <div class="pr-logo">
+                <img src="{% static 'students/img/school_logo.png' %}" alt="School badge">
+            </div>
+            <div class="pr-identity">
+                <h1 class="pr-school">Principal Kazi Faruky School</h1>
+                <p class="pr-line">Founder: Professor Kazi Faruky Kallan Trust</p>
+                <p class="pr-line">{{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }}</p>
+                <p class="pr-line">Mobile: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} &middot; {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
+                <p class="pr-exam">{{ exam.name }}</p>
+            </div>
+            <table class="pr-info" aria-label="Class result summary">
+                <tr><td class="pr-info-label">Year</td><td>{{ exam_year }}</td></tr>
+                <tr><td class="pr-info-label">Class</td><td>{{ exam.admission_class|class_padded_label }}</td></tr>
+                <tr><td class="pr-info-label">Section/Group</td><td>{{ section_group_label }}</td></tr>
+                <tr><td class="pr-info-label">Pass Rate in Class</td><td>{{ pass_rate_class }} %</td></tr>
+                <tr><td class="pr-info-label">Total A Plus</td><td>{{ a_plus_students }}</td></tr>
+                <tr><td class="pr-info-label">Golden A Plus</td><td>{{ golden_a_plus }}</td></tr>
+            </table>
+        </header>
+
+        <div class="pr-table-wrap">
+            <table class="pr-table" aria-label="Published result sheet">
+                <colgroup>
+                    <col style="width: 8%"><col style="width: 10%"><col style="width: 26%">
+                    <col style="width: 7%"><col style="width: 6%"><col style="width: 6.5%">
+                    <col style="width: 6.5%"><col style="width: 6.5%"><col style="width: 5.5%">
+                    <col style="width: 18%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Roll No.</th><th>ID No.</th><th>Student Name</th><th>Grade</th>
+                        <th>GP</th><th>Total</th><th>Place</th><th>A Plus</th><th>Fail</th><th>Comments</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in sheet.rows %}
+                    <tr>
+                        <td>{{ r.student.roll_no|default:'' }}</td>
+                        <td>{{ r.student.student_id }}</td>
+                        <td class="pr-name">{{ r.student.name }}</td>
+                        <td class="pr-grade">{{ r.grade }}</td>
+                        <td>{{ r.gpa|floatformat:2|default:"0.00" }}</td>
+                        <td>{{ r.total_obtained|floatformat:"-2" }}</td>
+                        <td>{{ r.position|default:0 }}</td>
+                        <td>{{ r.a_plus_count }}</td>
+                        <td>{{ r.failed_subject_count }}</td>
+                        <td class="pr-comments"></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10">No students found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if sheet.is_last %}
+        <div class="pr-close">
+            <table class="pr-summary" aria-label="Section/Group summary">
+                <tr><td class="pr-info-label">Section/Group</td><td>{{ section_group_label }}</td></tr>
+                <tr><td class="pr-info-label">Total Student</td><td>{{ total_students }}</td></tr>
+                <tr><td class="pr-info-label">Total Pass</td><td>{{ pass_count }}</td></tr>
+                <tr><td class="pr-info-label">Total Fail</td><td>{{ fail_count }}</td></tr>
+                <tr><td class="pr-info-label">Pass Rate</td><td>{{ pass_rate_exact }} %</td></tr>
+            </table>
+            <div class="pr-signs">
+                <div class="pr-sign"><div class="pr-sign-line"></div>Controller of Exam</div>
+                <div class="pr-sign"><div class="pr-sign-line"></div>Head Teacher</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <footer class="pr-foot">
+            <div class="pr-foot-row">
+                <div class="pr-guide"><div class="pr-guide-line"></div>Guide Teacher</div>
+                <div class="pr-page-no">Page {{ sheet.page_no }} of {{ sheet.total_pages }}</div>
+            </div>
+            <div class="pr-foot-rule"></div>
+            <div class="pr-foot-row pr-print-meta">
+                <span>Print Date: {% now "d-M-Y" %} / {% now "g:i a" %}</span>
+                <span>Print User: {{ request.user.username }}</span>
+            </div>
+            <div class="pr-copyright">Copyright &copy; {% now "Y" %} {{ COPYRIGHT_HOLDER }}. All rights reserved. Software by: {{ DEVELOPER_NAME }}. Unauthorized distribution is prohibited.</div>
+        </footer>
+    </section>
+    {% endfor %}
+</div>
+{% endblock %}

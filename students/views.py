@@ -6067,6 +6067,118 @@ def full_rank_list(request, pk):
     })
 
 
+# Rows per printed page of the Published Results sheet.  The sheet repeats its
+# letterhead and footer on every page (so "Page x of y" matches the printer),
+# and this many single-line rows fit one A4 portrait page at 9pt type.
+PUBLISHED_RESULTS_ROWS_PER_PAGE = 38
+
+
+def _published_result_year(exam):
+    """The 'Year' cell of the published sheet: the calendar year of the exam."""
+    if exam.exam_date:
+        return exam.exam_date.year
+    years = re.findall(r'(20\d{2})', exam.session or '')
+    return int(years[-1]) if years else timezone.now().year
+
+
+def _golden_a_plus_result(result):
+    """A 'Golden A+' is A+ in every graded paper — stricter than GPA 5.00 overall.
+
+    A fourth-subject paper below A+ can still leave the capped GPA at 5.00;
+    that is a Total A Plus but not a Golden A Plus.
+    """
+    graded = [
+        cell for cell in result['subject_results']
+        if not cell.get('not_applicable') and not cell.get('pending')
+    ]
+    return bool(graded) and all((cell.get('grade') or '') == 'A+' for cell in graded)
+
+
+@login_required
+def published_results(request, pk):
+    """Published Results — the office's printed result sheet after publication.
+
+    This is the sheet printed and handed out once a result is published: the
+    school letterhead (badge, red name/founder/address/mobile lines, exam
+    title) beside the class info box (Year / Class / Section-Group / Pass Rate
+    in Class / Total A Plus / Golden A Plus), then one row per student in
+    register (roll) order — Roll No., ID No., Student Name, Grade, GP, Total,
+    Place, A Plus (A+ subject count), Fail (failed subject count), Comments.
+    The closing block carries the Section/Group summary box (Total Student /
+    Total Pass / Total Fail / Pass Rate) and the Controller of Exam / Head
+    Teacher signatures; every page footer repeats the Guide Teacher line,
+    "Page x of y", the print date, the print user and the copyright line.
+
+    Rows are chunked into fixed-size printed pages so the letterhead and
+    footer repeat on every page and the page numbers match the paper.  The
+    register follows numeric roll order (as the office roll call does) —
+    merit position is printed in its own Place column (0 when unranked),
+    never as the row order.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    _columns, results = build_exam_results(exam, group=selected_group or None)
+    # Register order follows numeric rolls, not merit; computed places stay.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
+
+    total_students = len(results)
+    pass_count = sum(1 for row in results if row['status'] == 'Pass')
+    # The printed summary adds up: every student is either Pass or Fail, so
+    # 'No Marks' rows count under Total Fail on the sheet.
+    fail_count = total_students - pass_count
+    a_plus_students = sum(1 for row in results if (row.get('grade') or '') == 'A+')
+    golden_a_plus = sum(1 for row in results if _golden_a_plus_result(row))
+    # The info box prints the class pass rate truncated ("54 %" for 54.86 %),
+    # matching the school's existing printout; the closing summary box prints
+    # the exact two-place rate ("54.86 %").
+    pass_rate_class = int(100 * pass_count / total_students) if total_students else 0
+    pass_rate_exact = (
+        f'{100 * pass_count / total_students:.2f}' if total_students else '0.00'
+    )
+
+    per_page = PUBLISHED_RESULTS_ROWS_PER_PAGE
+    chunks = [results[i:i + per_page] for i in range(0, len(results), per_page)] or [[]]
+    total_pages = len(chunks)
+    sheets = [
+        {'rows': rows, 'page_no': number, 'total_pages': total_pages,
+         'is_last': number == total_pages}
+        for number, rows in enumerate(chunks, start=1)
+    ]
+
+    return render(request, 'students/published_results.html', {
+        'exam': exam,
+        'sheets': sheets,
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'fail_count': fail_count,
+        'a_plus_students': a_plus_students,
+        'golden_a_plus': golden_a_plus,
+        'pass_rate_class': pass_rate_class,
+        'pass_rate_exact': pass_rate_exact,
+        'section_group_label': ' / '.join(
+            part for part in (exam.section, result_group_label) if part
+        ) or 'All',
+        'exam_year': _published_result_year(exam),
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': selected_group_label,
+        'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+    })
+
+
 def _exam_result(request, exam, student_pk):
     # A result row only exists for a student of the exam's own class/institution;
     # requesting someone else's pk must not leak another institution's profile.

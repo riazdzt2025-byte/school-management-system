@@ -103,6 +103,7 @@ urlpatterns = [
     path('exams/<int:pk>/provisional-result/', views.result_provisional, name='result_provisional'),
     path('exams/<int:pk>/result-summary/', views.result_summary, name='exam_result_summary'),
     path('exams/<int:pk>/result-summary-print/', views.exam_result_print_summary, name='exam_result_print_summary'),
+    path('exams/<int:pk>/published-results/', views.published_results, name='published_results'),
     path('exams/<int:pk>/top-10/', views.top_10, name='top_10'),
     path('exams/<int:pk>/full-rank-list/', views.full_rank_list, name='full_rank_list'),
     path('exams/<int:pk>/rank-list/', views.full_rank_list, name='rank_list'),

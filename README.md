@@ -31,6 +31,7 @@ A web-based Student Management System built with Python and Django, inspired by 
 - **Exam Module**
    - Exam and subject-wise bulk marks entry
    - Result sheet, summary, detail result, result card, and top-10 views
+   - Published Result Sheet: office printout with letterhead, class info box, roll-order result table and signatures
    - Indoor/outdoor seat-plan generation
    - Teacher signature sheet
    - Exam publish toggle

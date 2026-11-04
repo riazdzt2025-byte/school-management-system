@@ -50,6 +50,7 @@
     {% endif %}
 
     <div class="mb-3 summary-actions d-print-none">
+        <a href="{% url 'published_results' exam.pk %}{{ group_querystring }}" class="btn btn-outline-danger btn-sm">Published Result Sheet</a>
         <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
         <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm">Full Rank List</a>
         <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm">Top 10</a>

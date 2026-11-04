@@ -74,6 +74,12 @@
                         </td>
                         <td>
                             <a href="{% url 'result_sheet' exam.pk %}" class="btn btn-sm btn-outline-info">Results</a>
+                            {% if exam.is_published %}
+                            <a href="{% url 'published_results' exam.pk %}" class="btn btn-sm btn-outline-danger"
+                               title="Printable published-result sheet: letterhead, class result table and signatures">
+                                Published Sheet
+                            </a>
+                            {% endif %}
                             <a href="{% url 'result_provisional' exam.pk %}" class="btn btn-sm btn-outline-warning"
                                title="See the result while some subjects still have no marks — nothing is published or changed">
                                 Provisional
