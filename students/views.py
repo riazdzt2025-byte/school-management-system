@@ -6107,12 +6107,13 @@ def download_result_sheet(request, pk, kind, fmt):
     never disagree with the printed sheet.
 
     ``kind`` picks the sheet (Full Mark Sheet / Published Result Sheet / Top Ten
-    / Results Summary) and ``fmt`` the file (``xlsx`` or ``csv``). The exam must
+    / Results Summary) and ``fmt`` the file: ``xlsx`` is the paper's own layout,
+    ``data`` the same rows without a letterhead, ``csv`` the plain table. The exam must
     belong to the caller's institution and must be published: a download is
     never a way around the publishing rule the pages enforce.
     """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
-    if kind not in result_exports.KINDS or fmt not in ('xlsx', 'csv'):
+    if kind not in result_exports.KINDS or fmt not in result_exports.FORMATS:
         raise Http404('Unknown result download')
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
@@ -6121,7 +6122,7 @@ def download_result_sheet(request, pk, kind, fmt):
     spec = result_exports.build_spec(exam, kind, group=selected_group or None)
     if spec is None:  # pragma: no cover - guarded by the KINDS check above
         raise Http404('Unknown result download')
-    if fmt == 'xlsx' and result_exports.openpyxl is None:
+    if fmt in ('xlsx', 'data') and result_exports.openpyxl is None:
         messages.error(
             request,
             'Excel download is unavailable because openpyxl is not installed. '

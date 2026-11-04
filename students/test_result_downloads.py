@@ -77,6 +77,19 @@ class DownloadFixtures(TestCase):
         buffer = io.BytesIO(response.content)
         return openpyxl.load_workbook(buffer)
 
+    def header_row(self, sheet, first_header):
+        """The row that holds the table headers (the letterhead sits above it)."""
+        for row in sheet.iter_rows():
+            if row and row[0].value == first_header:
+                return row[0].row
+        self.fail(f'no header row starting with {first_header!r}')
+
+    def all_values(self, sheet):
+        return [
+            str(cell.value) for row in sheet.iter_rows()
+            for cell in row if cell.value is not None
+        ]
+
 
 class ExcelDownloadTests(DownloadFixtures):
     def test_every_sheet_downloads_as_an_excel_workbook(self):
@@ -118,10 +131,18 @@ class ExcelDownloadTests(DownloadFixtures):
         self.assertEqual(workbook.sheetnames, ['Grade Count', 'Grade x Subject', 'Grading Scale'])
         counts = [cell.value for row in workbook['Grade Count'].iter_rows() for cell in row]
         self.assertIn('Total Examinee', counts)
-        matrix_header = [cell.value for cell in workbook['Grade x Subject'][6]]
+        matrix = workbook['Grade x Subject']
+        header = self.header_row(matrix, 'Grade')
+        matrix_header = [cell.value for cell in matrix[header] if cell.value is not None]
         self.assertIn('BAN1', matrix_header)
-        # The trailing Total column and row are gone, as on the paper.
-        self.assertNotIn('Total', matrix_header)
+        # The paper's total column and total row travel with the file.
+        self.assertEqual(matrix_header[-1], 'Total')
+        total_rows = [
+            [cell.value for cell in row] for row in matrix.iter_rows()
+            if row[0].value == 'Total'
+        ]
+        self.assertEqual(len(total_rows), 1, 'exactly one total row, under the matrix')
+        self.assertGreater(len([v for v in total_rows[0] if v is not None]), 1)
 
     def test_the_filename_names_the_sheet_class_and_date(self):
         response = self.download('published')
@@ -129,6 +150,68 @@ class ExcelDownloadTests(DownloadFixtures):
         self.assertIn('Published-Result-Sheet', disposition)
         self.assertIn('Class-8', disposition)
         self.assertIn(date.today().isoformat(), disposition)
+
+
+class PaperLayoutWorkbookTests(DownloadFixtures):
+    """The Excel file reads like the printed sheet, not like a bare dump."""
+
+    def test_the_letterhead_is_printed_in_the_papers_red(self):
+        sheet = self.workbook(self.download('published')).worksheets[0]
+        self.assertEqual(sheet['A1'].value, settings.SCHOOL_INFO['school_name'])
+        self.assertEqual(sheet['A1'].font.color.rgb, 'FFA32121')
+        self.assertTrue(sheet['A1'].font.bold)
+        # Address and phone on the second line, the exam on the third.
+        self.assertIn('Lakshmipur', sheet['A2'].value)
+        self.assertEqual(sheet['A3'].value, self.exam.name)
+
+    def test_the_class_info_box_travels_with_the_file(self):
+        sheet = self.workbook(self.download('published')).worksheets[0]
+        values = self.all_values(sheet)
+        for label in ('Year', 'Class', 'Section/Group', 'Pass Rate in Class',
+                      'Total A Plus', 'Golden A Plus'):
+            self.assertIn(label, values)
+
+    def test_the_sheet_closes_with_the_signatures(self):
+        sheet = self.workbook(self.download('published')).worksheets[0]
+        values = self.all_values(sheet)
+        for label in ('Guide Teacher', 'Controller of Exam', 'Head Teacher'):
+            self.assertIn(label, values)
+        # The register closes with the four columns the paper prints.
+        register = self.workbook(self.download('sheet')).worksheets[0]
+        register_values = self.all_values(register)
+        for label in ('Guide Teacher', 'Controller of Exam', 'Convener', 'Head Teacher'):
+            self.assertIn(label, register_values)
+
+    def test_the_table_keeps_its_rules_and_shaded_header(self):
+        sheet = self.workbook(self.download('published')).worksheets[0]
+        header = self.header_row(sheet, 'Roll No.')
+        cell = sheet.cell(row=header, column=1)
+        self.assertTrue(cell.font.bold)
+        self.assertEqual(cell.fill.fgColor.rgb, 'FFF2F3F5')
+        self.assertEqual(cell.border.left.style, 'thin')
+        self.assertFalse(sheet.sheet_view.showGridLines)
+
+
+class DataOnlyWorkbookTests(DownloadFixtures):
+    """The data-only file is the rows and nothing else."""
+
+    def test_data_only_holds_one_clean_table(self):
+        response = self.download('published', 'data')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], EXCEL)
+        self.assertIn('_data.xlsx', response['Content-Disposition'])
+        sheet = self.workbook(response).worksheets[0]
+        # Header row first, then one row per student — no letterhead above it.
+        self.assertEqual(sheet.cell(row=1, column=1).value, 'Roll No.')
+        self.assertEqual(sheet.cell(row=1, column=3).value, 'Student Name')
+        self.assertEqual(sheet.max_row, 4)
+        self.assertNotIn(settings.SCHOOL_INFO['school_name'], self.all_values(sheet))
+        self.assertNotIn('Golden A Plus', self.all_values(sheet))
+
+    def test_data_only_still_blocks_a_formula_name(self):
+        sheet = self.workbook(self.download('published', 'data')).worksheets[0]
+        names = [sheet.cell(row=row, column=3).value for row in range(2, sheet.max_row + 1)]
+        self.assertIn("'=HYPERLINK(\"x\")", names)
 
 
 class CsvDownloadTests(DownloadFixtures):
@@ -208,10 +291,11 @@ class DownloadMenuOnPagesTests(DownloadFixtures):
             with self.subTest(page=name):
                 html = self.client.get(reverse(name, args=[self.exam.pk])).content.decode()
                 self.assertEqual(html.count('id="downloadMenu'), 1)
-                self.assertIn('Excel workbook', html)
+                self.assertIn('Excel — paper layout', html)
+                self.assertIn('Excel — data only', html)
                 self.assertIn('CSV file', html)
                 self.assertIn('Print / Save as PDF', html)
-                for fmt in ('xlsx', 'csv'):
+                for fmt in ('xlsx', 'data', 'csv'):
                     url = reverse('download_result_sheet', args=[self.exam.pk, kind, fmt])
                     self.assertIn(url, html)
 

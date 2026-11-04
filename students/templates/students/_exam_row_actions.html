@@ -60,6 +60,16 @@ POST form and stays one.
                 <i class="bi bi-file-earmark-excel me-2 text-success"></i>Published Sheet (Excel)
             </a>
         </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'download_result_sheet' exam.pk 'sheet' 'data' %}">
+                <i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Full Mark Sheet (data only)
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'download_result_sheet' exam.pk 'published' 'data' %}">
+                <i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Published Sheet (data only)
+            </a>
+        </li>
         {% endif %}
 
         {% if perms.students.add_exammark %}
