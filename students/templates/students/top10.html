@@ -15,6 +15,7 @@
             Top Ten &middot; {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} &middot; {{ result_group_label }}{% endif %}
         </div>
         <div class="toolbar-actions">
+            {% include 'students/_download_menu.html' with kind='top10' %}
             <button type="button" onclick="window.print()" class="btn btn-outline-navy btn-sm">🖨️ Print / Save PDF</button>
             <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm">Full Rank List</a>
             <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>

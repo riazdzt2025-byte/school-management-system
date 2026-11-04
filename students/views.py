@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.utils import OperationalError, ProgrammingError
 from .pagination import paginate_list
+from . import result_exports
 from django.db.models import Sum, Q, Count, F
 from django.db.models.functions import TruncDate
 from django.urls import reverse
@@ -56,6 +57,7 @@ from .result_utils import (
     SUBJECTS_NO_STUDENT,
     absent_subject_fails_result,
     build_exam_results,
+    build_sheet_columns,
     class_filter_variants,
     get_exam_group_choices,
     get_exam_students,
@@ -5705,24 +5707,7 @@ def result_sheet(request, pk):
     # sit in the 'Subject codes' legend under the table. Full Marks come from
     # the exam's own setting, not the subject's global default (a Mid Term can
     # be marked out of 50).
-    sheet_columns = []
-    header_subjects = [
-        column.header_paper() if getattr(column, 'is_religion_column', False) else column
-        for column in columns
-    ]
-    header_configs = get_subject_marks_map(exam, header_subjects, group=selected_group or None)
-    for column in columns:
-        if getattr(column, 'is_religion_column', False):
-            marks_config = column.header_marks_config(exam, marks_configs=header_configs)
-        else:
-            marks_config = header_configs[column.pk]
-        sheet_columns.append({
-            'subject': column,
-            'full_marks': marks_config.full_marks if marks_config else None,
-            'parts_summary': ' + '.join(
-                f"{part['label']} {part['max_marks']}" for part in marks_config.parts
-            ) if marks_config else '',
-        })
+    sheet_columns = build_sheet_columns(exam, columns, group=selected_group or None)
     no_subjects = not columns
     ignored = unassigned_mark_subjects(exam, columns, group=selected_group or None)
     # An assigned subject with no mark at all is counted as F (see
@@ -6013,24 +5998,7 @@ def exam_result_print_summary(request, pk):
     ))
     # Same column / marks configuration as the result sheet, so the subject
     # summary displays the same full marks as the register.
-    header_subjects = [
-        column.header_paper() if getattr(column, 'is_religion_column', False) else column
-        for column in columns
-    ]
-    header_configs = get_subject_marks_map(exam, header_subjects, group=selected_group or None)
-    sheet_columns = []
-    for column in columns:
-        if getattr(column, 'is_religion_column', False):
-            marks_config = column.header_marks_config(exam, marks_configs=header_configs)
-        else:
-            marks_config = header_configs[column.pk]
-        sheet_columns.append({
-            'subject': column,
-            'full_marks': marks_config.full_marks if marks_config else None,
-            'parts_summary': ' + '.join(
-                f"{part['label']} {part['max_marks']}" for part in marks_config.parts
-            ) if marks_config else '',
-        })
+    sheet_columns = build_sheet_columns(exam, columns, group=selected_group or None)
     brief_summary, subject_summary = result_summary_totals(results, sheet_columns)
     total_students = len(results)
     pass_count = sum(1 for row in results if row['status'] == 'Pass')
@@ -6126,6 +6094,41 @@ def top_10(request, pk):
         'show_group_picker': not exam.group and bool(group_choices),
         'group_querystring': group_querystring,
     })
+
+
+@login_required
+def download_result_sheet(request, pk, kind, fmt):
+    """Download a printed result sheet as Excel or CSV.
+
+    The office prints a result by opening the sheet and choosing *Save as PDF*.
+    That gives a picture of the table; this gives the table. It is the same
+    computation the page renders (``result_exports`` reads
+    :func:`~students.result_utils.build_exam_results`), so a downloaded GPA can
+    never disagree with the printed sheet.
+
+    ``kind`` picks the sheet (Full Mark Sheet / Published Result Sheet / Top Ten
+    / Results Summary) and ``fmt`` the file (``xlsx`` or ``csv``). The exam must
+    belong to the caller's institution and must be published: a download is
+    never a way around the publishing rule the pages enforce.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    if kind not in result_exports.KINDS or fmt not in ('xlsx', 'csv'):
+        raise Http404('Unknown result download')
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    spec = result_exports.build_spec(exam, kind, group=selected_group or None)
+    if spec is None:  # pragma: no cover - guarded by the KINDS check above
+        raise Http404('Unknown result download')
+    if fmt == 'xlsx' and result_exports.openpyxl is None:
+        messages.error(
+            request,
+            'Excel download is unavailable because openpyxl is not installed. '
+            'Use the CSV download instead.',
+        )
+        return redirect('result_sheet', pk=exam.pk)
+    return result_exports.build_response(spec, fmt)
 
 
 @login_required

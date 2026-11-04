@@ -2,6 +2,31 @@
 
     {% block title %}Exams - {{ block.super }}{% endblock %}
 
+{% block extra_style %}
+<style>
+    /* One action menu per row, instead of eight buttons fighting for the
+       width of a table column. */
+    .exam-actions .exam-actions-menu {
+        min-width: 250px; padding: 6px; border-radius: 12px; border: 1px solid rgba(15, 45, 82, .1);
+        box-shadow: 0 14px 30px rgba(15, 45, 82, .18); max-height: 74vh; overflow-y: auto;
+    }
+    .exam-actions .dropdown-header {
+        font-size: .68rem; letter-spacing: .07em; text-transform: uppercase; color: #8a94a3; padding: 6px 10px 3px;
+    }
+    .exam-actions .dropdown-item { border-radius: 8px; padding: 7px 10px; font-size: .88rem; }
+    .exam-actions .dropdown-item:hover, .exam-actions .dropdown-item:focus { background: rgba(15, 45, 82, .06); }
+    .exam-actions .dropdown-item.text-danger:hover { background: rgba(220, 53, 69, .1); }
+    .exam-actions .dropdown-divider { margin: 6px 4px; }
+    .exam-actions-cell { white-space: nowrap; }
+
+    /* The row lives in a horizontally scrolling table, which would clip an
+       absolutely positioned menu — popper renders it fixed instead (see the
+       script at the foot of this page). */
+    @media print { .exam-actions { display: none; } }
+</style>
+{% endblock %}
+
+
     {% block content %}
     <div class="page-header">
         <div>
@@ -42,7 +67,7 @@
                         <th>Session</th>
                         <th>Date</th>
                         <th>Status</th>
-                        <th>Action</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -72,39 +97,12 @@
                             <span class="badge bg-secondary">Unpublished</span>
                             {% endif %}
                         </td>
-                        <td>
-                            <a href="{% url 'result_sheet' exam.pk %}" class="btn btn-sm btn-outline-info">Results</a>
-                            {% if exam.is_published %}
-                            <a href="{% url 'published_results' exam.pk %}" class="btn btn-sm btn-outline-danger"
-                               title="Printable published-result sheet: letterhead, class result table and signatures">
-                                Published Sheet
-                            </a>
-                            {% endif %}
-                            <a href="{% url 'result_provisional' exam.pk %}" class="btn btn-sm btn-outline-warning"
-                               title="See the result while some subjects still have no marks — nothing is published or changed">
-                                Provisional
-                            </a>
-                            {% if perms.students.add_exammark %}
-                            <a href="{% url 'select_marks_subject' exam.pk %}" class="btn btn-sm btn-outline-primary">Enter Marks</a>
-                            <a href="{% url 'import_exam_marks' exam.pk %}" class="btn btn-sm btn-outline-primary">Import Marks</a>
-                            {% endif %}
-                            <a href="{% url 'seat_plan_list' exam.pk %}" class="btn btn-sm btn-outline-dark">Seat Plan</a>
-                            {% if perms.students.change_exam %}
-                            <a href="{% url 'edit_exam' exam.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
-                            <form method="post" action="{% url 'toggle_publish_exam' exam.pk %}" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm btn-outline-success">
-                                    {% if exam.is_published %}Unpublish{% else %}Publish{% endif %}
-                                </button>
-                            </form>
-                            {% endif %}
-                            {% if user.is_superuser or user.is_staff %}
-                            <a href="{% url 'delete_exam' exam.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
-                            {% endif %}
+                        <td class="exam-actions-cell">
+                            {% include 'students/_exam_row_actions.html' %}
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7" class="text-center py-4">No exams created yet.</td></tr>
+                    <tr><td colspan="8" class="text-center py-4">No exams created yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -113,3 +111,21 @@
 
 {% include 'students/_pagination.html' %}
 {% endblock %}
+
+{% block extra_script %}
+<script>
+    // A dropdown inside a horizontally scrolling table is clipped by that
+    // scroll container, so every exam-row menu is rendered with popper's
+    // "fixed" strategy: it escapes the table and still follows the button.
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.exam-actions [data-bs-toggle="dropdown"]').forEach(function (toggle) {
+            if (window.bootstrap && window.bootstrap.Dropdown) {
+                window.bootstrap.Dropdown.getOrCreateInstance(toggle, {
+                    popperConfig: { strategy: 'fixed' }
+                });
+            }
+        });
+    });
+</script>
+{% endblock %}
+
