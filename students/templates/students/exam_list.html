@@ -4,20 +4,45 @@
 
 {% block extra_style %}
 <style>
-    /* One action menu per row, instead of eight buttons fighting for the
-       width of a table column. */
+    /* A compact mega-menu, rather than one tall list: the four action groups
+       sit in two columns so the whole menu is visible at normal desktop zoom. */
     .exam-actions .exam-actions-menu {
-        min-width: 250px; padding: 6px; border-radius: 12px; border: 1px solid rgba(15, 45, 82, .1);
-        box-shadow: 0 14px 30px rgba(15, 45, 82, .18); max-height: 74vh; overflow-y: auto;
+        width: min(600px, calc(100vw - 24px)); min-width: min(520px, calc(100vw - 24px));
+        max-width: calc(100vw - 16px); max-height: min(74vh, 540px); overflow-y: auto;
+        padding: 10px; gap: 8px; border-radius: 14px;
+        border: 1px solid rgba(15, 45, 82, .1); background: #fff;
+        box-shadow: 0 16px 38px rgba(15, 45, 82, .2);
     }
-    .exam-actions .dropdown-header {
-        font-size: .68rem; letter-spacing: .07em; text-transform: uppercase; color: #8a94a3; padding: 6px 10px 3px;
+    .exam-actions .exam-actions-menu.show {
+        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start;
     }
-    .exam-actions .dropdown-item { border-radius: 8px; padding: 7px 10px; font-size: .88rem; }
-    .exam-actions .dropdown-item:hover, .exam-actions .dropdown-item:focus { background: rgba(15, 45, 82, .06); }
-    .exam-actions .dropdown-item.text-danger:hover { background: rgba(220, 53, 69, .1); }
-    .exam-actions .dropdown-divider { margin: 6px 4px; }
+    .exam-actions-section {
+        list-style: none; min-width: 0; padding: 7px; border-radius: 11px;
+        border: 1px solid rgba(15, 45, 82, .07); background: #f8fafc;
+    }
+    .exam-actions-heading {
+        display: flex; align-items: center; gap: 7px; margin: 0 2px 5px; padding: 2px 7px 6px;
+        border-bottom: 1px solid rgba(15, 45, 82, .09); color: #0f2d52;
+        font-size: .7rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    }
+    .exam-actions-heading i { font-size: .9rem; color: #60758c; }
+    .exam-actions .dropdown-item {
+        display: block; width: 100%; border-radius: 8px; padding: 7px 8px;
+        font-size: .83rem; line-height: 1.25; white-space: normal;
+    }
+    .exam-actions .dropdown-item:hover, .exam-actions .dropdown-item:focus {
+        background: #eaf0f6; color: #0f2d52;
+    }
+    .exam-actions .dropdown-item.text-danger:hover { background: #fcebed; color: #a31515; }
+    .exam-actions-section form { margin: 0; }
     .exam-actions-cell { white-space: nowrap; }
+    @media (max-width: 575.98px) {
+        .exam-actions .exam-actions-menu,
+        .exam-actions .exam-actions-menu.show {
+            width: calc(100vw - 24px); min-width: calc(100vw - 24px);
+            max-height: 68vh; grid-template-columns: minmax(0, 1fr);
+        }
+    }
 
     /* The row lives in a horizontally scrolling table, which would clip an
        absolutely positioned menu — popper renders it fixed instead (see the

@@ -339,6 +339,18 @@ class ExamListActionMenuTests(DownloadFixtures):
             with self.subTest(url=url):
                 self.assertIn(f'href="{url}"', menu)
 
+    def test_menu_is_a_compact_responsive_two_column_mega_menu(self):
+        menu = self.menu()
+        # Group cards replace the single long, vertical list. CSS keeps the
+        # desktop menu in two columns and switches it to a viewport-sized,
+        # scrollable single column on narrow phones.
+        self.assertEqual(menu.count('class="exam-actions-section"'), 4)
+        self.assertIn('class="exam-actions-heading"', menu)
+        self.assertIn('grid-template-columns: repeat(2, minmax(0, 1fr))', self.exam_html)
+        self.assertIn('width: calc(100vw - 24px)', self.exam_html)
+        self.assertIn('max-height: min(74vh, 540px)', self.exam_html)
+        self.assertIn('grid-template-columns: minmax(0, 1fr)', self.exam_html)
+
     def test_publishing_stays_a_post_from_inside_the_menu(self):
         menu = self.menu()
         self.assertIn(f'action="{reverse("toggle_publish_exam", args=[self.exam.pk])}"', menu)
