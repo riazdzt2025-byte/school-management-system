@@ -1,138 +1,160 @@
 {% extends 'students/base.html' %}
-{% load static student_filters %}
+{% load student_filters %}
 
-{% block title %}Result Summary - {{ block.super }}{% endblock %}
-{% block print_subtitle %}Result Summary - {{ exam.name }}{% endblock %}
+{% block title %}Results Summary - {{ block.super }}{% endblock %}
+{% block print_subtitle %}Results Summary - {{ exam.name }}{% endblock %}
 
 {% block extra_style %}
-    .result-summary-report { max-width: 900px; margin: 0 auto; color: #000; font-family: Arial, Helvetica, 'Noto Sans Bengali', sans-serif; }
-    .result-summary-report, .result-summary-report * { box-sizing: border-box; }
-    .print-masthead { margin: 0 0 8px; color: #000; text-align: center; break-inside: avoid; }
-    .print-masthead h1 { margin: 0; color: #000; font-size: 17pt; font-weight: 700; line-height: 1.2; }
-    .print-masthead .masthead-line { margin: 3px 0 0; color: #000; font-size: 9pt; line-height: 1.35; }
-    .print-masthead .masthead-exam { margin: 3px 0 0; color: #000; font-size: 12pt; font-weight: 700; line-height: 1.25; }
-    .print-meta { margin: 8px 0 12px; color: #333; text-align: center; font-size: 8.5pt; }
-    .print-meta span + span::before { content: " · "; margin: 0 6px; }
+    /* Same portrait sheet as the other result printouts: letterhead, class
+       info box, ruled tables, signatures and the page footer. */
+    {% include 'students/_result_sheet_styles.html' %}
 
-    h1.summary-heading { font-size: 13pt; font-weight: 700; margin: 0 0 8px; text-align: center; border-bottom: 1px solid #000; padding-bottom: 4px; }
-
-    table.summary-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9pt; }
-    table.summary-table th, table.summary-table td { border: 1px solid #000; padding: 5px 6px; text-align: center; background: #fff; color: #000; }
-    table.summary-table th { font-weight: 700; background: #f2f4f7; }
-    table.summary-table td.label-col { text-align: left; font-weight: 700; }
-    table.summary-table tr.total-row td { font-weight: 700; background: #f2f4f7; }
-
-    .summary-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
-    .summary-actions .btn { border-radius: 6px; padding: 7px 12px; font-weight: 600; }
-
-        /* Print page setup for the separate summary report */
-    @page { size: A4 portrait; margin: 12mm 12mm 14mm; }
-    @media print {
-        html, body { background: #fff !important; color: #000 !important; }
-        .result-summary-report { color: #000 !important; max-width: none; }
-        .summary-actions, .d-print-none { display: none !important; }
-        table.summary-table { border-color: #000 !important; }
-        table.summary-table th, table.summary-table td { border-color: #000 !important; background: #fff !important; color: #000 !important; }
-        table.summary-table tr.total-row td { background: #fff !important; }
-        .print-masthead { display: block !important; margin: 0 0 7px; }
-        .print-masthead h1 { color: #000 !important; }
-        .print-masthead .masthead-line,
-        .print-masthead .masthead-exam { color: #000 !important; }
-        .print-meta { color: #333 !important; }
-        /* সংক্ষিপ্ত সামারি প্রথম পেইজে, বিষয়ভিত্তিক সামারি আলাদা শেষ পেইজে */
-        .summary-subjects { break-before: page; break-inside: avoid; }
+    /* ---- Grade count / grading scale boxes ---- */
+    .rsm-boxes { display: flex; gap: 4mm; align-items: flex-start; margin: 3mm 0 3mm; }
+    .rsm-box { border-collapse: collapse; }
+    .rsm-box caption {
+        caption-side: top; padding: 1mm 1.5mm; border: 1px solid #000; border-bottom: none;
+        font-size: 9pt; font-weight: 700; text-align: left; background: #f0f0f0;
     }
-
-    @media (max-width: 768px) {
-        .print-masthead h1 { font-size: 14pt; }
-        table.summary-table { font-size: 8pt; }
-        table.summary-table th, table.summary-table td { padding: 4px 5px; }
+    .rsm-box th, .rsm-box td {
+        border: 1px solid #000; padding: 0.9mm 1.5mm; font-size: 8.5pt; line-height: 1.2;
     }
+    .rsm-box th { font-weight: 700; background: #f0f0f0; }
+    .rsm-box td.rsm-num { text-align: right; width: 16mm; }
+    .rsm-box-counts { width: 78mm; flex: 0 0 auto; }
+    .rsm-box-scale { width: 60mm; flex: 0 0 auto; }
+    .rsm-box-scale td:last-child { text-align: right; }
+
+    /* ---- Grade × subject grid ---- */
+    .rsm-matrix { table-layout: auto; min-width: 0; }
+    .rsm-matrix th { font-size: 8.5pt; }
+    .rsm-matrix td { height: 4.6mm; font-size: 8.5pt; }
+    .rsm-matrix .rsm-row-label { text-align: left; white-space: nowrap; }
+    .rsm-matrix .rsm-marks { font-weight: 400; }
+    .rsm-matrix .rsm-total { font-weight: 700; background: #f7f7f7; }
+    .rsm-matrix tfoot td { font-weight: 700; background: #f0f0f0; }
+
+    /* ---- Section summary + signatures ---- */
+    .rsm-close { margin-top: 6mm; align-items: flex-start; }
+    .rsm-caption { caption-side: top; text-align: left; font-size: 9pt; font-weight: 700; padding-bottom: 1mm; }
+    .rsm-signs { display: flex; flex-direction: column; gap: 10mm; padding-right: 6mm; }
+    .rsm-signs .pr-sign { font-size: 9pt; }
 {% endblock %}
 
 {% block content %}
-<div class="result-summary-report">
-    <header class="print-masthead">
-        <h1>Principal Kazi Faruky School</h1>
-        <p class="masthead-line">Founder: Principal Kazi Faruky Welfare Trust, {{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} <span aria-hidden="true">|</span> School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} <span aria-hidden="true">|</span> College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
-        <p class="masthead-exam">{{ exam.name }} <span aria-hidden="true">|</span> Class: {{ exam.admission_class|class_label }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} <span aria-hidden="true">|</span> {{ result_group_label }}{% endif %}</p>
-    </header>
-    <div class="print-meta">
-        <span><strong>Session</strong>{{ exam.session }}</span>
-        <span><strong>Total Students</strong>{{ brief_summary.total_students }}</span>
-        <span><strong>Subjects</strong>{{ columns|length }}</span>
-        <span><strong>Pass rate</strong>{{ brief_summary.pass_rate }}%</span>
+<div class="pr-page">
+    <div class="pr-toolbar d-print-none">
+        <div class="toolbar-title">
+            Results Summary &middot; {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} &middot; {{ result_group_label }}{% endif %}
+        </div>
+        <div class="toolbar-actions">
+            <button type="button" onclick="window.print()" class="btn btn-navy btn-sm">🖨️ Print / Save PDF</button>
+            <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Back to Result Sheet</a>
+            <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Published Result</a>
+            <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Exam List</a>
+        </div>
     </div>
 
-    <!-- পেইজ 1 :: সংক্ষিপ্ত সামারি (কোহোর্ট tornò) -->
-    <section class="summary-brief">
-        <h1 class="summary-heading">শিক্ষার্থী রেজাল্ট :: সংক্ষিপ্ত সামারি</h1>
-        <table class="summary-table">
-            <thead>
-                <tr>
-                    <th style="width: 34%;">বিবরণ</th>
-                    <th style="width: 16%;">মূল্য</th>
-                    <th style="width: 34%;">বিবরণ</th>
-                    <th style="width: 16%;">মূল্য</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr><td class="label-col">মোট শিক্ষার্থী</td><td>{{ brief_summary.total_students }}</td><td class="label-col">উত্তীর্ণ (Pass) শিক্ষার্থী</td><td>{{ brief_summary.pass_count }}</td></tr>
-                <tr><td class="label-col">ফেল (Fail) শিক্ষার্থী</td><td>{{ brief_summary.fail_count }}</td><td class="label-col">কোনো নম্বর নেই (No Marks)</td><td>{{ brief_summary.no_marks_count }}</td></tr>
-                <tr><td class="label-col">এ+ পায়ে শিক্ষার্থী</td><td>{{ brief_summary.a_plus_students }}</td><td class="label-col">মোট বিষয়ভিত্তিক এ+</td><td>{{ brief_summary.total_subject_a_plus }}</td></tr>
-                <tr><td class="label-col">পাশের হার</td><td>{{ brief_summary.pass_rate }}%</td><td class="label-col">ফেলের হার</td><td>{{ brief_summary.fail_rate }}%</td></tr>
-                {% if absent_subject_fails %}
-                <tr><td class="label-col">অনুপস্থিতির নীতি</td><td colspan="3">নিখোঁজ নম্বর ফেল (F) হিসেবে गणনা করা হয় (EXAM_ABSENT_SUBJECT_FAILS সক্রিয়)</td></tr>
-                {% else %}
-                <tr><td class="label-col">অনুপস্থিতির নীতি</td><td colspan="3">নিখোঁজ নম্বর মোট ও জিপিএ থেকে বাদ পড়ে (EXAM_ABSENT_SUBJECT_FAILS বন্ধ)</td></tr>
-                {% endif %}
-            </tbody>
-        </table>
-        <p class="sign-off-note" style="text-align:center; font-size:8pt; margin-top:8px;">{{ exam.name }} · ক্লাস {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} · {{ result_group_label }}{% endif %} · সেশন {{ exam.session }} · প্রিন্ট: {% now "d-M-Y" %}</p>
-    </section>
-
-    <!-- পেইজ 2 :: বিষয়ভিত্তিক সামারি -->
-    <section class="summary-subjects">
-        <h1 class="summary-heading">বিষয়ভিত্তিক সামারি</h1>
-        <table class="summary-table">
-            <thead>
-                <tr>
-                    <th>সংকেত</th>
-                    <th>বিষয়</th>
-                    <th>পূর্ণ নম্বর</th>
-                    <th>উপস্থিত</th>
-                    <th>উত্তীর্ণ</th>
-                    <th>ফেল</th>
-                    <th>এ+</th>
-                    <th>পাসহার %</th>
-                    <th>গড় %</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in subject_summary %}
-                <tr>
-                    <td>{{ row.subject.code }}</td>
-                    <td style="text-align:left;">{{ row.subject.name }}</td>
-                    <td>{{ row.full_marks|default:"—" }}</td>
-                    <td>{{ row.sat }}</td>
-                    <td>{{ row.passed }}</td>
-                    <td>{{ row.failed }}</td>
-                    <td>{{ row.a_plus }}</td>
-                    <td>{{ row.pass_rate }}%</td>
-                    <td>{{ row.average }}%</td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="9" class="text-center py-4">কোনো বিষয়ের সামারি নেই।</td></tr>
+    {% if show_group_picker %}
+    <form method="get" class="pr-group-picker d-print-none mb-3 d-flex align-items-end gap-2 flex-wrap">
+        {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
+        <div>
+            <label class="form-label fw-semibold mb-1" for="rsm-group-select">Group</label>
+            <select name="group" id="rsm-group-select" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
-            </tbody>
-        </table>
-    </section>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-navy">Show Summary</button>
+        {% if selected_group %}<a href="{% url 'exam_result_print_summary' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+    </form>
+    {% endif %}
 
-    <div class="summary-actions d-print-none">
-        <button type="button" onclick="window.print()" class="btn btn-navy"><i class="bi bi-printer me-1"></i> Print / Save PDF</button>
-        <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy">ফলপত্রে ফিরে যান</a>
-        <a href="{% url 'exam_list' %}" class="btn btn-outline-navy">Exam List</a>
-    </div>
+    <section class="pr-sheet" aria-label="Results summary">
+        {% include 'students/_result_sheet_letterhead.html' with sheet_subtitle="Section and Subject-wise Summary" %}
+
+        <div class="rsm-boxes">
+            <table class="rsm-box rsm-box-counts">
+                <caption>Total Grade Count in the Class</caption>
+                <tbody>
+                    {% for row in grade_report.class_rows %}
+                    <tr><td>{{ row.label }}</td><td class="rsm-num">{{ row.count }}</td></tr>
+                    {% endfor %}
+                    <tr><td><strong>Total Examinee</strong></td><td class="rsm-num"><strong>{{ grade_report.total_students }}</strong></td></tr>
+                </tbody>
+            </table>
+
+            <table class="rsm-box rsm-box-scale">
+                <caption>Internal Grading System</caption>
+                <thead>
+                    <tr><th>Full Marks</th><th>Grade</th><th>G.P.</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in grading_scale %}
+                    <tr><td>{{ row.band }}</td><td>{{ row.grade }}</td><td>{{ row.point|floatformat:2 }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pr-table-wrap">
+            <table class="pr-table rsm-matrix">
+                <thead>
+                    <tr>
+                        <th>Grade</th>
+                        {% for column in columns %}
+                        <th>{{ column.subject.code }}<br><span class="rsm-marks">({% if column.full_marks %}{{ column.full_marks|floatformat:"-2" }}{% else %}-{% endif %})</span></th>
+                        {% endfor %}
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in grade_report.matrix %}
+                    <tr>
+                        <td class="rsm-row-label">{{ row.label }}</td>
+                        {% for count in row.counts %}<td>{{ count }}</td>{% endfor %}
+                        <td class="rsm-total">{{ row.total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td class="rsm-row-label">Total</td>
+                        {% for total in grade_report.column_totals %}<td>{{ total }}</td>{% endfor %}
+                        <td>{{ grade_report.matrix_total }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="pr-close rsm-close">
+            <table class="pr-summary" aria-label="Grade summary in the section">
+                <caption class="rsm-caption">Grade Summary in the Section</caption>
+                {% for row in grade_report.section_rows %}
+                <tr><td class="pr-info-label">{{ row.label }}</td><td>{{ row.count }}</td></tr>
+                {% endfor %}
+                <tr><td class="pr-info-label">Total Examinee</td><td>{{ grade_report.total_students }}</td></tr>
+            </table>
+            <div class="rsm-signs">
+                <div class="pr-sign"><div class="pr-sign-line"></div>Principal</div>
+                <div class="pr-sign"><div class="pr-sign-line"></div>Controller of Exam</div>
+            </div>
+        </div>
+
+        <footer class="pr-foot">
+            <div class="pr-foot-row">
+                <div class="pr-guide"><div class="pr-guide-line"></div>Guide Teacher</div>
+                <div class="pr-page-no">Page 1 of 1</div>
+            </div>
+            <div class="pr-foot-rule"></div>
+            <div class="pr-foot-row pr-print-meta">
+                <span>Print Date: {% now "d-M-Y" %} / {% now "g:i a" %}</span>
+                <span>Print User: {{ request.user.username }}</span>
+            </div>
+            <div class="pr-copyright">Copyright © {{ COPYRIGHT_HOLDER }}. All rights reserved. Software by: {{ DEVELOPER_NAME }}. Unauthorized distribution is prohibited.</div>
+        </footer>
+    </section>
 </div>
 {% endblock %}
-{% block extra_script %}{% endblock %}

@@ -70,6 +70,9 @@ from .result_utils import (
     religion_paper_for,
     religion_subject_map,
     result_summary_totals,
+    grade_distribution_report,
+    grade_scale_rows,
+    golden_a_plus,
     subject_availability_diagnosis,
     unassigned_mark_subjects,
     failed_subject_rows,
@@ -5976,13 +5979,21 @@ def result_summary(request, pk):
 
 @login_required
 def exam_result_print_summary(request, pk):
-    """Print-only result summary on separate pages.
+    """Results Summary — the section and subject-wise summary sheet.
 
-    Page 1 shows the cohort brief (total students, Pass / Fail / No Marks,
-    A+ students, pass rate) and page 2 shows the subject-wise summary
-    (sat / pass / fail / A+ / pass rate / average for every paper). Each
-    section starts on its own page, so browser Print / Save PDF yields the
-    brief summary and the subject-wise summary as separate sheets.
+    One A4 portrait sheet in the same language as the other result printouts
+    (shared letterhead, class info box, signatures, page footer):
+
+    * **Total Grade Count in the Class** — per-student overall grades, Golden
+      A Plus counted separately, with the examinee total;
+    * **Internal Grading System** — the marks bands this exam is graded with;
+    * **grade × subject matrix** — how many students reached each grade in
+      every printed paper, with the per-grade and per-subject totals;
+    * **Grade Summary in the Section** — the same cohort totals beside the
+      Principal / Controller of Exam overlines.
+
+    The cohort is every student of the exam's class/section (group filter
+    applied), so the class and section boxes print the same counts.
     """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
@@ -6021,8 +6032,24 @@ def exam_result_print_summary(request, pk):
             ) if marks_config else '',
         })
     brief_summary, subject_summary = result_summary_totals(results, sheet_columns)
+    total_students = len(results)
+    pass_count = sum(1 for row in results if row['status'] == 'Pass')
     return render(request, 'students/result_summary_print.html', {
         'exam': exam, 'columns': sheet_columns, 'results': results,
+        # Printed tables: grading scale, grade counts, grade × subject grid.
+        'grading_scale': grade_scale_rows(),
+        'grade_report': grade_distribution_report(results, sheet_columns),
+        # Shared sheet letterhead (Year / Class / Section-Group / Pass Rate).
+        'exam_year': _published_result_year(exam),
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'pass_rate_class': int(100 * pass_count / total_students) if total_students else 0,
+        'a_plus_students': sum(1 for r in results if (r.get('grade') or '') == 'A+'),
+        'golden_a_plus': sum(1 for r in results if golden_a_plus(r)),
+        'section_group_label': ' / '.join(
+            part for part in (exam.section, result_group_label) if part
+        ) or 'All',
+        # Kept for other readers of this view (cohort brief / subject table).
         'brief_summary': brief_summary, 'subject_summary': subject_summary,
         'group_choices': group_choices, 'selected_group': selected_group,
         'selected_group_label': selected_group_label, 'result_group_label': result_group_label,
@@ -6167,13 +6194,10 @@ def _golden_a_plus_result(result):
     """A 'Golden A+' is A+ in every graded paper — stricter than GPA 5.00 overall.
 
     A fourth-subject paper below A+ can still leave the capped GPA at 5.00;
-    that is a Total A Plus but not a Golden A Plus.
+    that is a Total A Plus but not a Golden A Plus.  The rule itself lives in
+    ``result_utils.golden_a_plus`` so every printed sheet shares one definition.
     """
-    graded = [
-        cell for cell in result['subject_results']
-        if not cell.get('not_applicable') and not cell.get('pending')
-    ]
-    return bool(graded) and all((cell.get('grade') or '') == 'A+' for cell in graded)
+    return golden_a_plus(result)
 
 
 @login_required

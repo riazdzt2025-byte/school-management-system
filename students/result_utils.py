@@ -1388,6 +1388,117 @@ def result_summary_totals(results, sheet_columns):
     return brief, subject_wise
 
 
+# The grading bands the app actually applies (see :func:`get_grade`), printed
+# highest first as the sheet's "Internal Grading System" table.  Each band's
+# bottom mark is that grade's threshold, so the printed bands can never drift
+# away from the marks the result is calculated with.
+GRADE_BANDS = [
+    ('A+', 'A Plus (A+)', Decimal('5.00'), 80),
+    ('A', 'A Regular (A)', Decimal('4.00'), 70),
+    ('A-', 'A Minus (A-)', Decimal('3.50'), 60),
+    ('B', 'B Regular (B)', Decimal('3.00'), 50),
+    ('C', 'C Regular (C)', Decimal('2.00'), 40),
+    ('D', 'D Regular (D)', Decimal('1.00'), 33),
+    ('F', 'Fail (F)', Decimal('0.00'), 0),
+]
+
+
+def grade_scale_rows():
+    """The printed grading table: marks band, grade label and grade point."""
+    rows = []
+    top = 100
+    for code, label, point, threshold in GRADE_BANDS:
+        rows.append({
+            'grade': code,
+            'label': label,
+            'point': point,
+            'band': f'{threshold:02d}-{top:02d}',
+        })
+        top = threshold - 1
+    return rows
+
+
+def golden_a_plus(result):
+    """True when every graded paper is A+ — a Golden A Plus.
+
+    Stricter than GPA 5.00: a fourth-subject paper below A+ can still cap the
+    published GPA at 5.00, but it is not a Golden A Plus.
+    """
+    graded = [
+        cell for cell in result.get('subject_results', [])
+        if not cell.get('not_applicable') and not cell.get('pending')
+    ]
+    return bool(graded) and all((cell.get('grade') or '') == 'A+' for cell in graded)
+
+
+def grade_distribution_report(results, sheet_columns):
+    """Grade counts for the printed Results Summary page.
+
+    One tally pass feeds all three tables of the sheet:
+
+    * ``class_rows`` — per-student **overall** grades, with Golden A+ counted
+      separately, and ``total_students`` for the "Total Grade Count in the
+      Class" box;
+    * ``matrix`` — one row per grade holding the count for every printed
+      subject column plus the row total (the grade × subject grid);
+    * ``column_totals`` — graded entries per subject column, i.e. the matrix's
+      "Total" row, and ``matrix_total`` for its grand total.
+
+    Papers a student does not sit and papers that still have no mark are left
+    out, exactly like the register's A+/Fail tallies.
+    """
+    codes = [code for code, _label, _point, _threshold in GRADE_BANDS]
+    matrix = {code: [0] * len(sheet_columns) for code in codes}
+    column_totals = [0] * len(sheet_columns)
+    class_counts = {code: 0 for code in codes}
+    golden_count = 0
+
+    for result in results:
+        grade = result.get('grade') or ''
+        if grade in class_counts:
+            class_counts[grade] += 1
+        if golden_a_plus(result):
+            golden_count += 1
+
+        for index, cell in enumerate(result.get('subject_results', [])):
+            if index >= len(sheet_columns):
+                break
+            if cell.get('not_applicable') or cell.get('pending'):
+                continue
+            cell_grade = cell.get('grade') or ''
+            if cell_grade not in matrix:
+                continue
+            matrix[cell_grade][index] += 1
+            column_totals[index] += 1
+
+    class_rows = [
+        {'grade': 'Golden A+', 'label': 'Golden A Plus', 'count': golden_count},
+        *[
+            {'grade': code, 'label': label, 'count': class_counts[code]}
+            for code, label, _point, _threshold in GRADE_BANDS
+        ],
+    ]
+    matrix_rows = [
+        {
+            'grade': code,
+            'label': label,
+            'counts': matrix[code],
+            'total': sum(matrix[code]),
+        }
+        for code, label, _point, _threshold in GRADE_BANDS
+    ]
+    return {
+        'class_rows': class_rows,
+        'total_students': len(results),
+        # The page is scoped to one class-section, so the class box and the
+        # section box print the same cohort.
+        'section_rows': class_rows,
+        'matrix': matrix_rows,
+        'column_totals': column_totals,
+        'matrix_total': sum(column_totals),
+    }
+
+
 def failed_subject_rows(exam, group=None):
     """Return one row for every failed applicable subject in an exam.
 
