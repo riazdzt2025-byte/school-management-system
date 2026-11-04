@@ -1321,6 +1321,39 @@ def build_exam_results(exam, group=None, provisional=False):
     return columns, ranked + [result for result in results if result['position'] is None]
 
 
+def build_sheet_columns(exam, columns, group=None):
+    """The printed register's columns: each subject with its own Full Marks.
+
+    ``columns`` comes from :func:`build_exam_results`; this pairs every one of
+    them with the Full Marks / part split the exam actually uses, so a Mid Term
+    marked out of 50 never prints the subject's global 100. Column ``i`` of
+    every student's ``subject_results`` lines up with the returned list, which
+    is what the register, the Results Summary and the Excel export all rely on.
+
+    A merged Religion column asks its own header paper for the configuration
+    (Hindu students sit the Hindu paper, everyone else Islam).
+    """
+    header_subjects = [
+        column.header_paper() if getattr(column, 'is_religion_column', False) else column
+        for column in columns
+    ]
+    header_configs = get_subject_marks_map(exam, header_subjects, group=group)
+    sheet_columns = []
+    for column in columns:
+        if getattr(column, 'is_religion_column', False):
+            marks_config = column.header_marks_config(exam, marks_configs=header_configs)
+        else:
+            marks_config = header_configs[column.pk]
+        sheet_columns.append({
+            'subject': column,
+            'full_marks': marks_config.full_marks if marks_config else None,
+            'parts_summary': ' + '.join(
+                f"{part['label']} {part['max_marks']}" for part in marks_config.parts
+            ) if marks_config else '',
+        })
+    return sheet_columns
+
+
 def result_summary_totals(results, sheet_columns):
     """
     Brief and subject-wise result statistics for one printed register.

@@ -36,6 +36,7 @@
             Published Result &middot; {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} &middot; {{ result_group_label }}{% endif %}
         </div>
         <div class="toolbar-actions">
+            {% include 'students/_download_menu.html' with kind='published' %}
             {% include 'students/_print_all.html' %}
             <a href="{% url 'published_results' exam.pk %}{{ group_querystring }}" class="btn btn-outline-danger btn-sm">Published Result Sheet</a>
             <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>

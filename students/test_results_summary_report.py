@@ -142,18 +142,23 @@ class ResultsSummaryReportTests(TestCase):
         head = matrix.split('<thead>', 1)[1].split('</thead>', 1)[0]
         headers = re.findall(r'<th>(.*?)</th>', head, re.S)
         self.assertEqual([re.sub(r'<[^>]+>', ' ', cell).split()[0] for cell in headers],
-                         ['Grade', 'BNG1', 'ENG1'])
+                         ['Grade', 'BNG1', 'ENG1', 'Total'])
         self.assertIn('(100)', headers[1])
 
-    def test_matrix_drops_the_trailing_total_column_and_row(self):
-        """A sum of grade counts across subjects says nothing a reader can use."""
+    def test_matrix_carries_the_trailing_total_column_and_row(self):
+        """The office reads a grade row against the class total beside it."""
         _response, html = self.get_report()
         matrix = html.split('<table class="pr-table rsm-matrix">', 1)[1].split('</table>', 1)[0]
-        self.assertNotIn('>Total<', matrix)
-        self.assertNotIn('<tfoot>', matrix)
-        self.assertNotIn('rsm-total', html)
+        # A total column on the right of every grade row...
+        self.assertIn('<td class="rsm-total">3</td>', matrix)
+        # ...and the per-subject total row underneath the matrix.
+        self.assertIn('<tfoot>', matrix)
+        footer = matrix.split('<tfoot>', 1)[1].split('</tfoot>', 1)[0]
+        self.assertIn('<td class="rsm-row-label">Total</td>', footer)
+        self.assertIn('<td>3</td><td>3</td>', footer)
+        self.assertIn('<td>6</td>', footer)
         # The grade counts themselves are untouched.
-        self.assertIn('<td class="rsm-row-label">A Plus (A+)</td>\n                        <td>2</td><td>1</td>', matrix)
+        self.assertIn('<td class="rsm-row-label">A Plus (A+)</td>\n                        <td>2</td><td>1</td>\n                        <td class="rsm-total">3</td>', matrix)
 
     def test_matrix_counts_per_subject_and_totals(self):
         response, _html = self.get_report()

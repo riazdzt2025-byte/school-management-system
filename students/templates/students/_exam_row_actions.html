@@ -1,0 +1,121 @@
+{% comment %}
+One action menu for an exam row on the Exams page.
+
+The row used to carry eight buttons side by side — wider than the table, and a
+wall of colour where every action looked equally urgent. They are the same
+links, grouped the way the office thinks about an exam: first the result sheets,
+then the files, then the marks, then the exam itself. The publish toggle is a
+POST form and stays one.
+{% endcomment %}
+<div class="dropdown exam-actions">
+    <button class="btn btn-sm btn-outline-navy dropdown-toggle" type="button"
+            id="examActions{{ exam.pk }}" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-sliders me-1"></i> Actions
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end exam-actions-menu" aria-labelledby="examActions{{ exam.pk }}">
+        <li><h6 class="dropdown-header">Result sheets</h6></li>
+        <li>
+            <a class="dropdown-item" href="{% url 'result_sheet' exam.pk %}">
+                <i class="bi bi-table me-2 text-primary"></i>Full Mark Sheet
+            </a>
+        </li>
+        {% if exam.is_published %}
+        <li>
+            <a class="dropdown-item" href="{% url 'published_results' exam.pk %}">
+                <i class="bi bi-file-earmark-text me-2 text-danger"></i>Published Result Sheet
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'exam_result_print_summary' exam.pk %}">
+                <i class="bi bi-clipboard-data me-2 text-secondary"></i>Results Summary
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'top_10' exam.pk %}">
+                <i class="bi bi-trophy me-2 text-warning"></i>Top 10
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'full_rank_list' exam.pk %}">
+                <i class="bi bi-list-ol me-2 text-dark"></i>Full Rank List
+            </a>
+        </li>
+        {% endif %}
+        <li>
+            <a class="dropdown-item" href="{% url 'result_provisional' exam.pk %}">
+                <i class="bi bi-hourglass-split me-2 text-warning"></i>Provisional Result
+            </a>
+        </li>
+
+        {% if exam.is_published %}
+        <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">Download</h6></li>
+        <li>
+            <a class="dropdown-item" href="{% url 'download_result_sheet' exam.pk 'sheet' 'xlsx' %}">
+                <i class="bi bi-file-earmark-excel me-2 text-success"></i>Full Mark Sheet (Excel)
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'download_result_sheet' exam.pk 'published' 'xlsx' %}">
+                <i class="bi bi-file-earmark-excel me-2 text-success"></i>Published Sheet (Excel)
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'download_result_sheet' exam.pk 'sheet' 'data' %}">
+                <i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Full Mark Sheet (data only)
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'download_result_sheet' exam.pk 'published' 'data' %}">
+                <i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>Published Sheet (data only)
+            </a>
+        </li>
+        {% endif %}
+
+        {% if perms.students.add_exammark %}
+        <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">Marks</h6></li>
+        <li>
+            <a class="dropdown-item" href="{% url 'select_marks_subject' exam.pk %}">
+                <i class="bi bi-pencil-square me-2 text-primary"></i>Enter Marks
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'import_exam_marks' exam.pk %}">
+                <i class="bi bi-upload me-2 text-primary"></i>Import Marks
+            </a>
+        </li>
+        {% endif %}
+
+        <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">Exam</h6></li>
+        <li>
+            <a class="dropdown-item" href="{% url 'seat_plan_list' exam.pk %}">
+                <i class="bi bi-grid-3x3-gap me-2 text-dark"></i>Seat Plan
+            </a>
+        </li>
+        {% if perms.students.change_exam %}
+        <li>
+            <a class="dropdown-item" href="{% url 'edit_exam' exam.pk %}">
+                <i class="bi bi-pencil me-2 text-warning"></i>Edit Exam
+            </a>
+        </li>
+        <li>
+            <form method="post" action="{% url 'toggle_publish_exam' exam.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="dropdown-item">
+                    <i class="bi bi-megaphone me-2 text-success"></i>
+                    {% if exam.is_published %}Unpublish result{% else %}Publish result{% endif %}
+                </button>
+            </form>
+        </li>
+        {% endif %}
+        {% if user.is_superuser or user.is_staff %}
+        <li>
+            <a class="dropdown-item text-danger" href="{% url 'delete_exam' exam.pk %}">
+                <i class="bi bi-trash me-2"></i>Delete Exam
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</div>
