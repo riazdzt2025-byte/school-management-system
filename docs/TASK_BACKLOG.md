@@ -1,10 +1,10 @@
 # Task Backlog — first production release scope
 
-_Last updated: ২০২৬-১১-০৩ (remaining-work session `arena/e2d5c9b9` — AT-01, AT-02, EM-01, EM-03 + DB-02/DB-03 verification + FN-01; **1131 Django + 29 Node pass**; EM-02 remains owner-policy blocked; live ops unverified)_
+_Last updated: ২০২৬-১১-০৪ (re-verification session `arena/c0cb5ee3`, base `aec57cd` = `origin/main` after PR #83 — user-referenced branch `arena/6c9ccd2f-school-management-system` does not exist on remote; AT-01, AT-02, EM-01, EM-03 + DB-02/DB-03 + FN-01 merged via PR #80; full **1176 Django + 29 Node pass**, `check` 0, `makemigrations --check` clean (leaf 0054); EM-02 owner-policy blocked; live ops unverified)_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 
-**Bengali TL;DR:** 2026-09-19 baseline **৬২৫ Django + ১৪ Node** → EX-01 (PR #39) **৬৩৮** + EX-02 (PR #41) **৬৫৩** + EX-03 (group-aware marks 0044 + বাকি কাজ finishing) **৬৭০ Django + ১৪ Node সব pass**। P0 isolation/validation/voucher/promotion/backup + guardian contact + result analysis + Full Rank List + row gating + roll-order + group marks সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + Office merge/review gate (OF-05) + Attendance calendar (AT-02) + Employee (assignment/leave/closed-period) + OF-02 owner review/merge + DB-02/03 + FN-01। SSC restore করা হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ।
+**Bengali TL;DR (২০২৬-১১-০৪):** 28-প্রম্পট plan virtually complete — AT-01/AT-02/EM-01/EM-03 merged via PR #80 (2026-11-03), DB-02/DB-03 verified, FN-01 done; re-verified 2026-11-04 on `arena/c0cb5ee3`: **1176 Django + 29 Node pass**, `check` 0, migrations clean (leaf 0054). remaining only owner/live: EM-02 leave policy (⛔), P0-7 / P0-8-live / P1-11-live / P1-10-live / D-8 live Render checks, OF-05 retry-scheduler + deployed bucket verification (issue #66), owner review of open PRs #64/#70/#71/#72. Superseded PRs #79/#40/#23 closed 2026-11-04. SSC restore করা হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ।
 
 ---
 
