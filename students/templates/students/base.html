@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Principal Kazi Faruky School And College{% endblock %}</title>
+    <title>{% block title %}Principal Kazi Faruky School{% endblock %}</title>
     <!-- Same release, served with the app: a slow/unreachable third-party CDN
          must not block the result table (or any other page) from rendering. -->
     <link href="{% static 'students/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
@@ -126,7 +126,16 @@
             .back-to-top { right: 14px; bottom: 14px; width: 40px; height: 40px; font-size: 1rem; }
         }
 
-        .print-header { display: none; text-align: center; margin-bottom: 20px; }
+        /* Printed masthead: the school badge and identity head every report.
+           School papers print the school name only — the college has its own
+           name and is never folded into a school document. */
+        .print-header { display: none; margin-bottom: 14px; }
+        .print-masthead { display: flex; align-items: center; justify-content: center; gap: 12px; }
+        .print-masthead .print-logo { width: 54px; height: auto; flex: 0 0 auto; }
+        .print-masthead .print-identity { text-align: center; }
+        .print-masthead h2 { margin: 0; font-size: 16pt; line-height: 1.2; color: #000; }
+        .print-masthead .print-address { margin: 2px 0 0; font-size: 8.5pt; color: #000; }
+        .print-masthead .print-subtitle { margin: 4px 0 0; font-size: 10pt; font-weight: 700; color: #000; }
 
         .menu-toggle {
             display: none; background: var(--navy); color: #fff; border: none;
@@ -318,8 +327,14 @@
 
 <div class="main">
     <div class="print-header">
-        <h2>Principal Kazi Faruky School And College</h2>
-        <p>{% block print_subtitle %}{% endblock %}</p>
+        <div class="print-masthead">
+            <img class="print-logo" src="{% static 'students/img/school_logo.png' %}" alt="">
+            <div class="print-identity">
+                <h2>{{ SCHOOL_INFO.school_name|default:"Principal Kazi Faruky School" }}</h2>
+                <p class="print-address">{{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} &middot; School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }} &middot; College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}</p>
+                <p class="print-subtitle">{% block print_subtitle %}{% endblock %}</p>
+            </div>
+        </div>
     </div>
 
     {% block content %}{% endblock %}

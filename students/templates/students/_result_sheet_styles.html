@@ -60,9 +60,14 @@
 .pr-sign { text-align: center; font-size: 9pt; }
 .pr-sign-line { width: 40mm; margin: 0 auto 1mm; border-top: 1px solid #000; }
 
-/* Signature block on its own (no summary box beside it): the two overlines sit
-   to the right of the sheet, as on the school's printed reports. */
-.pr-signs-only { display: flex; justify-content: flex-end; gap: 18mm; margin-top: 12mm; padding-right: 10mm; }
+/* Signature row: pinned to the bottom of the sheet (margin-top:auto pushes it
+   down past the table), Guide Teacher on the left and the school's signatures
+   on the right. */
+.pr-sign-row {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 8mm; margin-top: auto; padding: 12mm 4mm 2mm;
+}
+.pr-sign-row .pr-signs { display: flex; gap: 16mm; }
 
 /* ---- Page footer ---- */
 .pr-foot { margin-top: auto; }

@@ -63,9 +63,15 @@
     .pr-summary { width: 52mm; border-collapse: collapse; }
     .pr-summary td { border: 1px solid #000; padding: 1mm 1.5mm; font-size: 8.5pt; line-height: 1.25; }
     .pr-summary .pr-info-label { width: 55%; font-weight: 700; }
-    .pr-signs { flex: 1 1 auto; display: flex; justify-content: space-around; }
     .pr-sign { text-align: center; font-size: 9pt; }
     .pr-sign-line { width: 40mm; margin: 0 auto 1mm; border-top: 1px solid #000; }
+
+    /* Signature row: pinned to the bottom of the sheet, Guide Teacher left. */
+    .pr-sign-row {
+        display: flex; align-items: flex-end; justify-content: space-between;
+        gap: 8mm; margin-top: auto; padding: 12mm 4mm 2mm;
+    }
+    .pr-sign-row .pr-signs { display: flex; gap: 16mm; }
 
     /* ---- Page footer: Guide Teacher · Page x of y / print meta / copyright ---- */
     .pr-foot { margin-top: auto; }
@@ -191,16 +197,19 @@
                 <tr><td class="pr-info-label">Total Fail</td><td>{{ fail_count }}</td></tr>
                 <tr><td class="pr-info-label">Pass Rate</td><td>{{ pass_rate_exact }} %</td></tr>
             </table>
+        </div>
+        {% endif %}
+
+        <div class="pr-sign-row">
+            <div class="pr-sign"><div class="pr-sign-line"></div>Guide Teacher</div>
             <div class="pr-signs">
                 <div class="pr-sign"><div class="pr-sign-line"></div>Controller of Exam</div>
                 <div class="pr-sign"><div class="pr-sign-line"></div>Head Teacher</div>
             </div>
         </div>
-        {% endif %}
 
         <footer class="pr-foot">
             <div class="pr-foot-row">
-                <div class="pr-guide"><div class="pr-guide-line"></div>Guide Teacher</div>
                 <div class="pr-page-no">Page {{ sheet.page_no }} of {{ sheet.total_pages }}</div>
             </div>
             <div class="pr-foot-rule"></div>
