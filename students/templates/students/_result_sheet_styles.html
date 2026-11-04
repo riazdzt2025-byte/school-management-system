@@ -1,0 +1,96 @@
+/* ---- Shared portrait result sheet --------------------------------------
+   One visual language for the office's result printouts: white paper, black
+   rules, the red letterhead with the class info box, a bordered register and
+   the two signature overlines at the foot.  A4 portrait. */
+.pr-page { max-width: 210mm; margin: 0 auto; color: #000; padding: 16px 0; }
+.pr-page, .pr-page * { box-sizing: border-box; }
+
+.pr-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.pr-toolbar .toolbar-title { color: #596570; font-size: .85rem; font-weight: 600; }
+.pr-toolbar .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.pr-sheet {
+    display: flex; flex-direction: column;
+    width: 210mm; min-height: 272mm; padding: 5mm;
+    margin: 0 auto 18px;
+    background: #fff; border: 1px solid #000;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .16);
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ---- Letterhead: badge | red identity | class info box ---- */
+.pr-head { display: flex; align-items: flex-start; gap: 4mm; margin-bottom: 2.5mm; }
+.pr-logo { width: 22mm; flex: 0 0 auto; }
+.pr-logo img { width: 100%; height: auto; }
+.pr-identity { flex: 1 1 auto; min-width: 0; padding-top: 1mm; text-align: center; color: #a32121; }
+.pr-school { margin: 0; font-size: 15pt; font-weight: 700; line-height: 1.2; letter-spacing: 0; }
+.pr-line {
+    margin: 1.2mm 0 0; font-family: 'Courier New', Courier, monospace;
+    font-size: 9pt; font-weight: 700; line-height: 1.3;
+}
+.pr-exam { margin: 2mm 0 0; font-size: 11pt; font-weight: 700; text-decoration: underline; }
+.pr-exam-sub { margin: 1mm 0 0; font-size: 9.5pt; font-weight: 700; }
+.pr-info { width: 55mm; flex: 0 0 auto; border-collapse: collapse; }
+.pr-info td { border: 1px solid #000; padding: 1mm 1.5mm; font-size: 8.5pt; line-height: 1.25; }
+.pr-info .pr-info-label { width: 58%; font-weight: 700; }
+
+/* ---- Register table ---- */
+.pr-table-wrap { width: 100%; overflow-x: auto; }
+.pr-table { width: 100%; min-width: 170mm; border-collapse: collapse; table-layout: fixed; }
+.pr-table th {
+    border: 1px solid #000; padding: 1mm 1mm; font-size: 9pt; font-weight: 700;
+    line-height: 1.15; text-align: center; vertical-align: middle;
+}
+.pr-table td {
+    height: 5mm; padding: 0.7mm 1mm; border: 1px solid #000; font-size: 9pt;
+    line-height: 1.15; text-align: center; vertical-align: middle;
+}
+.pr-table .pr-name { text-align: left; overflow-wrap: anywhere; }
+.pr-table .pr-grade { font-weight: 700; }
+
+/* ---- Closing block: Section/Group summary + signatures ---- */
+.pr-close { display: flex; align-items: center; justify-content: space-between; gap: 6mm; margin-top: 3mm; padding: 0 3mm; }
+.pr-summary { width: 52mm; border-collapse: collapse; }
+.pr-summary td { border: 1px solid #000; padding: 1mm 1.5mm; font-size: 8.5pt; line-height: 1.25; }
+.pr-summary .pr-info-label { width: 55%; font-weight: 700; }
+.pr-signs { flex: 1 1 auto; display: flex; justify-content: space-around; }
+.pr-sign { text-align: center; font-size: 9pt; }
+.pr-sign-line { width: 40mm; margin: 0 auto 1mm; border-top: 1px solid #000; }
+
+/* Signature block on its own (no summary box beside it): the two overlines sit
+   to the right of the sheet, as on the school's printed reports. */
+.pr-signs-only { display: flex; justify-content: flex-end; gap: 18mm; margin-top: 12mm; padding-right: 10mm; }
+
+/* ---- Page footer ---- */
+.pr-foot { margin-top: auto; }
+.pr-foot-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10mm; }
+.pr-guide { margin-left: 8mm; font-size: 9pt; }
+.pr-guide-line { width: 40mm; margin-bottom: 1mm; border-top: 1px solid #000; }
+.pr-page-no { font-size: 10pt; }
+.pr-foot-rule { margin: 1.5mm 0 1mm; border-top: 1px solid #000; }
+.pr-print-meta { font-size: 8.5pt; }
+.pr-copyright { margin-top: 1mm; text-align: center; font-size: 8pt; }
+
+@page { size: A4 portrait; margin: 6mm; }
+
+@media print {
+    html, body { background: #fff !important; color: #000 !important; }
+    /* The sheet carries its own letterhead; the dashboard copy must not repeat. */
+    .main > .print-header { display: none !important; }
+    .pr-page { max-width: none; padding: 0; }
+    .pr-toolbar, .pr-group-picker { display: none !important; }
+    .pr-sheet {
+        width: auto; min-height: 268mm; margin: 0 !important;
+        padding: 4mm !important; box-shadow: none !important;
+        border: 1px solid #000;
+        page-break-after: always; break-after: page;
+    }
+    .pr-sheet:last-of-type { page-break-after: auto; break-after: auto; }
+    .pr-table-wrap { overflow: visible; }
+    .pr-table thead { display: table-header-group; }
+    .pr-table tr { break-inside: avoid; page-break-inside: avoid; }
+    .pr-table th, .pr-table td { border-color: #000 !important; color: #000 !important; background: #fff !important; }
+}

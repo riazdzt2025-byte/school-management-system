@@ -373,6 +373,24 @@ counts); the info box prints the class pass rate truncated ("54 %"), while the
 closing summary prints the exact rate ("54.86 %"). Print with the page's
 Print / Save PDF button (A4 portrait).
 
+Two more pages use the same portrait sheet (letterhead + class info box +
+ruled register):
+
+- **Top Ten** (`Result Analysis → Top 10`, or the Top 10 button on the result
+  pages) prints "Top Ten (10)" in merit order with the columns Roll No. / ID
+  No. / Student Name / Grade / GP / Total / Place / A Plus / Fail / Comments.
+  Place prints as an ordinal (1st, 2nd, … 10th); **A Plus** is the student's
+  A+ subject count and **Fail** the failed subject count; **Comments** writes
+  `Golden` for a Golden A Plus and `Potential` for a student exactly one paper
+  away from one. The Controller of Exam / Head Teacher overlines close it.
+- **Published Result** (`Exam → Published Result`) keeps its own columns —
+  Roll, ID, Name, Total, Percentage, GP, Grade, Status, Place — and now prints
+  A4 portrait, chunked 40 rows to a sheet: `Print all / Save PDF` gives a
+  letterhead on every page, no student split across a page break, and a footer
+  with "Page x of y", the print date and the print user. The closing summary
+  box (Total Student / Pass / Fail / Pass Rate) and the two signatures appear
+  on the last sheet only.
+
 **Only an administrator can delete an exam** (the Exam department cannot). Use
 that for a mistaken exam, not for routine corrections. Marks behind a published
 exam are **locked** — see the next section for how a correction is made.
