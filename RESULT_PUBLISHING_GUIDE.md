@@ -358,6 +358,21 @@ all subjects complete. Bengali walkthrough: [`docs/PROVISIONAL_RESULT_BN.md`](do
 Top 10, detail, card) — an unpublished exam redirects those visitors to the exam
 list, and the result card carries a *DRAFT* banner if printed anyway.
 
+After publishing, the printable **Published Result Sheet**
+(`Exam List → Published Sheet`, also linked from the result sheet and the
+Published Result list) is the office copy handed to guardians: the school
+letterhead and class info box (Year / Class / Section-Group / Pass Rate in
+Class / Total A Plus / Golden A Plus), one row per student in roll order
+(Roll No., ID No., Student Name, Grade, GP, Total, Place, A Plus, Fail,
+Comments), and a closing Section/Group summary box with the Controller of
+Exam / Head Teacher signatures. The letterhead, the "Guide Teacher" line and
+"Page x of y" repeat on every printed page, with the print date, print user
+and copyright line under the rule. **Golden A Plus** counts only students with
+A+ in *every* paper (stricter than GPA 5.00, which the **Total A Plus** row
+counts); the info box prints the class pass rate truncated ("54 %"), while the
+closing summary prints the exact rate ("54.86 %"). Print with the page's
+Print / Save PDF button (A4 portrait).
+
 **Only an administrator can delete an exam** (the Exam department cannot). Use
 that for a mistaken exam, not for routine corrections. Marks behind a published
 exam are **locked** — see the next section for how a correction is made.

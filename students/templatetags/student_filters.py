@@ -49,6 +49,19 @@ def class_label(value):
     return labels.get(str(value), value)
 
 
+@register.filter
+def class_padded_label(value):
+    """Class cell of the published-result sheet: '6' -> '06 (Six)', '10' -> '10 (Ten)'.
+
+    The school's published-result printout writes the class zero-padded and
+    spelled out in parentheses; non-numeric class values pass through unchanged.
+    """
+    raw = '' if value is None else str(value).strip()
+    if raw.isdigit():
+        return f'{int(raw):02d} ({class_label(raw)})'
+    return raw
+
+
 @register.simple_tag(takes_context=True)
 def retained_list_filters(context, exclude=''):
     """Keep repeated/escaped GET filters, but reset page when a filter changes.
