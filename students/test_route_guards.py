@@ -24,6 +24,12 @@ from .models import Institution, InstitutionAccess
 #   public_admission_apply     - the public admission form (rate limited)
 #   admission_dropdown_options - JSON for that form: group names and section
 #                                letters only, no personal data
+#   healthz                    - uptime probe for Render/monitoring, added with
+#                                the Postgres+S3 setup. Public on purpose and
+#                                deliberately tiny: it answers only
+#                                {"status": "ok|error", "db": "ok|error"}, never
+#                                a hostname, version, table name or exception
+#                                text; GET/HEAD only (POST is 405).
 #   public_admission_status    - the applicant's own status check (OF-06): needs
 #                                the application number plus the last 4 digits of
 #                                the guardian contact, rate limited, one generic
@@ -31,7 +37,7 @@ from .models import Institution, InstitutionAccess
 #                                returns only that applicant's masked name
 PUBLIC_ROUTE_NAMES = {
     'login', 'public_admission_apply', 'admission_dropdown_options',
-    'public_admission_status',
+    'public_admission_status', 'healthz',
 }
 
 SKIPPED_PREFIXES = ('admin/', 'media', 'static')

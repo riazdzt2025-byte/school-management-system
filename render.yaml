@@ -1,0 +1,153 @@
+# =============================================================================
+# Render Blueprint — প্রোডাকশন স্ট্যাক: web + PostgreSQL + দৈনিক ব্যাকআপ cron
+# =============================================================================
+#
+# সতর্কতা: এটি একটি Blueprint টেমপ্লেট। Render ড্যাশবোর্ডে "New → Blueprint"
+# দিয়ে রিপো কানেক্ট করলে *নতুন* সার্ভিস তৈরি হবে। আপনার বর্তমানে চলমান
+# সার্ভিস (যেটি render.yaml ছাড়াই তৈরি করা) এই ফাইল পড়ে না — তাই এটি
+# apply করার আগে পুরোনো cron (render.cron.yaml) ড্যাশবোর্ড থেকে সরিয়ে দিন,
+# নাহলে দুই জায়গা থেকে ব্যাকআপ চলার চেষ্টা করবে।
+#
+# বিস্তারিত বাংলা নির্দেশনা: docs/POSTGRES_S3_BACKUP_SETUP_BN.md
+# খরচ (২০২৬): Postgres Basic-256MB ≈ $6 · Web Starter ≈ $7 · Cron ≈ $1
+#              + R2 (ছবি) প্রায় $0–1  →  মাসে ≈ $14–15
+#
+# sync: false মানে — মানটি ড্যাশবোর্ডে হাতে বসাতে হবে, গিটে থাকবে না।
+
+databases:
+  - name: sms-postgres
+    databaseName: school
+    user: school
+    region: singapore
+    # free Postgres ৩০/৯০ দিনে expire হয়ে ডেটা মুছে ফেলে — শিক্ষার্থীর ডেটার
+    # জন্য গ্রহণযোগ্য নয়। paid plan-এ daily backup-ও পাওয়া যায়।
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+
+services:
+  # ---------------------------------------------------------------------------
+  # ১) ওয়েব সার্ভিস
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: sms-web
+    runtime: python
+    region: singapore
+    plan: starter
+    # collectstatic এখানেই হয়, কারণ DEBUG=False-এ ManifestStaticFilesStorage
+    # চালু থাকে: manifest না থাকলে প্রতিটি পেজ 500 দেয়।
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    # migrate + ensure_baseline_data + gunicorn (scripts/render_start.sh)
+    startCommand: ./scripts/render_start.sh
+    # /healthz/ ডেটাবেসে SELECT 1 করে: 200 = ঠিক, 503 = প্রস্তুত নয়।
+    healthCheckPath: /healthz/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true          # Render নিজেই ৫০+ অক্ষরের কী বানাবে
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sms-postgres
+          property: connectionString
+      - key: ALLOWED_HOSTS
+        sync: false                  # উদাহরণ: school.example.com
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false                  # উদাহরণ: https://school.example.com
+      - key: TRUST_FORWARDED_PROTO
+        value: "True"
+      - key: USE_X_FORWARDED_HOST
+        value: "True"
+      # --- ছবি/ফাইল: Cloudflare R2 বা S3-সামঞ্জস্যপূর্ণ বাকেট ---------------
+      - key: USE_S3
+        value: "True"
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_S3_ENDPOINT_URL
+        sync: false                  # R2: https://<account-id>.r2.cloudflarestorage.com
+      - key: AWS_S3_REGION_NAME
+        value: auto                  # R2-এর জন্য 'auto'; আসল AWS S3 হলে আসল region
+      - key: AWS_LOCATION
+        value: media
+      # --- রেট-লিমিট কাউন্টার সব worker-এ শেয়ার করা ------------------------
+      - key: RATE_LIMIT_CACHE
+        value: db
+      - key: WEB_CONCURRENCY
+        value: "3"
+
+  # ---------------------------------------------------------------------------
+  # ২) দৈনিক ব্যাকআপ (cron)
+  # ---------------------------------------------------------------------------
+  # Cron সার্ভিসের কোনো স্থায়ী ডিস্ক থাকে না — তাই P0B_BACKUP_ROOT শুধু
+  # অস্থায়ী জায়গা, আর আসল কপি অবশ্যই অবজেক্ট স্টোরেজে যেতে হবে
+  # (BACKUP_OBJECT_STORAGE_*), নাহলে রান শেষে ব্যাকআপ মুছে যাবে।
+  #
+  # ⚠️ Python runtime-এ pg_dump নাও থাকতে পারে (Postgres ব্যাকআপের জন্য লাগে)।
+  #    না থাকলে এই সার্ভিসের বদলে deploy/backup-cron.Dockerfile দিয়ে
+  #    docker runtime ব্যবহার করুন — নিচে কমেন্ট করা উদাহরণ দেখুন।
+  - type: cron
+    name: sms-daily-backup
+    runtime: python
+    region: singapore
+    plan: starter                    # cron-এর free tier নেই (সর্বনিম্ন ≈ $1/মাস)
+    # রাত ২:৩০ (বাংলাদেশ, UTC+6) = ২০:৩০ UTC (আগের দিন)
+    schedule: "30 20 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: ./scripts/backup_cron.sh
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sms-postgres
+          property: connectionString
+      - key: P0B_BACKUP_ROOT
+        value: /tmp/backups          # কেবল স্টেজিং — স্থায়ী নয়
+      # ব্যাকআপ এনক্রিপশন (সুপারিশ): off | openssl | age
+      - key: BACKUP_ENCRYPTION
+        value: "openssl"
+      # BACKUP_PASSPHRASE_FILE (0600 ফাইল) বেশি নিরাপদ, তবে cron-এ ফাইল রাখা
+      # কঠিন — তাই env-এ পাসফ্রেজ; লিক হলে ব্যাকআপও লিক হবে, তাই আলাদা রাখুন।
+      - key: BACKUP_PASSPHRASE
+        sync: false
+      # অবজেক্ট স্টোরেজে স্বাধীন কপি — এটাই আসল ব্যাকআপ
+      - key: BACKUP_OBJECT_STORAGE_BUCKET
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_ACCESS_KEY
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_SECRET_KEY
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_ENDPOINT
+        sync: false
+      - key: BACKUP_OBJECT_STORAGE_REGION
+        value: auto
+      - key: BACKUP_OBJECT_STORAGE_PREFIX
+        value: sms-backups
+      # Healthchecks.io (ফ্রি): ব্যাকআপ ব্যর্থ বা বন্ধ হলে ইমেইল/টেলিগ্রাম অ্যালার্ট
+      - key: HEALTHCHECK_PING_URL
+        sync: false
+      - key: KEEP_BACKUPS
+        value: "7"
+      # বাকেটে কত দিন রাখা হবে (৩০ দিন = মাসিক এক কপি করে)
+      - key: BACKUP_OBJECT_STORAGE_KEEP
+        value: "30"
+
+# -----------------------------------------------------------------------------
+# বিকল্প (সুপারিশকৃত, যদি pg_dump পাওয়া না যায়):
+# উপরের cron সার্ভিসটি মুছে এই ব্লকটি ব্যবহার করুন —
+#
+#   - type: cron
+#     name: sms-daily-backup
+#     runtime: docker
+#     dockerfilePath: ./deploy/backup-cron.Dockerfile
+#     dockerContext: .
+#     region: singapore
+#     plan: starter
+#     schedule: "30 20 * * *"
+#     envVars:  (উপরের তালিকাটাই)
+# -----------------------------------------------------------------------------

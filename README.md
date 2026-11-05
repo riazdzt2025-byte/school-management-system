@@ -90,12 +90,21 @@ A web-based Student Management System built with Python and Django, inspired by 
 - [`docs/FREE_TIER_MEDIA_STORAGE.md`](docs/FREE_TIER_MEDIA_STORAGE.md) — why `USE_S3` is needed on Render free tier and how to wire an S3-compatible bucket.
 - [`docs/OWNER_RENDER_OPS_TUTORIAL.md`](docs/OWNER_RENDER_OPS_TUTORIAL.md) — step-by-step owner tutorial for Render persistent disk / bucket / cron.
 - [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) — P0-7 live checklist before release.
+- [`docs/POSTGRES_S3_BACKUP_SETUP_BN.md`](docs/POSTGRES_S3_BACKUP_SETUP_BN.md) — বাংলায়: PostgreSQL-এ যাওয়া, ছবি R2/S3 বাকেটে নেওয়া, দৈনিক ব্যাকআপ cron, পুরোনো SQLite ডেটা সরানো (dumpdata → loaddata → reset_sequences) এবং মাসিক রিস্টোর ড্রিল।
 - [`docs/SUBJECT_WORKFLOW_BN.md`](docs/SUBJECT_WORKFLOW_BN.md) — বাংলায়: নতুন বিষয় কোথায় যোগ ও assign করবেন, নম্বর বণ্টন কোথায় সেট করবেন, কোথা থেকে নম্বর দেবেন, কোথায় publish করবেন, আর বিষয় না দেখালে কী কী পরীক্ষা করবেন।
 - [`RESULT_PUBLISHING_GUIDE.md`](RESULT_PUBLISHING_GUIDE.md) — marks, CQ/MCQ/Practical/Weekly Test split, pass rules, publishing results, and the Excel import template.
 - [`docs/PROVISIONAL_RESULT_BN.md`](docs/PROVISIONAL_RESULT_BN.md) — বাংলায়: ১০ বিষয়ের পরীক্ষায় ১/২ বিষয়ের নম্বর বাকি থাকলে সবার F আসে কেন, এখনই অস্থায়ী ফল দেখার Provisional পাতা, বিকল্প উপায়, আর বিষয়ে নম্বর দিতে না পারলে কোথায় দেখবেন।
 - [`docs/RESULT_PERFORMANCE_BN.md`](docs/RESULT_PERFORMANCE_BN.md) — রেজাল্টের delay কমানোর পরিবর্তন, মাপা query reduction, regression/browser প্রমাণ এবং local static assets-সহ deploy checklist।
 - [`DEPLOY_NOTES.md`](DEPLOY_NOTES.md) — what to check after a deploy to Render, including the duplicate-subject cleanup.
 - [`GROUP_RULE_DEPLOY_NOTES.md`](GROUP_RULE_DEPLOY_NOTES.md) — group logic (groups only from class 9) and deploy notes.
+
+## Production readiness
+
+- `GET /healthz/` — public probe: runs `SELECT 1` and returns `200 {"status":"ok","db":"ok"}` or `503`. Used as the Render health check.
+- `python manage.py production_preflight` — ten checks (DEBUG, SECRET_KEY, ALLOWED_HOSTS, CSRF origins, database engine, `pg_dump`, media bucket, backup freshness, static manifest, rate-limit cache). Exits non-zero on a hard failure; `--fail-on-warn` for CI.
+- `python manage.py reset_sequences` — fixes Postgres ID sequences after loading a `dumpdata` fixture (otherwise the next insert hits a duplicate-key error).
+- `render.yaml` + `deploy/backup-cron.Dockerfile` — web + Postgres + daily encrypted backup cron.
+- Step-by-step (Bengali): [`docs/POSTGRES_S3_BACKUP_SETUP_BN.md`](docs/POSTGRES_S3_BACKUP_SETUP_BN.md).
 
 ## How to Run Locally
 

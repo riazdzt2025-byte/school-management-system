@@ -121,6 +121,16 @@ DATABASES = {
     )
 }
 
+# A health check is only useful if a dead database fails it *quickly*.
+# psycopg2 waits forever by default, so /healthz/ would hang instead of
+# reporting 503 and the platform would keep routing traffic to a broken
+# instance. Five seconds is enough for a healthy database on the same network.
+if 'postgres' in DATABASES['default'].get('ENGINE', ''):
+    _db_options = DATABASES['default'].setdefault('OPTIONS', {})
+    _db_options.setdefault(
+        'connect_timeout', int(os.environ.get('DB_CONNECT_TIMEOUT', '5') or 5)
+    )
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
