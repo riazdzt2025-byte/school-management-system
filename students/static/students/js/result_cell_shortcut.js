@@ -11,9 +11,8 @@
  *     Religion column that is the paper the student actually sits, never the
  *     column) and data-group, inside a container carrying data-enter-marks-base
  *     — this exam's marks-entry URL with the subject slot left open;
- *   - a cell that the user has no permission to correct is rendered with
- *     data-shortcut-disabled="true" and its tooltip says "Ask Exam dept", so
- *     there is nothing for this script to do;
+ *   - without add_exammark permission no shortcut data, URL or script is
+ *     rendered (isDisabled remains a defensive check for older markup);
  *   - the Full Rank List has no subject columns, so its rows carry a ready-made
  *     data-shortcut-url to this exam's marks entry instead.
  *
@@ -63,6 +62,10 @@
     function findShortcutTarget(node) {
         var current = node;
         while (current) {
+            // Preserve native navigation/controls, including links inside rank rows.
+            var tag = String(current.tagName || '').toLowerCase();
+            if (/^(a|button|input|select|textarea|label)$/.test(tag) ||
+                    current.isContentEditable || attribute(current, 'contenteditable') === 'true') return null;
             if (attribute(current, SUBJECT_ATTRIBUTE) || attribute(current, URL_ATTRIBUTE)) {
                 return current;
             }
@@ -104,11 +107,18 @@
 
     function createController(doc, openFn) {
         var opener = typeof openFn === 'function' ? openFn : defaultOpen;
+        var touchPending = false;
 
         function handleClick(event) {
-            /* Only Ctrl (Windows/Linux) or Cmd (macOS). A plain click does
-               nothing on purpose — see the note at the top of this file. */
-            if (!event || !(event.ctrlKey || event.metaKey)) return false;
+            // Mouse primary-button Ctrl/Cmd only. Never hijack selection,
+            // middle-click, keyboard activation or touch-generated clicks.
+            var fromTouch = touchPending;
+            touchPending = false;
+            if (!event || event.defaultPrevented || !(event.ctrlKey || event.metaKey) ||
+                    event.shiftKey || event.altKey ||
+                    (event.button !== undefined && event.button !== 0) || event.detail === 0 ||
+                    (event.pointerType && event.pointerType !== 'mouse') || fromTouch ||
+                    (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents)) return false;
             var cell = findShortcutTarget(event.target);
             if (!cell) return false;
             /* No permission to enter marks: the tooltip already says why. */
@@ -123,6 +133,11 @@
         return {
             attach: function () {
                 if (doc && typeof doc.addEventListener === 'function') {
+                    // Legacy browsers may omit pointerType on the synthetic click.
+                    doc.addEventListener('touchstart', function () { touchPending = true; }, { passive: true });
+                    doc.addEventListener('pointerdown', function (event) {
+                        touchPending = event.pointerType !== 'mouse';
+                    });
                     doc.addEventListener('click', handleClick);
                 }
             },

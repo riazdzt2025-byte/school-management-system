@@ -216,14 +216,14 @@ def media_storage_config(env=None):
             env.get('AWS_LOCATION', 'media').strip().strip('/')
             if 'AWS_LOCATION' in env else 'media'
         ),
-        # Set this to serve files publicly (CDN / public bucket). Left unset,
-        # the bucket stays private and `photo.url` is a signed URL instead.
+        # Public/CDN mode is not permitted for student photos; the deploy check
+        # rejects it so generated photo URLs remain signed and private.
         'public_base_url': _get('AWS_S3_PUBLIC_BASE_URL') or None,
-        # Object ACL: 'public-read' only makes sense for a bucket meant to be
-        # public; private + signed URLs is the safer default for photos of
-        # students (PII).
+        # Public ACLs are prohibited for student photos; E012 enforces private
+        # ACL configuration during deploy checks.
         'default_acl': _get('AWS_DEFAULT_ACL') or None,
-        'cache_control': _get('AWS_S3_CACHE_CONTROL', 'max-age=2592000, public'),
+        # Student photos are private PII; do not let shared caches retain them.
+        'cache_control': _get('AWS_S3_CACHE_CONTROL', 'private, no-store'),
         # Signed media URLs must outlive a school day of open tabs/printing.
         'querystring_expire': int(_get('AWS_S3_QUERYSTRING_EXPIRE', '86400')),
     }
@@ -266,6 +266,12 @@ MEDIA_URL = media_public_url(MEDIA_CONFIG)
 # bucket, but the backup tooling still reads it, and the local default keeps
 # development working with no setup at all.
 MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
+
+# DELETE_MEDIA_ON_PURGE: when a student is permanently purged (archive purge),
+# also delete their photo file from storage. Default True (delete); set to
+# False to retain photos for audit/legal reasons even after student deletion.
+# Configurable via DELETE_MEDIA_ON_PURGE env var.
+DELETE_MEDIA_ON_PURGE = os.environ.get('DELETE_MEDIA_ON_PURGE', 'True') == 'True'
 
 if MEDIA_IS_REMOTE:
     AWS_ACCESS_KEY_ID = MEDIA_CONFIG['access_key']
@@ -354,15 +360,23 @@ EXAM_ABSENT_SUBJECT_FAILS = os.environ.get('EXAM_ABSENT_SUBJECT_FAILS', 'True') 
 EXAM_LOCK_PUBLISHED = os.environ.get('EXAM_LOCK_PUBLISHED', 'True') == 'True'
 
 SCHOOL_INFO = {
+    # Kept for the app chrome. A *document* never prints this combined form:
+    # school papers show 'school_name', college papers 'college_name'.
     'name': 'Principal Kazi Faruky School And College',
-    'address': 'Rakhalia, Raipur, Lakshmipur',
-    'phone': '+880 1234-567890',
+    'school_name': 'Principal Kazi Faruky School',
+    'college_name': 'Principal Kazi Faruky College',
+    'address': 'West Rakhalia, Raipur, Lakshmipur-3700',
+    # The school and the college each have their own number; printed sheets
+    # show both, so they are kept apart and combined only for display.
+    'school_phone': '01309134783',
+    'college_phone': '01309135326',
+    'phone': 'School 01309134783 · College 01309135326',
 }
 
 # Default branding shown in footers and printed sheets. A super admin can
 # override both from the Django admin ("Site branding"); these values are the
 # fallback used until that row exists.
-DEVELOPER_NAME = 'riOn Dev.'
+DEVELOPER_NAME = 'riOn Dev'
 COPYRIGHT_HOLDER = 'PKFSC'
 
 # ---------------------------------------------------------------------------

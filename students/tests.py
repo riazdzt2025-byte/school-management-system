@@ -1373,8 +1373,10 @@ class GroupOnlyFromClass9Tests(TestCase):
 		self.assertFalse(Student.objects.filter(name='No Group Nine').exists())
 
 	def test_class_9_admission_accepts_business_and_humanities(self):
-		for code in ('BUS', 'HUM'):
-			self._post(name=f'Student {code}', admission_class='9', group=code)
+		# Distinct roll numbers: the students share class 9 / section A, and a
+		# repeated roll is rejected (OF-07 duplicate-roll rule).
+		for roll, code in ((2, 'BUS'), (3, 'HUM')):
+			self._post(name=f'Student {code}', admission_class='9', group=code, roll_no=roll)
 			self.assertEqual(Student.objects.get(name=f'Student {code}').group, code)
 
 	def test_diploma_group_is_not_offered_at_class_9(self):
@@ -2149,6 +2151,25 @@ class ReligionPaperTests(TestCase):
 		self.assertNotIn('<th>Islam &amp; Moral Education', content)
 		self.assertNotIn('<th>Hindu Religion &amp; Moral Education', content)
 
+	def test_provisional_result_uses_bulk_religion_header(self):
+		from .models import SubjectMarkSetting
+		self._marks(self.muslim, self.bangla, 80)
+		self._marks(self.muslim, self.islam, 75)
+		self._marks(self.hindu_kid, self.bangla, 82)
+		# The Hindu paper is assigned but not entered yet. Its merged header
+		# must still resolve the Islam paper's exam override in one bulk map.
+		SubjectMarkSetting.objects.create(
+			institution=self.institution, admission_class='6', subject=self.islam,
+			exam_type='SECOND_TERM', full_marks=50,
+		)
+		response = self.client.get(reverse('result_provisional', args=[self.exam.pk]))
+		self.assertEqual(response.status_code, 200)
+		headers = response.context['columns']
+		religion = next(column['subject'] for column in headers if column['subject'].code == 'REL')
+		self.assertEqual(religion.header_marks_config(self.exam).full_marks, 50)
+		self.assertEqual(next(column['full_marks'] for column in headers if column['subject'].code == 'REL'), 50)
+		self.assertTrue(any(row['pending_subject_count'] for row in response.context['results']))
+
 	def test_marks_entry_only_offers_papers_students_sit(self):
 		from .result_utils import get_exam_subjects_for_students, get_exam_students
 		students = list(get_exam_students(self.exam))
@@ -2298,7 +2319,10 @@ class AdmissionSubjectScopeTests(TestCase):
 		self.assertContains(response, '150')
 		self.assertNotContains(response, '150 / 300')
 		self.assertContains(response, 'class="d-print-none"')
-		self.assertContains(response, 'A4 landscape')
+		# The Published Result is a portrait register printout (the landscape
+		# sheet is the separate Full Mark Sheet).
+		self.assertContains(response, 'A4 portrait')
+		self.assertNotContains(response, 'A4 landscape')
 
 
 class ResultCountingRulesTests(TestCase):
@@ -2606,14 +2630,14 @@ class ResultSheetCodeHeaderTests(TestCase):
 		self.assertEqual(
 			{row['student'].pk: row['position'] for row in rows}, expected_places,
 		)
-		self.assertContains(response, '<th rowspan="2">Roll</th>')
+		self.assertContains(response, '<th scope="col">Roll</th>')
 
 	def test_header_uses_codes_and_legend_maps_them_to_names(self):
 		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
 		content = response.content.decode()
 		# Codes in the header row.
-		self.assertIn('<th>BAN1<br>', content)
-		self.assertIn('<th>ENG1<br>', content)
+		self.assertIn('>BAN1<small>(100)</small>', content)
+		self.assertIn('>ENG1<small>(100)</small>', content)
 		# Full names do not appear as column headers.
 		self.assertNotIn('<th>Bangla 1st Paper', content)
 		# Legend under the table.
@@ -2622,9 +2646,14 @@ class ResultSheetCodeHeaderTests(TestCase):
 		self.assertIn('<span class="code">ENG1</span> = English 1st Paper', content)
 
 	def test_student_name_column_is_wide(self):
+		# The name column has room beside ten papers. Long names wrap on paper
+		# instead of being ellipsized and losing part of a student's name.
 		response = self.client.get(reverse('result_sheet', args=[self.exam.pk]))
-		self.assertContains(response, 'student-col')
-		self.assertContains(response, 'min-width: 200px')
+		content = response.content.decode()
+		self.assertIn('<col class="student-col-width">', content)
+		self.assertIn('.result-table-card col.student-col-width { width: 18.5%; }', content)
+		self.assertIn('td.student-col { text-align: left; overflow-wrap: anywhere;', content)
+		self.assertNotIn('text-overflow: ellipsis', content)
 
 
 class SubjectAssignmentsConditionalNoteTests(TestCase):
@@ -2819,24 +2848,24 @@ class RetiredBoardFeatureTests(TestCase):
                 self.assertNotContains(response, 'Register for SSC')
 
 class GPAPaginationAndAbsentDisplayTests(TestCase):
-    """D-GPA (4.90-4.99->5.00) + O2 pagination (100/page) + D-MIS AB display + TC exclusion."""
+    """Fourth-subject GPA + O2 pagination (100/page) + D-MIS AB display + TC exclusion."""
 
     def setUp(self):
         self.institution = Institution.objects.create(name='New Feature School', classes='6,9')
         self.user = get_user_model().objects.create_superuser(username='newfeat-admin', password='password')
         self.client.force_login(self.user)
 
-    def test_gpa_490_to_499_boosted_to_500(self):
+    def test_gpa_490_stays_490_without_a_fourth_subject(self):
         from .models import SubjectRequirement
-        # 10 subjects to get average 4.90 exactly: 9 at 5.00 (80 marks) + 1 at 4.00 (70 marks)
+        # The former 4.90 -> 5.00 benefit was replaced by the fourth-subject
+        # rule: without a selected FOURTH paper, the ten-paper average stays 4.90.
         subjects = []
         for i in range(10):
             subj = Subject.objects.create(code=f'GP{i}', name=f'GpaSub{i}', full_marks=100)
             SubjectRequirement.objects.create(institution=self.institution, admission_class='6', subject=subj, requirement_type='MANDATORY')
             subjects.append(subj)
-        exam = Exam.objects.create(name='GPA Boost Exam', exam_type='SECOND_TERM', institution=self.institution, admission_class='6', session='2026', is_published=True)
+        exam = Exam.objects.create(name='GPA Main Subjects Exam', exam_type='SECOND_TERM', institution=self.institution, admission_class='6', session='2026', is_published=True)
         student = Student.objects.create(institution=self.institution, student_id='GPA001', name='GPA Kid', admission_class='6', section='A', roll_no=1, admission_year=2026)
-        # 9 subjects 80 marks (A+ 5.00), 1 subject 70 marks (A 4.00) -> avg 4.90 -> should boost to 5.00
         for idx, subj in enumerate(subjects):
             marks = 80 if idx < 9 else 70
             ExamMark.objects.create(exam=exam, student=student, subject=subj, marks_obtained=marks)
@@ -2844,12 +2873,13 @@ class GPAPaginationAndAbsentDisplayTests(TestCase):
         _, results = build_exam_results(exam)
         result = results[0]
         self.assertEqual(result['status'], 'Pass')
-        self.assertEqual(str(result['gpa']), '5.00')
-        self.assertEqual(result['grade'], 'A+')
-        # Control: exactly 5.00 stays 5.00
+        self.assertEqual(str(result['gpa']), '4.90')
+        self.assertEqual(result['grade'], 'A')
+        # Control: ten A+ main papers still remain exactly 5.00.
         ExamMark.objects.filter(student=student).update(marks_obtained=85)
         _, results2 = build_exam_results(exam)
         self.assertEqual(str(results2[0]['gpa']), '5.00')
+        self.assertEqual(results2[0]['grade'], 'A+')
 
     def test_pagination_limits_to_100(self):
         # Create 105 students

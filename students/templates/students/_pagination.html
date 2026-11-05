@@ -1,0 +1,30 @@
+{% if paginator and not is_print_view %}
+<div class="mt-3 d-print-none" data-list-pagination>
+    <form method="get" action="{{ request.path }}" class="d-flex justify-content-center align-items-center gap-2 flex-wrap mb-2" data-page-size-form>
+        {% include 'students/_pagination_filter_fields.html' with changing_page_size=True %}
+        <label for="list-page-size" class="small">Rows per page (1–100)</label>
+        <input type="number" id="list-page-size" name="per_page" value="{{ paginator.per_page }}" min="1" max="100" step="1" required class="form-control form-control-sm" style="width:90px">
+        <button type="submit" class="btn btn-sm btn-outline-navy">Apply</button>
+    </form>
+    <nav aria-label="List pagination">
+        <ul class="pagination justify-content-center mb-0 flex-wrap">
+            {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="{% querystring request.GET page=1 per_page=paginator.per_page print=None %}" aria-label="First page">« First</a></li>
+            <li class="page-item"><a class="page-link" href="{% querystring request.GET page=page_obj.previous_page_number per_page=paginator.per_page print=None %}" aria-label="Previous page">‹ Prev</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">« First</span></li>
+            <li class="page-item disabled"><span class="page-link">‹ Prev</span></li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ paginator.num_pages }} — {{ paginator.count }} total</span></li>
+            {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="{% querystring request.GET page=page_obj.next_page_number per_page=paginator.per_page print=None %}" aria-label="Next page">Next ›</a></li>
+            <li class="page-item"><a class="page-link" href="{% querystring request.GET page=paginator.num_pages per_page=paginator.per_page print=None %}" aria-label="Last page">Last »</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">Next ›</span></li>
+            <li class="page-item disabled"><span class="page-link">Last »</span></li>
+            {% endif %}
+        </ul>
+    </nav>
+    <p class="text-center text-muted small mt-2">Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ paginator.count }} · {{ paginator.per_page }} per page · maximum 100.</p>
+</div>
+{% endif %}

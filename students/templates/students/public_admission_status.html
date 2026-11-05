@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# Public page: never indexed, never linked from inside the system (OF-06). #}
+    <meta name="robots" content="noindex, nofollow">
+    <title>Check Admission Status — Principal Kazi Faruky School And College</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --navy: #0F2D52; --navy-light: #17406e; --gold: #C9A227; --bg: #F6F7FA; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; }
+        h1, h2, .brand { font-family: 'Fraunces', serif; }
+
+        .hero {
+            background: linear-gradient(120deg, var(--navy) 0%, #17406e 70%, #1d5189 100%);
+            color: #fff; padding: 40px 20px 48px; position: relative; overflow: hidden; text-align: center;
+        }
+        .hero::after {
+            content: ''; position: absolute; left: -80px; bottom: -100px; width: 240px; height: 240px;
+            border-radius: 50%; background: rgba(201,162,39,0.15);
+        }
+        .hero .crest {
+            width: 60px; height: 60px; margin: 0 auto 12px; border-radius: 17px;
+            background: rgba(255,255,255,0.10); border: 1px solid rgba(201,162,39,0.55);
+            display: flex; align-items: center; justify-content: center; font-size: 1.6rem; color: var(--gold);
+            position: relative; z-index: 1;
+        }
+        .hero h1 { font-size: 1.45rem; margin: 0 0 6px; position: relative; z-index: 1; }
+        .hero p { margin: 0; opacity: .85; font-size: .93rem; position: relative; z-index: 1; }
+        .hero .gold-rule { width: 68px; height: 3px; background: var(--gold); border-radius: 2px; margin: 14px auto 0; position: relative; z-index: 1; }
+
+        .main { padding: 0 16px 48px; max-width: 860px; margin: -26px auto 0; position: relative; z-index: 2; }
+        .panel {
+            background: #fff; border-radius: 16px; padding: 28px;
+            box-shadow: 0 10px 30px rgba(15,45,82,0.12); border: 1px solid rgba(15,45,82,0.05);
+        }
+        .panel + .panel { margin-top: 18px; }
+        .form-label { font-weight: 600; color: var(--navy); font-size: .88rem; margin-bottom: 5px; }
+        .form-control { border-radius: 9px; border: 1px solid #d7dce3; padding: 10px 12px; font-size: .95rem; }
+        .form-control:focus { border-color: var(--navy); box-shadow: 0 0 0 .2rem rgba(15,45,82,.12); }
+        .btn-navy { background: var(--navy); color: #fff; border-radius: 10px; border: none; padding: 11px 26px; font-weight: 600; }
+        .btn-navy:hover { background: var(--navy-light); color: #fff; }
+        .btn-quiet { border-radius: 10px; border: 1px solid #cfd6de; color: var(--navy); background: #fff; }
+        .field-hint { color: #8b97a5; font-size: .82rem; margin-top: 6px; }
+        .headline { font-family: 'Fraunces', serif; color: var(--navy); font-size: 1.25rem; margin-bottom: 4px; }
+        .headline-sub { color: #5c6b7a; font-size: .92rem; }
+        .who { background: #F6F7FA; border: 1px solid #e4e8ee; border-radius: 12px; padding: 14px 16px; margin: 16px 0; }
+        .who dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: .92rem; }
+        .who dt { color: #6b7a89; font-weight: 500; }
+        .who dd { margin: 0; color: var(--navy); font-weight: 600; }
+
+        /* status timeline — colour is a hint only, every step is labelled */
+        .timeline { list-style: none; margin: 8px 0 0; padding: 0; }
+        .timeline li { position: relative; padding: 0 0 18px 30px; }
+        .timeline li:last-child { padding-bottom: 0; }
+        .timeline li::before {
+            content: ''; position: absolute; left: 7px; top: 5px; width: 12px; height: 12px;
+            border-radius: 50%; background: #cfd6de; border: 2px solid #fff;
+        }
+        .timeline li.done::before { background: #1f8a4c; }
+        .timeline li.current::before { background: var(--gold); box-shadow: 0 0 0 4px rgba(201,162,39,.22); }
+        .timeline li.closed::before { background: #b03030; }
+        .timeline li::after {
+            content: ''; position: absolute; left: 12px; top: 17px; bottom: 0; width: 2px; background: #e4e8ee;
+        }
+        .timeline li:last-child::after { display: none; }
+        .timeline .step-label { font-weight: 600; color: var(--navy); font-size: .95rem; }
+        .timeline li.todo .step-label { color: #9aa6b2; font-weight: 500; }
+        .timeline .step-date { color: #7b8794; font-size: .83rem; }
+        .timeline .step-now { color: #8a6d0b; font-size: .83rem; font-weight: 600; }
+        .next-step { background: rgba(201,162,39,.10); border-left: 3px solid var(--gold); border-radius: 8px; padding: 12px 14px; font-size: .93rem; color: #3f4a57; }
+        .office-note { font-size: .88rem; color: #6b7a89; }
+        .foot { text-align: center; color: #8b97a5; font-size: .84rem; margin-top: 22px; }
+
+        @media (max-width: 768px) {
+            .hero { padding: 30px 14px 42px; }
+            .panel { padding: 20px 16px; }
+            .who dl { grid-template-columns: 1fr; gap: 2px; }
+        }
+
+        /* printable: the status block only, no navigation or buttons */
+        @media print {
+            body { background: #fff; }
+            .hero { background: #fff; color: #000; padding: 0 0 12px; text-align: left; }
+            .hero::after, .hero .gold-rule { display: none; }
+            .hero .crest { color: #000; border-color: #000; }
+            .main { margin: 0; max-width: none; padding: 0; }
+            .panel { box-shadow: none; border: none; padding: 0; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+<div class="hero">
+    <div class="crest"><i class="bi bi-search"></i></div>
+    <h1>Principal Kazi Faruky School And College</h1>
+    <p>Check Admission Application Status</p>
+    <div class="gold-rule"></div>
+</div>
+
+<div class="main">
+    <div class="panel no-print">
+        <p class="headline-sub mb-3">
+            Enter the application number from your slip and the last 4 digits of the
+            guardian contact number you gave with the application.
+        </p>
+        {% if error %}
+        <div class="alert alert-danger py-2" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ error }}
+        </div>
+        {% endif %}
+        <form method="post" role="form">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-7">
+                    <label class="form-label" for="id_application_number">Application Number</label>
+                    {{ form.application_number }}
+                    <div class="field-hint">Example: APP-1A2B3C4D5E6F</div>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label" for="id_contact_last4">Last 4 digits of guardian contact</label>
+                    {{ form.contact_last4 }}
+                    <div class="field-hint">Example: 5678</div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button type="submit" class="btn btn-navy">
+                    <i class="bi bi-search me-1"></i>Check status
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {% if application %}
+    <div class="panel">
+        <div class="headline">{{ headline }}</div>
+        <div class="headline-sub">
+            Application {{ application.application_number }} —
+            {{ application.institution.name }}
+        </div>
+
+        <div class="who">
+            <dl>
+                <dt>Applicant</dt>
+                <dd>{{ masked_name }}</dd>
+                <dt>Guardian contact</dt>
+                <dd>{{ masked_contact }}</dd>
+                <dt>Class / Section</dt>
+                <dd>{{ application.requested_class }}{% if application.requested_section %} / {{ application.requested_section }}{% endif %}{% if application.requested_group %} ({{ application.get_requested_group_display }}){% endif %}</dd>
+                <dt>Session</dt>
+                <dd>{{ application.session }}</dd>
+                {% if student_id %}
+                <dt>Student ID</dt>
+                <dd>{{ student_id }}</dd>
+                {% endif %}
+            </dl>
+        </div>
+
+        <ol class="timeline">
+            {% for step in timeline %}
+            <li class="{{ step.state }}">
+                <div class="step-label">{{ step.label }}</div>
+                {% if step.date %}<div class="step-date">{{ step.date|date:"d M Y" }}</div>{% endif %}
+                {% if step.state == 'current' %}<div class="step-now">In progress</div>{% endif %}
+                {% if step.state == 'closed' %}<div class="step-now">No further steps</div>{% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+
+        <div class="next-step mt-3">
+            <strong>What happens next:</strong> {{ what_next }}
+        </div>
+
+        <p class="office-note mt-3 mb-0">
+            {% if rejected %}
+            Please contact the school office in person or by phone during office hours
+            for any help or to apply again.
+            {% else %}
+            For any query, please contact the school office during office hours. Only
+            the school office can change an application's status.
+            {% endif %}
+        </p>
+
+        <div class="mt-3 no-print">
+            <button type="button" class="btn btn-quiet" onclick="window.print()">
+                <i class="bi bi-printer me-1"></i>Print this status
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not application %}
+    <div class="panel">
+        <p class="office-note mb-3">
+            Did not apply yet? You can submit an admission application online.
+        </p>
+        <a class="btn btn-quiet" href="{% url 'public_admission_apply' %}">
+            <i class="bi bi-pencil-square me-1"></i>Fill the admission form
+        </a>
+    </div>
+    {% endif %}
+
+    <div class="foot">
+        Principal Kazi Faruky School And College — Online Admission
+    </div>
+</div>
+</body>
+</html>

@@ -43,6 +43,72 @@ def check_production_allowed_hosts_explicit(app_configs=None, **kwargs):
     ]
 
 
+@register(Tags.security, deploy=True)
+def check_student_photo_storage_private(app_configs=None, **kwargs):
+    """Fail a production deploy if student photos can be served publicly.
+
+    Student photos are PII. Remote media must use signed URLs, private ACLs,
+    and a cache policy that cannot be stored by shared caches. A local media
+    URL is directly served by the web/CDN layer in this project, so it is not
+    accepted as a private production photo backend without a future, explicit
+    authenticated media proxy.
+    """
+    if getattr(settings, 'DEBUG', True):
+        return []
+
+    if not getattr(settings, 'MEDIA_IS_REMOTE', False):
+        return [
+            Error(
+                'Production student photos require private remote storage; '
+                'the configured filesystem media URL may be publicly served.',
+                hint=(
+                    'Use private S3-compatible media storage with signed URLs, '
+                    'or implement and review an authenticated media proxy. '
+                    'See docs/PRODUCTION_CHECKLIST.md.'
+                ),
+                id='students.E012',
+            ),
+        ]
+
+    media_config = getattr(settings, 'MEDIA_CONFIG', {})
+    public_acl = (media_config.get('default_acl') or '').strip().lower()
+    cache_control = (media_config.get('cache_control') or '').lower()
+    cache_directives = {
+        part.strip().split('=', 1)[0]
+        for part in cache_control.split(',')
+        if part.strip()
+    }
+
+    violations = []
+    if media_config.get('public_base_url'):
+        violations.append('AWS_S3_PUBLIC_BASE_URL is configured')
+    if not getattr(settings, 'AWS_QUERYSTRING_AUTH', False):
+        violations.append('signed URL authentication is disabled')
+    if public_acl not in ('', 'private', 'bucket-owner-full-control'):
+        violations.append('AWS_DEFAULT_ACL is not private')
+    if 'public' in cache_directives or 's-maxage' in cache_directives:
+        violations.append('Cache-Control permits shared/public caching')
+    if not ({'private', 'no-store'} & cache_directives):
+        violations.append('Cache-Control does not prohibit shared caching')
+
+    if not violations:
+        return []
+
+    return [
+        Error(
+            'Student photo storage is configured for public access or caching: '
+            + '; '.join(violations) + '.',
+            hint=(
+                'For private student photos, unset AWS_S3_PUBLIC_BASE_URL, use a '
+                'private/default ACL, keep AWS_QUERYSTRING_AUTH enabled, and set '
+                'AWS_S3_CACHE_CONTROL to "private, no-store". Also verify the '
+                'bucket policy blocks anonymous access.'
+            ),
+            id='students.E012',
+        ),
+    ]
+
+
 def _module_available(name):
     return importlib.util.find_spec(name) is not None
 

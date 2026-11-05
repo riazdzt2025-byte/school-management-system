@@ -1,5 +1,159 @@
 # Handoff — School Management System
 
+## ২০২৬-১১-০৩ · Remaining backlog completion (AT-01 / AT-02 / EM-01 / EM-03, DB-02/DB-03 verification, FN-01)
+
+- **Branch/base:** `arena/e2d5c9b9-school-management-system` / `9ff07f4` (= `origin/main`, PR #78 merged). The user-referenced branch `arena/1928885f-school-management-system` **does not exist** on the remote (checked `git ls-remote --heads origin` and the GitHub branches API). The remaining backlog was completed on this session branch and merged through a PR.
+- **Implemented:**
+  - **AT-01** — per-record attendance correction (`correct_attendance`), mandatory reason, old/new values in `AuditLog`, future-date block, report filters + permission-gated Correct link, Office/Exam permission, invalid status skipped.
+  - **AT-02** — server-rendered monthly attendance calendar + CSV monthly summary; rate `(P+L)/(P+A+L)` with H excluded and no-record never absent; archived students excluded; month rollover; print CSS; summary and employee detail use the same rate helper.
+  - **EM-01** — `TeacherAssignment` model (migration `0052`) + registry UI (filters, add/edit, unassign, delete), validation (class offered, employee in institution, subject in curriculum), conditional unique active row, HR/Office permissions, audit, employee detail Assignments tab, signature-sheet integration.
+  - **EM-03** — `SalarySheet.locked_at/locked_by/lock_reason` (migration `0052`), audited lock/unlock, edit/delete frozen while locked, scoped 404.
+  - **DB-02** — verified `students/migrations/0034` has no agent name; no change needed.
+  - **DB-03** — verified SEC-FU-1 (`CACHES` + `RATE_LIMIT_CACHE=locmem|db`) and SEC-FU-2 (`sync_user_department_permissions` strips HR/Subjects/Audit at login); existing tests pass.
+  - **FN-01** — release verification report `docs/prompts/reports/FN-01.md`.
+- **Evidence:** full `manage.py test students` → **1131 Django OK**; `node --test students/js/*.test.js` → **29 pass**; `check` 0; `makemigrations --check` clean (leaf `0052`). New focused suites: `test_attendance_correction_calendar.py`, `test_teacher_assignment.py`, `test_payroll_lock.py` — **41 pass**.
+- **Not verified / open:** live Render, live Postgres, S3/bucket, cron, real browser/print, production data; EM-02 leave (owner policy); live-only checklists (P0-7, P0-8-live, P1-11-live, P1-10-live, D-8). No production DB/credential touched.
+- **Owner action:** review/merge the PR; run `migrate` (new `0052`) after a backup; decide EM-02 leave policy; run the live checklist before release.
+
+---
+## ২০২৬-১১-০১ · Owner request: রেজাল্ট দেখার delay কমানো
+
+- **Branch/base:** `arena/9e2cd162-school-management-system` / `739ec34`। ব্যবহারকারীর নতুন নির্দেশে result performance নেওয়া হয়েছে; **DB-01 (প্রম্পট ১৭) paused**, সম্পন্ন দাবি করা হয়নি।
+- **Fix:** per-cell marks-setting query-এর বদলে bulk resolution; selected cohort-only marks, unused Student/Subject join বাদ; marked IDs reuse; official/provisional header bulk lookup; populated sheet-এ unused diagnosis বাদ। হিসাব/nীতি অপরিবর্তিত, persistent result cache নেই। Same-version Bootstrap/icons/fonts local; shared layout/login CDN dependency ও Student detail-এর duplicate bundle সরানো হয়েছে।
+- **মাপা প্রমাণ:** ৮০ শিক্ষার্থী × ১০ বিষয়ে calculation **809→9 SQL**, official sheet **842→25**, summary/rank **815→15**, provisional **825→16**, individual detail/card **817→17**। ৮ ও ৮০ জনে নতুন count একই। এগুলো synthetic SQLite query count, live latency নয়।
+- **যাচাই:** পূর্ণ **১০৫৭ Django OK**, **২৯ Node pass**, check 0, migration check clean। Exact production WhiteNoise compressed manifest/collectstatic test pass। Chromium 143-এ synthetic ৮০ জনের official/full-print/summary/provisional/card/mobile যাচাই; JS error/failed বা external request নেই, A4 landscape PDF emitted। বিস্তারিত `docs/RESULT_PERFORMANCE_BN.md`।
+- **Commit/PR:** `bb0d483` · PR #75 OPEN, merge নয়। CI-তে SQLite সম্পূর্ণ pass, PostgreSQL Django suite/guards pass, Node pass; PostgreSQL-এর পরের backup/restore smoke drill fail (কারণ অজানা: allowed-host সীমায় log storage খোলা যায়নি; rerun permission নেই)। সম্পূর্ণ CI সবুজ দাবি করা হয়নি।
+- **সীমা/পরবর্তী ধাপ:** production DB/Render/credentials ছোঁয়া হয়নি; live deployment, hosting latency ও আসল প্রিন্টার যাচাই নয়। Review/merge owner-এর অনুমোদন সাপেক্ষ; merge-এর আগে PostgreSQL backup drill পুনরায় যাচাই দরকার। Deploy build-এ `collectstatic --noinput` আবশ্যক। Local environment Python 3.11.2/Django 5.2.18 fallback; repo requirements অপরিবর্তিত। Vendor provenance/license `students/static/students/vendor/README.md`।
+
+---
+
+## সেশন OF-08 — ২০২৬-১০-১৫ · প্রম্পট ১৬/২৮ · Archive / promotion / certificates (audit + fix)
+
+- **Branch:** `arena/f3f3b804-school-management-system` (base `58262d3` = OF-07 merge; prompt-এ লেখা `arena/01a0b7f7-…` stale, branch বদলানো হয়নি)।
+- **Owner-সিদ্ধান্ত (Arena chat, ২০২৬-১০-১৫):** (১) TC/সার্টিফিকেট থাকা ছাত্র purge **যাবে**, কিন্তু জোরে সতর্ক + audit-এ কোন নম্বর ধ্বংস হলো তা লেখা থাকবে (block নয়); (২) নম্বর year-wise ফরম্যাটেই থাকবে, কিন্তু **collision-safe** ও ধ্বংস হওয়া নম্বর **পুনর্ব্যবহার নয়**; (৩) একই class+session-এ দ্বিতীয় promotion run **block**, batch rollback করলে আবার অনুমোদিত।
+- **যাচাই → fix (৫):** নতুন `DocumentSequence` counter model (migration `0050`) + `TC.save()`/`Certificate.save()` সেখান থেকে নম্বর নেয় (হাতে বসানো নম্বরের সাথে ধাক্কা → পরের নম্বর, 500 নয়; purge-এর পরেও নম্বর ফেরে না); promotion-এ `_promotion_already_run` (spelling-tolerant, institution মেনে); purge-এ `destroyed_documents` audit + warning বার্তা + archived পেজে স্থায়ী সতর্কবার্তা/TC-নাম-সহ confirm; `transfer_certificate_issued`/`certificate_issued` audit row (`issue_tc`/`issue_certificate`); certificate form-এ প্রতি field-এর error।
+- **প্রমাণ:** নতুন `students/test_archive_promotion_certificate_audit.py` **৫১**; প্রাক-ফিক্স কোডে আলাদা git worktree-তে **১৪টি fail** (`failures=7, errors=7`) ⇒ সত্যিই ঘাটতি ধরেছে; পূর্ণ suite **৯৯৩ Django OK + ২৯ Node pass**, `check` 0 issue, `makemigrations --check` clean (leaf `0050_documentsequence`)। রিপোর্ট `docs/prompts/reports/OF-08.md`; PR owner merge-অনুমোদন সাপেক্ষ।
+- **যাচাই হয়নি / খোলা:** counter-এর lock-এর আসল parallel test (শুধু SQLite-এ যাচাই; Postgres CI-র মাধ্যমে); print CSS/আসল প্রিন্টার; certificate eligibility guard (এখন কোনো status/class নিয়ম নেই — owner-প্রশ্ন); TC/certificate/ID-card read view শুধু login চায় (পুরোনো নীতি)।
+- **Next:** প্রম্পট ১৭/২৮ (DB-01 — Dashboard/navigation) — baseline Complete, তাই শুধু regression যাচাই; owner ক্রমিকভাবে দেবেন।
+
+---
+
+## সেশন MERGE — ২০২৬-১০-১২ · PR #61 (OF-05 privacy/outbox) → main সমন্বয়
+
+- **Branch/base:** `arena/f5fca6f9-school-management-system` / `c823d1d` (= `origin/main`, PR #63 MERGED) — PR #61-এর head `def3156` মার্জ করা হয়েছে।
+- **কেন হাতে সমন্বয়:** PR #61 ছিল **DRAFT** এবং GitHub-এ `mergeable: CONFLICTING` (main-এ ইতিমধ্যে PR #62-এর ভিন্ন OF-05 চলে এসেছিল)। Merge base `e7904ba`; ১০টি ফাইলে conflict।
+- **Owner সিদ্ধান্ত (Arena chat, ২০২৬-১০-১২):** (১) ফটোর সাইজ cap **1 MB**-ই থাকবে (PR #62-এর নীতি), বাকি privacy/signed-URL/outbox PR #61 থেকে; (২) ল্যান্ডিং পদ্ধতি agent-এর বিবেচনায়; (৩) বাকি operational gate ইস্যুতে ট্র্যাক করে মার্জ।
+- **সমন্বয়:** `PHOTO_MAX_BYTES` 2 MiB → **1 MB** (+ help text/migration state/tests/.env.example); main-এর `StudentForm.clean_photo` বাদ (validation এখন model validator-এ, ফলে admin-ও একই নীতি পায়); list/detail/ID card PR #61-এর `_student_photo.html` partial ব্যবহার করে (opaque key + fallback); **`DELETE_MEDIA_ON_PURGE` এখন outbox signal মানে** — `_purge_archived_student`-এর দ্বিতীয় direct delete সরানো হয়েছে, না হলে flag=False নীরবে অকার্যকর হতো; `test_student_photos.py` নতুন API/টেমপ্লেট class অনুযায়ী আপডেট + purge টেস্টে `captureOnCommitCallbacks`; migration leaf conflict-এর জন্য `0049_merge_20261012_0613`।
+- **প্রমাণ (এই checkout, Python 3.11.2 / Django 5.2.18 fallback — `requirements.txt` Django 6.1 py3.12 চায়):** পূর্ণ **৯০৭ Django test OK** (৮৭৩ + ৩৪, 0 fail/error), **২৯/২৯ Node pass**, `check` 0 issue, `makemigrations --check` clean, `migrate` → 0047×2 + 0048 + 0049 merge OK, `retry_student_photo_deletions --limit 100` → `processed=0, deleted=0, retrying=0` rc 0। Private S3 `check --deploy` rc 0 (E012 নেই), public media config-এ `students.E012` rc 1।
+- **অবশিষ্ট gate (ইস্যুতে ট্র্যাক):** `retry_student_photo_deletions`-এর periodic scheduler এখনো configure/verify হয়নি (`render.cron.yaml`-এ শুধু backup cron আছে); deployed env/bucket policy, live S3 এবং browser/print/PDF যাচাই হয়নি।
+- **Next:** OF-07 (প্রম্পট ১৫/২৮) — ✅ সম্পন্ন (পরের সেশনে দেখুন)।
+
+---
+
+## সেশন OF-07 — ২০২৬-১০-১৩ · প্রম্পট ১৫/২৮ · Admission/import integrity (audit + fix)
+
+- **Branch:** `arena/dc9b8fe5-school-management-system` (এই session-এর branch; prompt-এর `arena/01a0b7f7-…` stale)।
+- **Owner-সিদ্ধান্ত (Arena chat, ২০২৬-১০-১৩):** capacity race = **block** · duplicate roll/student-id = **reject** · fee mismatch = **block** (warn নয়)।
+- **পরিবর্তন:** fee mismatch → block (`accounts_approve_payment`); capacity row lock (`SectionCapacity.lock_for_update`) approval ও import-এ; office transition-এ row lock (lost update বন্ধ); import re-run ও capacity `09`/`9` (zero-padding tolerant, `class_label_spellings`); duplicate roll reject (import + Add/Edit Student form, `Student.roll_taken`)।
+- **প্রমাণ:** `students` suite **942 Django OK** (নতুন `test_admission_import_integrity.py` ৩৮ সহ); Node **29/29**; `check` 0; `makemigrations --check` clean। নতুন test আসল কোডে ৭টি fail — bug ধরে।
+- **যাচাই হয়নি:** আসল parallel race (শুধু SQLite); Postgres CI-র মাধ্যমে; Add Student form-এর capacity lock; import all-or-nothing (owner-সিদ্ধান্ত)। রিপোর্ট `docs/prompts/reports/OF-07.md`।
+- **Next:** প্রম্পট ১৬/২৮ (OF-08) — owner ক্রমিকভাবে দেবেন।
+
+---
+
+## সেশন OF-06 — ২০২৬-১০-১২ · প্রম্পট ১৪/২৮ · Public success page ও progress (status check)
+
+- **Branch/base:** `arena/54f6db0e-school-management-system` / `7aa5d51` (= `origin/main`, PR #62 MERGED)। Prompt-এ লেখা `arena/01a0b7f7-…` stale — branch বদলানো হয়নি। Commit `dbd5a39` + `aff2228` + `adac750` + docs `0811980` → **PR #63 (OPEN)** — CI: sqlite ✅ 8m17s · postgres:16 ✅ 5m25s · Node ✅ 9s (run 38206355900)।
+- **Owner সিদ্ধান্ত (Arena chat, ২০২৬-১০-১২ — prompt 14 §৮):** যাচাই factor = **Application No. + guardian contact-এর শেষ ৪ ডিজিট**; REJECTED = **সাধারণ বার্তা + অফিসে যোগাযোগ (কারণ নয়)**; lookback = **সব session-এর application**।
+- **বদল:** (১) success page = ছাপার-উপযোগী **slip** — application number, জমার তারিখ, class/section/group/session, masked contact (`*******5678`), “What happens next”, `@media print`, Print slip, Copy details + WhatsApp share (`wa.me`), আর পেজ থেকে **internal `dashboard` link বাদ**; (২) **নতুন public route `admission/status/`** (`public_admission_status`) + `PublicAdmissionStatusForm` + নতুন template — এক query-তে number+tail, ৪-ধাপ timeline (done/current/todo, তারিখসহ), masked name (`R*** U***`), ENROLLED-এ Student ID, REJECTED-এ closed timeline; (৩) তিন public template-এ `noindex, nofollow` + public form-এ “Already applied?” link। **নতুন model/migration/JS dependency নেই** (leaf 0047 অপরিবর্তিত)।
+- **Privacy/throttle (টেস্টে pinned):** সব mismatch-এ একই generic বার্তা ও একই byte-body (শুধু visitor-এর নিজের typed number echo করা input value normalize করে) ⇒ enumeration oracle নয়; cross-applicant isolation দুই দিকেই; remarks/actor/amount/`next_step` কোনো public template-এ নেই; throttle = P1-9 helper reuse — **৩০ lookup/১০মিনিট per address + ৫ ভুল/১৫মিনিট per (address, application number)**, XFF-এর বাঁ দিক spoof করে bypass হয় না, `RATE_LIMIT_CACHE=db`-তেও চলে; email/SMS/payment সক্রিয় নয়।
+- **প্রমাণ (এই checkout):** নতুন `students/test_public_admission_status.py` **৩৫**; regression ৬ মডিউলে **১১৭**; পূর্ণ **৮৭৩ Django + ২৯ Node pass** (৮৩৮ + ৩৫), `check` 0, `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-06.md`।
+- **লোকাল HTTP round-trip (synthetic ডেটা, gitignored dev sqlite):** `runserver`-এ form→slip→status round-trip ও REJECTED/no-leak curl দিয়ে যাচাই (rendered HTML); আসল ব্রাউজারে print preview/clipboard/WhatsApp deep-link এখনো যাচাই হয়নি; live Render (নতুন public route, absolute URL); postgres:16 matrix (শুধু CI) — এবং `Institution`-এ contact phone field না থাকায় “অফিসে যোগাযোগ” বার্তায় স্কুলের নম্বর নেই। পুরোনো ভাঙা/dirty contact ডেটার applicant status দেখতে পাবেন না (generic message-ই)।
+- **Next:** **প্রম্পট ১৫/২৮ (OF-07 — Admission/import integrity)** — baseline **Unverified** (audit নিজে চালানোর সেশন) + §৭-এর owner-নীতি ৩টি আগে দরকার; owner না বলা পর্যন্ত শুরু নয়।
+
+---
+
+## সেশন OF-05 — ২০২৬-১০-০৭ · প্রম্পট ১৩/২৮ · Student photos — durable outbox hardening, merge gate open
+
+- **Branch/base:** `arena/1805a6ab-school-management-system` / `e7904ba` (= `origin/main`). Production DB, Render, credentials, live S3 ও real student data ছোঁয়া হয়নি।
+- **Owner policy (2026-10-07):** Student photo private থাকবে; admission photo নেই; ২ MiB max, 300×300–4096×4096 inclusive; photo archive/TC-তেও রাখা, per-student + institution-scoped bulk clear, hard-purge-এ file delete।
+- **Implementation:** model validator + UUID storage key; replace/clear/purge transaction-এ `StudentPhotoDeletionJob` outbox; commit-এর পর fast-path delete, failure/crash-এ durable retry; archive/TC retain; active/archived bulk cleanup; institution scope/permission/audit; list/detail/ID/result cards-এ photo/fallback; N+1 test। `students.E012` deploy guard public URL/ACL/signing/shared-cache ও production filesystem media আটকায়; default S3 `private, no-store`। Migrations `0047` (state-only) + `0048` (outbox table/index); data/media backfill নেই। Worker: `retry_student_photo_deletions --limit 100`, exponential backoff.
+- **Evidence:** focused **১২১** (upload ১২ + photo workflow ২৬ + storage/privacy ৩৯ + isolation ৪৪); full **৮৬০ Django + ২৯ Node pass**; `check` ০; `makemigrations --check` clean; `0047` SQL no-op, `0048` table/index only। Synthetic production-shaped private S3 `check --deploy` has no E012; public settings fail with E012. Local Python 3.11 / Django 5.2.17 fallback, SQLite + `/tmp` media; no real bucket touched।
+- **Unverified / merge gate:** guard commit `4ff84e2`-এর CI ৩/৩ green, run `37593462790` (SQLite 8m10s, PostgreSQL 6m59s, Node 7s)। Browser/print/PDF, deployed env/bucket policy ও live S3 unverified। Owner private policy নিশ্চিত করেছেন; actual deployment config এখনও পরীক্ষা হয়নি। Durable retry command আছে, periodic scheduler configure/verify হয়নি। **Scheduler path এবং private-config verification না হওয়া পর্যন্ত merge নয়।**
+- **Commit/PR:** Outbox implementation `9e6372a`, review-gate docs `c6df95d`, and privacy guard `4ff84e2` are pushed on the session branch. Draft PR [#61](https://github.com/riazdzt2025-byte/school-management-system/pull/61), latest CI ৩/৩ green (run `37593462790`), merge নয়. Details `docs/prompts/reports/OF-05.md`.
+- **Next:** OF-05 review/CI gate; তারপর owner-এর ক্রমে prompt 14 (OF-06)।
+
+---
+
+## সেশন OF-04 (follow-up) — ২০২৬-১০-০৬ · প্রম্পট ১২/২৮ · capacity vs enrolled + trend + Accounts slice
+
+- **Branch/base:** `arena/01a10b01-school-management-system` / `53c86d6` (= `origin/main`, PR #57/#58 MERGED); feature commit `bbcaa3a`, docs `9400012` → **PR #59 MERGED (`f5561f5`, 2026-10-06; CI ৩/৩ সবুজ)**। Prompt-এর পুরোনো branch নয়।
+- **Owner সিদ্ধান্ত (Arena chat, ২০২৬-১০-০৬ — prompt 12 §৮):** তিনটি report-ই (capacity vs enrolled · payment-vs-enrolled trend · date-wise trend); Accounts = **payment stage-সীমিত view**; chart = **table + CSS bar** (নতুন JS dependency নয়)।
+- **বদল (query-only; কোনো model/migration/URL/JS নেই):** একই পেজ/export-এ `_capacity_vs_enrolled` (limit বনাম `status='ACTIVE'` student; `No limit`/`Over by N`; capacity=0 → `—`; দুই aggregate query) + `_trend_rows` (`submitted_at` / `account_action_at` series, `?bucket=day|week|month`, timezone-aware `TruncDate`, `Undated` সারি; পেজ ২০০ bucket-এ bounded, export full) + `_funnel_stage_keys` (Accounts slice — পেজ/export/trend একই সীমা)। Excel-এ নতুন `Capacity vs Enrolled` ও `Trend` sheet। Guard/route/scope/date-filter অপরিবর্তিত।
+- **প্রমাণ (এই checkout):** `students/test_admission_capacity_trend.py` **২৬ নতুন টেস্ট**; pin-সেশনের `test_admission_funnel_report.py` ২৪টিই pass (দুটি pin ইচ্ছাকৃতভাবে হালনাগাদ — Accounts slice + export sheetnames); OF-02 `test_list_pagination` ৪৪ pass; **৮২৬ Django + ২৯ Node pass**; `check` 0; `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-04.md` (follow-up §)।
+- **যাচাই হয়নি:** আসল ব্রাউজারে হাতে দেখা; CI (sqlite/postgres:16/Node) — PR-এ যাচাই হবে; live Render; live `TIME_ZONE` (repo default `UTC`; deploy `Asia/Dhaka` দিলে bucket Dhaka-দিনে — টেস্টে `timezone.override` দিয়ে প্রমাণিত)।
+- **Next:** প্রম্পট ১৩/২৮ (OF-05 — Student photos) — baseline **Partial**; §৮-এর ৩ owner-সিদ্ধান্ত (admission ফর্মে ছবি, সর্বোচ্চ আকার, purge-এ ছবি মোছা) আগে দরকার, তাই নিজে থেকে শুরু নয়।
+
+## সেশন OF-04 (follow-up) — ২০২৬-১০-০৬ · প্রম্পট ১২/২৮ · capacity vs enrolled + trend + Accounts slice
+
+- **Branch/base:** `arena/01a10b01-school-management-system` / `53c86d6` (= `origin/main`, PR #57/#58 MERGED)। Prompt-এর পুরোনো branch নয়।
+- **Owner সিদ্ধান্ত (Arena chat, ২০২৬-১০-০৬ — prompt 12 §৮):** তিনটি report-ই (capacity vs enrolled · payment-vs-enrolled trend · date-wise trend); Accounts = **payment stage-সীমিত view**; chart = **table + CSS bar** (নতুন JS dependency নয়)।
+- **বদল (query-only; কোনো model/migration/URL/JS নেই):** একই পেজ/export-এ `_capacity_vs_enrolled` (limit বনাম `status='ACTIVE'` student; `No limit`/`Over by N`; capacity=0 → `—`; দুই aggregate query) + `_trend_rows` (`submitted_at` / `account_action_at` series, `?bucket=day|week|month`, timezone-aware `TruncDate`, `Undated` সারি; পেজ ২০০ bucket-এ bounded, export full) + `_funnel_stage_keys` (Accounts slice — পেজ/export/trend একই সীমা)। Excel-এ নতুন `Capacity vs Enrolled` ও `Trend` sheet। Guard/route/scope/date-filter অপরিবর্তিত।
+- **প্রমাণ (এই checkout):** `students/test_admission_capacity_trend.py` **২৬ নতুন টেস্ট**; pin-সেশনের `test_admission_funnel_report.py` ২৪টিই pass (দুটি pin ইচ্ছাকৃতভাবে হালনাগাদ — Accounts slice + export sheetnames); OF-02 `test_list_pagination` ৪৪ pass; **৮২৬ Django + ২৯ Node pass**; `check` 0; `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-04.md` (follow-up §)।
+- **যাচাই হয়নি:** আসল ব্রাউজারে হাতে দেখা; CI (sqlite/postgres:16/Node) — PR-এ যাচাই হবে; live Render; live `TIME_ZONE` (repo default `UTC`; deploy `Asia/Dhaka` দিলে bucket Dhaka-দিনে — টেস্টে `timezone.override` দিয়ে প্রমাণিত)।
+- **Next:** প্রম্পট ১৩/২৮ (OF-05 — Student photos) — baseline **Partial**; §৮-এর ৩ owner-সিদ্ধান্ত (admission ফর্মে ছবি, সর্বোচ্চ আকার, purge-এ ছবি মোছা) আগে দরকার, তাই নিজে থেকে শুরু নয়।
+
+## সেশন OF-04 — ২০২৬-১০-০৫ · প্রম্পট ১২/২৮ · Admission reports (regression pin & boundary expansion)
+
+- **Branch/base:** `arena/01a10b01-school-management-system` / `8b8be9e` (= `origin/main`, PR #56 MERGED)। Prompt-এর পুরোনো branch নয়।
+- **ধরন:** regression-only pin ও boundary tests সম্প্রসারণ — baseline verdict অনুযায়ী OF-04 ইতিমধ্যে Complete; ৪টি নতুন regression test যোগ করা হয়েছে। কোনো production model/migration/code পরিবর্তন হয়নি।
+- **Merge:** PR #57 owner-এর নির্দেশে MERGED (`9acbae4`, 2026-10-05) — CI sqlite ✅ / postgres ✅ / Node ✅।
+- **যাচাই:** Funnel math, date-range inclusive boundaries (same-day, inverted, future), empty scope / 0-division safety, institution isolation & query param tamper rejection, Office/Accounts department guards, Excel export sheet breakdown ও `class_section_summary` cross-link। Focused **24 pass** (২০ baseline + ৪ নতুন), **৮০০ Django + ২৯ Node pass**, `check` 0, migrations clean। রিপোর্ট `docs/prompts/reports/OF-04.md`।
+- **Bengali TL;DR:** baseline Complete থাকা Admission Funnel ও Reports পুঙ্খানুপুঙ্খ টেস্ট চালিয়ে এবং নতুন boundary regression test যোগ করে পিন করা হলো। ৮০০ Django এবং ২৯ Node টেস্ট সব pass।
+- **Next:** প্রম্পট ১৩/২৮ (OF-05 — Student photos) অপেক্ষমাণ; owner না বলা পর্যন্ত শুরু নয়।
+
+## সেশন OF-03 — ২০২৬-১০-০৫ · প্রম্পট ১১/২৮ · Subject Assignment Office subtab (regression pin)
+
+- **Branch/base:** `arena/01a10aaa-school-management-system` / `82ce15a` (= `origin/main`, PR #54 MERGED)। Prompt-এর পুরোনো branch নয়।
+- **ধরন:** regression-only — baseline verdict অনুযায়ী OF-03 ইতিমধ্যে Complete; কোনো source/migration/JS পরিবর্তন হয়নি।
+- **Merge:** PR #55 owner-এর নির্দেশে MERGED (`cf1986b`, 2026-10-05) — main-এ report + ledger আছে।
+- **যাচাই:** Office flyout nested link (`base.html:201-202`) + সব server-side gate; inline new-subject validation; isolation ৯ টেস্ট; dead link শূন্য; Mark Evaluation↔Subject Assignments cross-link উভয় দিকে। Focused **28+17+38 pass**, **796 Django + 29 Node pass**, `check` 0, migrations clean। রিপোর্ট `docs/prompts/reports/OF-03.md`।
+- **Bengali TL;DR:** প্রথম full-suite run-এ ২টি env-ঘটিত fail (আমার venv-এ §৫-এর `django-storages`/`boto3` ইনস্টল বাদ পড়ায়) — প্যাকেজ পুরণের পর একই checkout-এ **796/796 OK**। §৮-এর ২ owner-প্রশ্ন (subtab রূপ, subject-master permission) ব্লকিং নয় — বর্তমান অবস্থাই সুপারিশকৃত।
+- **Next:** প্রম্পট ১২/২৮ (OF-04 — Admission reports, baseline Complete + optional `ADM-REPORTS-OPT-1`) অপেক্ষমাণ; owner না বলা পর্যন্ত শুরু নয়।
+
+## সেশন OF-02 — ২০২৬-১০-০১ · প্রম্পট ১০/২৮ · bounded/selectable pagination
+
+- **Branch/base:** `arena/01a0f6ce-school-management-system` / `a128376` (owner-এর নির্দেশে PR #53 MERGED)। Prompt-এর পুরোনো branch নয়।
+- **Owner সিদ্ধান্ত:** default/max ১০০; user ১–১০০ কমাতে/বাড়াতে পারবেন; ছোট reference list-এও একই। Dropdown/input workflow পূর্ণ থাকবে।
+- **বদল:** ২৮ frontend list/report/history surface + students-app admin; shared controls/size form/query preservation/unique ties। Admin `?all` cap bypass বন্ধ; result/attendance/funnel/seat/class totals ও full-cohort confirm অক্ষুণ্ণ; full exports + Print all। FK joins + query-count test।
+- **প্রমাণ:** focused **90 pass** (44 নতুন + 46 regression), Node **29**, `check` 0, migrations clean; **796 Django + 29 Node local pass**, CI ✅ sqlite / postgres:16 / Node (PR #54, `c72f814`, run `36848644880`; push run `36848641541`-ও ৬/৬ SUCCESS)। Code `71b4423`। Inventory/commands/limits: `docs/prompts/reports/OF-02.md`।
+- **বাকি:** PR #54 OPEN (CI সবুজ); owner review/merge অনুমোদন; actual browser/PDF/live Unverified। UI cap calculation/export/print server cost দূর করার দাবি নয়। No model/migration/production/SSC restoration।
+- **Next:** প্রম্পট ১১/২৮ (OF-03 — Subject Assignment Office subtab) অপেক্ষমাণ; owner না বলা পর্যন্ত শুরু নয়।
+
+## সেশন OF-01 — ২০২৬-১০-০১ · প্রম্পট ০৯/২৮ · একটি Guardian Contact
+
+- **Owner সিদ্ধান্ত:** নরম normalize (স্পেস/ড্যাশ/`+880`/বাংলা অঙ্ক) + ফলাফল ঠিক ১১-ডিজিট BD mobile `01[3-9]XXXXXXXX`; ভাইবোনের এক নম্বর অনুমোদিত (report-এ দেখায়, block নয়)।
+- **বদল:** একটি normalise/validate ফাংশন student ফর্ম, দুই admission ফর্ম ও Excel import-এ; import-এ "Row N: …" error; `contact_conflict_report` এখন SHARED/FORMAT/ARCHIVE; help-text। migration/model বদল নেই।
+- **প্রমাণ:** পূর্ণ suite **752 Django** + **29 Node** pass; `test_guardian_contact` 52; `check` 0; `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-01.md` (§৩-এ "কোথায় কোথায় যাচাই")। PR #53।
+- **Merge:** PR #53 MERGED 2026-10-01 (`a128376`), owner নির্দেশে। **বাকি:** প্রোডাকশনে `contact_conflict_report`-এর `FORMAT` লাইন দেখা (পুরোনো ঢিলা নম্বর পরের edit-এ আটকাবে); আসল ব্রাউজারে হাতে পরীক্ষা।
+- **Next:** প্রম্পট ১০/২৮ (OF-02 — pagination) — owner ক্রমিকভাবে দেবেন; নিজে থেকে শুরু নয়।
+
+## সেশন EX-07 — ২০২৬-১০-০১ · প্রম্পট ০৮/২৮ · Ctrl/Cmd+Click correction
+
+- **Owner scope:** Result Sheet + Full Rank List; mobile/touch বন্ধ; permission শুধু `students.add_exammark`।
+- **বদল:** permission বা published না থাকলে correction-সংক্রান্ত কিছুই render হয় না (আগে `data-subject-pk`/URL/JS যেত); JS শুধু primary-button Ctrl/Cmd mouse click নেয় (Shift/Alt/middle/right/keyboard/touch নয়, row-এর link native); দৃশ্যমান **Correct marks (choose subject)** fallback; published lock/audit অপরিবর্তিত; cross-institution 404।
+- **প্রমাণ:** পূর্ণ suite **739 Django** + **29 Node** pass; shortcut ফোকাসড 17 + 23; `check` 0; `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/EX-07.md`, গাইড `RESULT_PUBLISHING_GUIDE.md` §7।
+- **বাকি:** আসল ব্রাউজার/ডিভাইসে হাতে পরীক্ষা; PR CI ও owner merge অনুমোদন।
+- **Next:** প্রম্পট ০৯/২৮ (OF-01) — owner ক্রমিকভাবে দেবেন; নিজে থেকে শুরু নয়।
+
+## সেশন EX-06 — ২০২৬-০৯-২৩ · নীতি-সংশোধন · চতুর্থ/অতিরিক্ত বিষয় GPA
+
+- **Owner correction:** আগের 4.90–4.99→5.00 ধারণাটি বাতিল। শুধুমাত্র selected `Subject.category='FOURTH'` (যেমন Agriculture 4th Subject) bonus পায়; ordinary OPTIONAL মূল বিষয়ই থাকে। এক ছাত্রের সর্বোচ্চ একটি fourth subject; একাধিক হলে publish বন্ধ হয়।
+- **Rule:** `calculate_final_gpa()` = `min(5.00, (main-points + max(0, fourth-point−2.00)) / main-subject-count)`, followed by `ROUND_HALF_UP` two-decimal display. Fourth F/AB gives 0 bonus but main result Fail করে না; main F/AB still Fail/0.00. Fourth marks/full marks **displayed total ও percentage-এ যুক্ত** হয়, কিন্তু GPA denominator/pass-fail-এ নয়; cap-hit 5.00 overall grade A+। Merit = grade → uncapped formula GPA → total (fourthসহ) → ছোট numeric roll; position unique।
+- **Regression coverage:** `students/test_fourth_subject_gpa.py` formula/cap, old no-fourth 4.90, fourth F/main F difference, total/percentage inclusion, grade→raw-GPA→total→roll merit tie-break, all existing result/view/print/analysis output and publish-block configuration test cover করে। কোনো result-specific GPA export route নেই; browser print একই result context নেয়。
+- **Proof / PR:** 2026-09-24 scope update: focused fourth-subject 6/6 + legacy GPA 2/2, register/analysis 53/53, full **727 Django** + **14 Node** pass; `check` 0; `makemigrations --check` clean. PR [#47](https://github.com/riazdzt2025-byte/school-management-system/pull/47) updated-policy CI passed: sqlite ✅, postgres:16 ✅, Node ✅ (`cbc7095`, run 35952497142). Policy/examples/limits are in `RESULT_PUBLISHING_GUIDE.md` §2; status in `PROJECT_STATUS.md` E7 and `TASK_BACKLOG.md` D-GPA. No migration, production database, live Render, credential or SSC feature was touched.
+- **Next:** prompt 08/28 (EX-07 — Ctrl/Cmd+Click correction) remains `⏳ অপেক্ষমাণ`; owner must provide that prompt's page/mobile/permission scope before code.
+
 ## সেশন EX-05 — ২০২৬-০৯-২৩ · প্রম্পট ০৬/২৮ · Missing marks → Absent/Fail
 
 - **নীতি অপরিবর্তিত (D-MIS, ২০২৬-০৯-১৭):** blank assigned subject = **F + 0 counted** (`EXAM_ABSENT_SUBJECT_FAILS=True` default); all-blank = `No Marks` (unranked); entered 0 = counted Fail; optional/religion `not_applicable` = blank, never counted; TC/DISCONTINUED register-এ নেই।
@@ -55,7 +209,9 @@
 **Docs updated this session:** `docs/prompts/reports/EX-02.md` (নতুন — ordering matrix সহ), `docs/prompts/PROGRESS.md` (সারি ০৩ + header),
 `docs/PROJECT_STATUS.md` (E3 হালনাগাদ), `docs/TASK_BACKLOG.md` (বাকি-তালিকা হালনাগাদ), `docs/HANDOFF.md` (এই নোট)।
 
-**Owner করণীয়:** PR #41 ✅ MERGED — `exam_result_summary`/`attendance_summary` ক্রম আগের মতোই; ভিন্ন পছন্দ হলে জানালে এক-লাইনের বদল।
+**Owner করণীয়:** PR #41 ✅ MERGED — `attendance_summary` ক্রম আগের মতোই; `exam_result_summary` নিচের ২০২৬-১১-০৩ আপডেটে বদলেছে।
+
+**২০২৬-১১-০৩ আপডেট (owner-সিদ্ধান্ত — Published Result print):** `exam_result_summary` ("Published Result") এখন **numeric roll order** (None শেষে, tie name→pk) — স্ক্রিন, `?print=1` Print all/Save PDF ও browser print, সবখানে একই ক্রম; merit position আর সারি ক্রম ঠিক করে না। **Position কলাম প্রথম থেকে সরে শেষ কলামে** (Status-এর পরে) গেছে, তবে position-এর গণনা অপরিবর্তিত ও মুদ্রিত। Fail/No Marks ছাত্ররাও নিজের roll slot-এ থাকে, আর তলায় ঠেলে দেওয়া হয় না। বদল: `views.result_summary` + `exam_result_summary.html`; নতুন pin: `students/test_register_roll_order.py`; EX-02 matrix-এর ওই একটি সারি বাতিল (`docs/prompts/reports/EX-02.md` শীর্ষ)। `full_rank_list` / `top_10` / merit slides merit ক্রমেই আছে।
 **পরের প্রম্পট:** ০৪/২৮ (EX-03 — Group-based Mark Evaluation) — `SubjectMarkSetting`-এ group field নেই ⇒ নতুন field + append-only migration + UI + test; **owner-সিদ্ধান্ত ৩টি আগে দরকার** (prompt-04 §৮)। কেউ নিজে থেকে শুরু করবে না; owner ক্রমিকভাবে দেবেন।
 
 ---
@@ -170,7 +326,7 @@ Verification → নিরাপত্তা & backup (P0-7/P0-8-live/P1-11-live
 
 **আংশিক (Partial):** Marks import redirect (stay-on-page নয়), Admission Share+Reports (share done, advanced funnel নেই), Photo continuity (application photo নেই), Salary closed-period (unique done, lock নেই), Attendance calendar (list/summary done, grid নেই), Published lock (view guard done, marks entry still allowed after publish)।
 
-**অনুপস্থিত (Missing):** Student pagination 100 (no Paginator), Result Ctrl+Click shortcut, GPA 4.90→5.00 boost (no rule, decision pending), Teacher-class-subject assignment, Leave workflow, Higher Math-এর বাইরে বিষয় নয়, i18n (P2-3), legacy `StudentSubject` drop (P2-7) — large/destructive deferrals।
+**অনুপস্থিত (Missing, 2026-09-17-এর historical snapshot):** Student pagination 100 (no Paginator), Result Ctrl+Click shortcut, GPA 4.90→5.00 boost (তখন no rule, decision pending; **পরে বাতিল ও fourth-subject policy দিয়ে superseded**), Teacher-class-subject assignment, Leave workflow, Higher Math-এর বাইরে বিষয় নয়, i18n (P2-3), legacy `StudentSubject` drop (P2-7) — large/destructive deferrals।
 
 **যাচাই করা যায়নি (Unverified, live access ছাড়া):** Production DB engine + persistent disk, Render env (DEBUG/SECRET_KEY/ALLOWED_HOSTS/CSRF/TRUST_FORWARDED), `EXAM_ABSENT_SUBJECT_FAILS` live match, group permissions live, backup scheduling/off-box/health alert, voucher/promotion live data, media bucket durability, migration 0035 already ran, data volume — সব `docs/PRODUCTION_CHECKLIST.md` runbook অনুযায়ী owner-only (P0-7/P0-8-live/P1-11-live)। Production data health/backup/migration status sandbox থেকে নিশ্চিত বলা হয়নি।
 
@@ -187,14 +343,14 @@ Verification → নিরাপত্তা & backup (P0-7/P0-8-live/P1-11-live
 ### আমার কাছ থেকে প্রয়োজনীয় সিদ্ধান্ত (owner decisions)
 | ID | Question | Options |
 |---|---|---|
-| D-GPA | Final GPA 4.90–5.00 কি 5.00 করবেন? | (a) রাখুন accurate avg (4.90=4.90) — recommended, or (b) 4.90–4.99→5.00 (+A+) |
+| D-GPA | Historical question (now settled) | 2026-09-23-এ automatic 4.90–4.99→5.00 বাতিল; current answer = selected FOURTH-only bonus formula (top EX-06 handoff দেখুন) |
 | D-MIS | Missing/null marks: blank = F (current, `True`) vs blank = exempt (`False`) বা per-subject exempt? | (a) keep `True` (did not sit = Fail, current), or (b) global `False`, or (c) per-subject exempt flag — specify |
 | D-HOL | Attendance Holiday: holiday কি absent percentage থেকে বাদ যাবে auto? | Confirm |
 | P0-7 choose | `EXAM_ABSENT_SUBJECT_FAILS` live value, how many institutions live, `DATABASE_URL` engine? | Confirm 3 values |
-| P0-8/P1-11 | Backup storage: R2/S3 bucket vs persistent-disk worker? Photo bucket public vs private (signed URLs)? | (a) R2 private (recommended) vs (b) public CDN |
+| P0-8/P1-11 | Backup storage: R2/S3 bucket vs persistent-disk worker? Photo access? | Backup storage remains owner choice; student photos **private** (owner confirmed 2026-10-07); verify deployed environment and bucket policy, do not use public CDN |
 | H2/H4 | Teacher assignment: one teacher many subjects? Salary closed-period: who locks (Accounts/Admin) per-institution? | Confirm |
 | E1/E8 | Import stay-on-page vs exam_list, Ctrl+Click new tab vs same tab? | Confirm (recommend stay-on-page + new tab) |
-| O4/O5 | Reports priority (funnel first?), Application photo required or optional? | Confirm |
+| O4/O5 | Reports priority; admission/student photo policy? | Admission forms: no photos; student photos private (owner-confirmed 2026-10-07). O4 priority remains separate; do not reopen resolved photo policy. |
 
 **Missing marks ও GPA — দুটোই আগে এই current vs proposed লিখে decision নেওয়া হয়েছে, পরে দুটো আলাদা PR হবে (নির্দেশ অনুযায়ী)। Accounts full fee engine / guardian portal / online payment এখন implementation scope-এর বাইরে — future backlog-এ রাখা হয়েছে।**
 

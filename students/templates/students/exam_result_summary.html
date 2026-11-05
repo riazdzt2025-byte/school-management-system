@@ -1,40 +1,58 @@
 {% extends 'students/base.html' %}
+{% load student_filters %}
 
 {% block title %}Published Result - {{ block.super }}{% endblock %}
+{% block print_subtitle %}Published Result - {{ exam.name }}{% endblock %}
 
 {% block extra_style %}
+    /* Portrait result sheet shared with the Top Ten and Published Results
+       printouts: letterhead, class info box, bordered register, signatures. */
+    {% include 'students/_result_sheet_styles.html' %}
+
     .result-summary-page .summary-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    @page { size: A4 landscape; margin: 10mm; }
+
+    /* Screen table (paginated dashboard view) still prints as a ruled register
+       if the user hits Ctrl+P instead of the Print all button. */
     @media print {
-        html, body { background: #fff !important; color: #000 !important; }
-        .result-summary-page { color: #000 !important; }
         .result-summary-page .page-header { background: #fff !important; border-color: #000 !important; }
         .result-summary-page .page-header h1,
         .result-summary-page .page-header .subtitle { color: #000 !important; }
         .result-summary-page .table-card { border: 1px solid #000 !important; border-radius: 0; background: #fff !important; box-shadow: none !important; }
         .result-summary-page .table-responsive { overflow: visible; }
         .result-summary-page table { border-collapse: collapse; }
+        /* 8.5pt ≈ 11px: a comfortable reading size on paper (and in a saved PDF). */
         .result-summary-page th,
-        .result-summary-page td { border: 1px solid #000 !important; color: #000 !important; background: #fff !important; padding: 6px 5px; font-size: 10px; }
+        .result-summary-page td { border: 1px solid #000 !important; color: #000 !important; background: #fff !important; padding: 4px 5px; font-size: 8.5pt; }
         .result-summary-page .badge { color: #000 !important; background: #fff !important; border: 1px solid #000 !important; }
         .result-summary-page thead { display: table-header-group; }
+        .result-summary-page tr { break-inside: avoid; page-break-inside: avoid; }
     }
 {% endblock %}
 
 {% block content %}
-<div class="result-summary-page">
-    <div class="page-header">
-        <div>
-            <h1>Published Result</h1>
-            <div class="subtitle">{{ exam.name }} - Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} - {{ result_group_label }}{% endif %} - Session {{ exam.session }}</div>
+<div class="pr-page result-summary-page">
+    <div class="pr-toolbar d-print-none">
+        <div class="toolbar-title">
+            Published Result &middot; {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} &middot; {{ result_group_label }}{% endif %}
+        </div>
+        <div class="toolbar-actions">
+            {% include 'students/_download_menu.html' with kind='published' %}
+            {% include 'students/_print_all.html' %}
+            <a href="{% url 'published_results' exam.pk %}{{ group_querystring }}" class="btn btn-outline-danger btn-sm">Published Result Sheet</a>
+            <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
+            <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm">Full Rank List</a>
+            <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm">Top 10</a>
+            {% if can_result_analysis %}<a href="{% url 'result_analysis_result_cards' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-card-list me-1"></i> Result Cards (Class)</a>{% endif %}
+            <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back to Exams</a>
         </div>
     </div>
 
     {% if show_group_picker %}
-    <form method="get" class="table-card p-3 mb-3 d-print-none d-flex align-items-end gap-2 flex-wrap">
+    <form method="get" class="pr-group-picker d-print-none mb-3 d-flex align-items-end gap-2 flex-wrap">
+        {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
         <div>
-            <label class="form-label fw-semibold mb-1">Group</label>
-            <select name="group" class="form-select form-select-sm" onchange="this.form.submit()">
+            <label class="form-label fw-semibold mb-1" for="summary-group-select">Group</label>
+            <select name="group" id="summary-group-select" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="">All Groups</option>
                 {% for code, label in group_choices %}
                 <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
@@ -46,12 +64,86 @@
     </form>
     {% endif %}
 
-    <div class="mb-3 summary-actions d-print-none">
-        <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Full Mark Sheet</a>
-        <a href="{% url 'full_rank_list' exam.pk %}{{ group_querystring }}" class="btn btn-outline-dark btn-sm">Full Rank List</a>
-        <a href="{% url 'top_10' exam.pk %}{{ group_querystring }}" class="btn btn-outline-warning btn-sm">Top 10</a>
-        {% if can_result_analysis %}<a href="{% url 'result_analysis_result_cards' %}" class="btn btn-outline-navy btn-sm analysis-jump"><i class="bi bi-card-list me-1"></i> Result Cards (Class)</a>{% endif %}
-        <a href="{% url 'exam_list' %}" class="btn btn-outline-navy btn-sm">Back to Exams</a>
+    {% if print_sheets %}
+    {% comment %}
+    Print all / Save PDF: the register is pre-chunked into portrait A4 sheets so
+    the paper breaks where the sheet does and every page is numbered.
+    {% endcomment %}
+    {% for sheet in print_sheets %}
+    <section class="pr-sheet" aria-label="Published result page {{ sheet.page_no }} of {{ sheet.total_pages }}">
+        {% include 'students/_result_sheet_letterhead.html' %}
+
+        <div class="pr-table-wrap">
+            <table class="pr-table">
+                <colgroup>
+                    <col style="width: 8%"><col style="width: 14%"><col style="width: 28%">
+                    <col style="width: 9%"><col style="width: 11%"><col style="width: 7%">
+                    <col style="width: 8%"><col style="width: 9%"><col style="width: 6%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Roll No.</th><th>ID No.</th><th>Student Name</th>
+                        <th>Total</th><th>Percentage</th><th>GP</th><th>Grade</th>
+                        <th>Status</th><th>Place</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in sheet.rows %}
+                    <tr>
+                        <td>{{ r.student.roll_no|default:'-' }}</td>
+                        <td>{{ r.student.student_id }}</td>
+                        <td class="pr-name">{{ r.student.name }}</td>
+                        <td>{% if r.has_marks %}{{ r.total_obtained|floatformat:"-2" }}{% else %}-{% endif %}</td>
+                        <td>{% if r.status == 'Pass' %}{{ r.percentage }}%{% else %}&mdash;{% endif %}</td>
+                        <td>{{ r.gpa|floatformat:2|default:"0.00" }}</td>
+                        <td class="pr-grade">{{ r.grade }}</td>
+                        <td>{{ r.status }}</td>
+                        <td>{{ r.position|ordinal }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="9" style="text-align: center; padding: 10mm 0;">No students found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if sheet.page_no == sheet.total_pages %}
+        <div class="pr-close">
+            <table class="pr-summary" aria-label="Section/Group summary">
+                <tr><td class="pr-info-label">Section/Group</td><td>{{ section_group_label }}</td></tr>
+                <tr><td class="pr-info-label">Total Student</td><td>{{ total_students }}</td></tr>
+                <tr><td class="pr-info-label">Total Pass</td><td>{{ pass_count }}</td></tr>
+                <tr><td class="pr-info-label">Total Fail</td><td>{{ fail_count }}</td></tr>
+                <tr><td class="pr-info-label">Pass Rate</td><td>{{ pass_rate_exact }} %</td></tr>
+            </table>
+        </div>
+        {% endif %}
+
+        <div class="pr-sign-row">
+            <div class="pr-sign"><div class="pr-sign-line"></div>Guide Teacher</div>
+            <div class="pr-signs">
+                <div class="pr-sign"><div class="pr-sign-line"></div>Controller of Exam</div>
+                <div class="pr-sign"><div class="pr-sign-line"></div>Head Teacher</div>
+            </div>
+        </div>
+
+        <footer class="pr-foot">
+            <div class="pr-foot-row pr-print-meta">
+                <span>Print Date: {% now "d-M-Y" %} / {% now "g:i a" %}</span>
+                <span>Print User: {{ request.user.username }}</span>
+                <span class="pr-page-no">Page {{ sheet.page_no }} of {{ sheet.total_pages }}</span>
+            </div>
+        </footer>
+    </section>
+    {% endfor %}
+    {% else %}
+
+    {% comment %}
+    On-screen dashboard view: paginated table with the action buttons. Its
+    print-only letterhead keeps Ctrl+P looking like the paper register.
+    {% endcomment %}
+    <div class="d-none d-print-block">
+        {% include 'students/_result_sheet_letterhead.html' %}
     </div>
 
     <div class="table-card">
@@ -59,34 +151,15 @@
             <table class="table table-striped mb-0">
                 <thead>
                     <tr>
-                        <th>Position</th><th>Roll</th><th>ID</th><th>Name</th>
+                        <th>Roll</th><th>ID</th><th>Name</th>
                         <th>Total</th><th>Percentage</th><th>GPA</th><th>Grade</th><th>Status</th>
+                        <th>Position</th>
                         <th class="d-print-none">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in results %}
-                    <tr>
-                        <td>{{ r.position|default:'-' }}</td>
-                        <td>{{ r.student.roll_no }}</td>
-                        <td>{{ r.student.student_id }}</td>
-                        <td>{{ r.student.name }}</td>
-                        <td>{% if r.has_marks %}{{ r.total_obtained }}{% else %}-{% endif %}</td>
-                        <td>{% if r.status == 'Pass' %}{{ r.percentage }}%{% else %}&mdash;{% endif %}</td>
-                        <td>{{ r.gpa|default:'-' }}</td>
-                        <td>{{ r.grade }}</td>
-                        <td>
-                            {% if r.status == 'Pass' %}<span class="badge bg-success">Pass</span>
-                            {% elif r.status == 'Fail' %}<span class="badge bg-danger">Fail</span>
-                            {% else %}<span class="badge bg-secondary">No Marks</span>{% endif %}
-                        </td>
-                        <td class="d-print-none">
-                            {% if r.has_marks %}
-                            <a href="{% url 'student_result_detail' exam.pk r.student.pk %}" class="btn btn-sm btn-outline-navy">Details</a>
-                            <a href="{% url 'result_card' exam.pk r.student.pk %}" class="btn btn-sm btn-navy">Card</a>
-                            {% endif %}
-                        </td>
-                    </tr>
+                    {% include 'students/_result_summary_row.html' with r=r %}
                     {% empty %}
                     <tr><td colspan="10" class="text-center py-4">No students found.</td></tr>
                     {% endfor %}
@@ -94,5 +167,8 @@
             </table>
         </div>
     </div>
+    {% endif %}
 </div>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}

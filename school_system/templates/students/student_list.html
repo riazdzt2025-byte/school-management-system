@@ -19,11 +19,29 @@
     .students-table td {
         padding: 10px 12px; border-bottom: 1px solid #eef0f3; vertical-align: middle; font-size: 0.9rem;
     }
+    .student-photo-thumb {
+        width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+        border: 2px solid #eef0f3;
+    }
+    .student-photo-fallback {
+        width: 32px; height: 32px; border-radius: 50%;
+        background: #f0f2f5; color: #6c757d;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; font-size: 0.75rem;
+    }
     .students-table tbody tr:hover { background: #f8f9fb; }
     .students-table tr.dup-exact { background: #fff6f6; }
     .students-table tr.dup-possible { background: #fffdf3; }
     .students-table .name-cell { font-weight: 600; color: var(--navy); }
     .students-table .id-cell { font-family: monospace; font-size: 0.82rem; color: #6c757d; white-space: nowrap; }
+    .student-photo-frame {
+        width: 46px; height: 46px; border-radius: 50%; overflow: hidden;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: #eef1f5; color: var(--navy); font-weight: 700; flex: 0 0 auto;
+    }
+    .student-photo-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .student-photo-fallback { font-size: 0.95rem; }
+    .students-table .photo-cell { width: 62px; }
     .students-table-empty { text-align: center; color: #6c757d; padding: 48px 16px; }
     .print-table-wrapper { display: none; }
     @media print {
@@ -99,11 +117,13 @@
         {% if perms.students.view_student %}
         <a href="{% url 'archived_students' %}{% if institution %}?institution={{ institution.id }}{% endif %}" class="btn btn-outline-navy">🗄️ View Archive</a>
         {% endif %}
-        <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+        {% include 'students/_print_all.html' %}
     </div>
 </div>
 
 <form method="GET" action="{% url 'student_list' %}" class="inline-filter-bar d-print-none" id="inline-filter-form">
+    {% include 'students/_pagination_filter_fields.html' with exclude="institution department admission_class q section group all" %}
+
     <div class="field grow">
         <label for="ilf-institution">Institution</label>
         <select name="institution" id="ilf-institution" class="form-select form-select-sm" required>
@@ -164,6 +184,7 @@
     <input type="hidden" name="institution" value="{{ institution.id|default:'' }}">
     <input type="hidden" name="admission_class" value="{{ selected_class|default:'' }}">
     <input type="hidden" name="section" value="{{ selected_section|default:'' }}">
+    <input type="hidden" name="return_to" value="student_list">
 
     <div class="d-flex justify-content-between align-items-center mb-2 d-print-none">
         <div>
@@ -187,6 +208,13 @@
                     title="Add each selected student's Mandatory/Conditional subjects — never removes existing ones.">
                 ⚡ Auto Registration
             </button>
+            {% if perms.students.change_student %}
+            <button type="submit" id="bulk-photo-delete-btn" class="btn btn-sm btn-outline-warning" disabled
+                    formaction="{% url 'bulk_clear_student_photos' %}" formmethod="POST"
+                    onclick="return confirm('Permanently remove photos for the selected students? Student records will remain.');">
+                🖼️ Remove Photos
+            </button>
+            {% endif %}
             <button type="submit" id="bulk-delete-btn" class="btn btn-sm btn-outline-danger" disabled
                     onclick="return confirm('Archive all selected students? They will be removed from active lists but kept in the database for record safety.');">
                 🗑️ Archive Selected
@@ -211,6 +239,7 @@
                 <tr>
                 <th style="width:36px;"></th>
                 <th>#</th>
+                <th>Photo</th>
                 <th>Roll</th>
                 <th>Student ID</th>
                 <th>Name</th>
@@ -227,6 +256,11 @@
                 <tr class="{% if student.id in exact_duplicate_ids %}dup-exact{% elif student.id in possible_duplicate_ids %}dup-possible{% endif %}">
                                    <td><input type="checkbox" class="form-check-input row-checkbox" name="student_ids" value="{{ student.pk }}"></td>
                 <td>{{ forloop.counter }}</td>
+                <td class="photo-cell">
+                    <span class="student-photo-frame">
+                        {% include 'students/_student_photo.html' with photo=student.photo display_name=student.name alt_text=student.name image_class='student-photo-image' fallback_class='student-photo-fallback' loading='lazy' width='46' height='46' %}
+                    </span>
+                </td>
                 <td>{{ student.roll_no|default:"—" }}</td>
                 <td class="id-cell"><a href="{% url 'student_detail' student.pk %}">{{ student.student_id }}</a></td>
                 <td class="name-cell"><a href="{% url 'student_detail' student.pk %}">{{ student.name }}</a></td>
@@ -297,34 +331,13 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="11" class="students-table-empty">{% if search_q %}No student matching “{{ search_q }}”. Check the ID, or look in Archive.{% else %}No students to show yet — pick a filter to get started.{% endif %}</td></tr>
+                <tr><td colspan="12" class="students-table-empty">{% if search_q %}No student matching “{{ search_q }}”. Check the ID, or look in Archive.{% else %}No students to show yet — pick a filter to get started.{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-    {% if is_paginated %}
-    <nav aria-label="Student list pagination" class="d-print-none mt-3">
-        <ul class="pagination justify-content-center mb-0 flex-wrap">
-            {% if page_obj.has_previous %}
-            <li class="page-item"><a class="page-link" href="?page=1{% if institution %}&institution={{ institution.id }}{% endif %}{% if selected_class %}&admission_class={{ selected_class }}{% endif %}{% if selected_section %}&section={{ selected_section }}{% endif %}{% if selected_group %}&group={{ selected_group }}{% endif %}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if selected_department %}&department={{ selected_department }}{% endif %}">« First</a></li>
-            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if institution %}&institution={{ institution.id }}{% endif %}{% if selected_class %}&admission_class={{ selected_class }}{% endif %}{% if selected_section %}&section={{ selected_section }}{% endif %}{% if selected_group %}&group={{ selected_group }}{% endif %}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if selected_department %}&department={{ selected_department }}{% endif %}">‹ Prev</a></li>
-            {% else %}
-            <li class="page-item disabled"><span class="page-link">« First</span></li>
-            <li class="page-item disabled"><span class="page-link">‹ Prev</span></li>
-            {% endif %}
-            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ paginator.num_pages }} — {{ student_count }} total</span></li>
-            {% if page_obj.has_next %}
-            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if institution %}&institution={{ institution.id }}{% endif %}{% if selected_class %}&admission_class={{ selected_class }}{% endif %}{% if selected_section %}&section={{ selected_section }}{% endif %}{% if selected_group %}&group={{ selected_group }}{% endif %}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if selected_department %}&department={{ selected_department }}{% endif %}">Next ›</a></li>
-            <li class="page-item"><a class="page-link" href="?page={{ paginator.num_pages }}{% if institution %}&institution={{ institution.id }}{% endif %}{% if selected_class %}&admission_class={{ selected_class }}{% endif %}{% if selected_section %}&section={{ selected_section }}{% endif %}{% if selected_group %}&group={{ selected_group }}{% endif %}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if selected_department %}&department={{ selected_department }}{% endif %}">Last »</a></li>
-            {% else %}
-            <li class="page-item disabled"><span class="page-link">Next ›</span></li>
-            <li class="page-item disabled"><span class="page-link">Last »</span></li>
-            {% endif %}
-        </ul>
-        <p class="text-center text-muted small mt-2">Showing {{ students|length }} of {{ student_count }} · 100 per page · Export downloads all {{ student_count }}.</p>
-    </nav>
-    {% endif %}
+
 
     <div class="print-table-wrapper">
         <div class="table-card">
@@ -364,6 +377,8 @@
     </div>
 </form>
 
+
+{% include 'students/_pagination.html' %}
 {% endblock %}
 
 {% load static %}
@@ -377,12 +392,14 @@
     const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     const bulkUpdateBtn = document.getElementById('bulk-update-btn');
     const bulkAutoRegisterBtn = document.getElementById('bulk-auto-register-btn');
+    const bulkPhotoDeleteBtn = document.getElementById('bulk-photo-delete-btn');
 
     function updateBulkButtons() {
         const anyChecked = Array.from(rowCheckboxes).some(cb => cb.checked);
         bulkDeleteBtn.disabled = !anyChecked;
         bulkUpdateBtn.disabled = !anyChecked;
         bulkAutoRegisterBtn.disabled = !anyChecked;
+        if (bulkPhotoDeleteBtn) bulkPhotoDeleteBtn.disabled = !anyChecked;
     }
 
     if (selectAll) {

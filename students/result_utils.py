@@ -6,7 +6,7 @@ screen: who belongs to an exam, and how a mark turns into a grade. Both live
 here so there is exactly one implementation of each.
 """
 from collections import defaultdict
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Q, F
 
@@ -26,6 +26,48 @@ def class_filter_variants(value):
     return list(variants)
 
 
+def special_exam_students(exam):
+    """The hand-picked candidates of a special exam, or ``None``.
+
+    A special exam (``Exam.is_special`` — the class-8 scholarship test, a
+    competitive exam, ...) does not follow the register: its cohort is the
+    list of students somebody ticked at creation time, whatever class or
+    group they belong to. Returns ``None`` for an ordinary exam so callers
+    keep using the class/section/group filter.
+    """
+    if not getattr(exam, 'pk', None) or not getattr(exam, 'is_special', False):
+        return None
+    # Archived / TC / discontinued candidates are dropped for the same reason
+    # the register drops them: they would otherwise show AB/F for every paper.
+    return list(
+        exam.special_students.filter(is_archived=False, status='ACTIVE')
+        .select_related('institution')
+        .order_by('admission_class', 'section', F('roll_no').asc(nulls_last=True), 'name', 'pk')
+    )
+
+
+def special_exam_subjects(exam, group=None):
+    """The papers a special exam is held on, or ``None``.
+
+    Returns ``None`` for an ordinary exam. The picked papers still pass
+    through Mark Evaluation's "Count" tick (a paper switched off for this
+    exam type stays off), because a special exam reuses the marks
+    distribution configured for its institution + class + exam type.
+    """
+    if not getattr(exam, 'pk', None) or not getattr(exam, 'is_special', False):
+        return None
+    from .models import Subject
+
+    picked_ids = list(exam.special_subjects.values_list('pk', flat=True))
+    if not picked_ids:
+        return [], True
+    effective_group = (group if group is not None else exam.group) or ''
+    kept = list(active_exam_subject_ids(exam, picked_ids, group=effective_group))
+    if not kept:
+        return [], True
+    return list(Subject.objects.filter(pk__in=kept).order_by('display_order', 'code', 'name')), True
+
+
 def get_exam_students(exam, group=None):
     """The one and only student list an exam works on.
 
@@ -33,8 +75,15 @@ def get_exam_students(exam, group=None):
     and group. ``group`` overrides the exam's own group for exams created
     without one, so the group picker on the marks pages drives the same filter
     as the subject list.
+
+    A special exam ignores all of that and uses its hand-picked candidates
+    (see :func:`special_exam_students`).
     """
     from .models import Student
+
+    special = special_exam_students(exam)
+    if special is not None:
+        return special
 
     # D-MIS (2026-09-17): TC / Discontinued / inactive students are not part
     #    # of the published register — they would otherwise show AB/F for every subject.
@@ -86,6 +135,10 @@ def get_exam_subjects(exam, group=None):
 
     effective_group = (group if group is not None else exam.group) or ''
 
+    special = special_exam_subjects(exam, group=group)
+    if special is not None:
+        return special
+
     if not exam.institution_id:
         return [], False
 
@@ -106,7 +159,7 @@ def get_exam_subjects(exam, group=None):
     # (101, 102, 107, 108, 136, 150 in the school's result format), not
     # alphabetical subject names. This keeps marks entry, imports and the
     # result sheet in the same predictable order.
-    return list(Subject.objects.filter(pk__in=subject_ids).order_by('code', 'name')), True
+    return list(Subject.objects.filter(pk__in=subject_ids).order_by('display_order', 'code', 'name')), True
 
 
 def active_exam_subject_ids(exam, subject_ids, group=None):
@@ -417,6 +470,13 @@ def get_student_subject_ids(exam, students, subjects=None, group=None):
     if not students or not base_subject_ids:
         return {student.pk: set() for student in students}
 
+    # A special exam's papers were chosen on the exam itself, so every
+    # candidate sits every one of them — there is no admission subject choice
+    # to consult, and a candidate from another class would otherwise be left
+    # with an empty paper list.
+    if getattr(exam, 'is_special', False):
+        return {student.pk: set(base_subject_ids) for student in students}
+
     student_ids = [student.pk for student in students]
     effective_group = (group if group is not None else exam.group) or ''
     class_variants = class_filter_variants(exam.admission_class)
@@ -506,9 +566,16 @@ def get_exam_subjects_for_students(exam, students, group=None):
 
 def get_exam_group_choices(exam):
     """Groups configured for this exam's institution + class, for the picker."""
-    from .models import Student, SubjectRequirement
+    from .models import Student, SubjectRequirement, class_supports_group
 
     if not exam.institution_id:
+        return []
+    # Groups only exist from class 9 upwards, so a lower class has no group
+    # to narrow to — no student of that class carries one. Offering a group
+    # here (a stray group tag on the class's Subject Assignment rows is
+    # enough to create a choice) would leave marks entry and result pages
+    # filtered to a cohort of nobody.
+    if not class_supports_group(exam.admission_class):
         return []
     codes = set(
         SubjectRequirement.objects.filter(
@@ -519,46 +586,59 @@ def get_exam_group_choices(exam):
     return [(code, label) for code, label in Student.GROUP_CHOICES if code in codes]
 
 
-def get_subject_marks(exam, subject, group=None):
-    """
-    Returns the marks configuration for this exam+subject combination — the
-    specific SubjectMarkSetting if one exists, otherwise the subject's own
-    global defaults. Both expose the same interface (see ``MarksConfigMixin``):
-    full_marks, the part columns, pass_marks, parts.
+def get_subject_marks_map(exam, subjects, group=None):
+    """Resolve every paper's marks configuration in one query, not one per cell.
 
-    Resolution chain (group-aware, EX-03):
-      1) group-specific row (institution+class+subject+exam_type+group)
-      2) blank-group default (group='')
-      3) Subject global defaults
-
-    ``group`` overrides ``exam.group`` when the exam was created without a
-    group (the marks pages let the user pick a group). The setting's class is
-    matched zero-padding tolerant ('9' = '09'), with the exam's own spelling
-    preferred, so a setting saved under either form is found and the same one
-    wins every time.
+    Returns ``{subject_pk: SubjectMarkSetting_or_Subject}``.  Priority is
+    exactly :func:`get_subject_marks`: exact group before blank group, then
+    the exam's class spelling before its zero-padding variants, then the
+    Subject defaults.  This is a calculation-local snapshot, never a cached
+    published result: the next calculation sees edited marks/settings.
     """
     from .models import SubjectMarkSetting
 
+    subjects = list(subjects)
+    configs = {subject.pk: subject for subject in subjects}
+    if not configs:
+        return {}
+    institution_id = getattr(exam, 'institution_id', None)
+    if institution_id is None:
+        institution_id = getattr(getattr(exam, 'institution', None), 'pk', None)
+    exam_type = getattr(exam, 'exam_type', '') or ''
+    if not institution_id or not exam_type:
+        return configs
+
     effective_group = (group if group is not None else getattr(exam, 'group', '')) or ''
     exam_class = str(exam.admission_class)
-    class_candidates = [exam_class] + [v for v in class_filter_variants(exam_class) if v != exam_class]
-    # Group candidates in priority order: exact group first, then blank fallback.
-    if effective_group:
-        group_candidates = [effective_group, '']
-    else:
-        group_candidates = ['']
-    for grp in group_candidates:
-        for cls in class_candidates:
-            setting = SubjectMarkSetting.objects.filter(
-                institution=exam.institution,
-                admission_class=cls,
-                subject=subject,
-                exam_type=exam.exam_type,
-                group=grp,
-            ).first()
-            if setting:
-                return setting
-    return subject
+    class_candidates = [exam_class] + [
+        value for value in class_filter_variants(exam_class) if value != exam_class
+    ]
+    group_candidates = [effective_group, ''] if effective_group else ['']
+    group_rank = {value: index for index, value in enumerate(group_candidates)}
+    class_rank = {value: index for index, value in enumerate(class_candidates)}
+    rows = SubjectMarkSetting.objects.filter(
+        institution_id=institution_id,
+        admission_class__in=class_candidates,
+        subject_id__in=configs,
+        exam_type=exam_type,
+        group__in=group_candidates,
+    )
+    priority_by_subject = {}
+    for setting in rows:
+        priority = (group_rank[setting.group], class_rank[setting.admission_class])
+        if setting.subject_id not in priority_by_subject or priority < priority_by_subject[setting.subject_id]:
+            configs[setting.subject_id] = setting
+            priority_by_subject[setting.subject_id] = priority
+    return configs
+
+
+def get_subject_marks(exam, subject, group=None):
+    """Return the exam override or Subject defaults for one paper.
+
+    Shares the bulk resolver with result generation so group/class priority
+    cannot drift between marks entry, imports and published results.
+    """
+    return get_subject_marks_map(exam, [subject], group=group)[subject.pk]
 
 def resolve_mark_setting(institution, admission_class, subject, exam_type, group=''):
     """Low-level helper for the resolution chain used by bulk queries.
@@ -602,6 +682,74 @@ def get_grade(percentage):
     if percentage >= 33:
         return 'D', Decimal('1.00')
     return 'F', Decimal('0.00')
+
+
+GPA_QUANTUM = Decimal('0.01')
+GPA_MAXIMUM = Decimal('5.00')
+FOURTH_SUBJECT_BONUS_FLOOR = Decimal('2.00')
+
+
+def calculate_uncapped_gpa(main_gpa_points, fourth_subject_point=None):
+    """Return the exact formula GPA before display rounding and the 5.00 cap.
+
+    This is deliberately retained for the owner-confirmed merit tie-break:
+    pupils with the same published A+/5.00 can still be ordered by the actual
+    fourth-subject formula point before total marks and roll number are used.
+    It is not a display value.
+    """
+    main_gpa_points = [Decimal(str(point)) for point in main_gpa_points]
+    if not main_gpa_points:
+        return Decimal('0.00')
+    fourth_point = Decimal(str(fourth_subject_point or 0))
+    fourth_bonus = max(Decimal('0.00'), fourth_point - FOURTH_SUBJECT_BONUS_FLOOR)
+    return (sum(main_gpa_points) + fourth_bonus) / len(main_gpa_points)
+
+
+def calculate_final_gpa(main_gpa_points, fourth_subject_point=None):
+    """Return the capped, two-place GPA for the main + fourth-subject policy.
+
+    A student is graded on their main subjects only.  One selected
+    ``Subject.category == 'FOURTH'`` paper can add the part of its point above
+    2.00 to the *main* point total before division by the number of main
+    subjects.  A fourth-subject F has point 0.00, therefore earns no bonus but
+    never fails the main result.  The published GPA is always capped at 5.00.
+
+    Decimal ``ROUND_HALF_UP`` makes the two-place display deterministic.  This
+    helper deliberately contains no 4.90-to-5.00 benefit: that former rule was
+    replaced by the owner-confirmed fourth-subject policy on 2026-09-23.
+    """
+    raw_gpa = calculate_uncapped_gpa(main_gpa_points, fourth_subject_point)
+    return min(
+        raw_gpa.quantize(GPA_QUANTUM, rounding=ROUND_HALF_UP),
+        GPA_MAXIMUM,
+    )
+
+
+def fourth_subject_configuration_errors(exam, group=None):
+    """Describe students who selected more than one fourth subject for an exam.
+
+    There may be several FOURTH papers in a school's catalogue so pupils can
+    choose between them, but the approved policy permits exactly one per
+    student.  Publishing calls this helper and refuses a bad configuration
+    before a result could be issued with an arbitrary double bonus.
+    """
+    students = list(get_exam_students(exam, group=group))
+    subjects, _is_filtered = get_exam_subjects(exam, group=group)
+    selected_ids = get_student_subject_ids(exam, students, subjects=subjects, group=group)
+    fourth_names = {
+        subject.pk: subject.name for subject in subjects
+        if subject.category == 'FOURTH'
+    }
+    errors = []
+    for student in students:
+        selected_fourth = sorted(
+            fourth_names[subject_id]
+            for subject_id in selected_ids.get(student.pk, set())
+            if subject_id in fourth_names
+        )
+        if len(selected_fourth) > 1:
+            errors.append(f"{student.name} (roll {student.roll_no or '—'}): {', '.join(selected_fourth)}")
+    return errors
 
 
 ABSENT = '-'
@@ -649,15 +797,31 @@ def _part_breakdown(mark, marks_config):
     return parts
 
 
-def compute_subject_result(mark, marks_config):
+def compute_subject_result(mark, marks_config, blank_is_pending=False):
     """Grade for a single (student, subject) pair.
 
     ``mark`` is None when nothing at all was entered for the subject, which
     means the student did not sit it. That is *not* the same as a 0 — a blank
     row shows as a dash and is left out of the total and the GPA, while a real
     0 is counted and fails the subject.
+
+    ``blank_is_pending`` is the **provisional** reading used only by the
+    "Provisional Result" page (see :func:`build_exam_results`): a blank mark
+    means "the office has not entered it yet", so the cell is marked
+    ``pending`` and is left out of the total, the GPA and pass/fail instead of
+    being graded F. The official result pages never pass this flag, so a
+    published result still counts a blank assigned subject as F
+    (``EXAM_ABSENT_SUBJECT_FAILS``).
     """
     if mark is None:
+        if blank_is_pending:
+            return {
+                'obtained': None, 'full': marks_config.full_marks,
+                'percentage': None, 'grade': ABSENT, 'point': None,
+                'passed': False, 'absent': True, 'pending': True,
+                'failed_parts': [], 'parts': [],
+                'pass_marks': marks_config.pass_marks,
+            }
         if absent_subject_fails_result():
             # Not entered = the paper was not passed: graded F and counted as
             # 0 out of Full Marks, so the total and the percentage tell the
@@ -665,14 +829,16 @@ def compute_subject_result(mark, marks_config):
             return {
                 'obtained': Decimal('0'), 'full': marks_config.full_marks,
                 'percentage': 0.0, 'grade': 'F', 'point': Decimal('0.00'),
-                'passed': False, 'absent': True, 'failed_parts': [],
-                'parts': [], 'pass_marks': marks_config.pass_marks,
+                'passed': False, 'absent': True, 'pending': False,
+                'failed_parts': [], 'parts': [],
+                'pass_marks': marks_config.pass_marks,
             }
         return {
             'obtained': None, 'full': marks_config.full_marks,
             'percentage': None, 'grade': ABSENT, 'point': None,
-            'passed': False, 'absent': True, 'failed_parts': [],
-            'parts': [], 'pass_marks': marks_config.pass_marks,
+            'passed': False, 'absent': True, 'pending': False,
+            'failed_parts': [], 'parts': [],
+            'pass_marks': marks_config.pass_marks,
         }
 
     obtained = Decimal(str(mark.marks_obtained or 0))
@@ -692,7 +858,7 @@ def compute_subject_result(mark, marks_config):
     return {
         'obtained': obtained, 'full': marks_config.full_marks,
         'percentage': round(float(percentage), 2), 'grade': grade, 'point': point,
-        'passed': passed, 'absent': False,
+        'passed': passed, 'absent': False, 'pending': False,
         'failed_parts': [part['label'] for part in failed_parts],
         'parts': parts, 'pass_marks': marks_config.pass_marks,
         'total_passed': total_passed,
@@ -741,15 +907,18 @@ class ReligionColumn:
     def paper_for_label(self, label):
         return self.papers_by_label.get(label)
 
-    def header_marks_config(self, exam, group=None):
-        """Full Marks for the column header: prefer the Islam paper's exam
-        setting, then any other assigned paper — the papers share the same
-        marks structure in every real curriculum."""
-        paper = (
-            self.paper_for_label('Islam')
-            or next(iter(self.papers_by_label.values()), None)
-        )
-        return get_subject_marks(exam, paper, group=group) if paper else None
+    def header_paper(self):
+        """The paper whose configuration supplies the merged column header."""
+        return self.paper_for_label('Islam') or next(iter(self.papers_by_label.values()), None)
+
+    def header_marks_config(self, exam, group=None, marks_configs=None):
+        """Full Marks for the header, optionally from an already bulk-loaded map."""
+        paper = self.header_paper()
+        if not paper:
+            return None
+        if marks_configs is not None:
+            return marks_configs.get(paper.pk, paper)
+        return get_subject_marks(exam, paper, group=group)
 
     def __str__(self):
         return self.name
@@ -781,7 +950,7 @@ def unassigned_mark_subjects(exam, subjects, group=None):
     if marks.exists():
         return Subject.objects.filter(
             id__in=marks.values_list('subject_id', flat=True).distinct(),
-        ).exclude(id__in=assigned_ids).order_by('name')
+        ).exclude(id__in=assigned_ids).order_by('display_order', 'name')
     return Subject.objects.none()
 
 
@@ -833,12 +1002,15 @@ def unmarked_assigned_subjects(exam, group=None):
     return [subject for subject in assigned if subject.pk not in marked]
 
 
-def build_exam_results(exam, group=None):
+def build_exam_results(exam, group=None, provisional=False):
     """Compute every student's result for one exam.
 
     Returns (columns, results). The printed columns are the union of subjects
-    assigned to at least one student during admission; only the subjects each
-    student actually takes count towards that student's total and GPA.
+    assigned to at least one student during admission. A selected
+    ``FOURTH``-category paper is included in the displayed total, full marks
+    and percentage, but only main subjects count in the GPA denominator and
+    pass/fail decision; the fourth paper can add its points above 2.00 as the
+    approved bonus.
 
     A subject the exam holds **no mark for at all** is not a column (see
     :func:`marked_subject_ids_for_exam`): assignments are keyed to the class and
@@ -859,21 +1031,44 @@ def build_exam_results(exam, group=None):
     Islam). A student whose own paper is not assigned gets a plain dash in that
     column — never a fail, never counted, and never an "absent subject".
     Papers that nobody in the class sits are not printed at all.
+
+    ``provisional=True`` is the **only** other reading, and it exists for one
+    situation: the office wants to see the result while one or two assigned
+    subjects still have no marks entered. The official pages never use it, so
+    nothing here can change a published result.
+
+    * A subject with no marks anywhere stays a **column** and simply shows no
+      marks (the official sheet hides it, see :func:`marked_subject_ids_for_exam`).
+    * A blank mark is ``pending`` instead of F/0: it is left out of the total,
+      the percentage, the GPA and the pass/fail decision, and is counted in
+      ``pending_subject_count`` / ``counted_subject_count``.
+    * A subject that *was* entered and failed still fails, and an entered 0
+      still fails: this is not "ignore the bad news".
+    * ``position`` is withheld (``None``) for any student who still has a
+      pending subject — a half-entered merit order would rank on fewer papers
+      than the class. The page labels the numbers provisional.
     """
     from .models import ExamMark
 
     students = list(get_exam_students(exam, group=group))
     assigned, _is_filtered = get_exam_subjects(exam, group=group)
 
+    # Only this cohort's marks are needed.  Do not hydrate a second Student
+    # and Subject for every cell: the authoritative objects are already in
+    # ``students`` / ``assigned``.  On a large exam those joins duplicate text
+    # and photo fields hundreds/thousands of times without being used.
     marks = {}
-    for mark in ExamMark.objects.filter(exam=exam).select_related('student', 'subject'):
+    student_ids = [student.pk for student in students]
+    mark_rows = ExamMark.objects.filter(exam=exam, student_id__in=student_ids) if student_ids else []
+    for mark in mark_rows:
         marks.setdefault(mark.student_id, {})[mark.subject_id] = mark
-    # A subject nobody in this exam has a mark for is not a column: see
-    # marked_subject_ids_for_exam(). Without this, a subject assigned to the
-    # class after the exam was published arrives as an empty column and fails
-    # every student in it.
-    marked_ids = marked_subject_ids_for_exam(exam, students=students)
-    assigned = [subject for subject in assigned if subject.pk in marked_ids]
+    # The mark rows above are already restricted to this exact cohort, so
+    # their subject ids are the same set marked_subject_ids_for_exam() returns.
+    # Reuse them instead of asking the database for the same set again.  A
+    # newly assigned, wholly unmarked paper still cannot become a new F column.
+    marked_ids = {subject_id for student_marks in marks.values() for subject_id in student_marks}
+    if not provisional:
+        assigned = [subject for subject in assigned if subject.pk in marked_ids]
 
     student_subject_ids = get_student_subject_ids(
         exam, students, subjects=assigned, group=group,
@@ -910,13 +1105,28 @@ def build_exam_results(exam, group=None):
             continue
         columns.append(subject)
 
+    # A result sheet has students × subjects cells.  Resolving settings inside
+    # that loop used to issue 1–4 SQL queries *per cell* (809 queries for an
+    # 80-pupil, ten-paper exam).  Resolve each assigned paper once instead.
+    # Both merged religion papers are included, even though they share a column.
+    config_subjects = [
+        subject
+        for column in columns
+        for subject in (column.subjects if isinstance(column, ReligionColumn) else [column])
+    ]
+    marks_configs = get_subject_marks_map(exam, config_subjects, group=group)
+
     results = []
     for student in students:
         student_marks = marks.get(student.pk, {})
         subject_results = []
+        # Every selected paper is displayed in total/full/percentage.  Main
+        # papers alone decide pass/fail and the GPA denominator; a FOURTH paper
+        # also provides only its approved GPA bonus below.
         total_obtained = Decimal('0')
         total_full = Decimal('0')
-        gpa_points = []
+        main_gpa_points = []
+        fourth_subject_result = None
         has_fail = False
 
         for column in columns:
@@ -930,13 +1140,18 @@ def build_exam_results(exam, group=None):
                         'subject': column, 'religion_column': True,
                         'not_applicable': True, 'absent': True,
                         'religion_unassigned': True,
+                        'is_fourth_subject': False, 'counts_toward_main_gpa': False,
+                        'counts_toward_total': False,
                         'obtained': None, 'full': None, 'percentage': None,
                         'grade': ABSENT, 'point': None, 'passed': False,
                         'failed_parts': [], 'parts': [], 'pass_marks': None,
                     })
                     continue
-                marks_config = get_subject_marks(exam, paper, group=group)
-                result = compute_subject_result(student_marks.get(paper.pk), marks_config)
+                marks_config = marks_configs[paper.pk]
+                result = compute_subject_result(
+                    student_marks.get(paper.pk), marks_config,
+                    blank_is_pending=provisional,
+                )
                 result['subject'] = column
                 result['religion_column'] = True
                 result['paper'] = paper
@@ -948,27 +1163,65 @@ def build_exam_results(exam, group=None):
                     subject_results.append({
                         'subject': column, 'subject_unassigned': True,
                         'not_applicable': True, 'absent': True,
+                        'is_fourth_subject': column.category == 'FOURTH',
+                        'counts_toward_main_gpa': column.category != 'FOURTH',
+                        'counts_toward_total': False,
                         'obtained': None, 'full': None, 'percentage': None,
                         'grade': ABSENT, 'point': None, 'passed': False,
                         'failed_parts': [], 'parts': [], 'pass_marks': None,
                     })
                     continue
-                marks_config = get_subject_marks(exam, column, group=group)
-                result = compute_subject_result(student_marks.get(column.pk), marks_config)
+                marks_config = marks_configs[column.pk]
+                result = compute_subject_result(
+                    student_marks.get(column.pk), marks_config,
+                    blank_is_pending=provisional,
+                )
                 result['subject'] = column
 
+            is_fourth_subject = (
+                not isinstance(column, ReligionColumn)
+                and getattr(column, 'category', None) == 'FOURTH'
+            )
+            result['is_fourth_subject'] = is_fourth_subject
+            result['counts_toward_main_gpa'] = not is_fourth_subject
+            result['counts_toward_total'] = True
             counted = not result['absent'] or result['obtained'] is not None
             if counted:
-                # An absent subject arrives here as 0 / Full Marks and fails,
-                # which is what drags the result down to F + GPA 0.00.
+                # A selected fourth paper is displayed in the total/full/percentage
+                # just like a main paper. Its F/AB is 0 / Full Marks, lowering
+                # percentage but never the main pass/fail result.
                 total_obtained += result['obtained']
                 total_full += Decimal(str(result['full']))
+
+            if is_fourth_subject:
+                # Publishing prevents more than one selected FOURTH paper.  If
+                # legacy/unpublished data reaches this path anyway, retain the
+                # first applicable paper rather than awarding an accidental
+                # double bonus. An unselected optional paper is not a fourth
+                # subject for that student at all.
+                if not result.get('not_applicable'):
+                    fourth_subject_result = fourth_subject_result or result
+            elif counted:
+                # An absent main subject arrives here as 0 / Full Marks and
+                # fails the result. A fourth-subject AB/F is deliberately
+                # outside this branch and only earns zero bonus.
                 has_fail = has_fail or not result['passed']
-                gpa_points.append(result['point'])
+                main_gpa_points.append(result['point'])
             subject_results.append(result)
 
-        attempted = [row for row in subject_results if not row['absent']]
+        attempted = [
+            row for row in subject_results
+            if not row['is_fourth_subject'] and not row['absent']
+        ]
+        # Provisional bookkeeping: which cells still have no mark at all, and
+        # how many papers actually went into the total/GPA above.
+        pending_count = sum(1 for row in subject_results if row.get('pending'))
+        counted_count = sum(
+            1 for row in subject_results
+            if not row.get('not_applicable') and not row.get('pending')
+        )
         overall_percentage = (total_obtained / total_full * 100) if total_full else Decimal('0')
+        ranking_gpa = None
         if not attempted:
             # No mark entered anywhere: the student did not sit this exam at
             # all. That stays 'No Marks' rather than 'Fail' — a completely
@@ -982,21 +1235,49 @@ def build_exam_results(exam, group=None):
             overall_gpa, overall_grade, status = Decimal('0.00'), 'F', 'Fail'
             overall_percentage = None
         else:
-            overall_gpa = round(sum(gpa_points) / len(gpa_points), 2) if gpa_points else Decimal('0.00')
+            fourth_subject_point = (
+                fourth_subject_result['point'] if fourth_subject_result is not None else None
+            )
+            ranking_gpa = calculate_uncapped_gpa(main_gpa_points, fourth_subject_point)
+            overall_gpa = calculate_final_gpa(main_gpa_points, fourth_subject_point)
             overall_grade, _ = get_grade(float(overall_percentage))
             status = 'Pass'
-            # D-GPA (owner decision 2026-09-17): 4.90–4.99 is lifted to 5.00/A+ so a
-            # near-perfect student is not left at 4.99 just because one subject
-            # slipped by a point. Only for passing results; Fail/No Marks stay 0/—.
-            if overall_gpa is not None and Decimal('4.90') <= overall_gpa < Decimal('5.00'):
-                overall_gpa = Decimal('5.00')
+            # A fourth-subject bonus may reach the statutory cap even when the
+            # all-paper percentage alone is below 80. GPA 5.00 is published as
+            # A+ consistently in that case.
+            if overall_gpa == GPA_MAXIMUM:
                 overall_grade = 'A+'
+        if provisional and status == 'Pass' and pending_count:
+            # Half a result is not a Pass. The numbers above are computed on
+            # the papers that exist and the page labels them provisional; the
+            # status says out loud that this student's result is not final,
+            # which also keeps them out of the merit ranking below.
+            status = 'Pending'
+
+        # Grade tallies for the register's F / S / A+ columns: how many papers
+        # this student failed, passed, and aced. Papers the student does not
+        # sit (not applicable) and, in the provisional reading, papers still
+        # without a mark are left out of the tally entirely.
+        graded_rows = [
+            row for row in subject_results
+            if not row.get('not_applicable') and not row.get('pending')
+        ]
 
         results.append({
             'student': student, 'subject_results': subject_results,
+            'failed_subject_count': sum(1 for row in graded_rows if not row['passed']),
+            'passed_subject_count': sum(1 for row in graded_rows if row['passed']),
+            'a_plus_count': sum(1 for row in graded_rows if (row.get('grade') or '') == 'A+'),
             'total_obtained': total_obtained, 'total_full': total_full,
             'percentage': round(float(overall_percentage), 2) if overall_percentage is not None else None,
             'gpa': overall_gpa,
+            # Internal merit tie-break only: exact formula value before the
+            # displayed two-place cap. It is intentionally not shown as GPA.
+            'ranking_gpa': ranking_gpa,
+            'fourth_subject_point': (
+                fourth_subject_result['point'] if fourth_subject_result is not None else None
+            ),
+            'main_subject_count': len(main_gpa_points),
             'grade': overall_grade, 'status': status,
             # "has marks" means there is something to print: a student whose only
             # rows sit in subjects outside this exam still counts as No Marks.
@@ -1005,23 +1286,250 @@ def build_exam_results(exam, group=None):
                 1 for r in subject_results
                 if r['absent'] and not r.get('not_applicable')
                 and not r.get('religion_unassigned')
+                and not r.get('pending')
             ),
+            # Provisional page only: how much of this result is actually in.
+            'provisional': bool(provisional),
+            'pending_subject_count': pending_count,
+            'counted_subject_count': counted_count,
+            'applicable_subject_count': counted_count + pending_count,
             'position': None,
         })
 
-    # Only a student who passed every subject individually is placed — the
-    # position is part of the result, so a failed result is not counted here
-    # any more than the percentage is. 'No Marks' students stay unranked too.
+    # Only a student who passed every main subject is placed — the position is
+    # part of the result, so a failed result is not counted here any more than
+    # the percentage is. 'No Marks' students stay unranked too. The owner set
+    # one unique merit order: letter grade, uncapped fourth-subject formula
+    # GPA, total marks (including the fourth paper), then lowest numeric roll.
+    grade_order = {'A+': 5, 'A': 4, 'A-': 3, 'B': 2, 'C': 1, 'D': 0}
+    # In provisional mode ``status`` is 'Pending' for anyone the office has not
+    # finished marking, so those rows are simply not in this generator.
     ranked = sorted(
         (result for result in results if result['status'] == 'Pass'),
-        key=lambda result: (-result['gpa'], -result['total_obtained'])
+        key=lambda result: (
+            -grade_order.get(result['grade'], -1),
+            -result['ranking_gpa'],
+            -result['total_obtained'],
+            result['student'].roll_no is None,
+            result['student'].roll_no or 0,
+            result['student'].name.lower(),
+            result['student'].pk,
+        ),
     )
-    previous_key = None
-    for index, result in enumerate(ranked):
-        key = (result['gpa'], result['total_obtained'])
-        result['position'] = ranked[index - 1]['position'] if index and key == previous_key else index + 1
-        previous_key = key
+    for index, result in enumerate(ranked, start=1):
+        result['position'] = index
     return columns, ranked + [result for result in results if result['position'] is None]
+
+
+def build_sheet_columns(exam, columns, group=None):
+    """The printed register's columns: each subject with its own Full Marks.
+
+    ``columns`` comes from :func:`build_exam_results`; this pairs every one of
+    them with the Full Marks / part split the exam actually uses, so a Mid Term
+    marked out of 50 never prints the subject's global 100. Column ``i`` of
+    every student's ``subject_results`` lines up with the returned list, which
+    is what the register, the Results Summary and the Excel export all rely on.
+
+    A merged Religion column asks its own header paper for the configuration
+    (Hindu students sit the Hindu paper, everyone else Islam).
+    """
+    header_subjects = [
+        column.header_paper() if getattr(column, 'is_religion_column', False) else column
+        for column in columns
+    ]
+    header_configs = get_subject_marks_map(exam, header_subjects, group=group)
+    sheet_columns = []
+    for column in columns:
+        if getattr(column, 'is_religion_column', False):
+            marks_config = column.header_marks_config(exam, marks_configs=header_configs)
+        else:
+            marks_config = header_configs[column.pk]
+        sheet_columns.append({
+            'subject': column,
+            'full_marks': marks_config.full_marks if marks_config else None,
+            'parts_summary': ' + '.join(
+                f"{part['label']} {part['max_marks']}" for part in marks_config.parts
+            ) if marks_config else '',
+        })
+    return sheet_columns
+
+
+def result_summary_totals(results, sheet_columns):
+    """
+    Brief and subject-wise result statistics for one printed register.
+
+    ``results`` is the full (unpaginated) list of :func:`build_exam_results`
+    rows and ``sheet_columns`` is the ``{'subject': ..., 'full_marks': ...}``
+    list the result sheet view builds from it, so column ``i`` of every
+    student's ``subject_results`` lines up with ``sheet_columns[i]``.
+
+    Returns ``(brief, subject_wise)``:
+
+    * ``brief`` — cohort-level counts: total students, Pass / Fail / No Marks,
+      students whose overall grade is A+, pass rate and the total number of
+      subject-level A+ grades.
+    * ``subject_wise`` — one row per printed column: how many students sat the
+      paper, passed, failed, scored A+, the subject pass rate and the average
+      percentage of those who sat it.
+    """
+    total_students = len(results)
+    pass_count = sum(1 for r in results if r['status'] == 'Pass')
+    fail_count = sum(1 for r in results if r['status'] == 'Fail')
+    no_marks_count = sum(1 for r in results if r['status'] == 'No Marks')
+    a_plus_students = sum(
+        1 for r in results if (r.get('grade') or '') == 'A+'
+    )
+    pass_rate = int(100 * pass_count / total_students + 0.5) if total_students else 0
+    fail_rate = int(100 * fail_count / total_students + 0.5) if total_students else 0
+    total_subject_a_plus = sum(int(r.get('a_plus_count') or 0) for r in results)
+
+    brief = {
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'fail_count': fail_count,
+        'no_marks_count': no_marks_count,
+        'a_plus_students': a_plus_students,
+        'pass_rate': pass_rate,
+        'fail_rate': fail_rate,
+        'total_subject_a_plus': total_subject_a_plus,
+    }
+
+    subject_wise = []
+    for index, entry in enumerate(sheet_columns):
+        cells = [result['subject_results'][index] for result in results]
+        sat = [
+            cell for cell in cells
+            if not cell['absent'] and not cell.get('pending') and not cell.get('not_applicable')
+        ]
+        passed = [cell for cell in sat if cell['passed']]
+        a_plus = [cell for cell in sat if (cell.get('grade') or '') == 'A+']
+        percentages = [
+            float(cell['percentage'])
+            for cell in sat
+            if cell.get('percentage') is not None
+        ]
+        subject_wise.append({
+            'subject': entry['subject'],
+            'full_marks': entry.get('full_marks'),
+            'sat': len(sat),
+            'passed': len(passed),
+            'failed': len(sat) - len(passed),
+            'a_plus': len(a_plus),
+            'pass_rate': int(100 * len(passed) / len(sat) + 0.5) if sat else 0,
+            'average': round(sum(percentages) / len(percentages), 2) if percentages else 0,
+        })
+    return brief, subject_wise
+
+
+# The grading bands the app actually applies (see :func:`get_grade`), printed
+# highest first as the sheet's "Internal Grading System" table.  Each band's
+# bottom mark is that grade's threshold, so the printed bands can never drift
+# away from the marks the result is calculated with.
+GRADE_BANDS = [
+    ('A+', 'A Plus (A+)', Decimal('5.00'), 80),
+    ('A', 'A Regular (A)', Decimal('4.00'), 70),
+    ('A-', 'A Minus (A-)', Decimal('3.50'), 60),
+    ('B', 'B Regular (B)', Decimal('3.00'), 50),
+    ('C', 'C Regular (C)', Decimal('2.00'), 40),
+    ('D', 'D Regular (D)', Decimal('1.00'), 33),
+    ('F', 'Fail (F)', Decimal('0.00'), 0),
+]
+
+
+def grade_scale_rows():
+    """The printed grading table: marks band, grade label and grade point."""
+    rows = []
+    top = 100
+    for code, label, point, threshold in GRADE_BANDS:
+        rows.append({
+            'grade': code,
+            'label': label,
+            'point': point,
+            'band': f'{threshold:02d}-{top:02d}',
+        })
+        top = threshold - 1
+    return rows
+
+
+def golden_a_plus(result):
+    """True when every graded paper is A+ — a Golden A Plus.
+
+    Stricter than GPA 5.00: a fourth-subject paper below A+ can still cap the
+    published GPA at 5.00, but it is not a Golden A Plus.
+    """
+    graded = [
+        cell for cell in result.get('subject_results', [])
+        if not cell.get('not_applicable') and not cell.get('pending')
+    ]
+    return bool(graded) and all((cell.get('grade') or '') == 'A+' for cell in graded)
+
+
+def grade_distribution_report(results, sheet_columns):
+    """Grade counts for the printed Results Summary page.
+
+    One tally pass feeds all three tables of the sheet:
+
+    * ``class_rows`` — per-student **overall** grades, with Golden A+ counted
+      separately, and ``total_students`` for the "Total Grade Count in the
+      Class" box;
+    * ``matrix`` — one row per grade holding the count for every printed
+      subject column plus the row total (the grade × subject grid);
+    * ``column_totals`` — graded entries per subject column, i.e. the matrix's
+      "Total" row, and ``matrix_total`` for its grand total.
+
+    Papers a student does not sit and papers that still have no mark are left
+    out, exactly like the register's A+/Fail tallies.
+    """
+    codes = [code for code, _label, _point, _threshold in GRADE_BANDS]
+    matrix = {code: [0] * len(sheet_columns) for code in codes}
+    column_totals = [0] * len(sheet_columns)
+    class_counts = {code: 0 for code in codes}
+    golden_count = 0
+
+    for result in results:
+        grade = result.get('grade') or ''
+        if grade in class_counts:
+            class_counts[grade] += 1
+        if golden_a_plus(result):
+            golden_count += 1
+
+        for index, cell in enumerate(result.get('subject_results', [])):
+            if index >= len(sheet_columns):
+                break
+            if cell.get('not_applicable') or cell.get('pending'):
+                continue
+            cell_grade = cell.get('grade') or ''
+            if cell_grade not in matrix:
+                continue
+            matrix[cell_grade][index] += 1
+            column_totals[index] += 1
+
+    class_rows = [
+        {'grade': 'Golden A+', 'label': 'Golden A Plus', 'count': golden_count},
+        *[
+            {'grade': code, 'label': label, 'count': class_counts[code]}
+            for code, label, _point, _threshold in GRADE_BANDS
+        ],
+    ]
+    matrix_rows = [
+        {
+            'grade': code,
+            'label': label,
+            'counts': matrix[code],
+            'total': sum(matrix[code]),
+        }
+        for code, label, _point, _threshold in GRADE_BANDS
+    ]
+    return {
+        'class_rows': class_rows,
+        'total_students': len(results),
+        # The page is scoped to one class-section, so the class box and the
+        # section box print the same cohort.
+        'section_rows': class_rows,
+        'matrix': matrix_rows,
+        'column_totals': column_totals,
+        'matrix_total': sum(column_totals),
+    }
 
 
 def failed_subject_rows(exam, group=None):

@@ -3,10 +3,11 @@ import re
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models
+from django.db import models, transaction
+from django.utils import timezone
 from uuid import uuid4
 from django.core.serializers.json import DjangoJSONEncoder
-
+from .photo_uploads import student_photo_upload_to, validate_student_photo
 
 
 # Groups only exist from class 9 upwards (SSC 9-10 and HSC 11-12). Primary
@@ -72,15 +73,19 @@ def student_religion(value):
 # guardian number was archived to AuditLog first, so nothing was silently
 # lost.
 #
-# Accepted format: an optional leading '+', then 6–20 characters of digits,
-# spaces, dashes and parentheses (e.g. 01812345678, +880 1812-345678,
-# 01812 345678). Anything else — letters, blank-with-junk — is rejected by
-# validate_guardian_contact() at the form / import layer.
-GUARDIAN_CONTACT_RE = r'^\+?\d[\d\s\-()]{5,19}$'
+# Owner decision (OF-01, 2026-10-01): soft normalisation, strict result.
+# Whatever is typed is first normalised — Bangla digits -> ASCII, spaces,
+# dashes, dots and parentheses removed, and a +880 / 880 country code turned
+# back into the leading 0 — and the result must then be exactly an 11-digit
+# Bangladeshi mobile number: 01[3-9] followed by 8 digits. That normalised
+# form (e.g. 01812345678) is what is stored. Existing rows are never
+# rewritten; the rule applies when a form is saved or an import row is read.
+GUARDIAN_CONTACT_RE = r'^01[3-9]\d{8}$'
 
 # Bangla digits typed into the public form are converted to ASCII before
 # validation and storage, so '০১৮১২৩৪৫৬৭৮' is saved as '01812345678'.
 _BANGLA_DIGIT_TABLE = str.maketrans('০১২৩৪৫৬৭৮৯', '0123456789')
+_CONTACT_SEPARATORS = re.compile(r'[\s\-().]')
 
 
 def normalize_guardian_contact(value):
@@ -88,8 +93,10 @@ def normalize_guardian_contact(value):
 
     * ``None`` / blank -> ``''``.
     * Bangla digits (০-৯) are translated to ASCII digits.
-    * Surrounding whitespace is stripped; the rest is kept exactly as
-      typed so the leading zero survives.
+    * Spaces, dashes, dots and parentheses are removed, and a ``+880`` /
+      ``880`` country code becomes the leading ``0`` — but only when what is
+      left is purely digits, so text such as ``call the office`` is returned
+      as typed (trimmed) and then fails validation with a clear message.
     * A value that arrives as an Excel *numeric* cell (``int``/``float``,
       e.g. ``1812345678``) is converted to a digit string — Excel itself
       drops the leading zero of 01812345678 in a numeric cell — and a
@@ -108,22 +115,37 @@ def normalize_guardian_contact(value):
             # A numeric spreadsheet cell dropped the leading zero of a
             # Bangladeshi mobile (01812345678 stored as 1812345678).
             text = '0' + text
-        return text
-    return str(value).strip().translate(_BANGLA_DIGIT_TABLE)
+    else:
+        text = str(value).strip().translate(_BANGLA_DIGIT_TABLE)
+        compact = _CONTACT_SEPARATORS.sub('', text)
+        if not re.fullmatch(r'\+?\d+', compact):
+            return text
+        text = compact
+    if text.startswith('+880'):
+        text = '0' + text[4:]
+    elif text.startswith('880') and len(text) == 13:
+        text = '0' + text[3:]
+    return text
 
 
 def validate_guardian_contact(value):
-    """Reject a non-blank guardian contact that is not a plausible phone
-    number. A blank value is left to the field's own blank/required rule."""
+    """Reject a non-blank guardian contact that is not an 11-digit
+    Bangladeshi mobile number once normalised. A blank value is left to the
+    field's own blank/required rule. Accepts raw or already-normalised
+    input (normalisation is idempotent)."""
     if not value:
         return
-    if not re.match(GUARDIAN_CONTACT_RE, value):
+    if not re.match(GUARDIAN_CONTACT_RE, normalize_guardian_contact(value)):
         raise ValidationError(
-            'Enter a valid contact number (6-20 characters; digits with an '
-            'optional leading +, spaces, dashes and parentheses allowed), '
-            'e.g. 01812345678.',
+            GUARDIAN_CONTACT_ERROR,
             code='invalid_guardian_contact',
         )
+
+
+GUARDIAN_CONTACT_ERROR = (
+    'Enter a valid 11-digit Bangladeshi mobile number, e.g. 01812345678 '
+    '(spaces, dashes and +880 are accepted and tidied up).'
+)
 
 
 def normalize_class_label(value):
@@ -134,6 +156,19 @@ def normalize_class_label(value):
     if label.isdigit():
         label = str(int(label))
     return label
+
+
+def class_label_spellings(value):
+    """Every stored spelling of one class label: '9' and '09' (and any other
+    zero-padded form of the same number) are the same class, so capacity and
+    roll checks must count them together. Returns a sorted, de-duplicated list
+    that always contains the label exactly as typed."""
+    raw = str(value or '').strip()
+    spellings = {raw}
+    if raw.isdigit():
+        number = str(int(raw))
+        spellings.update({number, number.zfill(2)})
+    return sorted(s for s in spellings if s)
 
 
 def class_supports_group(admission_class):
@@ -207,6 +242,25 @@ class Student(models.Model):
         return class_supports_group(admission_class)
 
     @classmethod
+    def roll_taken(cls, institution, admission_class, section, roll_no, exclude_pk=None):
+        """True when an ACTIVE, non-archived student in the same institution,
+        class (zero-padding tolerant) and section already holds this roll
+        number. A blank / zero roll never clashes: it means "no roll given"."""
+        if not roll_no:
+            return False
+        qs = cls.objects.filter(
+            institution=institution,
+            admission_class__in=class_label_spellings(admission_class),
+            section=section or '',
+            roll_no=roll_no,
+            status='ACTIVE',
+            is_archived=False,
+        )
+        if exclude_pk:
+            qs = qs.exclude(pk=exclude_pk)
+        return qs.exists()
+
+    @classmethod
     def group_choices_for_class(cls, admission_class):
         """The groups offered for a class: Science / Business Studies /
         Humanities from class 9 up, and nothing at all below that."""
@@ -249,7 +303,13 @@ class Student(models.Model):
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='ACTIVE')
     discontinued_at = models.DateTimeField(null=True, blank=True)
     discontinued_reason = models.CharField(max_length=255, blank=True)
-    photo = models.ImageField(upload_to='student_photos/', blank=True, null=True)
+    photo = models.ImageField(
+        upload_to=student_photo_upload_to,
+        blank=True,
+        null=True,
+        validators=[validate_student_photo],
+        help_text='JPG, PNG or GIF; 1 MB max; dimensions 300×300 to 4096×4096 px.',
+    )
     is_archived = models.BooleanField(default=False)
     archived_at = models.DateTimeField(null=True, blank=True)
     archived_by = models.ForeignKey(
@@ -356,19 +416,47 @@ class SectionCapacity(models.Model):
     def seats_taken(cls, institution, admission_class, section):
         return Student.objects.filter(
             institution=institution,
-            admission_class=admission_class,
+            admission_class__in=class_label_spellings(admission_class),
             section=section,
             status='ACTIVE',
         ).count()
 
     @classmethod
+    def _rows_for(cls, institution, admission_class, section):
+        """Capacity rows for this class/section, the exact spelling first."""
+        exact = str(admission_class or '').strip()
+        rows = list(cls.objects.filter(
+            institution=institution,
+            admission_class__in=class_label_spellings(admission_class),
+            section=section,
+        ))
+        rows.sort(key=lambda row: row.admission_class != exact)
+        return rows
+
+    @classmethod
     def get_limit(cls, institution, admission_class, section):
-        try:
-            return cls.objects.get(
-                institution=institution, admission_class=admission_class, section=section
-            ).capacity
-        except cls.DoesNotExist:
-            return None
+        rows = cls._rows_for(institution, admission_class, section)
+        return rows[0].capacity if rows else None
+
+    @classmethod
+    def lock_for_update(cls, institution, admission_class, section):
+        """Lock the capacity row for this class/section (if one exists).
+
+        Two approvals or imports filling the last seat must not both pass
+        ``has_room``. Taking this row lock inside a transaction serialises them:
+        the second writer waits, then counts the seat the first one just took.
+        No row means no limit, so there is nothing to serialise. Must be called
+        inside ``transaction.atomic()``."""
+        return (
+            cls.objects.select_for_update()
+            .filter(
+                institution=institution,
+                admission_class__in=class_label_spellings(admission_class),
+                section=section,
+            )
+            .order_by('pk')
+            .first()
+        )
 
     @classmethod
     def has_room(cls, institution, admission_class, section, exclude_student_id=None):
@@ -381,7 +469,8 @@ class SectionCapacity(models.Model):
         if exclude_student_id:
             already_counted = Student.objects.filter(
                 pk=exclude_student_id, institution=institution,
-                admission_class=admission_class, section=section, status='ACTIVE',
+                admission_class__in=class_label_spellings(admission_class),
+                section=section, status='ACTIVE',
             ).exists()
             if already_counted:
                 taken -= 1
@@ -482,6 +571,11 @@ class AdmissionApplication(models.Model):
                   'Stored as text so the leading zero is kept.',
     )
     guardian_address = models.TextField(blank=True)
+    # Optional applicant photo (internal admission form only — public form
+    # does not accept photos to reduce spam/rate-limit risk). Uploaded to
+    # 'admission_photos/' subdirectory. Max 1MB, JPG/PNG/GIF only (validated
+    # in the form, not the model).
+    applicant_photo = models.ImageField(upload_to='admission_photos/', blank=True, null=True)
     requested_class = models.CharField(max_length=10)
     requested_group = models.CharField(max_length=3, choices=Student.GROUP_CHOICES, blank=True)
     requested_section = models.CharField(max_length=5, blank=True)
@@ -612,13 +706,17 @@ class Subject(MarksConfigMixin):
         help_text='Leave blank if this subject has no practical exam (e.g. Physics: 75 theory + 25 practical)',
     )
     category = models.CharField(max_length=12, choices=CATEGORY_CHOICES, default='OTHER')
+    display_order = models.PositiveIntegerField(
+        default=0,
+        help_text='Lower numbers appear first in result sheets and subject lists. Use this to control the serial order of subjects.',
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='subjects_created'
     )
 
     class Meta:
-        ordering = ['category', 'name']
+        ordering = ['display_order', 'name']
 
     def __str__(self):
         return self.name
@@ -647,7 +745,7 @@ class SubjectRequirement(models.Model):
     condition_religion = models.CharField(max_length=50, blank=True)
 
     class Meta:
-        ordering = ['institution', 'admission_class', 'group', 'requirement_type', 'subject__name']
+        ordering = ['institution', 'admission_class', 'group', 'requirement_type', 'subject__display_order', 'subject__name']
         constraints = [
             models.UniqueConstraint(
                 fields=['institution', 'admission_class', 'group', 'subject'],
@@ -692,6 +790,61 @@ class StudentSubject(models.Model):
         return f"{self.student.name} - {self.subject.name}"
 
 
+class DocumentSequence(models.Model):
+    """Monotonic year-wise counter behind TC and certificate numbers.
+
+    Printed numbers are quoted on paper, so they must be unique *and* must
+    never be handed out twice. The earlier ``count() + 1`` scheme was neither:
+    two rows sharing a number raised an IntegrityError (a 500 on screen), and
+    purging the row that used a number handed the same number out again to the
+    next student. A counter row outlives the documents it numbered, so a
+    deleted number stays spent.
+    """
+
+    # ``'TC-2026'`` / ``'CERT-STUDY-2026'`` — one counter per year (and per
+    # certificate type, because each type has its own prefix and sequence).
+    scope = models.CharField(max_length=64, unique=True)
+    last_number = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Internal bookkeeping — nothing is granted or checked against it.
+        default_permissions = ()
+
+    def __str__(self):
+        return f'{self.scope} -> {self.last_number}'
+
+
+def next_document_sequence_number(scope, *, seed=0):
+    """Allocate the next number for ``scope`` and return it.
+
+    The counter row is locked for the whole read-increment-write, so two clerks
+    issuing at the same moment get different numbers (Postgres; on SQLite this
+    is a no-op, as everywhere else in this codebase). ``seed`` lifts a missing
+    or lagging counter to the highest number already in use, which is how
+    legacy/hand-typed numbers are respected when the counter is first created.
+    """
+    with transaction.atomic():
+        DocumentSequence.objects.get_or_create(scope=scope, defaults={'last_number': seed})
+        sequence = DocumentSequence.objects.select_for_update().get(scope=scope)
+        if sequence.last_number < seed:
+            sequence.last_number = seed
+        sequence.last_number += 1
+        sequence.save(update_fields=['last_number', 'updated_at'])
+        return sequence.last_number
+
+
+def _highest_sequence(numbers):
+    """Largest ``...-NNN`` tail in ``numbers``, ignoring unparseable strings."""
+    highest = 0
+    for number in numbers:
+        try:
+            highest = max(highest, int(str(number).rsplit('-', 1)[-1]))
+        except (TypeError, ValueError):
+            continue
+    return highest
+
+
 class TransferCertificate(models.Model):
     student = models.OneToOneField(
         Student, on_delete=models.CASCADE, related_name='transfer_certificate'
@@ -704,13 +857,25 @@ class TransferCertificate(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.tc_number:
-            from django.utils import timezone
-            year = timezone.now().year
-            count = TransferCertificate.objects.filter(
-                issue_date__year=year
-            ).count() + 1
-            self.tc_number = f"TC-{year}-{count:03d}"
+            self.tc_number = self._allocate_tc_number()
         super().save(*args, **kwargs)
+
+    def _allocate_tc_number(self):
+        year = timezone.now().year
+        scope = f'TC-{year}'
+        taken = set(
+            TransferCertificate.objects.filter(issue_date__year=year)
+            .values_list('tc_number', flat=True)
+        )
+        for _ in range(10):
+            sequence = next_document_sequence_number(
+                scope, seed=_highest_sequence(taken),
+            )
+            number = f"TC-{year}-{sequence:03d}"
+            if number not in taken:
+                return number
+            taken.add(number)
+        raise ValidationError(f'Could not allocate a free TC number for {year}.')
 
     def __str__(self):
         return f"{self.tc_number} - {self.student.name}"
@@ -734,14 +899,29 @@ class Certificate(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.certificate_number:
-            from django.utils import timezone
-            year = timezone.now().year
-            prefix = self.certificate_type[:3]
-            count = Certificate.objects.filter(
-                issue_date__year=year, certificate_type=self.certificate_type
-            ).count() + 1
-            self.certificate_number = f"{prefix}-{year}-{count:03d}"
+            self.certificate_number = self._allocate_certificate_number()
         super().save(*args, **kwargs)
+
+    def _allocate_certificate_number(self):
+        year = timezone.now().year
+        prefix = self.certificate_type[:3]
+        scope = f'CERT-{self.certificate_type}-{year}'
+        taken = set(
+            Certificate.objects.filter(
+                issue_date__year=year, certificate_type=self.certificate_type,
+            ).values_list('certificate_number', flat=True)
+        )
+        for _ in range(10):
+            sequence = next_document_sequence_number(
+                scope, seed=_highest_sequence(taken),
+            )
+            number = f"{prefix}-{year}-{sequence:03d}"
+            if number not in taken:
+                return number
+            taken.add(number)
+        raise ValidationError(
+            f'Could not allocate a free certificate number for {year} ({self.certificate_type}).'
+        )
 
     def __str__(self):
         return f"{self.certificate_number} - {self.student.name}"
@@ -761,7 +941,6 @@ class Exam(models.Model):
         ('MID_TERM_1', 'Mid Term-1'),
         ('MID_TERM_2', 'Mid Term-2'),
         ('MID_TERM_3', 'Mid Term-3'),
-        ('SPECIAL_EXAM', 'Special Exam'),
     ]
 
     name = models.CharField(max_length=100)
@@ -776,6 +955,29 @@ class Exam(models.Model):
     special_result_enabled = models.BooleanField(
         default=False,
         help_text='Allow the separate English-language Special Exam result by total marks.',
+    )
+
+    # ---- Special exam (বৃত্তি পরীক্ষা / competitive test) ----------------
+    # A normal exam is a register: its cohort is "class + section + group" and
+    # its papers are the ones assigned to that class. A special exam is the
+    # opposite — the candidates and the papers are picked by hand, so any
+    # student of the institution can sit it regardless of class or group
+    # (a class-8 scholarship test a few class-9 students also sit, say).
+    # ``admission_class`` is still kept: it drives the Mark Evaluation marks
+    # distribution (full marks / CQ / MCQ / pass %) and the printed heading.
+    is_special = models.BooleanField(
+        default=False,
+        help_text='Special exam (scholarship / competitive test): candidates '
+                  'and papers are picked by hand instead of following the '
+                  'class register.',
+    )
+    special_students = models.ManyToManyField(
+        'Student', blank=True, related_name='special_exams',
+        help_text='Candidates of a special exam, chosen by hand.',
+    )
+    special_subjects = models.ManyToManyField(
+        'Subject', blank=True, related_name='special_exams',
+        help_text='Papers a special exam is held on.',
     )
 
     def __str__(self):
@@ -1064,13 +1266,103 @@ class SalarySheet(models.Model):
     date = models.DateField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='UNPAID')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='salary_sheets_created')
+    # EM-03 closed-period control: a locked sheet is the payroll record for a
+    # month that has been finalised. It stays readable/exportable, but the
+    # amount/status/date can no longer be edited or deleted until it is unlocked
+    # (an audited action). Locking is deliberately separate from PAID: a sheet
+    # can be paid and still open for a late correction, and an unpaid sheet can
+    # be locked when the month closes.
+    locked_at = models.DateTimeField(null=True, blank=True)
+    locked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='salary_sheets_locked',
+    )
+    lock_reason = models.CharField(max_length=200, blank=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['employee', 'month'], name='unique_employee_salary_month')]
         ordering = ['-date', '-id']
 
+    @property
+    def is_locked(self):
+        return self.locked_at is not None
+
     def __str__(self):
-        return f"{self.employee.name} - {self.month} - {self.amount} ({self.get_status_display()})"
+        suffix = ' (locked)' if self.is_locked else ''
+        return f"{self.employee.name} - {self.month} - {self.amount} ({self.get_status_display()}){suffix}"
+
+
+class TeacherAssignment(models.Model):
+    """Teacher ↔ class/section/subject registry (EM-01).
+
+    One row says: this employee teaches this subject to this class/section in
+    this session. Rows are never hard-deleted by the UI; an assignment is
+    deactivated (``is_active=False``) so the history of who taught what stays
+    auditable. The database enforces one *active* row per
+    institution+employee+class+section+subject+session.
+    """
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='teacher_assignments')
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='teacher_assignments')
+    admission_class = models.CharField(max_length=10, help_text="e.g. 9, 10, 11, 12")
+    section = models.CharField(max_length=10, blank=True, help_text='Leave blank for a class-wide assignment.')
+    subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name='teacher_assignments')
+    session = models.CharField(max_length=20, help_text='e.g. 2026-2027')
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='teacher_assignments_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['admission_class', 'section', 'subject__name', 'employee__name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['institution', 'employee', 'admission_class', 'section', 'subject', 'session'],
+                condition=models.Q(is_active=True),
+                name='unique_active_teacher_assignment',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['institution', 'admission_class', 'section'], name='teacher_assign_class_idx'),
+            models.Index(fields=['employee', 'is_active'], name='teacher_assign_emp_idx'),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.institution_id and self.employee_id:
+            employee = self.employee
+            if employee.institution_id and employee.institution_id != self.institution_id:
+                errors['employee'] = 'The employee must belong to the selected institution.'
+        if self.institution_id and self.admission_class:
+            classes = [
+                label.strip()
+                for label in (self.institution.classes or '').split(',')
+                if label.strip()
+            ]
+            if classes and self.admission_class not in classes:
+                errors['admission_class'] = (
+                    'Class must be one of the institution classes: %s.' % ', '.join(classes)
+                )
+        if self.institution_id and self.admission_class and self.subject_id:
+            requirements = SubjectRequirement.objects.filter(
+                institution=self.institution,
+                admission_class=self.admission_class,
+            )
+            if requirements.exists() and not requirements.filter(subject_id=self.subject_id).exists():
+                errors['subject'] = (
+                    'This subject is not part of the curriculum for class '
+                    '%s in this institution.' % self.admission_class
+                )
+        if not (self.session or '').strip():
+            errors['session'] = 'Session is required.'
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        scope = self.section or 'All sections'
+        return f"{self.employee.name} — Class {self.admission_class} ({scope}) — {self.subject.name} [{self.session}]"
 
 
 class Fee(models.Model):
@@ -1155,4 +1447,31 @@ class RateLimitCacheEntry(models.Model):
 
     class Meta:
         db_table = 'django_cache'
+        default_permissions = ()
+
+
+class StudentPhotoDeletionJob(models.Model):
+    """Durable outbox entry for deleting a photo after its DB reference clears.
+
+    This intentionally stores only a storage alias and object name, not a
+    Student foreign key: hard purge must not cascade the retry record away.
+    """
+    storage_alias = models.CharField(max_length=100, default='default')
+    name = models.CharField(max_length=512)
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    # Keep only an exception class name; backend errors can contain object keys
+    # or credentials and must not be persisted or printed.
+    last_error_type = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['next_attempt_at', 'pk']
+        indexes = [
+            models.Index(
+                fields=['next_attempt_at', 'id'],
+                name='student_photo_del_due',
+            ),
+        ]
         default_permissions = ()

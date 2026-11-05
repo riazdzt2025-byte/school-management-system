@@ -2,6 +2,56 @@
 
     {% block title %}Exams - {{ block.super }}{% endblock %}
 
+{% block extra_style %}
+<style>
+    /* A compact mega-menu, rather than one tall list: the four action groups
+       sit in two columns so the whole menu is visible at normal desktop zoom. */
+    .exam-actions .exam-actions-menu {
+        width: min(600px, calc(100vw - 24px)); min-width: min(520px, calc(100vw - 24px));
+        max-width: calc(100vw - 16px); max-height: min(74vh, 540px); overflow-y: auto;
+        padding: 10px; gap: 8px; border-radius: 14px;
+        border: 1px solid rgba(15, 45, 82, .1); background: #fff;
+        box-shadow: 0 16px 38px rgba(15, 45, 82, .2);
+    }
+    .exam-actions .exam-actions-menu.show {
+        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start;
+    }
+    .exam-actions-section {
+        list-style: none; min-width: 0; padding: 7px; border-radius: 11px;
+        border: 1px solid rgba(15, 45, 82, .07); background: #f8fafc;
+    }
+    .exam-actions-heading {
+        display: flex; align-items: center; gap: 7px; margin: 0 2px 5px; padding: 2px 7px 6px;
+        border-bottom: 1px solid rgba(15, 45, 82, .09); color: #0f2d52;
+        font-size: .7rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    }
+    .exam-actions-heading i { font-size: .9rem; color: #60758c; }
+    .exam-actions .dropdown-item {
+        display: block; width: 100%; border-radius: 8px; padding: 7px 8px;
+        font-size: .83rem; line-height: 1.25; white-space: normal;
+    }
+    .exam-actions .dropdown-item:hover, .exam-actions .dropdown-item:focus {
+        background: #eaf0f6; color: #0f2d52;
+    }
+    .exam-actions .dropdown-item.text-danger:hover { background: #fcebed; color: #a31515; }
+    .exam-actions-section form { margin: 0; }
+    .exam-actions-cell { white-space: nowrap; }
+    @media (max-width: 575.98px) {
+        .exam-actions .exam-actions-menu,
+        .exam-actions .exam-actions-menu.show {
+            width: calc(100vw - 24px); min-width: calc(100vw - 24px);
+            max-height: 68vh; grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
+    /* The row lives in a horizontally scrolling table, which would clip an
+       absolutely positioned menu — popper renders it fixed instead (see the
+       script at the foot of this page). */
+    @media print { .exam-actions { display: none; } }
+</style>
+{% endblock %}
+
+
     {% block content %}
     <div class="page-header">
         <div>
@@ -49,13 +99,24 @@
                         <th>Session</th>
                         <th>Date</th>
                         <th>Status</th>
-                        <th>Action</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for exam in exams %}
                     <tr>
-                        <td>{{ exam.name }}</td>
+                        <td>
+                            {{ exam.name }}
+                            {% if exam.is_special %}
+                            <span class="badge bg-info text-dark" title="Candidates and papers picked by hand">
+                                Special
+                            </span>
+                            <div class="small text-muted">
+                                {{ exam.special_candidate_count }} candidate{{ exam.special_candidate_count|pluralize }}
+                                &middot; {{ exam.special_paper_count }} paper{{ exam.special_paper_count|pluralize }}
+                            </div>
+                            {% endif %}
+                        </td>
                         <td>{{ exam.get_exam_type_display }}</td>
                         <td>{{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}</td>
                         <td>{{ exam.get_group_display|default:'-' }}</td>
@@ -68,35 +129,34 @@
                             <span class="badge bg-secondary">Unpublished</span>
                             {% endif %}
                         </td>
-                        <td>
-                            <a href="{% url 'result_sheet' exam.pk %}" class="btn btn-sm btn-outline-info">Results</a>
-                            {% if exam.special_result_enabled %}
-                            <a href="{% url 'special_exam_result_list' %}?exam={{ exam.pk }}" class="btn btn-sm btn-outline-info">Special Result</a>
-                            {% endif %}
-                            {% if perms.students.add_exammark %}
-                            <a href="{% url 'select_marks_subject' exam.pk %}" class="btn btn-sm btn-outline-primary">Enter Marks</a>
-                            <a href="{% url 'import_exam_marks' exam.pk %}" class="btn btn-sm btn-outline-primary">Import Marks</a>
-                            {% endif %}
-                            <a href="{% url 'seat_plan_list' exam.pk %}" class="btn btn-sm btn-outline-dark">Seat Plan</a>
-                            {% if perms.students.change_exam %}
-                            <a href="{% url 'edit_exam' exam.pk %}" class="btn btn-sm btn-outline-warning">Edit</a>
-                            <form method="post" action="{% url 'toggle_publish_exam' exam.pk %}" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm btn-outline-success">
-                                    {% if exam.is_published %}Unpublish{% else %}Publish{% endif %}
-                                </button>
-                            </form>
-                            {% endif %}
-                            {% if user.is_superuser or user.is_staff %}
-                            <a href="{% url 'delete_exam' exam.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
-                            {% endif %}
+                        <td class="exam-actions-cell">
+                            {% include 'students/_exam_row_actions.html' %}
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="7" class="text-center py-4">No exams created yet.</td></tr>
+                    <tr><td colspan="8" class="text-center py-4">No exams created yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
-    {% endblock %}
+
+{% include 'students/_pagination.html' %}
+{% endblock %}
+
+{% block extra_script %}
+<script>
+    // A dropdown inside a horizontally scrolling table is clipped by that
+    // scroll container, so every exam-row menu is rendered with popper's
+    // "fixed" strategy: it escapes the table and still follows the button.
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.exam-actions [data-bs-toggle="dropdown"]').forEach(function (toggle) {
+            if (window.bootstrap && window.bootstrap.Dropdown) {
+                window.bootstrap.Dropdown.getOrCreateInstance(toggle, {
+                    popperConfig: { strategy: 'fixed' }
+                });
+            }
+        });
+    });
+</script>
+{% endblock %}

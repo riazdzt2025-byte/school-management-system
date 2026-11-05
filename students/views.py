@@ -9,8 +9,10 @@ from django.core.cache import caches
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.utils import OperationalError, ProgrammingError
-from django.core.paginator import Paginator
+from .pagination import paginate_list
+from . import result_exports
 from django.db.models import Sum, Q, Count, F
+from django.db.models.functions import TruncDate
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from .curriculum_data import curriculum_for_class
@@ -21,9 +23,10 @@ from .models import (
     Exam, ExamMark, SeatPlan, SpecialExamRankOrder,
     Employee, EmployeeStatusLog, AttendanceRecord, MoneyReceipt, Voucher, SalarySheet,
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
-    StudentSubjectChoice, SectionCapacity,
+    StudentSubjectChoice, SectionCapacity, TeacherAssignment,
     MARK_PARTS, GROUPED_CLASS_LABELS,
     class_supports_group, normalize_guardian_contact, validate_guardian_contact,
+    GUARDIAN_CONTACT_ERROR,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -32,6 +35,8 @@ from .forms import (
     ExamForm, auto_exam_name, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm,
     EmployeeStatusChangeForm, MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
     AdmissionApplicationForm, AdmissionPaymentForm, AttendanceMarkingForm, DailyAttendanceSelectionForm,
+    AttendanceCorrectionForm, TeacherAssignmentForm,
+    PublicAdmissionStatusForm, normalize_application_number,
 )
 from django.contrib.auth.decorators import login_required, permission_required
 from django.urls import reverse
@@ -42,6 +47,9 @@ import re
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from datetime import date
+from calendar import monthrange
+import csv
+from urllib.parse import urlencode
 from uuid import uuid4
 from .result_utils import (
     SUBJECTS_ALL_DISABLED,
@@ -49,6 +57,7 @@ from .result_utils import (
     SUBJECTS_NO_STUDENT,
     absent_subject_fails_result,
     build_exam_results,
+    build_sheet_columns,
     class_filter_variants,
     get_exam_group_choices,
     get_exam_students,
@@ -56,14 +65,20 @@ from .result_utils import (
     get_exam_subjects_for_students,
     get_student_subject_ids,
     get_subject_marks,
+    get_subject_marks_map,
     no_subjects_assigned_message,
     published_exams_affected_by_assignment,
     unmarked_assigned_subjects,
     religion_paper_for,
     religion_subject_map,
+    result_summary_totals,
+    grade_distribution_report,
+    grade_scale_rows,
+    golden_a_plus,
     subject_availability_diagnosis,
     unassigned_mark_subjects,
     failed_subject_rows,
+    fourth_subject_configuration_errors,
     section_arrangement_rows,
 )
 from .special_exam_results import build_special_exam_result
@@ -159,7 +174,7 @@ from .marks_import import (
 )
 from .audit import record_audit
 from .permissions import sync_user_department_permissions
-from .models import Student, Subject, Institution, Employee, student_religion
+from .models import Student, Subject, Institution, Employee, student_religion, class_label_spellings
 
 # Import the optional Excel dependency dynamically so this module remains
 # importable in environments where the package is not installed.
@@ -587,8 +602,11 @@ def admission_application_list(request):
     status = request.GET.get('status')
     if status:
         applications = applications.filter(status=status)
+    applications = applications.order_by('-submitted_at', '-pk')
+    pagination = paginate_list(request, applications)
     return render(request, 'students/admission_application_list.html', {
-        'applications': applications, 'status': status,
+        **pagination,
+        'applications': pagination['page_rows'], 'status': status,
         'status_choices': AdmissionApplication.STATUS_CHOICES,
     })
 
@@ -699,12 +717,230 @@ def public_admission_apply(request):
         form = AdmissionApplicationForm(request.POST or None)
         if form.is_valid():
             application = form.save()
-            return render(request, 'students/public_admission_success.html', {
-                'application': application,
-            })
+            return render(request, 'students/public_admission_success.html',
+                          _public_success_context(request, application))
         return render(request, 'students/public_admission_form.html', {'form': form})
     form = AdmissionApplicationForm()
     return render(request, 'students/public_admission_form.html', {'form': form})
+
+
+# ---------------- public application slip + status check (OF-06) ----------------
+# The applicant's own two pages, both reachable without a login:
+#   * the printable slip shown right after the public form is submitted, and
+#   * "check your admission status", which needs the application number PLUS
+#     the last four digits of the guardian contact number.
+# Privacy rules that the tests pin:
+#   * every mismatch — unknown number, wrong tail, malformed input — renders the
+#     same page with the same generic message, so the route cannot be used to
+#     test whether an application number exists (enumeration);
+#   * only the applicant's own masked name is shown, never internal remarks,
+#     the acting user, amounts or another applicant's data;
+#   * no internal route is linked from a public page, and every public page
+#     carries `noindex, nofollow`.
+
+
+def _mask_person_name(value):
+    """``Md. Rahim Uddin`` -> ``M*** R*** U***``.
+
+    Public pages show names masked only. A fixed three-asterisk tail keeps the
+    rendered page the same size whatever the real name is.
+    """
+    parts = [f'{word[0].upper()}***' for word in str(value or '').split() if word]
+    return ' '.join(parts)
+
+
+def _mask_contact_tail(value):
+    """``01812345678`` -> ``*******5678`` (hidden digits become asterisks)."""
+    digits = re.sub(r'\D', '', str(value or ''))
+    if not digits:
+        return ''
+    return '*' * max(len(digits) - 4, 0) + digits[-4:]
+
+
+PUBLIC_STATUS_IP_LIMIT = 30            # all status lookups from one address ...
+PUBLIC_STATUS_IP_WINDOW_SECONDS = 600  # ... per 10 minutes
+PUBLIC_STATUS_FAIL_LIMIT = 5           # wrong details for one application ...
+PUBLIC_STATUS_FAIL_WINDOW_SECONDS = 900  # ... lock that pair for 15 minutes
+
+PUBLIC_STATUS_NOT_FOUND_ERROR = (
+    'No application was found with those details. Please check the application '
+    'number and the last 4 digits of the guardian contact number.'
+)
+PUBLIC_STATUS_THROTTLE_ERROR = (
+    'Too many status checks from this address. Please wait a few minutes and try again.'
+)
+
+# Applicant-facing wording per status: (headline, what happens next). The text
+# is fixed here on purpose — ``office_remarks`` / ``account_remarks`` are
+# internal and never reach a public page.
+PUBLIC_STATUS_MESSAGES = {
+    'SUBMITTED': (
+        'Application received',
+        'The office will review your application. Please keep the phone reachable '
+        '— the office may call the guardian contact number you gave. Nothing else '
+        'is needed from you right now.',
+    ),
+    'OFFICE_APPROVED': (
+        'Office review complete',
+        'Your application passed the office review and has been sent to the '
+        'accounts section for the admission payment.',
+    ),
+    'ACCOUNT_PENDING': (
+        'Waiting for the accounts section',
+        'The accounts section will confirm the admission payment. The school '
+        'office will contact you about the fee.',
+    ),
+    'PAYMENT_APPROVED': (
+        'Payment confirmed',
+        'Your payment is confirmed and the admission is being finalised.',
+    ),
+    'ENROLLED': (
+        'Admission complete',
+        'Admission is complete. Please collect the money receipt and the student '
+        'ID card from the school office.',
+    ),
+    'REJECTED': (
+        'Application closed',
+        'This application was not approved. If you have any questions, or would '
+        'like to apply again, please contact the school office.',
+    ),
+}
+
+_PUBLIC_STATUS_STEPS = (
+    'Application received',
+    'Office review',
+    'Accounts review',
+    'Admission complete',
+)
+# Index of the step the application is standing on right now (len == finished).
+_PUBLIC_STATUS_CURRENT_STEP = {
+    'SUBMITTED': 1,
+    'OFFICE_APPROVED': 2,
+    'ACCOUNT_PENDING': 2,
+    'PAYMENT_APPROVED': 3,
+    'ENROLLED': 4,
+}
+
+
+def _public_status_timeline(application):
+    """Stages and dates of an application, for the applicant's own eyes.
+
+    Nothing else: no remarks, no acting user, no amount. ``REJECTED`` gets a
+    two-step closed timeline instead of the happy path (the reason for the
+    decision is deliberately not published — owner decision, OF-06).
+    """
+    if application.status == 'REJECTED':
+        return [
+            {'label': _PUBLIC_STATUS_STEPS[0], 'state': 'done', 'date': application.submitted_at},
+            {'label': 'Review finished', 'state': 'closed', 'date': application.office_action_at},
+        ]
+    dates = (
+        application.submitted_at,
+        application.office_action_at,
+        application.account_action_at,
+        application.account_action_at,
+    )
+    current = _PUBLIC_STATUS_CURRENT_STEP.get(application.status, 1)
+    timeline = []
+    for index, label in enumerate(_PUBLIC_STATUS_STEPS):
+        if index < current:
+            state = 'done'
+        elif index == current:
+            state = 'current'
+        else:
+            state = 'todo'
+        timeline.append({
+            'label': label,
+            'state': state,
+            'date': dates[index] if state == 'done' else None,
+        })
+    return timeline
+
+
+def _public_status_fail_key(request, application_number):
+    """Counter key for wrong details on one application from one address."""
+    return f'rl:public_status_fail:{_client_ip(request)}:{application_number[:40]}'
+
+
+def _match_public_application(application_number, contact_last4):
+    """The application whose number *and* contact tail both match, else None.
+
+    One query, one boolean answer: the caller cannot tell an unknown
+    application number from a wrong contact tail.
+    """
+    application = AdmissionApplication.objects.select_related(
+        'institution', 'enrolled_student',
+    ).filter(application_number=application_number).first()
+    if application is None:
+        return None
+    digits = re.sub(r'\D', '', application.guardian_contact_no or '')
+    if len(contact_last4) != 4 or not digits.endswith(contact_last4):
+        return None
+    return application
+
+
+def _public_success_context(request, application):
+    """Context of the printable slip rendered right after a public POST."""
+    status_url = request.build_absolute_uri(reverse('public_admission_status'))
+    return {
+        'application': application,
+        'masked_contact': _mask_contact_tail(application.guardian_contact_no),
+        'status_url': status_url,
+        'share_text': (
+            f'Admission application {application.application_number} '
+            f'({application.institution.name}). Check the status: {status_url}'
+        ),
+    }
+
+
+def public_admission_status(request):
+    """Public "check your admission status" page (OF-06)."""
+    form = PublicAdmissionStatusForm(request.POST or None)
+    application = None
+    error = None
+    if request.method == 'POST':
+        if _rate_limit_exceeded(
+            request, 'public_status',
+            limit=PUBLIC_STATUS_IP_LIMIT, window_seconds=PUBLIC_STATUS_IP_WINDOW_SECONDS,
+        ):
+            error = PUBLIC_STATUS_THROTTLE_ERROR
+        else:
+            fail_key = _public_status_fail_key(
+                request, normalize_application_number(request.POST.get('application_number', '')),
+            )
+            if _rl_get(fail_key, 0) >= PUBLIC_STATUS_FAIL_LIMIT:
+                error = PUBLIC_STATUS_THROTTLE_ERROR
+            else:
+                if form.is_valid():
+                    application = _match_public_application(
+                        form.cleaned_data['application_number'],
+                        form.cleaned_data['contact_last4'],
+                    )
+                if application is None:
+                    _rl_set(fail_key, _rl_get(fail_key, 0) + 1, PUBLIC_STATUS_FAIL_WINDOW_SECONDS)
+                    error = PUBLIC_STATUS_NOT_FOUND_ERROR
+                else:
+                    # Right details clear that pair's failure budget.
+                    _rl_delete(fail_key)
+
+    context = {'form': form, 'error': error, 'application': application}
+    if application is not None:
+        headline, what_next = PUBLIC_STATUS_MESSAGES.get(
+            application.status, PUBLIC_STATUS_MESSAGES['SUBMITTED'],
+        )
+        context.update({
+            'headline': headline,
+            'what_next': what_next,
+            'timeline': _public_status_timeline(application),
+            'masked_name': _mask_person_name(application.applicant_name),
+            'masked_contact': _mask_contact_tail(application.guardian_contact_no),
+            'student_id': (
+                application.enrolled_student.student_id
+                if application.status == 'ENROLLED' and application.enrolled_student else ''
+            ),
+            'rejected': application.status == 'REJECTED',
+        })
+    return render(request, 'students/public_admission_status.html', context)
 
 
 @login_required
@@ -727,9 +963,6 @@ def admission_application_detail(request, pk):
 
 
 def _application_transition(request, pk, action):
-    application = _get_scoped_object_or_404(
-        request, AdmissionApplication, pk, lambda a: a.institution,
-    )
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     now = timezone.now()
@@ -740,17 +973,25 @@ def _application_transition(request, pk, action):
         'handoff': ('OFFICE_APPROVED', 'ACCOUNT_PENDING', 'Payment approval'),
     }
     allowed_from, new_status, next_step = transitions[action]
-    if application.status not in ((allowed_from,) if isinstance(allowed_from, str) else allowed_from):
-        messages.error(request, f'Application cannot be {action} from its current status.')
-        return redirect('admission_application_detail', pk=pk)
-    application.status = new_status
-    application.next_step = next_step
-    application.office_actor = request.user
-    application.office_action_at = now
-    application.office_remarks = remarks
-    application.save(update_fields=['status', 'next_step', 'office_actor', 'office_action_at', 'office_remarks'])
-    record_audit(request.user, f'application_{new_status.lower()}', application,
-                snapshot={'status': new_status}, details={'remarks': remarks})
+    with transaction.atomic():
+        # Lock the row and re-read the status under the lock. Without this a
+        # reject that loaded the row before an accounts approval could save
+        # REJECTED over an ENROLLED application (lost update).
+        application = _get_scoped_object_or_404(
+            request, AdmissionApplication.objects.select_for_update(), pk,
+            lambda a: a.institution,
+        )
+        if application.status not in ((allowed_from,) if isinstance(allowed_from, str) else allowed_from):
+            messages.error(request, f'Application cannot be {action} from its current status.')
+            return redirect('admission_application_detail', pk=pk)
+        application.status = new_status
+        application.next_step = next_step
+        application.office_actor = request.user
+        application.office_action_at = now
+        application.office_remarks = remarks
+        application.save(update_fields=['status', 'next_step', 'office_actor', 'office_action_at', 'office_remarks'])
+        record_audit(request.user, f'application_{new_status.lower()}', application,
+                    snapshot={'status': new_status}, details={'remarks': remarks})
     messages.success(request, f'Application {new_status.replace("_", " ").title()}.')
     return redirect('admission_application_detail', pk=pk)
 
@@ -785,8 +1026,11 @@ def accounts_admission_queue(request):
     admission_class = request.GET.get('admission_class', '').strip()
     if admission_class:
         applications = applications.filter(requested_class=admission_class)
+    applications = applications.order_by('-submitted_at', '-pk')
+    pagination = paginate_list(request, applications)
     return render(request, 'students/accounts_admission_queue.html', {
-        'applications': applications, 'admission_class': admission_class,
+        **pagination,
+        'applications': pagination['page_rows'], 'admission_class': admission_class,
     })
 
 
@@ -922,15 +1166,23 @@ def accounts_approve_payment(request, pk):
         if not form.is_valid():
             messages.error(request, 'Please provide valid payment details.')
             return redirect('admission_application_detail', pk=pk)
-        # P1-2: warn when the entered amount differs from the class fee schedule
-        # (a configured fee is a guideline/confirmation, not a hard cap).
+        # P1-2 / OF-07: an entered amount that differs from the configured class
+        # fee is blocked (owner decision: fee mismatch blocks, it does not warn).
+        # Nothing has been written yet, so the redirect leaves no partial state.
         fee = _matching_fee(application)
         if fee is not None and form.cleaned_data.get('payment_amount') != fee.amount:
-            messages.warning(
+            messages.error(
                 request,
-                f'Entered amount differs from the fee schedule for this class '
-                f'({fee.amount:,.2f} per {fee.purpose}).'
+                f'Entered amount does not match the fee schedule for this class '
+                f'({fee.amount:,.2f} per {fee.purpose}). Correct the amount, or ask the '
+                'administrator to change the fee schedule, before approving payment.'
             )
+            return redirect('admission_application_detail', pk=pk)
+        # OF-07: serialise the seat check with other approvals/imports on the same
+        # section, so the last seat cannot be given out twice.
+        SectionCapacity.lock_for_update(
+            application.institution, application.requested_class, application.requested_section,
+        )
         if not SectionCapacity.has_room(
             application.institution, application.requested_class, application.requested_section
         ):
@@ -956,6 +1208,10 @@ def accounts_approve_payment(request, pk):
             guardian_contact_no=application.guardian_contact_no,
             admission_year=int(application.session[:4]) if application.session[:4].isdigit() else None,
         )
+        # Transfer applicant photo from admission application to student record
+        if application.applicant_photo:
+            student.photo = application.applicant_photo
+            student.save(update_fields=['photo'])
         # Auto-assign Mandatory/Conditional subjects from the Subject
         # Assignments table (same source the "Add Student" form uses).
         # Optional subjects still need a manual pick, so leave those for
@@ -1030,10 +1286,12 @@ def class_section_summary(request):
 
     grand_total = students_qs.count()
 
+    pagination = paginate_list(request, summary_rows, allow_full_print=True)
     return render(request, 'students/class_section_summary.html', {
+        **pagination,
         'institutions': institutions,
         'institution': institution,
-        'summary_rows': summary_rows,
+        'summary_rows': pagination['page_rows'],
         'grand_total': grand_total,
     })
 
@@ -1053,16 +1311,59 @@ FUNNEL_STAGES = [
     'ENROLLED', 'REJECTED',
 ]
 
+# Accounts works the payment side of admissions. Owner decision (prompt 12 §8):
+# its copy of the report carries the payment stages only — and because the page
+# and the Excel export ask for the same slice, downloading the workbook is not a
+# way around the limit.
+FUNNEL_PAYMENT_STAGES = ['ACCOUNT_PENDING', 'PAYMENT_APPROVED', 'ENROLLED']
 
-def _funnel_stages():
+# The trend reads per day (default), per ISO week or per month; ``?bucket=``
+# picks one, and anything unrecognised falls back to the day view.
+TREND_BUCKETS = ('day', 'week', 'month')
+
+# The page renders bounded tables (the OF-02 rule): the two additions below are
+# capped and say so, while the Excel export always carries every row. The trend
+# keeps the most recent buckets — the half an office actually reads — and the
+# 'Undated' row is never dropped by the cap.
+CAPACITY_DISPLAY_LIMIT = 200
+TREND_DISPLAY_LIMIT = 200
+
+# (row key, column label, CSS bar class, funnel stage gating the series).
+# Accounts has no SUBMITTED stage, so its trend has no submission column either.
+TREND_SERIES = (
+    ('submitted', 'Submitted', 'bar-submitted', 'SUBMITTED'),
+    ('payment_approved', 'Payment approved', 'bar-payment_approved', 'PAYMENT_APPROVED'),
+    ('enrolled', 'Enrolled', 'bar-enrolled', 'ENROLLED'),
+)
+
+
+def _funnel_stages(keys=None):
     """[(status key, label)] in funnel order, labelled by the model itself.
 
     The labels come from ``AdmissionApplication.STATUS_CHOICES`` so a renamed
     status can never show one wording on the funnel page and another on the
-    application list.
+    application list. ``keys`` narrows the stages to the slice a department is
+    allowed to read (OF-04: Accounts sees the payment stages only) — the default
+    stays the whole funnel.
     """
     labels = dict(AdmissionApplication.STATUS_CHOICES)
-    return [(key, labels.get(key, key)) for key in FUNNEL_STAGES]
+    return [(key, labels.get(key, key)) for key in (keys or FUNNEL_STAGES)]
+
+
+def _funnel_stage_keys(request):
+    """The funnel stages this user's copy of the report shows.
+
+    Office — and an admin, whatever session department they are in — reads the
+    whole funnel. Accounts works the payment side, so owner decision (prompt 12
+    §8) limits its copy to the stages it owns. The export asks the same helper,
+    so downloading the workbook is not a way around the slice.
+    """
+    if _is_admin(request.user):
+        return list(FUNNEL_STAGES)
+    department = request.session.get('selected_department') or 'Office'
+    if department == 'Accounts':
+        return list(FUNNEL_PAYMENT_STAGES)
+    return list(FUNNEL_STAGES)
 
 
 def _parse_report_date(raw):
@@ -1083,11 +1384,44 @@ def _parse_report_date(raw):
         return None
 
 
-def _admission_funnel_queryset(request):
-    """The applications the funnel counts, scoped and date-filtered.
+def _in_date_window(queryset, field, from_date, to_date):
+    """Bound ``field`` to whole inclusive days in the current timezone.
 
-    Returns ``(queryset, institution, from_date, to_date, export_url)``; the
-    last one is the Excel link carrying exactly the filters in effect.
+    ``< to_date + 1 day`` keeps the end day inclusive without depending on
+    whether the backend stores microseconds; blank/unparseable dates never
+    reach this far (``_parse_report_date`` already turned them into ``None``).
+    """
+    from datetime import datetime, timedelta
+
+    midnight = datetime.min.time()
+    if from_date is not None:
+        queryset = queryset.filter(
+            **{f'{field}__gte': timezone.make_aware(datetime.combine(from_date, midnight))},
+        )
+    if to_date is not None:
+        queryset = queryset.filter(
+            **{f'{field}__lt': timezone.make_aware(
+                datetime.combine(to_date + timedelta(days=1), midnight)
+            )},
+        )
+    return queryset
+
+
+def _trend_granularity(raw):
+    """``?bucket=`` — day (default), week or month. Junk falls back to day."""
+    value = (raw or '').strip().lower()
+    return value if value in TREND_BUCKETS else 'day'
+
+
+def _admission_funnel_queryset(request):
+    """The applications the report counts, scoped and date-filtered.
+
+    Returns ``(applications, scoped, institution, from_date, to_date,
+    export_url)``: ``scoped`` is the same institution-scoped queryset before the
+    submission-date window, which is what the trend needs (it bounds each of its
+    series by the date of that series' own event), and ``export_url`` is the
+    Excel link carrying exactly the filters in effect — the trend bucket
+    included, so the download matches the page.
 
     Institution scoping is exactly the list/export one
     (:func:`_resolve_requested_institution` + :func:`_scope_institution_qs`):
@@ -1097,30 +1431,17 @@ def _admission_funnel_queryset(request):
     set rather than to "everything". The date filter bounds ``submitted_at`` on
     whole inclusive days in the current timezone.
     """
-    from datetime import datetime, timedelta
     from urllib.parse import urlencode
 
     institution = _resolve_requested_institution(request, request.GET.get('institution'))
-    applications = AdmissionApplication.objects.all()
-    applications = _scope_institution_qs(request, applications, institution)
+    scoped = AdmissionApplication.objects.all()
+    scoped = _scope_institution_qs(request, scoped, institution)
 
     from_date = _parse_report_date(request.GET.get('from'))
     to_date = _parse_report_date(request.GET.get('to'))
-    midnight = datetime.min.time()
-    if from_date is not None:
-        applications = applications.filter(
-            submitted_at__gte=timezone.make_aware(datetime.combine(from_date, midnight)),
-        )
-    if to_date is not None:
-        # ``< to_date + 1 day`` keeps the whole end day inclusive without
-        # depending on whether the backend stores microseconds.
-        applications = applications.filter(
-            submitted_at__lt=timezone.make_aware(
-                datetime.combine(to_date + timedelta(days=1), midnight)
-            ),
-        )
+    applications = _in_date_window(scoped, 'submitted_at', from_date, to_date)
 
-    params = {}
+    params = {'bucket': _trend_granularity(request.GET.get('bucket'))}
     if institution is not None:
         params['institution'] = institution.pk
     if from_date is not None:
@@ -1130,24 +1451,29 @@ def _admission_funnel_queryset(request):
     export_url = reverse('admission_funnel_export')
     if params:
         export_url = f'{export_url}?{urlencode(params)}'
-    return applications, institution, from_date, to_date, export_url
+    return applications, scoped, institution, from_date, to_date, export_url
 
 
-def _admission_funnel_counts(queryset):
-    """``{status: count}`` for every funnel stage, zeroes included."""
-    counts = {key: 0 for key, _label in _funnel_stages()}
+def _admission_funnel_counts(queryset, keys=None):
+    """``{status: count}`` for every funnel stage in the slice, zeroes included."""
+    counts = {key: 0 for key, _label in _funnel_stages(keys)}
     for row in queryset.values('status').annotate(total=Count('id')):
         if row['status'] in counts:
             counts[row['status']] = row['total']
     return counts
 
 
-def _admission_funnel_summary(queryset):
-    """The funnel as template-ready rows plus the totals the page highlights."""
-    counts = _admission_funnel_counts(queryset)
+def _admission_funnel_summary(queryset, keys=None):
+    """The funnel as template-ready rows plus the totals the page highlights.
+
+    Every total is computed over the same slice the table shows, so an Accounts
+    copy reports the payment stages it may read and never a whole-funnel number
+    it was not supposed to see.
+    """
+    counts = _admission_funnel_counts(queryset, keys)
     total = sum(counts.values())
     rows = []
-    for key, label in _funnel_stages():
+    for key, label in _funnel_stages(keys):
         count = counts[key]
         rows.append({
             'key': key,
@@ -1155,8 +1481,8 @@ def _admission_funnel_summary(queryset):
             'count': count,
             'percent': round(count * 100 / total, 1) if total else 0.0,
         })
-    enrolled = counts['ENROLLED']
-    rejected = counts['REJECTED']
+    enrolled = counts.get('ENROLLED', 0)
+    rejected = counts.get('REJECTED', 0)
     return {
         'rows': rows,
         'counts': counts,
@@ -1170,13 +1496,13 @@ def _admission_funnel_summary(queryset):
     }
 
 
-def _admission_funnel_by_institution(queryset):
+def _admission_funnel_by_institution(queryset, keys=None):
     """Funnel counts split per institution (the 'All Institutions' page/sheet).
 
     ``stages`` carries the same per-status numbers as the main funnel table in
     template order; ``counts`` is the same data keyed by status for the export.
     """
-    stage_keys = _funnel_stages()
+    stage_keys = _funnel_stages(keys)
     buckets = {}
     for row in queryset.values('institution_id', 'institution__name', 'status').annotate(total=Count('id')):
         name = row['institution__name'] or '—'
@@ -1199,18 +1525,277 @@ def _admission_funnel_by_institution(queryset):
     return out
 
 
+def _capacity_vs_enrolled(request, institution):
+    """Seat limit vs the students actually sitting in each class/section.
+
+    Returns ``(rows, totals)``. The student side is exactly the population the
+    admission gate counts (:meth:`SectionCapacity.seats_taken` —
+    ``status='ACTIVE'``), so a section this report calls full is a section
+    ``has_room`` refuses at payment approval and at Excel import. Archived
+    students are DISCONTINUED by the archive action, so they are out of both
+    counts, the same way they are out of the student list.
+
+    Rows come from the union of the configured limits and the classes/sections
+    that actually hold students: a section with seats configured but nobody in
+    it still shows (0 of N), and a section full of students but with no limit
+    row shows as 'No limit' instead of disappearing. Two aggregate queries, so
+    the page never runs one query per row.
+    """
+    limits_qs = SectionCapacity.objects.all()
+    students_qs = Student.objects.filter(status='ACTIVE')
+    if institution is not None:
+        limits_qs = limits_qs.filter(institution=institution)
+        students_qs = students_qs.filter(institution=institution)
+    else:
+        limits_qs = _scope_by_allowed_institutions(request, limits_qs)
+        students_qs = _scope_by_allowed_institutions(request, students_qs)
+
+    limits = {}
+    names = {}
+    for row in limits_qs.values(
+        'institution_id', 'institution__name', 'admission_class', 'section', 'capacity',
+    ):
+        key = (row['institution_id'], row['admission_class'], row['section'])
+        limits[key] = row['capacity']
+        names[key] = row['institution__name'] or '—'
+
+    taken = {}
+    for row in students_qs.values(
+        'institution_id', 'institution__name', 'admission_class', 'section',
+    ).annotate(total=Count('id')):
+        key = (row['institution_id'], row['admission_class'], row['section'])
+        taken[key] = row['total']
+        names.setdefault(key, row['institution__name'] or '—')
+
+    rows = []
+    for key in sorted(
+        set(limits) | set(taken),
+        # Class and section keep their natural string order, the same
+        # deterministic ordering the Class/Section summary uses; the
+        # institution id only breaks ties between identically named rows.
+        key=lambda k: ((k[1] or ''), (k[2] or ''), (k[0] or 0)),
+    ):
+        capacity = limits.get(key)
+        seated = taken.get(key, 0)
+        if capacity is None:
+            # No limit configured: nothing to compare, and never a divide by 0.
+            free = utilization = None
+            over = False
+        else:
+            free = capacity - seated
+            utilization = round(seated * 100 / capacity, 1) if capacity else None
+            over = seated > capacity
+        rows.append({
+            'institution': names.get(key, '—'),
+            'admission_class': key[1] or '',
+            'section': key[2] or '',
+            'capacity': capacity,
+            'has_limit': capacity is not None,
+            'capacity_display': 'No limit' if capacity is None else capacity,
+            'seated': seated,
+            'free': free,
+            'free_display': '—' if free is None else free,
+            'utilization': utilization,
+            'utilization_display': '—' if utilization is None else f'{utilization}%',
+            'over': over,
+            'over_by': seated - capacity if over else 0,
+            'bar_percent': min(utilization, 100) if utilization is not None else 0.0,
+        })
+
+    limited = [row for row in rows if row['has_limit']]
+    capacity_total = sum(row['capacity'] for row in limited)
+    seated_in_limited = sum(row['seated'] for row in limited)
+    totals = {
+        'sections': len(rows),
+        'limited_sections': len(limited),
+        'no_limit_sections': len(rows) - len(limited),
+        'capacity': capacity_total,
+        'seated': sum(row['seated'] for row in rows),
+        'limited_seated': seated_in_limited,
+        'free': capacity_total - seated_in_limited,
+        'over_sections': sum(1 for row in rows if row['over']),
+    }
+    return rows, totals
+
+
+def _bucket_start(value, granularity):
+    """The first day of the bucket a date falls in (Monday for ISO weeks)."""
+    from datetime import timedelta
+
+    if granularity == 'week':
+        return value - timedelta(days=value.weekday())
+    if granularity == 'month':
+        return value.replace(day=1)
+    return value
+
+
+def _bucket_label(start, granularity):
+    """A deterministic, sortable label: 2026-10-05 · 2026-W41 · 2026-10."""
+    if granularity == 'month':
+        return f'{start:%Y-%m}'
+    if granularity == 'week':
+        iso = start.isocalendar()
+        return f'{iso[0]}-W{iso[1]:02d}'
+    return start.isoformat()
+
+
+def _bucket_counts(queryset, field, granularity):
+    """``{bucket start: count}`` from one aggregate query.
+
+    ``TruncDate`` converts to the current timezone before truncating, so the
+    bucket boundary follows the configured ``TIME_ZONE`` (Asia/Dhaka for a
+    deployment that sets it) instead of mixing local and UTC days.
+    """
+    counts = defaultdict(int)
+    for row in (
+        queryset.annotate(report_bucket=TruncDate(field))
+        .values('report_bucket')
+        .annotate(total=Count('id'))
+    ):
+        if row['report_bucket'] is not None:
+            counts[_bucket_start(row['report_bucket'], granularity)] += row['total']
+    return counts
+
+
+def _trend_rows(applications, from_date, to_date, granularity, keys=None, display_limit=None):
+    """Date-bucketed submissions, payment approvals and enrolments.
+
+    Each series is dated by the moment its own event happened and is bounded by
+    the same ``from``/``to`` window:
+
+    * **Submitted** — ``submitted_at`` (always set).
+    * **Payment approved** — ``account_action_at``, the moment Accounts approved
+      the payment.
+    * **Enrolled** — applications in the ENROLLED stage, dated by the same
+      ``account_action_at`` (enrolment happens inside that transaction); a row
+      approved but not yet enrolled therefore still counts as a payment.
+
+    Rows carrying no accounts action time (legacy or hand-edited data) are not
+    silently dropped: they are summarised in one explicit 'Undated' row, which
+    the display cap never trims. The series are computed with aggregate queries
+    only — no per-row work, no N+1.
+    """
+    series = [
+        (key, label, bar_class)
+        for key, label, bar_class, stage in TREND_SERIES
+        if stage in (keys or FUNNEL_STAGES)
+    ]
+    included = {key for key, _label, _bar in series}
+    counts = {}
+    if 'submitted' in included:
+        counts['submitted'] = _bucket_counts(
+            _in_date_window(applications, 'submitted_at', from_date, to_date),
+            'submitted_at', granularity,
+        )
+    if 'payment_approved' in included:
+        counts['payment_approved'] = _bucket_counts(
+            _in_date_window(
+                applications.filter(account_action_at__isnull=False),
+                'account_action_at', from_date, to_date,
+            ),
+            'account_action_at', granularity,
+        )
+    if 'enrolled' in included:
+        counts['enrolled'] = _bucket_counts(
+            _in_date_window(
+                applications.filter(status='ENROLLED', account_action_at__isnull=False),
+                'account_action_at', from_date, to_date,
+            ),
+            'account_action_at', granularity,
+        )
+
+    rows = []
+    for start in sorted({start for per_series in counts.values() for start in per_series}):
+        rows.append({
+            'start': start.isoformat(),
+            'label': _bucket_label(start, granularity),
+            'cells': [
+                {'key': key, 'label': label, 'bar_class': bar_class,
+                 'value': counts[key].get(start, 0), 'display': counts[key].get(start, 0)}
+                for key, label, bar_class in series
+            ],
+        })
+
+    # The page asks for a bounded table and keeps the most recent buckets; the
+    # export passes no limit, so the workbook always carries every bucket.
+    total_buckets = len(rows)
+    truncated = 0
+    if display_limit is not None and total_buckets > display_limit:
+        truncated = total_buckets - display_limit
+        rows = rows[-display_limit:]
+
+    # Bars are scaled to the busiest single number on the table, so the shape of
+    # the trend stays comparable from row to row; a zero value gets no bar at
+    # all rather than a fake sliver.
+    peak = max((cell['value'] for row in rows for cell in row['cells']), default=0)
+    for row in rows:
+        for cell in row['cells']:
+            cell['percent'] = round(cell['value'] * 100 / peak, 1) if peak else 0.0
+
+    # A payment approval and an enrolment both live on ``account_action_at``, so
+    # one 'Undated' row carries whatever of either is missing that timestamp.
+    undated = {
+        'payment_approved': applications.filter(
+            status='PAYMENT_APPROVED', account_action_at__isnull=True,
+        ).count() if 'payment_approved' in included else None,
+        'enrolled': applications.filter(
+            status='ENROLLED', account_action_at__isnull=True,
+        ).count() if 'enrolled' in included else None,
+    }
+    if any(undated.values()):
+        rows.append({
+            'start': '',
+            'label': 'Undated',
+            'undated': True,
+            'cells': [
+                {'key': key, 'label': label, 'bar_class': bar_class,
+                 'value': undated.get(key), 'display': undated.get(key), 'percent': 0.0}
+                for key, label, bar_class in series
+            ],
+        })
+
+    return {
+        'rows': rows,
+        'truncated': truncated,
+        'buckets': total_buckets,
+        'granularity': granularity,
+        'columns': [{'label': label, 'bar_class': bar_class} for _key, label, bar_class in series],
+        'undated': sum(count for count in undated.values() if count),
+    }
+
+
 @login_required
 @permission_required('students.view_admissionapplication', raise_exception=True)
 @_require_department(('Office', 'Accounts'))
 def admission_funnel_report(request):
-    """Office → Reports: how many applications sit at each admission stage."""
-    applications, institution, from_date, to_date, export_url = _admission_funnel_queryset(request)
-    summary = _admission_funnel_summary(applications)
+    """Office → Reports: how many applications sit at each admission stage.
+
+    OF-04 adds the two owner-approved reports to the same page and the same
+    guards: seat capacity vs the students actually enrolled per class/section,
+    and a date-bucketed trend of submissions, payment approvals and enrolments
+    (table + CSS bars, no new chart dependency). Accounts reads the payment
+    stages only (``_funnel_stage_keys``).
+    """
+    applications, scoped, institution, from_date, to_date, export_url = (
+        _admission_funnel_queryset(request)
+    )
+    stage_keys = _funnel_stage_keys(request)
+    summary = _admission_funnel_summary(applications, stage_keys)
     institution_rows = []
     if institution is None:
-        institution_rows = _admission_funnel_by_institution(applications)
+        institution_rows = _admission_funnel_by_institution(applications, stage_keys)
 
+    capacity_html_rows, capacity_totals = _capacity_vs_enrolled(request, institution)
+    capacity_rows = capacity_html_rows[:CAPACITY_DISPLAY_LIMIT]
+
+    trend = _trend_rows(
+        scoped, from_date, to_date, _trend_granularity(request.GET.get('bucket')), stage_keys,
+        display_limit=TREND_DISPLAY_LIMIT,
+    )
+
+    pagination = paginate_list(request, institution_rows, allow_full_print=True)
     return render(request, 'students/admission_funnel_report.html', {
+        **pagination,
         'institutions': _visible_institutions(request),
         'institution': institution,
         'from_date': from_date.isoformat() if from_date else '',
@@ -1221,10 +1806,28 @@ def admission_funnel_report(request):
         'rejected': summary['rejected'],
         'in_progress': summary['in_progress'],
         'conversion_percent': summary['conversion_percent'],
-        'institution_rows': institution_rows,
-        'funnel_stages': [{'key': key, 'label': label} for key, label in _funnel_stages()],
+        'institution_rows': pagination['page_rows'],
+        'funnel_stages': [{'key': key, 'label': label} for key, label in _funnel_stages(stage_keys)],
+        'stage_keys': stage_keys,
+        'payment_stages_only': 'SUBMITTED' not in stage_keys,
+        'capacity_rows': capacity_rows,
+        'capacity_totals': capacity_totals,
+        'capacity_truncated': len(capacity_html_rows) - len(capacity_rows),
+        'trend_rows': trend['rows'],
+        'trend_columns': trend['columns'],
+        'trend_granularity': trend['granularity'],
+        'trend_truncated': trend['truncated'],
+        'trend_undated': trend['undated'],
+        'timezone_name': timezone.get_current_timezone_name(),
         'export_url': export_url,
     })
+
+
+def _autosize_columns(sheet):
+    """Shared column width pass for the report sheets."""
+    for col in sheet.columns:
+        max_length = max((len(str(cell.value)) for cell in col if cell.value is not None), default=8)
+        sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
 
 
 @login_required
@@ -1233,17 +1836,27 @@ def admission_funnel_report(request):
 def admission_funnel_export(request):
     """Excel export of the funnel counts, with the filters of the report page.
 
-    This is the aggregate sheet; ``download_admission_sheet`` remains the
+    This is the aggregate workbook; ``download_admission_sheet`` remains the
     per-application sheet and is not changed by it. When the scope spans
     several institutions a second 'By Institution' sheet is added, so an admin
     exporting 'All Institutions' still gets the per-school breakdown.
+
+    OF-04 adds two sheets that carry the whole page's data, not the bounded
+    slice drawn on screen: 'Capacity vs Enrolled' (every class/section) and
+    'Trend' (every bucket, including the ones the page trimmed and the undated
+    row). Both follow the department slice, so an Accounts export has the same
+    payment-stage view as its page.
     """
     if openpyxl is None:
         messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
         return redirect('admission_funnel_report')
 
-    applications, institution, from_date, to_date, _export_url = _admission_funnel_queryset(request)
-    summary = _admission_funnel_summary(applications)
+    applications, scoped, institution, from_date, to_date, _export_url = (
+        _admission_funnel_queryset(request)
+    )
+    stage_keys = _funnel_stage_keys(request)
+    summary = _admission_funnel_summary(applications, stage_keys)
+    granularity = _trend_granularity(request.GET.get('bucket'))
 
     wb = openpyxl.Workbook()
     sheet = wb.active
@@ -1260,34 +1873,88 @@ def admission_funnel_export(request):
     sheet.append(['Total applications', summary['total'], ''])
     sheet.append(['In progress (not enrolled/rejected)', summary['in_progress'], ''])
     sheet.append(['Enrolled', summary['enrolled'], ''])
-    sheet.append(['Rejected', summary['rejected'], ''])
+    if 'REJECTED' in stage_keys:
+        sheet.append(['Rejected', summary['rejected'], ''])
     sheet.append(['Conversion (enrolled / total) %', summary['conversion_percent'], ''])
-    for col in sheet.columns:
-        max_length = max((len(str(cell.value)) for cell in col if cell.value is not None), default=8)
-        sheet.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
+    _autosize_columns(sheet)
+
+    capacity_rows, capacity_totals = _capacity_vs_enrolled(request, institution)
+    capacity_sheet = wb.create_sheet(title='Capacity vs Enrolled')
+    capacity_sheet.append(['Seat Capacity vs Enrolled Students'])
+    capacity_sheet.append(['Institution', institution.name if institution is not None else 'All Institutions'])
+    capacity_sheet.append([
+        'Enrolled here means students with status ACTIVE, the same population the '
+        'admission seat check counts.',
+    ])
+    capacity_sheet.append([])
+    capacity_sheet.append([
+        'Institution', 'Class', 'Section', 'Capacity', 'Enrolled (ACTIVE)',
+        'Free seats', 'Utilization %', 'Status',
+    ])
+    for row in capacity_rows:
+        capacity_sheet.append([
+            row['institution'], row['admission_class'], row['section'],
+            'No limit' if not row['has_limit'] else row['capacity'],
+            row['seated'],
+            '' if row['free'] is None else row['free'],
+            '' if row['utilization'] is None else row['utilization'],
+            'No limit' if not row['has_limit'] else ('Over capacity' if row['over'] else 'Within limit'),
+        ])
+    capacity_sheet.append([])
+    capacity_sheet.append(['Sections listed', capacity_totals['sections'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Sections with a limit', capacity_totals['limited_sections'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Seats configured', capacity_totals['capacity'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Students (ACTIVE)', capacity_totals['seated'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Free seats (limited sections)', capacity_totals['free'], '', '', '', '', '', ''])
+    capacity_sheet.append(['Sections over capacity', capacity_totals['over_sections'], '', '', '', '', '', ''])
+    _autosize_columns(capacity_sheet)
+
+    trend = _trend_rows(scoped, from_date, to_date, granularity, stage_keys)
+    trend_sheet = wb.create_sheet(title='Trend')
+    trend_sheet.append(['Admission Trend Report'])
+    trend_sheet.append(['Institution', institution.name if institution is not None else 'All Institutions'])
+    trend_sheet.append(['Bucket', granularity])
+    trend_sheet.append(['Submitted from', from_date.isoformat() if from_date else ''])
+    trend_sheet.append(['Submitted to', to_date.isoformat() if to_date else ''])
+    trend_sheet.append([
+        'Each series counts the events dated inside the window — submitted (submitted_at), '
+        'payment approved (account_action_at) and enrolled (account_action_at) — not '
+        'applications grouped by their submission date.',
+    ])
+    trend_sheet.append(['Day boundaries follow the timezone ' + timezone.get_current_timezone_name()])
+    trend_sheet.append([])
+    trend_sheet.append(['Bucket', 'Bucket start'] + [column['label'] for column in trend['columns']])
+    for row in trend['rows']:
+        trend_sheet.append(
+            [row['label'], row['start']]
+            + ['' if cell['value'] is None else cell['value'] for cell in row['cells']]
+        )
+    if trend['undated']:
+        trend_sheet.append([
+            'Undated rows carry no accounts action time (legacy or hand-edited data).',
+        ])
+    _autosize_columns(trend_sheet)
 
     if institution is None:
-        institution_rows = _admission_funnel_by_institution(applications)
+        institution_rows = _admission_funnel_by_institution(applications, stage_keys)
         if institution_rows:
-            labels = dict(_funnel_stages())
+            labels = dict(_funnel_stages(stage_keys))
             breakdown = wb.create_sheet(title='By Institution')
             breakdown.append(
-                ['Institution'] + [labels[key] for key, _label in _funnel_stages()] + ['Total']
+                ['Institution'] + [labels[key] for key, _label in _funnel_stages(stage_keys)] + ['Total']
             )
             for row in institution_rows:
                 breakdown.append(
                     [row['institution']]
-                    + [row['counts'][key] for key, _label in _funnel_stages()]
+                    + [row['counts'][key] for key, _label in _funnel_stages(stage_keys)]
                     + [row['total']]
                 )
             breakdown.append(
                 ['All Institutions']
-                + [summary['counts'][key] for key, _label in _funnel_stages()]
+                + [summary['counts'][key] for key, _label in _funnel_stages(stage_keys)]
                 + [summary['total']]
             )
-            for col in breakdown.columns:
-                max_length = max((len(str(cell.value)) for cell in col if cell.value is not None), default=8)
-                breakdown.column_dimensions[col[0].column_letter].width = min(max_length + 4, 40)
+            _autosize_columns(breakdown)
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -1297,29 +1964,356 @@ def admission_funnel_export(request):
     return response
 
 
+def _attendance_counts(records):
+    """Count P/A/L/H for one student/employee over a set of records.
+
+    The rate denominator is P + A + L: a holiday (H) is not a school day and
+    is excluded, while a late (L) is a day the person attended. This is the
+    single definition used by the summary page, the calendar and the export
+    (AT-02 accuracy requirement).
+    """
+    counts = {'P': 0, 'A': 0, 'L': 0, 'H': 0, 'total': 0}
+    for record in records:
+        if record.status in counts:
+            counts[record.status] += 1
+        counts['total'] += 1
+    return counts
+
+
+def _attendance_rate(counts):
+    # Accept both the P/A/L/H keys used by _attendance_counts and the
+    # present/absent/late keys used by the attendance summary rows.
+    if 'P' in counts:
+        present, absent, late = counts['P'], counts['A'], counts['L']
+    else:
+        present = counts.get('present', 0)
+        absent = counts.get('absent', 0)
+        late = counts.get('late', 0)
+    denominator = present + absent + late
+    if not denominator:
+        return None
+    return round((present + late) / denominator * 100, 1)
+
+
+def _parse_date_param(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @login_required
 def attendance_report(request):
     """Attendance record log (EX-02 matrix: a date-descending *log*, not a
     class register — rows are records, so the register roll-order rule does
-    not apply; the class-wise student list lives in mark_attendance_bulk)."""
+    not apply; the class-wise student list lives in mark_attendance_bulk).
+
+    AT-01 adds the correction entry point and the date/class/section/status
+    filters; the calculation itself stays in the summary/calendar views.
+    """
     institution = _selected_institution_for_request(request)
-    records = AttendanceRecord.objects.select_related('student', 'employee', 'institution').order_by('-date', '-created_at')
+    records = AttendanceRecord.objects.select_related('student', 'employee', 'institution').order_by('-date', '-created_at', '-pk')
     if institution is not None:
         records = records.filter(institution=institution)
     else:
         records = _scope_by_allowed_institutions(request, records)
-    # Paginate high-volume attendance (100/page) — prevents huge table loads
-    paginator = Paginator(records, 100)
-    page_obj = paginator.get_page(request.GET.get('page'))
+
+    start_date = _parse_date_param(request.GET.get('start_date'))
+    end_date = _parse_date_param(request.GET.get('end_date'))
+    if start_date:
+        records = records.filter(date__gte=start_date)
+    if end_date:
+        records = records.filter(date__lte=end_date)
+    admission_class = (request.GET.get('admission_class') or '').strip()
+    if admission_class:
+        records = records.filter(
+            student__isnull=False,
+            student__admission_class__in=class_filter_variants(admission_class),
+        )
+    section = (request.GET.get('section') or '').strip()
+    if section:
+        records = records.filter(student__section__iexact=section)
+    status = (request.GET.get('status') or '').strip()
+    if status:
+        records = records.filter(status=status)
+    target = (request.GET.get('target') or '').strip().upper()
+    if target == 'STUDENT':
+        records = records.filter(student__isnull=False)
+    elif target == 'EMPLOYEE':
+        records = records.filter(employee__isnull=False)
+
+    pagination = paginate_list(request, records)
     return render(request, 'students/attendance_report.html', {
-        'records': page_obj.object_list,
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'is_paginated': page_obj.has_other_pages(),
-        'total_records': paginator.count,
+        **pagination,
+        'records': pagination['page_rows'],
+        'total_records': pagination['paginator'].count,
         'institution': institution,
         'status_choices': AttendanceRecord.STATUS_CHOICES,
+        'can_correct': request.user.has_perm('students.change_attendancerecord'),
+        'filters': {
+            'start_date': start_date,
+            'end_date': end_date,
+            'admission_class': admission_class,
+            'section': section,
+            'status': status,
+            'target': target,
+        },
     })
+
+
+@login_required
+@_require_department(('Office', 'Exam'))
+@permission_required('students.change_attendancerecord', raise_exception=True)
+def correct_attendance(request, pk):
+    """AT-01: correct one already-marked record, with a mandatory reason.
+
+    The record's date and target are fixed; only status/remarks change. The
+    old and new values plus the reason go to the AuditLog. Future-dated rows
+    are refused (they should not exist because entry blocks them, but a
+    hand-crafted row must not become editable ahead of time).
+    """
+    record = _get_scoped_object_or_404(
+        request, AttendanceRecord, pk, lambda r: r.institution
+    )
+    form = AttendanceCorrectionForm(request.POST or None, record=record)
+    if request.method == 'POST' and form.is_valid():
+        old_status = record.status
+        old_remarks = record.remarks
+        new_status = form.cleaned_data['status']
+        new_remarks = form.cleaned_data['remarks']
+        reason = form.cleaned_data['reason']
+        with transaction.atomic():
+            record.status = new_status
+            record.remarks = new_remarks
+            record.save(update_fields=['status', 'remarks'])
+            record_audit(
+                request.user, 'attendance_corrected', record,
+                snapshot={'status': old_status, 'remarks': old_remarks},
+                details={
+                    'new_status': new_status,
+                    'new_remarks': new_remarks,
+                    'reason': reason,
+                    'date': str(record.date),
+                },
+            )
+        messages.success(request, f'Attendance corrected for {record.date}.')
+        return redirect('attendance_report')
+    return render(request, 'students/correct_attendance.html', {
+        'form': form,
+        'record': record,
+    })
+
+
+def _calendar_month(year, month):
+    """Return (first_date, last_date, prev_year, prev_month, next_year, next_month)."""
+    first = date(year, month, 1)
+    last = date(year, month, monthrange(year, month)[1])
+    prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return first, last, prev_year, prev_month, next_year, next_month
+
+
+def _calendar_filters(request):
+    """Parse the shared month/calendar filters, falling back safely."""
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get('year') or today.year)
+        month = int(request.GET.get('month') or today.month)
+    except (TypeError, ValueError):
+        year, month = today.year, today.month
+    if not (2000 <= year <= 2100) or not (1 <= month <= 12):
+        year, month = today.year, today.month
+    admission_class = (request.GET.get('admission_class') or '').strip()
+    section = (request.GET.get('section') or '').strip()
+    mark_type = (request.GET.get('mark_type') or 'STUDENT').strip().upper()
+    if mark_type not in {'STUDENT', 'EMPLOYEE'}:
+        mark_type = 'STUDENT'
+    return year, month, admission_class, section, mark_type
+
+
+def _calendar_records(request, institution, year, month, admission_class, section, mark_type):
+    first, last = _calendar_month(year, month)[:2]
+    records = AttendanceRecord.objects.filter(date__range=[first, last]).select_related(
+        'student', 'employee', 'institution'
+    )
+    if institution is not None:
+        records = records.filter(institution=institution)
+    else:
+        records = _scope_by_allowed_institutions(request, records)
+    if mark_type == 'EMPLOYEE':
+        records = records.filter(employee__isnull=False)
+    else:
+        # Archived (soft-deleted) students are not part of the live register:
+        # they must not appear in the calendar, the summary or the export.
+        records = records.filter(student__isnull=False, student__is_archived=False)
+        if admission_class:
+            records = records.filter(
+                student__admission_class__in=class_filter_variants(admission_class)
+            )
+        if section:
+            records = records.filter(student__section__iexact=section)
+    return records
+
+
+@login_required
+def attendance_calendar(request):
+    """AT-02: server-rendered monthly attendance grid.
+
+    Each day shows the P/A/L/H counts for the selected class/section (or all
+    classes) and a colour-coded cell. Days with no records are shown as
+    "No record" — never silently counted as absent. A click on a day goes to
+    the correction page when the user holds the permission; otherwise the
+    day cell links to the filtered report.
+    """
+    institution = _selected_institution_for_request(request)
+    year, month, admission_class, section, mark_type = _calendar_filters(request)
+    first, last, prev_year, prev_month, next_year, next_month = _calendar_month(year, month)
+    records = _calendar_records(
+        request, institution, year, month, admission_class, section, mark_type
+    )
+    records = records.order_by('date', 'student__name', 'employee__name')
+
+    by_date = defaultdict(list)
+    for record in records:
+        by_date[record.date].append(record)
+
+    today = timezone.localdate()
+    # Sunday-first grid (Bangladesh convention). Python's weekday() is Monday=0.
+    offset = (first.weekday() + 1) % 7
+    cells = []
+    for index in range(offset):
+        cells.append(None)
+    day = first
+    while day <= last:
+        day_records = by_date.get(day, [])
+        counts = _attendance_counts(day_records)
+        cells.append({
+            'date': day,
+            'day': day.day,
+            'is_today': day == today,
+            'is_future': day > today,
+            'counts': counts,
+            'rate': _attendance_rate(counts),
+            'has_records': bool(day_records),
+            'record_count': len(day_records),
+            'record_ids': [record.pk for record in day_records],
+        })
+        day = date.fromordinal(day.toordinal() + 1)
+    while len(cells) % 7:
+        cells.append(None)
+    weeks = [cells[i:i + 7] for i in range(0, len(cells), 7)]
+
+    # Monthly summary: one row per student/employee, same rate definition.
+    grouped = defaultdict(list)
+    for record in records:
+        if record.student_id:
+            grouped[('student', record.student_id)].append(record)
+        elif record.employee_id:
+            grouped[('employee', record.employee_id)].append(record)
+    summary_rows = []
+    for (kind, object_id), object_records in grouped.items():
+        counts = _attendance_counts(object_records)
+        if kind == 'student':
+            student = next((r.student for r in object_records if r.student), None)
+            if student is None:
+                continue
+            summary_rows.append({
+                'kind': 'student',
+                'object': student,
+                'name': student.name,
+                'identifier': student.student_id,
+                'meta': f'{student.admission_class} - {student.section}',
+                'counts': counts,
+                'rate': _attendance_rate(counts),
+            })
+        else:
+            employee = next((r.employee for r in object_records if r.employee), None)
+            if employee is None:
+                continue
+            summary_rows.append({
+                'kind': 'employee',
+                'object': employee,
+                'name': employee.name,
+                'identifier': '',
+                'meta': employee.designation,
+                'counts': counts,
+                'rate': _attendance_rate(counts),
+            })
+    summary_rows.sort(key=lambda row: (row['name'], row['identifier']))
+
+    month_name = date(year, month, 1).strftime('%B %Y')
+    can_mark = request.user.has_perm('students.add_attendancerecord')
+    can_correct = request.user.has_perm('students.change_attendancerecord')
+    return render(request, 'students/attendance_calendar.html', {
+        'institution': institution,
+        'year': year,
+        'month': month,
+        'month_name': month_name,
+        'first_date': first,
+        'last_date': last,
+        'prev_year': prev_year,
+        'prev_month': prev_month,
+        'next_year': next_year,
+        'next_month': next_month,
+        'weeks': weeks,
+        'summary_rows': summary_rows,
+        'admission_class': admission_class,
+        'section': section,
+        'mark_type': mark_type,
+        'can_mark': can_mark,
+        'can_correct': can_correct,
+        'status_choices': AttendanceRecord.STATUS_CHOICES,
+        'total_records': records.count(),
+        'weekday_labels': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    })
+
+
+@login_required
+def attendance_calendar_export(request):
+    """AT-02: monthly summary CSV (one row per student/employee)."""
+    institution = _selected_institution_for_request(request)
+    year, month, admission_class, section, mark_type = _calendar_filters(request)
+    records = _calendar_records(
+        request, institution, year, month, admission_class, section, mark_type
+    )
+    grouped = defaultdict(list)
+    for record in records:
+        if record.student_id:
+            grouped[('student', record.student_id)].append(record)
+        elif record.employee_id:
+            grouped[('employee', record.employee_id)].append(record)
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="attendance-{year}-{month:02d}.csv"'
+    writer = csv.writer(response)
+    writer.writerow([
+        'Type', 'Student ID', 'Name', 'Class / Section / Designation',
+        'Present', 'Absent', 'Late', 'Holiday', 'Total', 'Attendance %',
+    ])
+    for (kind, object_id), object_records in sorted(grouped.items()):
+        counts = _attendance_counts(object_records)
+        rate = _attendance_rate(counts)
+        if kind == 'student':
+            student = next((r.student for r in object_records if r.student), None)
+            if student is None:
+                continue
+            writer.writerow([
+                'Student', student.student_id, student.name,
+                f'{student.admission_class} - {student.section}',
+                counts['P'], counts['A'], counts['L'], counts['H'], counts['total'],
+                '' if rate is None else rate,
+            ])
+        else:
+            employee = next((r.employee for r in object_records if r.employee), None)
+            if employee is None:
+                continue
+            writer.writerow([
+                'Employee', '', employee.name, employee.designation,
+                counts['P'], counts['A'], counts['L'], counts['H'], counts['total'],
+                '' if rate is None else rate,
+            ])
+    return response
 
 
 @login_required
@@ -1355,7 +2349,12 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
     except (ValueError, TypeError):
         messages.error(request, 'Invalid date format.')
         return redirect('mark_attendance')
-    
+
+    # AT-01: a future date is rejected server-side (not just hidden in the UI).
+    if attendance_date > timezone.localdate():
+        messages.error(request, 'Attendance cannot be marked for a future date.')
+        return redirect('mark_attendance')
+
     if mark_type == 'STUDENT':
         students = Student.objects.filter(
             admission_class=admission_class,
@@ -1379,6 +2378,9 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
                 status_key = f'status_{student.id}'
                 if status_key in request.POST:
                     status = request.POST.get(status_key)
+                    if status not in dict(AttendanceRecord.STATUS_CHOICES):
+                        messages.warning(request, f'Invalid status for {student.name}; skipped.')
+                        continue
                     remarks = request.POST.get(f'remarks_{student.id}', '')
                     try:
                         AttendanceRecord.objects.update_or_create(
@@ -1425,6 +2427,9 @@ def mark_attendance_bulk(request, date_str, admission_class, section, mark_type)
                 status_key = f'status_{employee.id}'
                 if status_key in request.POST:
                     status = request.POST.get(status_key)
+                    if status not in dict(AttendanceRecord.STATUS_CHOICES):
+                        messages.warning(request, f'Invalid status for {employee.name}; skipped.')
+                        continue
                     remarks = request.POST.get(f'remarks_{employee.id}', '')
                     try:
                         AttendanceRecord.objects.update_or_create(
@@ -1489,15 +2494,16 @@ def attendance_summary(request):
     if not end_date:
         end_date = today
     
-    records = AttendanceRecord.objects.filter(date__range=[start_date, end_date])
+    records = AttendanceRecord.objects.filter(date__range=[start_date, end_date]).select_related('student', 'employee')
     if institution:
         records = records.filter(institution=institution)
     else:
         records = _scope_by_allowed_institutions(request, records)
     
-    # Student attendance summary
+    # Student attendance summary (archived students are not part of the live
+    # register and must not change the rates).
     student_summary = {}
-    for record in records.filter(student__isnull=False):
+    for record in records.filter(student__isnull=False, student__is_archived=False):
         student_id = record.student_id
         if student_id not in student_summary:
             student_summary[student_id] = {
@@ -1533,22 +2539,27 @@ def attendance_summary(request):
             employee_summary[emp_id]['holiday'] += 1
         employee_summary[emp_id]['total'] += 1
     
-    # Calculate attendance rates
+    # Calculate attendance rates with the shared definition:
+    # (Present + Late) / (Present + Absent + Late); holidays are excluded.
     for summary in student_summary.values():
-        if summary['total'] > 0:
-            summary['attendance_rate'] = round((summary['present'] / summary['total'] * 100), 1)
-    
+        summary['attendance_rate'] = _attendance_rate(summary)
     for summary in employee_summary.values():
-        if summary['total'] > 0:
-            summary['attendance_rate'] = round((summary['present'] / summary['total'] * 100), 1)
+        summary['attendance_rate'] = _attendance_rate(summary)
     
+    student_rows = sorted(student_summary.values(), key=lambda x: (x['student'].name, x['student'].pk))
+    employee_rows = sorted(employee_summary.values(), key=lambda x: (x['employee'].name, x['employee'].pk))
+    # One cap across both tables, not up to 100 students + 100 employees.
+    pagination = paginate_list(request, student_rows + employee_rows, allow_full_print=True)
     return render(request, 'students/attendance_summary.html', {
+        **pagination,
+        'student_summary_count': len(student_rows),
+        'employee_summary_count': len(employee_rows),
         'start_date': start_date,
         'end_date': end_date,
         # Analytics page spanning classes (and employees, who have no roll):
         # rows stay alphabetical by name — not a register list (EX-02 matrix).
-        'student_summary': sorted(student_summary.values(), key=lambda x: x['student'].name),
-        'employee_summary': sorted(employee_summary.values(), key=lambda x: x['employee'].name),
+        'student_summary': [row for row in pagination['page_rows'] if 'student' in row],
+        'employee_summary': [row for row in pagination['page_rows'] if 'employee' in row],
         'institution': institution,
         'total_records': records.count(),
     })
@@ -1561,19 +2572,16 @@ def employee_list(request):
     status = request.GET.get('status')
     institution = _resolve_requested_institution(request, institution_id)
 
-    employees = Employee.objects.all().order_by('name')
+    employees = Employee.objects.select_related('institution').order_by('name', 'pk')
     employees = _scope_institution_qs(request, employees, institution)
     if status:
         employees = employees.filter(status=status)
 
-    paginator = Paginator(employees, 100)
-    page_obj = paginator.get_page(request.GET.get('page'))
+    pagination = paginate_list(request, employees, allow_full_print=True)
     return render(request, 'students/employee_list.html', {
-        'employees': page_obj.object_list,
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'is_paginated': page_obj.has_other_pages(),
-        'total_employees': paginator.count,
+        **pagination,
+        'employees': pagination['page_rows'],
+        'total_employees': pagination['paginator'].count,
         'institutions': institutions,
         'institution': institution,
         'selected_status': status,
@@ -1588,7 +2596,8 @@ def employee_detail(request, pk):
     )
     
     # Get status history
-    status_logs = employee.status_logs.all()
+    status_logs = employee.status_logs.select_related('changed_by').order_by('-changed_at', '-pk')
+    pagination = paginate_list(request, status_logs)
     
     # Get attendance records (last 30 days)
     from datetime import timedelta, date
@@ -1596,28 +2605,224 @@ def employee_detail(request, pk):
     attendance_records = AttendanceRecord.objects.filter(
         employee=employee,
         date__gte=thirty_days_ago
-    ).order_by('-date')
+    ).order_by('-date', '-pk')
     
-    # Calculate attendance rate
-    attendance_rate = 0
-    if attendance_records.exists():
-        present_count = attendance_records.filter(status='P').count()
-        total_count = attendance_records.count()
-        attendance_rate = round((present_count / total_count * 100), 1) if total_count > 0 else 0
+    # Calculate attendance rate with the shared definition (P+A+L denominator,
+    # H excluded) so the employee page matches the summary and calendar.
+    attendance_rate = _attendance_rate(_attendance_counts(attendance_records)) or 0
     
     # Slice attendance records for display
     attendance_records_display = attendance_records[:30]
     
     # Get salary/finance info if available
-    salary_records = employee.salary_sheets.all().order_by('-month')[:12] if hasattr(employee, 'salary_sheets') else []
-    
+    salary_records = employee.salary_sheets.all().order_by('-month', '-pk')[:12] if hasattr(employee, 'salary_sheets') else []
+
+    # EM-01: the teacher assignment registry, newest session first.
+    teacher_assignments = employee.teacher_assignments.select_related(
+        'institution', 'subject'
+    ).order_by('-session', '-is_active', 'admission_class', 'section')
+
     return render(request, 'students/employee_detail.html', {
+        **pagination,
+        'show_status_history': 'page' in request.GET or 'per_page' in request.GET,
         'employee': employee,
-        'status_logs': status_logs,
+        'status_logs': pagination['page_rows'],
         'attendance_records': attendance_records_display,
         'attendance_rate': attendance_rate,
         'salary_records': salary_records,
+        'teacher_assignments': teacher_assignments,
     })
+
+# ---------------- Teacher Assignment (EM-01) Views ----------------
+
+@login_required
+@permission_required('students.view_teacherassignment', raise_exception=True)
+def teacher_assignment_list(request):
+    """Registry of teacher ↔ class/section/subject assignments (EM-01)."""
+    institution = _resolve_requested_institution(request, request.GET.get('institution'))
+    assignments = TeacherAssignment.objects.select_related(
+        'employee', 'institution', 'subject', 'created_by'
+    )
+    if institution is not None:
+        assignments = assignments.filter(institution=institution)
+    else:
+        assignments = _scope_by_allowed_institutions(request, assignments)
+
+    admission_class = (request.GET.get('admission_class') or '').strip()
+    if admission_class:
+        assignments = assignments.filter(
+            admission_class__in=class_filter_variants(admission_class)
+        )
+    section = (request.GET.get('section') or '').strip()
+    if section:
+        assignments = assignments.filter(section__iexact=section)
+    subject_id = (request.GET.get('subject') or '').strip()
+    if subject_id:
+        assignments = assignments.filter(subject_id=subject_id)
+    employee_id = (request.GET.get('employee') or '').strip()
+    if employee_id:
+        assignments = assignments.filter(employee_id=employee_id)
+    session = (request.GET.get('session') or '').strip()
+    if session:
+        assignments = assignments.filter(session__iexact=session)
+    status = (request.GET.get('status') or '').strip().upper()
+    if status == 'ACTIVE':
+        assignments = assignments.filter(is_active=True)
+    elif status == 'INACTIVE':
+        assignments = assignments.filter(is_active=False)
+
+    employee_choices = Employee.objects.all()
+    if institution is not None:
+        employee_choices = employee_choices.filter(institution=institution)
+    else:
+        employee_choices = _scope_by_allowed_institutions(request, employee_choices)
+
+    pagination = paginate_list(request, assignments, allow_full_print=True)
+    return render(request, 'students/teacher_assignment_list.html', {
+        **pagination,
+        'assignments': pagination['page_rows'],
+        'total_assignments': pagination['paginator'].count,
+        'institutions': _visible_institutions(request),
+        'institution': institution,
+        'subjects': Subject.objects.all(),
+        'employees': employee_choices,
+        'filters': {
+            'admission_class': admission_class,
+            'section': section,
+            'subject': subject_id,
+            'employee': employee_id,
+            'session': session,
+            'status': status,
+        },
+    })
+
+
+@login_required
+@permission_required('students.add_teacherassignment', raise_exception=True)
+def add_teacher_assignment(request):
+    form = TeacherAssignmentForm(request.POST or None, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        assignment = form.save(commit=False)
+        assignment.created_by = request.user
+        try:
+            assignment.save()
+        except IntegrityError:
+            form.add_error(
+                None,
+                'An active assignment for this teacher, class, section, subject and session already exists.'
+            )
+        else:
+            record_audit(
+                request.user, 'teacher_assignment_created', assignment,
+                details={
+                    'employee': assignment.employee.name,
+                    'class': assignment.admission_class,
+                    'section': assignment.section,
+                    'subject': assignment.subject.name,
+                    'session': assignment.session,
+                },
+            )
+            messages.success(request, 'Teacher assigned.')
+            return redirect('teacher_assignment_list')
+    class_options = []
+    for inst in _visible_institutions(request):
+        for label in [c.strip() for c in (inst.classes or '').split(',') if c.strip()]:
+            if label not in class_options:
+                class_options.append(label)
+    return render(request, 'students/teacher_assignment_form.html', {
+        'form': form,
+        'class_options': class_options,
+    })
+
+
+@login_required
+@permission_required('students.change_teacherassignment', raise_exception=True)
+def edit_teacher_assignment(request, pk):
+    assignment = _get_scoped_object_or_404(
+        request, TeacherAssignment, pk, lambda a: a.institution
+    )
+    form = TeacherAssignmentForm(request.POST or None, instance=assignment, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        changed = sorted(form.changed_data)
+        try:
+            form.save()
+        except IntegrityError:
+            form.add_error(
+                None,
+                'An active assignment for this teacher, class, section, subject and session already exists.'
+            )
+        else:
+            record_audit(
+                request.user, 'teacher_assignment_updated', assignment,
+                details={'changed_fields': changed},
+            )
+            messages.success(request, 'Teacher assignment updated.')
+            return redirect('teacher_assignment_list')
+    class_options = []
+    for inst in _visible_institutions(request):
+        for label in [c.strip() for c in (inst.classes or '').split(',') if c.strip()]:
+            if label not in class_options:
+                class_options.append(label)
+    return render(request, 'students/teacher_assignment_form.html', {
+        'form': form,
+        'assignment': assignment,
+        'class_options': class_options,
+    })
+
+
+@login_required
+@permission_required('students.change_teacherassignment', raise_exception=True)
+@require_POST
+def toggle_teacher_assignment(request, pk):
+    """Unassign (deactivate) or reactivate a registry row without losing history."""
+    assignment = _get_scoped_object_or_404(
+        request, TeacherAssignment, pk, lambda a: a.institution
+    )
+    new_state = not assignment.is_active
+    try:
+        with transaction.atomic():
+            assignment.is_active = new_state
+            assignment.save(update_fields=['is_active', 'updated_at'])
+            record_audit(
+                request.user,
+                'teacher_assignment_toggled', assignment,
+                details={'is_active': new_state},
+            )
+    except IntegrityError:
+        messages.error(
+            request,
+            'Another active assignment already covers this teacher/class/section/subject/session.'
+        )
+        return redirect('teacher_assignment_list')
+    messages.success(request, 'Teacher assignment deactivated.' if not new_state else 'Teacher assignment reactivated.')
+    return redirect('teacher_assignment_list')
+
+
+@login_required
+@permission_required('students.delete_teacherassignment', raise_exception=True)
+def delete_teacher_assignment(request, pk):
+    assignment = _get_scoped_object_or_404(
+        request, TeacherAssignment, pk, lambda a: a.institution
+    )
+    if request.method == 'POST':
+        snapshot = {
+            'employee': assignment.employee.name,
+            'class': assignment.admission_class,
+            'section': assignment.section,
+            'subject': assignment.subject.name,
+            'session': assignment.session,
+        }
+        assignment.delete()
+        record_audit(
+            request.user, 'teacher_assignment_deleted', None,
+            model_name='students.TeacherAssignment',
+            object_id=str(pk),
+            snapshot=snapshot,
+        )
+        messages.success(request, 'Teacher assignment deleted.')
+        return redirect('teacher_assignment_list')
+    return render(request, 'students/delete_teacher_assignment.html', {'assignment': assignment})
+
 
 #---------------- Student Views ----------------
 @login_required
@@ -1663,7 +2868,7 @@ def student_list(request):
         if len(exact_matches) == 1:
             return redirect('student_detail', pk=exact_matches[0].pk)
 
-    qs = Student.objects.filter(is_archived=False)
+    qs = Student.objects.filter(is_archived=False).select_related('institution')
     qs = _scope_institution_qs(request, qs, institution)
     qs = _scope_students_to_user(request, qs)
 
@@ -1700,20 +2905,12 @@ def student_list(request):
         elif name_count[name_key] > 1:
             possible_duplicate_ids.add(s.id)
 
-    # Pagination: সর্বোচ্চ ১০০ records per page — portfolio-তে বড় roll (2000+) এ
-    # সব একসাথে load না করে page ভাগে দেখানো (download এখনো সব export করে)।
-    paginator = Paginator(students, 100)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    # Keep the full duplicate sets for highlighting even on paginated view;
-    # the page itself is what the template iterates.
-    paginated_students = list(page_obj.object_list)
+    # Duplicate flags and counts above still use the entire filtered cohort.
+    pagination = paginate_list(request, students, allow_full_print=True)
 
     return render(request, 'students/student_list.html', {
-        'students': paginated_students,
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'is_paginated': page_obj.has_other_pages(),
+        **pagination,
+        'students': pagination['page_rows'],
         'student_count': len(students),
         'class_counts': student_class_counts(students),
         'search_q': search_q,
@@ -1853,6 +3050,97 @@ def bulk_delete_students(request):
             url += "?" + "&".join(params)
         return redirect(url)
     return redirect('student_list')
+
+
+def _student_photo_cleanup_return_url(request, student=None):
+    return_to = request.POST.get('return_to')
+    if return_to == 'student_detail' and student is not None:
+        return reverse('student_detail', args=[student.pk])
+
+    if return_to == 'archived_students':
+        url = reverse('archived_students')
+        institution_id = request.POST.get('institution')
+        if institution_id:
+            url += '?' + urlencode([('institution', institution_id)])
+        return url
+
+    url = reverse('student_list')
+    params = []
+    for key in ('institution', 'admission_class', 'section'):
+        value = request.POST.get(key)
+        if value:
+            params.append((key, value))
+    if params:
+        url += '?' + urlencode(params)
+    return url
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+@require_POST
+def clear_student_photo(request, pk):
+    """Clear one student's photo, including while the record is archived."""
+    student = _get_scoped_object_or_404(request, Student, pk, lambda row: row.institution)
+    if student.photo:
+        student.photo = None
+        student.save(update_fields=['photo'])
+        record_audit(
+            request.user, 'student_photo_deleted', student,
+            details={'source': 'clear_student_photo'},
+        )
+        messages.success(request, f'Photo cleared for {student.name}.')
+    else:
+        messages.info(request, f'{student.name} does not have a photo to remove.')
+    return redirect(_student_photo_cleanup_return_url(request, student))
+
+
+@login_required
+@permission_required('students.change_student', raise_exception=True)
+@require_POST
+def bulk_clear_student_photos(request):
+    """Clear selected photos across active and archived students within scope."""
+    student_ids = list(dict.fromkeys(request.POST.getlist('student_ids')))
+    return_url = _student_photo_cleanup_return_url(request)
+    if not student_ids:
+        messages.error(request, 'No students were selected.')
+        return redirect(return_url)
+    if len(student_ids) > 100:
+        messages.error(request, 'Select up to 100 students at a time.')
+        return redirect(return_url)
+
+    students_qs, rejected = _scope_write_queryset(
+        request, Student.objects.all(), student_ids,
+    )
+    if rejected:
+        messages.error(
+            request,
+            'One or more of the selected students belong to an institution you cannot access.',
+        )
+        return redirect(return_url)
+
+    cleared_count = 0
+    with transaction.atomic():
+        for student in students_qs.select_related('institution').order_by('pk'):
+            if not student.photo:
+                continue
+            student.photo = None
+            student.save(update_fields=['photo'])
+            record_audit(
+                request.user, 'student_photo_deleted', student,
+                details={'source': 'bulk_clear_student_photos'},
+            )
+            cleared_count += 1
+
+    if cleared_count:
+        messages.success(
+            request,
+            f'Photo cleared for {cleared_count} student(s); stored-file deletion is queued.',
+        )
+    else:
+        messages.info(request, 'The selected students do not have photos to remove.')
+    return redirect(return_url)
+
+
 @login_required
 @permission_required('students.change_student', raise_exception=True)
 def bulk_update_students(request):
@@ -2127,6 +3415,12 @@ def issue_tc(request, pk):
                 transfer_certificate.save()
                 student.status = 'TRANSFERRED'
                 student.save(update_fields=['status'])
+                # A TC changes the student's standing for good: keep who issued
+                # which number (and why) in the audit trail of that institution.
+                record_audit(request.user, 'transfer_certificate_issued', transfer_certificate,
+                            snapshot={'tc_number': transfer_certificate.tc_number,
+                                      'reason': transfer_certificate.reason},
+                            details={'student_id': student.student_id})
             messages.success(request, f"Transfer Certificate {transfer_certificate.tc_number} issued.")
             return redirect('view_tc', pk=transfer_certificate.pk)
     else:
@@ -2159,9 +3453,14 @@ def issue_certificate(request, pk):
     if request.method == 'POST':
         form = CertificateForm(request.POST)
         if form.is_valid():
-            certificate = form.save(commit=False)
-            certificate.student = student
-            certificate.save()
+            with transaction.atomic():
+                certificate = form.save(commit=False)
+                certificate.student = student
+                certificate.save()
+                record_audit(request.user, 'certificate_issued', certificate,
+                            snapshot={'certificate_number': certificate.certificate_number,
+                                      'certificate_type': certificate.certificate_type},
+                            details={'student_id': student.student_id})
             messages.success(request, f"Certificate issued — {certificate.certificate_number}")
             return redirect('view_certificate', pk=certificate.pk)
     else:
@@ -2190,9 +3489,11 @@ def certificate_list(request, pk):
         request, Student, pk, lambda s: s.institution
     )
     certificates = student.certificates.all().order_by('-issue_date', '-pk')
+    pagination = paginate_list(request, certificates)
     return render(request, 'students/certificate_list.html', {
+        **pagination,
         'student': student,
-        'certificates': certificates,
+        'certificates': pagination['page_rows'],
     })
 
 
@@ -2299,21 +3600,21 @@ def archived_students(request):
     institution_id = request.GET.get('institution')
     institution = _resolve_requested_institution(request, institution_id)
 
-    qs = Student.objects.filter(is_archived=True).select_related('institution', 'archived_by')
+    # ``transfer_certificate`` rides along so the row's permanent-delete warning
+    # can name the TC without a query per row.
+    qs = Student.objects.filter(is_archived=True).select_related(
+        'institution', 'archived_by', 'transfer_certificate',
+    )
     qs = _scope_institution_qs(request, qs, institution)
     qs = _scope_students_to_user(request, qs)
 
-    students = list(qs.order_by('-archived_at'))
-    paginator = Paginator(students, 100)
-    page_obj = paginator.get_page(request.GET.get('page'))
-    paginated_students = list(page_obj.object_list)
+    students = qs.order_by('-archived_at', '-pk')
+    pagination = paginate_list(request, students)
 
     return render(request, 'students/archived_students.html', {
-        'students': paginated_students,
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'is_paginated': page_obj.has_other_pages(),
-        'total_archived': len(students),
+        **pagination,
+        'students': pagination['page_rows'],
+        'total_archived': pagination['paginator'].count,
         'institution': institution,
         'institutions': institutions,
         'can_purge': request.user.has_perm('students.delete_student'),
@@ -2388,12 +3689,51 @@ def bulk_restore_students(request):
     return redirect(url)
 
 
+def _collect_destroyed_documents(student):
+    """The printed documents a purge is about to destroy, by number.
+
+    Owner rule (OF-08, 2026-10-15): a purge stays allowed even for a student
+    holding a TC or certificates, but it must never be silent — the numbers go
+    into the audit row and into the message the clerk sees.
+    """
+    destroyed = {}
+    transfer_certificate = getattr(student, 'transfer_certificate', None)
+    if transfer_certificate is not None:
+        destroyed['transfer_certificate'] = transfer_certificate.tc_number
+    certificate_numbers = list(
+        student.certificates.order_by('pk').values_list('certificate_number', flat=True)
+    )
+    if certificate_numbers:
+        destroyed['certificates'] = certificate_numbers
+    return destroyed
+
+
+def _destroyed_documents_warning(destroyed):
+    """Human sentence naming what a purge destroyed (empty when nothing was)."""
+    parts = []
+    if destroyed.get('transfer_certificate'):
+        parts.append(f"transfer certificate {destroyed['transfer_certificate']}")
+    numbers = destroyed.get('certificates') or []
+    if numbers:
+        label = 'certificate' if len(numbers) == 1 else 'certificates'
+        parts.append(f'{len(numbers)} {label} ({", ".join(numbers)})')
+    if not parts:
+        return ''
+    return 'Also permanently deleted: ' + ' and '.join(parts) + '.'
+
+
 def _purge_archived_student(user, student):
     """Hard-delete one archived student and the rows that hang off them.
 
     Admission applications point at the enrolled student with PROTECT, so that
     link is cleared first. Everything else (marks, receipts, certificates)
     cascades with the student row.
+
+    Photo files are removed through the durable deletion outbox: the
+    ``post_delete`` signal writes a ``StudentPhotoDeletionJob`` inside the same
+    transaction, so a storage outage or a crash cannot leave an orphan file
+    behind. ``DELETE_MEDIA_ON_PURGE=False`` makes that signal retain the file
+    for audit/legal reasons — do not delete it here as well.
     """
     snapshot = {
         'student_id': student.student_id,
@@ -2402,12 +3742,16 @@ def _purge_archived_student(user, student):
         'section': student.section,
         'institution_id': student.institution_id,
     }
+    # Collected before the delete: after it the rows are gone, and a purged
+    # number must stay traceable to the audit trail that destroyed it.
+    destroyed_documents = _collect_destroyed_documents(student)
     with transaction.atomic():
         AdmissionApplication.objects.filter(enrolled_student=student).update(enrolled_student=None)
         record_audit(user, 'student_purged', student, snapshot=snapshot,
-                     details={'source': 'purge_archived_student'})
+                     details={'source': 'purge_archived_student',
+                              'destroyed_documents': destroyed_documents})
         student.delete()
-    return snapshot
+    return {'snapshot': snapshot, 'destroyed_documents': destroyed_documents}
 
 
 @login_required
@@ -2422,8 +3766,12 @@ def purge_archived_student(request, pk):
     name = student.name
     student_id = student.student_id
     institution_id = student.institution_id
-    _purge_archived_student(request.user, student)
-    messages.success(request, f'{name} ({student_id}) was permanently deleted.')
+    destroyed = _purge_archived_student(request.user, student)['destroyed_documents']
+    warning = _destroyed_documents_warning(destroyed)
+    if warning:
+        messages.warning(request, f'{name} ({student_id}) was permanently deleted. {warning}')
+    else:
+        messages.success(request, f'{name} ({student_id}) was permanently deleted.')
     url = reverse('archived_students')
     if institution_id:
         url += f'?institution={institution_id}'
@@ -2447,10 +3795,18 @@ def bulk_purge_archived_students(request):
         return redirect('archived_students')
     students = list(students_qs)
     purged = 0
+    destroyed_lines = []
     for student in students:
-        _purge_archived_student(request.user, student)
+        result = _purge_archived_student(request.user, student)
         purged += 1
-    messages.success(request, f'{purged} archived student(s) permanently deleted.')
+        warning = _destroyed_documents_warning(result['destroyed_documents'])
+        if warning:
+            destroyed_lines.append(f'{student.name} ({student.student_id}): {warning}')
+    message = f'{purged} archived student(s) permanently deleted.'
+    if destroyed_lines:
+        messages.warning(request, f'{message} ' + ' '.join(destroyed_lines))
+    else:
+        messages.success(request, message)
     url = reverse('archived_students')
     if request.POST.get('institution'):
         url += f'?institution={request.POST.get("institution")}'
@@ -2505,9 +3861,11 @@ def student_exams(request, pk):
         institution=student.institution,
         admission_class=student.admission_class,
     ).filter(Q(section='') | Q(section__iexact=student.section)).order_by('-exam_date', '-id')
+    pagination = paginate_list(request, exams)
     return render(request, 'students/student_exams.html', {
+        **pagination,
         'student': student,
-        'exams': exams,
+        'exams': pagination['page_rows'],
     })
 
 
@@ -2598,7 +3956,13 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
     religion_papers = {}  # 'Islam' / 'Hindu' / ... -> [subject_data, ...]
 
     for req in qs:
-        subject_data = {'id': req.subject.pk, 'code': req.subject.code, 'name': req.subject.name, 'requirement_id': req.pk}
+        subject_data = {
+            'id': req.subject.pk,
+            'code': req.subject.code,
+            'name': req.subject.name,
+            'requirement_id': req.pk,
+            'display_order': req.subject.display_order,
+        }
         if req.condition_religion and req.requirement_type == 'CONDITIONAL':
             label = parse_religion_label(req.condition_religion)
         elif req.subject.category == 'RELIGION':
@@ -2621,6 +3985,12 @@ def get_applicable_subjects(institution, admission_class, group='', religion='')
     # prints a dash in the merged Religion column instead.
     if paper_religion in religion_papers:
         conditional.extend(religion_papers[paper_religion])
+
+    # Sort all lists by display_order to ensure consistent ordering
+    mandatory.sort(key=lambda x: (x['display_order'], x['name']))
+    conditional.sort(key=lambda x: (x['display_order'], x['name']))
+    for key in optional_groups:
+        optional_groups[key].sort(key=lambda x: (x['display_order'], x['name']))
 
     return {'mandatory': mandatory, 'conditional': conditional, 'optional_groups': optional_groups}
 
@@ -2694,8 +4064,18 @@ def mark_evaluation_settings(request):
     MID_TYPES = {'MID_TERM_1', 'MID_TERM_2', 'MID_TERM_3'}
     show_weekly_test = exam_type in MID_TYPES
 
+    # Groups only exist from class 9 upwards (owner rule — see
+    # GROUP_RULE_DEPLOY_NOTES.md), and a Mark Evaluation row cannot carry one
+    # below that either: SubjectMarkSetting.save() blanks it, so a value
+    # entered here would be silently stored as the shared, group-neutral
+    # setting. Groups are therefore offered *and* kept only where they can
+    # actually be used; offering a group the page is about to throw away
+    # (from a stray group tag on this class's Subject Assignment rows) made
+    # the picker bounce straight back to "All groups" on every reload.
+    class_has_group = bool(admission_class) and class_supports_group(admission_class)
+
     # Normalise group for non-group classes: force blank
-    if admission_class and not class_supports_group(admission_class):
+    if admission_class and not class_has_group:
         group = ''
 
     class_variants = class_filter_variants(admission_class)
@@ -2711,13 +4091,15 @@ def mark_evaluation_settings(request):
             admission_class__in=class_variants,
         )
         group_labels = dict(Student.GROUP_CHOICES)
-        assigned_group_codes = set(
-            requirement_scope.exclude(group='').values_list('group', flat=True).distinct()
-        )
-        group_choices = [
-            (code, label) for code, label in Student.GROUP_CHOICES
-            if code in assigned_group_codes
-        ]
+        group_choices = []
+        if class_has_group:
+            assigned_group_codes = set(
+                requirement_scope.exclude(group='').values_list('group', flat=True).distinct()
+            )
+            group_choices = [
+                (code, label) for code, label in Student.GROUP_CHOICES
+                if code in assigned_group_codes
+            ]
         from types import SimpleNamespace
         exam_like = SimpleNamespace(
             institution_id=int(institution_id),
@@ -2788,7 +4170,7 @@ def mark_evaluation_settings(request):
                 if not (0 <= pass_percentage <= 100):
                     messages.error(request, f'{subject.name}: Pass % must be between 0 and 100. Skipped.')
                     continue
-                if not class_supports_group(admission_class) and group:
+                if not class_has_group and group:
                     messages.error(request, f'{subject.name}: Group must be blank for classes below 9. Skipped.')
                     continue
 
@@ -2936,6 +4318,7 @@ def mark_evaluation_settings(request):
         'selected_exam_type': exam_type,
         'selected_group': group,
         'group_choices': group_choices,
+        'class_has_group': class_has_group,
         'show_weekly_test': show_weekly_test,
         'subjects_with_settings': subjects_with_settings,
         'empty_reason': empty_reason,
@@ -2997,9 +4380,14 @@ def subject_requirement_list(request):
     if query:
         requirements = requirements.filter(Q(subject__name__icontains=query) | Q(subject__code__icontains=query))
 
+    requirements = requirements.order_by(
+        'institution', 'admission_class', 'group', 'requirement_type',
+        'subject__name', 'pk',
+    )
+    pagination = paginate_list(request, requirements)
     grouped = {}
     for label_key, label in SubjectRequirement.REQUIREMENT_TYPE_CHOICES:
-        bucket = [r for r in requirements if r.requirement_type == label_key]
+        bucket = [r for r in pagination['page_rows'] if r.requirement_type == label_key]
         if bucket:
             grouped[label] = bucket
 
@@ -3040,6 +4428,7 @@ def subject_requirement_list(request):
     }
 
     return render(request, 'students/subject_requirement_list.html', {
+        **pagination,
         'grouped_requirements': grouped,
         'institutions': institutions,
         'institutions_data': institutions_data,
@@ -3415,9 +4804,8 @@ def import_students(request):
                     except ValidationError:
                         error_rows.append(
                             f"Row {row_num}: invalid guardian contact number "
-                            f"'{guardian_contact_no}' — enter 6-20 digits (a leading + "
-                            "and spaces, dashes or parentheses are allowed), e.g. "
-                            "01812345678 — skipped."
+                            f"'{guardian_contact_no}' — {GUARDIAN_CONTACT_ERROR} "
+                            "Row skipped."
                         )
                         continue
 
@@ -3468,11 +4856,14 @@ def import_students(request):
                     # twice: match on the natural key the sheet describes.
                     admission_year_int = int(admission_year) if admission_year else 0
                     roll_no_int = int(roll_no) if roll_no else 0
+                    section_code = str(section).strip() if section else ''
+                    # '9' and '09' are one class (zero-padding tolerant), so a
+                    # re-run that spells the class differently is still "already here".
                     existing = Student.objects.filter(
                         institution=institution,
                         name__iexact=str(name).strip(),
-                        admission_class=str(admission_class).strip(),
-                        section=str(section).strip() if section else '',
+                        admission_class__in=class_label_spellings(admission_class),
+                        section=section_code,
                         roll_no=roll_no_int,
                         admission_year=admission_year_int,
                     ).first()
@@ -3495,41 +4886,59 @@ def import_students(request):
                             skipped_count += 1
                         continue
 
-                    # Honour the section seat limit (P1-7), same as the Add
-                    # Student form. An over-capacity row is skipped, not created,
-                    # so a bulk import can never push a class/section past its
-                    # configured capacity. A missing SectionCapacity row means
-                    # "no limit" (has_room returns True).
-                    if not SectionCapacity.has_room(
-                        institution, str(admission_class).strip(),
-                        str(section).strip() if section else '',
-                    ):
-                        error_rows.append(
-                            f"Row {row_num}: class/section {admission_class}"
-                            f"{('-' + str(section).strip()) if section else ''} is full "
-                            f"(capacity reached) — skipped."
+                    # OF-07: the seat check, the roll check and the insert run in
+                    # one transaction holding the section's capacity-row lock, so
+                    # two imports (or an import and an approval) cannot both take
+                    # the last seat or the same roll number.
+                    with transaction.atomic():
+                        SectionCapacity.lock_for_update(
+                            institution, str(admission_class).strip(), section_code,
                         )
-                        continue
+                        # Honour the section seat limit (P1-7), same as the Add
+                        # Student form. An over-capacity row is skipped, not created,
+                        # so a bulk import can never push a class/section past its
+                        # configured capacity. A missing SectionCapacity row means
+                        # "no limit" (has_room returns True).
+                        if not SectionCapacity.has_room(
+                            institution, str(admission_class).strip(), section_code,
+                        ):
+                            error_rows.append(
+                                f"Row {row_num}: class/section {admission_class}"
+                                f"{('-' + section_code) if section_code else ''} is full "
+                                f"(capacity reached) — skipped."
+                            )
+                            continue
+                        # OF-07 owner decision: a roll number already held by an
+                        # active student in the same class/section is rejected.
+                        if Student.roll_taken(
+                            institution, str(admission_class).strip(), section_code, roll_no_int,
+                        ):
+                            error_rows.append(
+                                f"Row {row_num}: roll no {roll_no_int} is already used in "
+                                f"class {admission_class}"
+                                f"{('-' + section_code) if section_code else ''} — skipped."
+                            )
+                            continue
 
-                    Student.objects.create(
-                        institution=institution,
-                        name=str(name).strip(),
-                        admission_class=str(admission_class).strip(),
-                        section=str(section).strip() if section else '',
-                        admission_year=admission_year_int,
-                        roll_no=roll_no_int,
-                        gender=gender_code,
-                        # Free-text religions from the sheet ('Muslim', 'হিন্দু'…)
-                        # are normalised to the dropdown values, defaulting to
-                        # Islam like every other screen.
-                        religion=student_religion(religion),
-                        father_name=str(father_name).strip() if father_name else '',
-                        # The single primary contact, kept as text so the
-                        # leading zero of e.g. 01812345678 survives.
-                        guardian_contact_no=guardian_contact_no,
-                        group=group_code,
-                        created_by=request.user,
-                    )
+                        Student.objects.create(
+                            institution=institution,
+                            name=str(name).strip(),
+                            admission_class=str(admission_class).strip(),
+                            section=section_code,
+                            admission_year=admission_year_int,
+                            roll_no=roll_no_int,
+                            gender=gender_code,
+                            # Free-text religions from the sheet ('Muslim', 'হিন্দু'…)
+                            # are normalised to the dropdown values, defaulting to
+                            # Islam like every other screen.
+                            religion=student_religion(religion),
+                            father_name=str(father_name).strip() if father_name else '',
+                            # The single primary contact, kept as text so the
+                            # leading zero of e.g. 01812345678 survives.
+                            guardian_contact_no=guardian_contact_no,
+                            group=group_code,
+                            created_by=request.user,
+                        )
                     success_count += 1
                 except Exception as e:
                     error_rows.append(f"Row {row_num}: {type(e).__name__}: {e}")
@@ -3600,12 +5009,20 @@ def download_import_template(request):
 # ---------------- Exam Views ----------------
 @login_required
 def exam_list(request):
-    exams = Exam.objects.all().order_by('-session', 'admission_class', 'name')
+    # A special exam is not defined by its class/section/group columns but by
+    # the candidates and papers ticked on it, so the list names those counts --
+    # otherwise two hand-picked exams of the same class and term read alike.
+    exams = Exam.objects.select_related('institution').annotate(
+        special_candidate_count=Count('special_students', distinct=True),
+        special_paper_count=Count('special_subjects', distinct=True),
+    ).order_by('-session', 'admission_class', 'name', 'pk')
     exams = _filter_by_selected_institution(request, exams)
+    pagination = paginate_list(request, exams)
     return render(request, 'students/exam_list.html', {
-        'exams': exams,
+        **pagination,
+        'exams': pagination['page_rows'],
         'has_special_exam_results': exams.filter(
-            exam_type='SPECIAL_EXAM', special_result_enabled=True,
+            is_special=True, special_result_enabled=True,
         ).exists(),
     })
 
@@ -3625,17 +5042,50 @@ def _institutions_data_json(request=None):
     })
 
 
+def _special_exam_selection(request, exam):
+    """Pk lists behind the special-exam pickers.
+
+    On a rejected POST the ticks the user just made are what the page must
+    show back, not the rows saved on the exam (there may be none yet); on a
+    GET the exam's own candidates and papers are shown.
+    """
+    if request.method == 'POST':
+        picked = []
+        for name in ('special_students', 'special_subjects'):
+            picked.append([
+                int(value) for value in request.POST.getlist(name)
+                if str(value).isdigit()
+            ])
+        return picked
+    if exam is None:
+        return [], []
+    return (
+        list(exam.special_students.values_list('pk', flat=True)),
+        list(exam.special_subjects.values_list('pk', flat=True)),
+    )
+
+
 @login_required
 @permission_required('students.add_exam', raise_exception=True)
 def add_exam(request):
     form = ExamForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
-        form.save()
+        exam = form.save()
         messages.success(request, 'Exam created.')
+        if exam.is_special:
+            messages.info(
+                request,
+                f'Special exam created with {exam.special_students.count()} candidate(s) '
+                f'and {exam.special_subjects.count()} paper(s). Class / section / group '
+                f'filters do not apply — only the candidates you ticked will sit it.',
+            )
         return redirect('exam_list')
+    student_ids, subject_ids = _special_exam_selection(request, None)
     return render(request, 'students/add_exam.html', {
         'form': form,
         'institutions_data_json': _institutions_data_json(request),
+        'selected_special_student_ids': student_ids,
+        'selected_special_subject_ids': subject_ids,
     })
 
 
@@ -3648,10 +5098,13 @@ def edit_exam(request, pk):
         form.save()
         messages.success(request, 'Exam updated.')
         return redirect('exam_list')
+    student_ids, subject_ids = _special_exam_selection(request, exam)
     return render(request, 'students/add_exam.html', {
         'form': form,
         'exam': exam,
         'institutions_data_json': _institutions_data_json(request),
+        'selected_special_student_ids': student_ids,
+        'selected_special_subject_ids': subject_ids,
     })
 
 
@@ -3688,6 +5141,15 @@ def delete_exam(request, pk):
 def toggle_publish_exam(request, pk):
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     previous_status = exam.is_published
+    if not previous_status:
+        fourth_errors = fourth_subject_configuration_errors(exam)
+        if fourth_errors:
+            messages.error(
+                request,
+                'Cannot publish: each student may select at most one fourth subject. '
+                + ' | '.join(fourth_errors),
+            )
+            return redirect('exam_list')
     exam.is_published = not exam.is_published
     exam.save(update_fields=['is_published'])
     record_audit(request.user, 'exam_published' if exam.is_published else 'exam_unpublished', exam,
@@ -3735,6 +5197,7 @@ def select_marks_subject(request, pk):
 
     return render(request, 'students/select_marks_subject.html', {
         'exam': exam,
+        'students': students,
         'subjects': subjects,
         'is_filtered': is_filtered,
         'no_subjects': no_subjects,
@@ -4248,19 +5711,7 @@ def result_sheet(request, pk):
     # sit in the 'Subject codes' legend under the table. Full Marks come from
     # the exam's own setting, not the subject's global default (a Mid Term can
     # be marked out of 50).
-    sheet_columns = []
-    for column in columns:
-        if getattr(column, 'is_religion_column', False):
-            marks_config = column.header_marks_config(exam, group=selected_group or None)
-        else:
-            marks_config = get_subject_marks(exam, column, group=selected_group or None)
-        sheet_columns.append({
-            'subject': column,
-            'full_marks': marks_config.full_marks if marks_config else None,
-            'parts_summary': ' + '.join(
-                f"{part['label']} {part['max_marks']}" for part in marks_config.parts
-            ) if marks_config else '',
-        })
+    sheet_columns = build_sheet_columns(exam, columns, group=selected_group or None)
     no_subjects = not columns
     ignored = unassigned_mark_subjects(exam, columns, group=selected_group or None)
     # An assigned subject with no mark at all is counted as F (see
@@ -4290,9 +5741,18 @@ def result_sheet(request, pk):
     # paper that particular student sits, never the column).
     enter_marks_base_url = reverse(
         'enter_marks', kwargs={'pk': exam.pk, 'subject_pk': 0},
-    ).removesuffix('0/')
+    ).removesuffix('0/') if request.user.has_perm('students.add_exammark') else ''
+    pass_rate = int(100 * sum(r['status'] == 'Pass' for r in results) / len(results) + 0.5) if results else 0
+    pagination = paginate_list(request, results, allow_full_print=True)
+    # Cohort and subject-wise summary for the printed register's closing page
+    # and for the separate brief / subject-wise summary report.
+    brief_summary, subject_summary = result_summary_totals(results, sheet_columns)
     return render(request, 'students/result_sheet.html', {
-        'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': results,
+        **pagination,
+        'exam': exam, 'subjects': columns, 'columns': sheet_columns, 'results': pagination['page_rows'],
+        'brief_summary': brief_summary,
+        'subject_summary': subject_summary,
+        'total_results': len(results), 'pass_rate': pass_rate,
         'absent_subject_fails': absent_subject_fails_result(),
         'enter_marks_base_url': enter_marks_base_url,
         'ignored_subjects': ignored,
@@ -4300,7 +5760,9 @@ def result_sheet(request, pk):
         'unmarked_subjects': unmarked_subjects,
         'no_subjects': no_subjects,
         'no_subjects_message': no_subjects_assigned_message(exam),
-        'subject_help': subject_help_context(request, exam, selected_group),
+        # Only the empty state renders this diagnosis; do not run its extra
+        # curriculum/choice queries on every populated result sheet.
+        'subject_help': subject_help_context(request, exam, selected_group) if no_subjects else {},
         'subject_assignments_url': subject_assignments_url(exam, selected_group),
         'group_choices': group_choices,
         'selected_group': selected_group,
@@ -4315,7 +5777,7 @@ def result_sheet(request, pk):
 def special_exam_result_list(request):
     """Filter and display enabled, published Special Exam total-mark results."""
     exams = Exam.objects.filter(
-        exam_type='SPECIAL_EXAM', special_result_enabled=True,
+        is_special=True, special_result_enabled=True,
         is_published=True,
     ).select_related('institution').order_by(
         'institution__name', '-session', 'admission_class', 'group', 'name',
@@ -4383,7 +5845,7 @@ def correct_special_exam_tie_order(request, pk):
     exam = _get_scoped_object_or_404(
         request, Exam, pk, lambda item: item.institution,
     )
-    if exam.exam_type != 'SPECIAL_EXAM' or not exam.special_result_enabled:
+    if not exam.is_special or not exam.special_result_enabled:
         raise Http404
     if not exam.is_published:
         messages.error(request, 'Publish this Special Exam before correcting its result order.')
@@ -4457,14 +5919,145 @@ def correct_special_exam_tie_order(request, pk):
 
 
 @login_required
+def result_provisional(request, pk):
+    """Provisional result — the sheet while 1-2 subjects still have no marks.
+
+    The official result sheet (result_sheet) is the truth: an assigned subject
+    with no mark is graded F and counted as 0 (``EXAM_ABSENT_SUBJECT_FAILS``),
+    so entering 9 of 10 subjects makes the whole class Fail. That reading is
+    correct for a *published* result and wrong for a sheet the office is still
+    marking — this page exists for the second case, and only for it:
+
+    * works on an **unpublished** exam (nothing has to be published first, and
+      nothing here can change a published result),
+    * a subject with no marks anywhere is still a column, marked ``pending``,
+    * a pending cell is left out of the total/GPA/pass-fail instead of F,
+    * an entered mark — including an entered 0 — is graded exactly as the
+      official sheet grades it, so a real fail still shows as Fail,
+    * Position is withheld for any student with a pending subject, so nobody is
+      ranked on fewer papers than the class sat.
+
+    The page names every subject that still has no marks, so "which one am I
+    missing?" is answered on the screen instead of by trial and error.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    columns, results = build_exam_results(
+        exam, group=selected_group or None, provisional=True,
+    )
+    # Register order (numeric roll, no-roll last) — this is a working sheet,
+    # not a merit list; positions are withheld while marks are pending.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
+    can_enter_marks = request.user.has_perm('students.add_exammark')
+
+    sheet_columns = []
+    pending_columns = []
+    header_subjects = [
+        column.header_paper() if getattr(column, 'is_religion_column', False) else column
+        for column in columns
+    ]
+    header_configs = get_subject_marks_map(exam, header_subjects, group=selected_group or None)
+    for index, column in enumerate(columns):
+        if getattr(column, 'is_religion_column', False):
+            marks_config = column.header_marks_config(exam, marks_configs=header_configs)
+        else:
+            marks_config = header_configs[column.pk]
+        sheet_columns.append({
+            'subject': column,
+            'full_marks': marks_config.full_marks if marks_config else None,
+        })
+        applicable = [
+            row for row in results
+            if not row['subject_results'][index].get('not_applicable')
+        ]
+        blank = [
+            row for row in applicable
+            if row['subject_results'][index].get('pending')
+        ]
+        if not blank:
+            continue
+        enter_url = ''
+        if can_enter_marks and not getattr(column, 'is_religion_column', False):
+            enter_url = reverse(
+                'enter_marks', kwargs={'pk': exam.pk, 'subject_pk': column.pk},
+            ) + group_querystring
+        pending_columns.append({
+            'subject': column,
+            'blank_count': len(blank),
+            'student_count': len(applicable),
+            # No mark at all for anybody: the usual reason is that the paper is
+            # not offered on Enter Marks (assignment / Count tick / group), not
+            # that every child was absent.
+            'fully_unmarked': bool(applicable) and len(blank) == len(applicable),
+            'enter_url': enter_url,
+        })
+
+    return render(request, 'students/result_provisional.html', {
+        'exam': exam,
+        'columns': sheet_columns,
+        'results': results,
+        'pending_columns': pending_columns,
+        'complete': not pending_columns,
+        'subject_count': len(columns),
+        'ready_subject_count': len(columns) - len(pending_columns),
+        'student_count': len(results),
+        'pending_students': sum(
+            1 for row in results if row['pending_subject_count']
+        ),
+        'absent_subject_fails': absent_subject_fails_result(),
+        'can_enter_marks': can_enter_marks,
+        'enter_marks_url': reverse('select_marks_subject', kwargs={'pk': exam.pk}),
+        'result_sheet_url': reverse('result_sheet', kwargs={'pk': exam.pk}),
+        'subject_assignments_url': subject_assignments_url(exam, selected_group),
+        'mark_evaluation_url': mark_evaluation_url(exam, selected_group),
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': selected_group_label,
+        'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+    })
+
+
+# Rows per printed page of the Published Result (?print=1) view.  A portrait
+# A4 sheet at 8pt holds this many single-line rows under the header strip and
+# above the footer, so the view chunks explicitly instead of leaving the page
+# breaks to the browser — every sheet then carries a real "Page x of y".
+SUMMARY_PRINT_ROWS_PER_PAGE = 40
+
+
+def _summary_print_sheets(rows, per_page):
+    """Split the register into fixed-size printed sheets for the print view."""
+    chunks = [rows[i:i + per_page] for i in range(0, len(rows), per_page)] or [[]]
+    total_pages = len(chunks)
+    return [
+        {'rows': sheet_rows, 'page_no': number, 'total_pages': total_pages}
+        for number, sheet_rows in enumerate(chunks, start=1)
+    ]
+
+
+@login_required
 def result_summary(request, pk):
     """Published Result page for one exam.
 
-    Ordering rule (EX-02 matrix): this is a *ranking* output — rows stay in
-    merit position order (ties share a position), with unranked Fail / No
-    Marks students following in register roll order (numeric roll, None
-    last). The Position column is the page's first column on purpose; the
-    register-style view is result_sheet.
+    Ordering rule (owner decision, 2026-11-03): the printed register follows
+    **numeric roll order** — roll ``None`` last, then name and pk as stable
+    tie-breaks — on screen, in the ``?print=1`` full-print view and in the
+    browser's own print/PDF output. Merit position no longer decides the row
+    order; it is still calculated and printed, but as the table's **last**
+    column (like the Result Sheet's "Place" column), never the leading one.
+
+    This deliberately supersedes the EX-02 matrix entry that pinned this page
+    to merit/position order. Ranking outputs that remain in merit order are
+    ``full_rank_list``, ``top_10`` and the merit slides.
     """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
@@ -4475,8 +6068,40 @@ def result_summary(request, pk):
     selected_group_label = dict(group_choices).get(selected_group, '')
     result_group_label = selected_group_label or exam.get_group_display() or ''
     _, results = build_exam_results(exam, group=selected_group or None)
+    # Register order, not merit: build_exam_results() already assigned each
+    # student's position, and sorting the rows does not change any place. Fail /
+    # No Marks students stay in their roll slot instead of trailing the list.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
+    pagination = paginate_list(request, results, allow_full_print=True)
+    total_students = len(results)
+    pass_count = sum(1 for row in results if row['status'] == 'Pass')
     return render(request, 'students/exam_result_summary.html', {
-        'exam': exam, 'results': results,
+        **pagination,
+        'exam': exam, 'results': pagination['page_rows'],
+        # Print layout: the full-print view is chunked into fixed sheets so the
+        # portrait pages break where the paper does, with "Page x of y".
+        'print_sheets': (
+            _summary_print_sheets(results, SUMMARY_PRINT_ROWS_PER_PAGE)
+            if pagination['is_print_view'] else []
+        ),
+        'exam_year': _published_result_year(exam),
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'fail_count': total_students - pass_count,
+        'pass_rate_class': int(100 * pass_count / total_students) if total_students else 0,
+        'pass_rate_exact': (
+            f'{100 * pass_count / total_students:.2f}' if total_students else '0.00'
+        ),
+        'a_plus_students': sum(1 for r in results if (r.get('grade') or '') == 'A+'),
+        'golden_a_plus': sum(1 for r in results if _golden_a_plus_result(r)),
+        'section_group_label': ' / '.join(
+            part for part in (exam.section, result_group_label) if part
+        ) or 'All',
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': selected_group_label,
@@ -4487,9 +6112,104 @@ def result_summary(request, pk):
 
 
 @login_required
+def exam_result_print_summary(request, pk):
+    """Results Summary — the section and subject-wise summary sheet.
+
+    One A4 portrait sheet in the same language as the other result printouts
+    (shared letterhead, class info box, signatures, page footer):
+
+    * **Total Grade Count in the Class** — per-student overall grades, Golden
+      A Plus counted separately, with the examinee total;
+    * **Internal Grading System** — the marks bands this exam is graded with;
+    * **grade × subject matrix** — how many students reached each grade in
+      every printed paper, with the per-grade and per-subject totals;
+    * **Grade Summary in the Section** — the same cohort totals beside the
+      Principal / Controller of Exam overlines.
+
+    The cohort is every student of the exam's class/section (group filter
+    applied), so the class and section boxes print the same counts.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    columns, results = build_exam_results(exam, group=selected_group or None)
+    # Register order follows numeric rolls, matching the result sheet.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
+    # Same column / marks configuration as the result sheet, so the subject
+    # summary displays the same full marks as the register.
+    sheet_columns = build_sheet_columns(exam, columns, group=selected_group or None)
+    brief_summary, subject_summary = result_summary_totals(results, sheet_columns)
+    total_students = len(results)
+    pass_count = sum(1 for row in results if row['status'] == 'Pass')
+    return render(request, 'students/result_summary_print.html', {
+        'exam': exam, 'columns': sheet_columns, 'results': results,
+        # Printed tables: grading scale, grade counts, grade × subject grid.
+        'grading_scale': grade_scale_rows(),
+        'grade_report': grade_distribution_report(results, sheet_columns),
+        # Shared sheet letterhead (Year / Class / Section-Group / Pass Rate).
+        'exam_year': _published_result_year(exam),
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'pass_rate_class': int(100 * pass_count / total_students) if total_students else 0,
+        'a_plus_students': sum(1 for r in results if (r.get('grade') or '') == 'A+'),
+        'golden_a_plus': sum(1 for r in results if golden_a_plus(r)),
+        'section_group_label': ' / '.join(
+            part for part in (exam.section, result_group_label) if part
+        ) or 'All',
+        # Kept for other readers of this view (cohort brief / subject table).
+        'brief_summary': brief_summary, 'subject_summary': subject_summary,
+        'group_choices': group_choices, 'selected_group': selected_group,
+        'selected_group_label': selected_group_label, 'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+        'absent_subject_fails': absent_subject_fails_result(),
+    })
+
+
+def _merit_comment(result):
+    """The 'Comments' cell of the Top Ten sheet.
+
+    ``Golden``    — A+ in every graded paper (a Golden A Plus, GPA 5.00).
+    ``Potential`` — exactly one paper short of that: the student is one mark
+    improvement away from a Golden A Plus.
+
+    Anything further behind stays blank; the column marks the two cases the
+    office acts on, it does not grade the rest of the class.
+    """
+    graded = [
+        cell for cell in result.get('subject_results', [])
+        if not cell.get('not_applicable') and not cell.get('pending')
+    ]
+    if not graded:
+        return ''
+    a_plus = sum(1 for cell in graded if (cell.get('grade') or '') == 'A+')
+    if a_plus == len(graded):
+        return 'Golden'
+    if a_plus == len(graded) - 1:
+        return 'Potential'
+    return ''
+
+
+@login_required
 def top_10(request, pk):
-    """Top-10 list — merit position order, intentionally (EX-02 rule:
-    ranking output). Rolls never decide this order."""
+    """Top Ten — merit position order, intentionally (EX-02 rule: ranking).
+
+    Printed as the school's "Top Ten (10)" sheet: the shared letterhead with
+    the class info box, one row per ranked student in merit order with the
+    place as an ordinal (1st, 2nd, 10th…), the A+ subject count, the failed
+    subject count and a Comments cell (Golden / Potential), closed by the
+    Controller of Exam / Head Teacher signatures.
+    """
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
@@ -4499,9 +6219,23 @@ def top_10(request, pk):
     selected_group_label = dict(group_choices).get(selected_group, '')
     result_group_label = selected_group_label or exam.get_group_display() or ''
     _, results = build_exam_results(exam, group=selected_group or None)
+    top_rows = [r for r in results if r['position']][:10]
+    for row in top_rows:
+        row['comment'] = _merit_comment(row)
+    total_students = len(results)
+    pass_count = sum(1 for r in results if r['status'] == 'Pass')
     return render(request, 'students/top10.html', {
         'exam': exam,
-        'results': [r for r in results if r['position']][:10],
+        'results': top_rows,
+        'exam_year': _published_result_year(exam),
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'pass_rate_class': int(100 * pass_count / total_students) if total_students else 0,
+        'a_plus_students': sum(1 for r in results if (r.get('grade') or '') == 'A+'),
+        'golden_a_plus': sum(1 for r in results if _golden_a_plus_result(r)),
+        'section_group_label': ' / '.join(
+            part for part in (exam.section, result_group_label) if part
+        ) or 'All',
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': selected_group_label,
@@ -4509,6 +6243,42 @@ def top_10(request, pk):
         'show_group_picker': not exam.group and bool(group_choices),
         'group_querystring': group_querystring,
     })
+
+
+@login_required
+def download_result_sheet(request, pk, kind, fmt):
+    """Download a printed result sheet as Excel or CSV.
+
+    The office prints a result by opening the sheet and choosing *Save as PDF*.
+    That gives a picture of the table; this gives the table. It is the same
+    computation the page renders (``result_exports`` reads
+    :func:`~students.result_utils.build_exam_results`), so a downloaded GPA can
+    never disagree with the printed sheet.
+
+    ``kind`` picks the sheet (Full Mark Sheet / Published Result Sheet / Top Ten
+    / Results Summary) and ``fmt`` the file: ``xlsx`` is the paper's own layout,
+    ``data`` the same rows without a letterhead, ``csv`` the plain table. The exam must
+    belong to the caller's institution and must be published: a download is
+    never a way around the publishing rule the pages enforce.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    if kind not in result_exports.KINDS or fmt not in result_exports.FORMATS:
+        raise Http404('Unknown result download')
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    spec = result_exports.build_spec(exam, kind, group=selected_group or None)
+    if spec is None:  # pragma: no cover - guarded by the KINDS check above
+        raise Http404('Unknown result download')
+    if fmt in ('xlsx', 'data') and result_exports.openpyxl is None:
+        messages.error(
+            request,
+            'Excel download is unavailable because openpyxl is not installed. '
+            'Use the CSV download instead.',
+        )
+        return redirect('result_sheet', pk=exam.pk)
+    return result_exports.build_response(spec, fmt)
 
 
 @login_required
@@ -4540,11 +6310,125 @@ def full_rank_list(request, pk):
     marks_entry_url = reverse('select_marks_subject', kwargs={'pk': exam.pk})
     if selected_group:
         marks_entry_url += f'?group={selected_group}'
+    if not request.user.has_perm('students.add_exammark'):
+        marks_entry_url = ''
+    pagination = paginate_list(request, ranked + unranked, allow_full_print=True)
     return render(request, 'students/full_rank_list.html', {
         'exam': exam,
-        'results': ranked,
-        'unranked_results': unranked,
+        **pagination,
+        'ranked_count': len(ranked),
+        'results': [r for r in pagination['page_rows'] if r['position']],
+        'unranked_results': [r for r in pagination['page_rows'] if not r['position']],
         'marks_entry_url': marks_entry_url,
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': selected_group_label,
+        'result_group_label': result_group_label,
+        'show_group_picker': not exam.group and bool(group_choices),
+        'group_querystring': group_querystring,
+    })
+
+
+# Rows per printed page of the Published Results sheet.  The sheet repeats its
+# letterhead and footer on every page (so "Page x of y" matches the printer),
+# and this many single-line rows fit one A4 portrait page at 9pt type.
+PUBLISHED_RESULTS_ROWS_PER_PAGE = 38
+
+
+def _published_result_year(exam):
+    """The 'Year' cell of the published sheet: the calendar year of the exam."""
+    if exam.exam_date:
+        return exam.exam_date.year
+    years = re.findall(r'(20\d{2})', exam.session or '')
+    return int(years[-1]) if years else timezone.now().year
+
+
+def _golden_a_plus_result(result):
+    """A 'Golden A+' is A+ in every graded paper — stricter than GPA 5.00 overall.
+
+    A fourth-subject paper below A+ can still leave the capped GPA at 5.00;
+    that is a Total A Plus but not a Golden A Plus.  The rule itself lives in
+    ``result_utils.golden_a_plus`` so every printed sheet shares one definition.
+    """
+    return golden_a_plus(result)
+
+
+@login_required
+def published_results(request, pk):
+    """Published Results — the office's printed result sheet after publication.
+
+    This is the sheet printed and handed out once a result is published: the
+    school letterhead (badge, red name/founder/address/mobile lines, exam
+    title) beside the class info box (Year / Class / Section-Group / Pass Rate
+    in Class / Total A Plus / Golden A Plus), then one row per student in
+    register (roll) order — Roll No., ID No., Student Name, Grade, GP, Total,
+    Place, A Plus (A+ subject count), Fail (failed subject count), Comments.
+    The closing block carries the Section/Group summary box (Total Student /
+    Total Pass / Total Fail / Pass Rate) and the Controller of Exam / Head
+    Teacher signatures; every page footer repeats the Guide Teacher line,
+    "Page x of y", the print date, the print user and the copyright line.
+
+    Rows are chunked into fixed-size printed pages so the letterhead and
+    footer repeat on every page and the page numbers match the paper.  The
+    register follows numeric roll order (as the office roll call does) —
+    merit position is printed in its own Place column (0 when unranked),
+    never as the row order.
+    """
+    exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
+    if not exam.is_published:
+        messages.error(request, 'This exam result has not been published.')
+        return redirect('exam_list')
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    group_querystring = f'?group={selected_group}' if selected_group else ''
+    selected_group_label = dict(group_choices).get(selected_group, '')
+    result_group_label = selected_group_label or exam.get_group_display() or ''
+    _columns, results = build_exam_results(exam, group=selected_group or None)
+    # Register order follows numeric rolls, not merit; computed places stay.
+    results = sorted(results, key=lambda row: (
+        row['student'].roll_no is None,
+        row['student'].roll_no if row['student'].roll_no is not None else 0,
+        row['student'].name.lower(),
+        row['student'].pk,
+    ))
+
+    total_students = len(results)
+    pass_count = sum(1 for row in results if row['status'] == 'Pass')
+    # The printed summary adds up: every student is either Pass or Fail, so
+    # 'No Marks' rows count under Total Fail on the sheet.
+    fail_count = total_students - pass_count
+    a_plus_students = sum(1 for row in results if (row.get('grade') or '') == 'A+')
+    golden_a_plus = sum(1 for row in results if _golden_a_plus_result(row))
+    # The info box prints the class pass rate truncated ("54 %" for 54.86 %),
+    # matching the school's existing printout; the closing summary box prints
+    # the exact two-place rate ("54.86 %").
+    pass_rate_class = int(100 * pass_count / total_students) if total_students else 0
+    pass_rate_exact = (
+        f'{100 * pass_count / total_students:.2f}' if total_students else '0.00'
+    )
+
+    per_page = PUBLISHED_RESULTS_ROWS_PER_PAGE
+    chunks = [results[i:i + per_page] for i in range(0, len(results), per_page)] or [[]]
+    total_pages = len(chunks)
+    sheets = [
+        {'rows': rows, 'page_no': number, 'total_pages': total_pages,
+         'is_last': number == total_pages}
+        for number, rows in enumerate(chunks, start=1)
+    ]
+
+    return render(request, 'students/published_results.html', {
+        'exam': exam,
+        'sheets': sheets,
+        'total_students': total_students,
+        'pass_count': pass_count,
+        'fail_count': fail_count,
+        'a_plus_students': a_plus_students,
+        'golden_a_plus': golden_a_plus,
+        'pass_rate_class': pass_rate_class,
+        'pass_rate_exact': pass_rate_exact,
+        'section_group_label': ' / '.join(
+            part for part in (exam.section, result_group_label) if part
+        ) or 'All',
+        'exam_year': _published_result_year(exam),
         'group_choices': group_choices,
         'selected_group': selected_group,
         'selected_group_label': selected_group_label,
@@ -4605,8 +6489,10 @@ def seat_plan_list(request, pk):
     # Group-aware, like every other exam route: a Science seat plan must not
     # count Business students as "unseated".
     students = get_exam_students(exam)
+    pagination = paginate_list(request, sorted(rooms.items()))
     return render(request, 'students/seat_plan_list.html', {
-        'exam': exam, 'rooms': rooms,
+        **pagination,
+        'exam': exam, 'rooms': dict(pagination['page_rows']),
         'total_students': students.count(), 'seated_count': seats.count(),
     })
 
@@ -4678,12 +6564,14 @@ def view_seat_plan_room(request, pk, room_name):
     # SeatPlan.Meta orders by (room_name, seat_no); seat numbers are handed
     # out in register roll order by generate_seat_plan (get_exam_students —
     # numeric roll, None last), so this print follows the class register.
-    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student')
+    seats = SeatPlan.objects.filter(exam=exam, room_name=room_name).select_related('student').order_by('seat_no', 'pk')
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
         return redirect('seat_plan_list', pk=exam.pk)
+    pagination = paginate_list(request, seats, allow_full_print=True)
     return render(request, 'students/view_seat_plan_room.html', {
-        'exam': exam, 'room_name': room_name, 'seats': seats,
+        **pagination,
+        'exam': exam, 'room_name': room_name, 'seats': pagination['page_rows'],
     })
 
 
@@ -4696,8 +6584,18 @@ def signature_sheet(request, pk, room_name):
     if not seats.exists():
         messages.error(request, 'No seat plan found for this room.')
         return redirect('seat_plan_list', pk=exam.pk)
+    # EM-01 integration: the active subject teachers for this class/section.
+    assigned_teachers = TeacherAssignment.objects.filter(
+        institution=exam.institution,
+        admission_class__in=class_filter_variants(exam.admission_class),
+        session=exam.session,
+        is_active=True,
+    ).select_related('employee', 'subject')
+    if getattr(exam, 'section', ''):
+        assigned_teachers = assigned_teachers.filter(section__iexact=exam.section)
     return render(request, 'students/signature_sheet.html', {
         'exam': exam, 'room_name': room_name, 'seats': seats,
+        'assigned_teachers': assigned_teachers,
     })
 
 
@@ -4791,7 +6689,12 @@ def employee_status_history(request, pk):
         request, Employee, pk, lambda e: e.institution
     )
     logs = employee.status_logs.select_related('changed_by').all()
-    return render(request, 'students/employee_status_history.html', {'employee': employee, 'logs': logs})
+    logs = logs.order_by('-changed_at', '-pk')
+    pagination = paginate_list(request, logs)
+    return render(request, 'students/employee_status_history.html', {
+        **pagination,
+        'employee': employee, 'logs': pagination['page_rows'],
+    })
 
 
 # ---------------- Accounts Views ----------------
@@ -4800,7 +6703,11 @@ def employee_status_history(request, pk):
 def money_receipt_list(request):
     receipts = MoneyReceipt.objects.select_related('student', 'created_by').all()
     receipts = _filter_by_selected_institution(request, receipts, 'student__institution')
-    return render(request, 'students/money_receipt_list.html', {'receipts': receipts})
+    pagination = paginate_list(request, receipts)
+    return render(request, 'students/money_receipt_list.html', {
+        **pagination,
+        'receipts': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -4859,7 +6766,11 @@ def voucher_list(request):
             vouchers = vouchers.none()
         else:
             vouchers = vouchers.filter(institution_id__in=allowed_ids)
-    return render(request, 'students/voucher_list.html', {'vouchers': vouchers})
+    pagination = paginate_list(request, vouchers)
+    return render(request, 'students/voucher_list.html', {
+        **pagination,
+        'vouchers': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -4906,7 +6817,11 @@ def delete_voucher(request, pk):
 def salary_sheet_list(request):
     salaries = SalarySheet.objects.select_related('employee', 'created_by').all()
     salaries = _filter_by_selected_institution(request, salaries, 'employee__institution')
-    return render(request, 'students/salary_sheet_list.html', {'salaries': salaries})
+    pagination = paginate_list(request, salaries)
+    return render(request, 'students/salary_sheet_list.html', {
+        **pagination,
+        'salaries': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -4932,6 +6847,12 @@ def edit_salary_sheet(request, pk):
     salary = _get_scoped_object_or_404(
         request, SalarySheet, pk, lambda s: s.employee.institution,
     )
+    if salary.is_locked:
+        messages.error(
+            request,
+            f'Salary sheet for {salary.month} is locked (closed period). Unlock it first to make changes.',
+        )
+        return redirect('salary_sheet_list')
     form = SalarySheetForm(request.POST or None, instance=salary, user=request.user)
     if request.method == 'POST' and form.is_valid():
         form.save()
@@ -4946,11 +6867,77 @@ def delete_salary_sheet(request, pk):
     salary = _get_scoped_object_or_404(
         request, SalarySheet, pk, lambda s: s.employee.institution,
     )
+    if salary.is_locked:
+        messages.error(
+            request,
+            f'Salary sheet for {salary.month} is locked (closed period). Unlock it first to delete it.',
+        )
+        return redirect('salary_sheet_list')
     if request.method == 'POST':
         salary.delete()
         messages.success(request, 'Salary sheet deleted.')
         return redirect('salary_sheet_list')
     return render(request, 'students/delete_salary_sheet.html', {'salary': salary})
+
+
+@login_required
+@permission_required('students.change_salarysheet', raise_exception=True)
+@require_POST
+def lock_salary_sheet(request, pk):
+    """EM-03: close the payroll period for one salary sheet.
+
+    Locking freezes the amount/status/date. It is an audited action and is
+    intentionally separate from PAID: a paid sheet can still be corrected, and
+    an unpaid sheet can be closed when the month ends.
+    """
+    salary = _get_scoped_object_or_404(
+        request, SalarySheet, pk, lambda s: s.employee.institution,
+    )
+    if not salary.is_locked:
+        reason = (request.POST.get('reason') or '').strip()[:200]
+        with transaction.atomic():
+            salary.locked_at = timezone.now()
+            salary.locked_by = request.user
+            salary.lock_reason = reason
+            salary.save(update_fields=['locked_at', 'locked_by', 'lock_reason'])
+            record_audit(
+                request.user, 'salary_sheet_locked', salary,
+                details={'month': salary.month, 'reason': reason},
+            )
+        messages.success(request, f'Salary sheet for {salary.month} locked.')
+    else:
+        messages.info(request, 'This salary sheet is already locked.')
+    return redirect('salary_sheet_list')
+
+
+@login_required
+@permission_required('students.change_salarysheet', raise_exception=True)
+@require_POST
+def unlock_salary_sheet(request, pk):
+    """EM-03: reopen a closed period. The unlock itself is audited."""
+    salary = _get_scoped_object_or_404(
+        request, SalarySheet, pk, lambda s: s.employee.institution,
+    )
+    if salary.is_locked:
+        with transaction.atomic():
+            previous = {
+                'locked_at': salary.locked_at.isoformat() if salary.locked_at else None,
+                'locked_by': salary.locked_by_id,
+                'lock_reason': salary.lock_reason,
+            }
+            salary.locked_at = None
+            salary.locked_by = None
+            salary.lock_reason = ''
+            salary.save(update_fields=['locked_at', 'locked_by', 'lock_reason'])
+            record_audit(
+                request.user, 'salary_sheet_unlocked', salary,
+                snapshot=previous,
+                details={'month': salary.month},
+            )
+        messages.success(request, f'Salary sheet for {salary.month} unlocked.')
+    else:
+        messages.info(request, 'This salary sheet is not locked.')
+    return redirect('salary_sheet_list')
 
 
 @login_required
@@ -5003,11 +6990,41 @@ def finance_dashboard(request):
     })
 
 
+def _promotion_already_run(students, data):
+    """A live (not rolled back) batch that already promoted this class/section.
+
+    Owner rule (OF-08, 2026-10-15): one promotion run per class/section and
+    session. A second run used to be accepted and quietly created a second batch
+    for whoever was left in the class, so a double promotion was impossible to
+    spot in the history. Rolling the first batch back clears the block.
+    """
+    institution_ids = {student.institution_id for student in students if student.institution_id}
+    batches = PromotionBatch.objects.filter(
+        session__iexact=data['session'],
+        from_class__in=class_label_spellings(data['from_class']),
+        rolled_back_at__isnull=True,
+    )
+    batches = batches.filter(
+        from_section__iexact=data['from_section'],
+    ) if data['from_section'] else batches.filter(from_section='')
+    if institution_ids:
+        batches = batches.filter(
+            Q(institution_id__in=institution_ids)
+            | Q(institution__isnull=True,
+                student_history__student__institution_id__in=institution_ids)
+        )
+    else:
+        batches = batches.filter(institution__isnull=True)
+    return batches.distinct().order_by('-pk').first()
+
+
 @login_required
 @permission_required('students.change_student', raise_exception=True)
 @_require_department('Office')
 def student_promotion(request):
     form = StudentPromotionForm(request.POST or None)
+    count = 0
+    blocked = None
     if request.method == 'POST' and form.is_valid():
         data = {key: value.strip() for key, value in form.cleaned_data.items()}
         with transaction.atomic():
@@ -5025,7 +7042,8 @@ def student_promotion(request):
             if data['from_section']:
                 students = [student for student in students if student.section.lower() == data['from_section'].lower()]
             count = len(students)
-            if count:
+            blocked = _promotion_already_run(students, data) if count else None
+            if count and blocked is None:
                 # A promotion run moves a single class/section, so all promoted
                 # students belong to one institution. Record it on the batch
                 # (D-9) so scoping no longer has to be derived from the rows;
@@ -5058,9 +7076,14 @@ def student_promotion(request):
                             snapshot={'session': batch.session, 'student_count': count},
                             details={'from_class': batch.from_class, 'from_section': batch.from_section,
                                     'to_class': batch.to_class, 'to_section': batch.to_section})
+            elif count:
+                section = f" section {data['from_section']}" if data['from_section'] else ''
+                form.add_error(None,
+                    f'Class {data["from_class"]}{section} has already been promoted in session '
+                    f'{blocked.session}. Roll the earlier promotion back first if it was a mistake.')
         if not count:
             messages.error(request, 'No students found for the selected class/section.')
-        else:
+        elif blocked is None:
             messages.success(request, f'{count} student(s) promoted.')
             return redirect('student_list')
     return render(request, 'students/student_promotion.html', {'form': form})
@@ -5115,7 +7138,7 @@ def rollback_student_promotion(request, pk):
 @permission_required('students.view_promotionbatch', raise_exception=True)
 @_require_department('Office')
 def student_promotion_history(request):
-    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor', 'institution').all().order_by('-created_at')
+    batches = PromotionBatch.objects.select_related('actor', 'rollback_actor', 'institution').all().order_by('-created_at', '-pk')
     # A scoped clerk sees only batches that touch their own institutions. The
     # filter is derived from each batch's students, which stays correct for both
     # new batches (which also carry a `institution` column, D-9) and legacy
@@ -5130,7 +7153,11 @@ def student_promotion_history(request):
             ).exclude(
                 student_history__student__institution_id__in=_institution_ids_outside(allowed),
             ).distinct()
-    return render(request, 'students/student_promotion_history.html', {'batches': batches})
+    pagination = paginate_list(request, batches)
+    return render(request, 'students/student_promotion_history.html', {
+        **pagination,
+        'batches': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -5142,7 +7169,11 @@ def audit_log_list(request):
     # Rows with no institution (system-level actions, and everything recorded
     # before the institution column existed) stay admin/staff-only.
     logs = _scope_by_allowed_institutions(request, logs)
-    return render(request, 'students/audit_log_list.html', {'logs': logs})
+    pagination = paginate_list(request, logs)
+    return render(request, 'students/audit_log_list.html', {
+        **pagination,
+        'logs': pagination['page_rows'],
+    })
 
 
 @login_required
@@ -5240,16 +7271,20 @@ def result_analysis_subject_fail(request):
     exams = _analysis_exam_queryset(request)
     exam = _selected_analysis_exam(request, exams)
     rows = failed_subject_rows(exam, request.GET.get('group') or None) if exam else []
-    by_subject = []
+    failure_counts = defaultdict(int)
     for row in rows:
+        failure_counts[row['subject'].pk] += 1
+    pagination = paginate_list(request, rows, allow_full_print=True)
+    by_subject = []
+    for row in pagination['page_rows']:
         bucket = next((item for item in by_subject if item['subject'].pk == row['subject'].pk), None)
         if bucket is None:
-            bucket = {'subject': row['subject'], 'rows': [], 'count': 0}
+            bucket = {'subject': row['subject'], 'rows': [], 'count': failure_counts[row['subject'].pk]}
             by_subject.append(bucket)
         bucket['rows'].append(row)
-        bucket['count'] += 1
     context = _analysis_base_context(request, exams)
-    context.update({'exam': exam, 'rows': rows, 'subjects_with_fails': by_subject})
+    context.update({'exam': exam, 'rows': pagination['page_rows'], 'subjects_with_fails': by_subject})
+    context.update(pagination)
     return render(request, 'students/result_analysis_subject_fail.html', context)
 
 
@@ -5287,8 +7322,10 @@ def result_analysis_multi_term(request):
     # roll, name, then pk so two students sharing a roll still sort stably.
     for student in sorted(students.values(), key=lambda s: (s.roll_no is None, s.roll_no or 0, s.name.lower(), s.pk)):
         rows.append({'student': student, 'results': [mapping.get(student.pk) for mapping in result_maps]})
+    pagination = paginate_list(request, rows, allow_full_print=True)
     context = _analysis_base_context(request, exams)
-    context.update({'selected_exams': selected, 'selected_exam_ids': [e.pk for e in selected], 'rows': rows})
+    context.update({'selected_exams': selected, 'selected_exam_ids': [e.pk for e in selected], 'rows': pagination['page_rows']})
+    context.update(pagination)
     return render(request, 'students/result_analysis_multi_term.html', context)
 
 
@@ -5422,12 +7459,21 @@ def section_arrangement(request):
                     details={'changes': changes, 'roll_numbers_changed': False},
                 )
             messages.success(request, f'Section arrangement saved for {len(changes)} student(s). Roll numbers were unchanged.')
-            query = f'?exam={exam.pk}&sections={",".join(sections)}'
-            return redirect(reverse('section_arrangement') + query)
+            query = request.GET.copy()
+            query['exam'] = str(exam.pk)
+            query['sections'] = ','.join(sections)
+            selected_group = request.GET.get('group') or request.POST.get('group')
+            if selected_group:
+                query['group'] = selected_group
+            query.pop('page', None)
+            query.pop('print', None)
+            return redirect(reverse('section_arrangement') + '?' + query.urlencode())
 
+    pagination = paginate_list(request, rows, allow_full_print=True)
     context = _analysis_base_context(request, exams)
     context.update({
-        'exam': exam, 'rows': rows, 'sections': sections,
+        'exam': exam, 'rows': pagination['page_rows'], 'sections': sections,
         'sections_csv': ','.join(sections), 'capacity_warnings': capacity_warnings,
     })
+    context.update(pagination)
     return render(request, 'students/section_arrangement.html', context)

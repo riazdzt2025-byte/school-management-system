@@ -13,7 +13,7 @@
 <div class="table-card">
     <table class="table table-striped mb-0">
         <thead>
-            <tr><th>Employee</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Entered By</th><th>Action</th></tr>
+            <tr><th>Employee</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Period</th><th>Entered By</th><th>Action</th></tr>
         </thead>
         <tbody>
             {% for salary in salaries %}
@@ -23,17 +23,43 @@
                 <td>BDT {{ salary.amount }}</td>
                 <td>{{ salary.date }}</td>
                 <td>{{ salary.get_status_display }}</td>
+                <td>
+                    {% if salary.is_locked %}
+                        <span class="badge bg-dark">Locked</span>
+                        <div class="small text-muted">{{ salary.locked_at|date:"M d, Y" }}</div>
+                    {% else %}
+                        <span class="badge bg-success">Open</span>
+                    {% endif %}
+                </td>
                 <td>{{ salary.created_by.username|default:'-' }}</td>
                 <td>
-                    {% if perms.students.change_salarysheet %}<a href="{% url 'edit_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-navy">Edit</a>{% endif %}
-                    {% if perms.students.delete_salarysheet %}<a href="{% url 'delete_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
+                    {% if salary.is_locked %}
+                        {% if perms.students.change_salarysheet %}
+                        <form method="post" action="{% url 'unlock_salary_sheet' salary.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-warning">Unlock</button>
+                        </form>
+                        {% endif %}
+                    {% else %}
+                        {% if perms.students.change_salarysheet %}
+                        <a href="{% url 'edit_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-navy">Edit</a>
+                        <form method="post" action="{% url 'lock_salary_sheet' salary.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-outline-dark">Lock</button>
+                        </form>
+                        {% endif %}
+                        {% if perms.students.delete_salarysheet %}<a href="{% url 'delete_salary_sheet' salary.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>{% endif %}
+                    {% endif %}
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="7" class="text-center py-4">No salary sheets.</td></tr>
+            <tr><td colspan="8" class="text-center py-4">No salary sheets.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+<div class="small text-muted mt-2 mb-3">A locked sheet is a closed payroll period: its amount, status and date cannot be edited or deleted until an Accounts user unlocks it. Locking and unlocking are both audited.</div>
 <a href="{% url 'finance_dashboard' %}" class="btn btn-outline-navy mt-3">Back</a>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}

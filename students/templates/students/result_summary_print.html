@@ -1,0 +1,164 @@
+{% extends 'students/base.html' %}
+{% load student_filters %}
+
+{% block title %}Results Summary - {{ block.super }}{% endblock %}
+{% block print_subtitle %}Results Summary - {{ exam.name }}{% endblock %}
+
+{% block extra_style %}
+    /* Same portrait sheet as the other result printouts: letterhead, class
+       info box, ruled tables, signatures and the page footer. */
+    {% include 'students/_result_sheet_styles.html' %}
+
+    /* ---- Grade count / grading scale boxes ---- */
+    .rsm-boxes { display: flex; gap: 4mm; align-items: flex-start; margin: 3mm 0 3mm; }
+    .rsm-box { border-collapse: collapse; }
+    .rsm-box caption {
+        caption-side: top; padding: 1mm 1.5mm; border: 1px solid #000; border-bottom: none;
+        font-size: 9pt; font-weight: 700; text-align: left; background: #f0f0f0;
+    }
+    .rsm-box th, .rsm-box td {
+        border: 1px solid #000; padding: 0.9mm 1.5mm; font-size: 8.5pt; line-height: 1.2;
+    }
+    .rsm-box th { font-weight: 700; background: #f0f0f0; }
+    .rsm-box td.rsm-num { text-align: right; width: 16mm; }
+    .rsm-box-counts { width: 78mm; flex: 0 0 auto; }
+    .rsm-box-scale { width: 60mm; flex: 0 0 auto; }
+    .rsm-box-scale td:last-child { text-align: right; }
+
+    /* ---- Grade × subject grid ---- */
+    .rsm-matrix { table-layout: auto; min-width: 0; }
+    .rsm-matrix th { font-size: 8.5pt; }
+    .rsm-matrix td { height: 4.6mm; font-size: 8.5pt; }
+    .rsm-matrix .rsm-row-label { text-align: left; white-space: nowrap; }
+    .rsm-matrix .rsm-marks { font-weight: 400; }
+    .rsm-matrix .rsm-total { font-weight: 700; background: #f7f7f7; }
+    .rsm-matrix tfoot td { font-weight: 700; background: #f0f0f0; }
+
+    /* ---- Section summary + signatures ---- */
+    .rsm-close { margin-top: 6mm; align-items: flex-start; }
+    .rsm-caption { caption-side: top; text-align: left; font-size: 9pt; font-weight: 700; padding-bottom: 1mm; }
+    .rsm-signs { display: flex; flex-direction: column; gap: 10mm; padding-right: 6mm; }
+    .rsm-signs .pr-sign { font-size: 9pt; }
+{% endblock %}
+
+{% block content %}
+<div class="pr-page">
+    <div class="pr-toolbar d-print-none">
+        <div class="toolbar-title">
+            Results Summary &middot; {{ exam.name }} &middot; Class {{ exam.admission_class }}{% if exam.section %} ({{ exam.section }}){% endif %}{% if result_group_label %} &middot; {{ result_group_label }}{% endif %}
+        </div>
+        <div class="toolbar-actions">
+            {% include 'students/_download_menu.html' with kind='summary' %}
+            <button type="button" onclick="window.print()" class="btn btn-navy btn-sm">🖨️ Print / Save PDF</button>
+            <a href="{% url 'result_sheet' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Back to Result Sheet</a>
+            <a href="{% url 'exam_result_summary' exam.pk %}{{ group_querystring }}" class="btn btn-outline-navy btn-sm">Published Result</a>
+            <a href="{% url 'exam_list' %}" class="btn btn-outline-secondary btn-sm">Exam List</a>
+        </div>
+    </div>
+
+    {% if show_group_picker %}
+    <form method="get" class="pr-group-picker d-print-none mb-3 d-flex align-items-end gap-2 flex-wrap">
+        {% include 'students/_pagination_filter_fields.html' with exclude="group" %}
+        <div>
+            <label class="form-label fw-semibold mb-1" for="rsm-group-select">Group</label>
+            <select name="group" id="rsm-group-select" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All Groups</option>
+                {% for code, label in group_choices %}
+                <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-navy">Show Summary</button>
+        {% if selected_group %}<a href="{% url 'exam_result_print_summary' exam.pk %}" class="btn btn-sm btn-outline-secondary">All Groups</a>{% endif %}
+    </form>
+    {% endif %}
+
+    <section class="pr-sheet" aria-label="Results summary">
+        {% include 'students/_result_sheet_letterhead.html' with sheet_subtitle="Section and Subject-wise Summary" %}
+
+        <div class="rsm-boxes">
+            <table class="rsm-box rsm-box-counts">
+                <caption>Total Grade Count in the Class</caption>
+                <tbody>
+                    {% for row in grade_report.class_rows %}
+                    <tr><td>{{ row.label }}</td><td class="rsm-num">{{ row.count }}</td></tr>
+                    {% endfor %}
+                    <tr><td><strong>Total Examinee</strong></td><td class="rsm-num"><strong>{{ grade_report.total_students }}</strong></td></tr>
+                </tbody>
+            </table>
+
+            <table class="rsm-box rsm-box-scale">
+                <caption>Internal Grading System</caption>
+                <thead>
+                    <tr><th>Full Marks</th><th>Grade</th><th>G.P.</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in grading_scale %}
+                    <tr><td>{{ row.band }}</td><td>{{ row.grade }}</td><td>{{ row.point|floatformat:2 }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pr-table-wrap">
+            <table class="pr-table rsm-matrix">
+                <thead>
+                    <tr>
+                        <th>Grade</th>
+                        {% for column in columns %}
+                        <th>{{ column.subject.code }}<br><span class="rsm-marks">({% if column.full_marks %}{{ column.full_marks|floatformat:"-2" }}{% else %}-{% endif %})</span></th>
+                        {% endfor %}
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in grade_report.matrix %}
+                    <tr>
+                        <td class="rsm-row-label">{{ row.label }}</td>
+                        {% for count in row.counts %}<td>{{ count }}</td>{% endfor %}
+                        <td class="rsm-total">{{ row.total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td class="rsm-row-label">Total</td>
+                        {% for total in grade_report.column_totals %}<td>{{ total }}</td>{% endfor %}
+                        <td>{{ grade_report.matrix_total }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="pr-close rsm-close">
+            <table class="pr-summary" aria-label="Grade summary in the section">
+                <caption class="rsm-caption">Grade Summary in the Section</caption>
+                {% for row in grade_report.section_rows %}
+                <tr><td class="pr-info-label">{{ row.label }}</td><td>{{ row.count }}</td></tr>
+                {% endfor %}
+                <tr><td class="pr-info-label">Total Examinee</td><td>{{ grade_report.total_students }}</td></tr>
+            </table>
+        </div>
+
+        <div class="pr-sign-row">
+            <div class="pr-sign"><div class="pr-sign-line"></div>Guide Teacher</div>
+            <div class="pr-signs">
+                <div class="pr-sign"><div class="pr-sign-line"></div>Head Teacher</div>
+                <div class="pr-sign"><div class="pr-sign-line"></div>Controller of Exam</div>
+            </div>
+        </div>
+
+        <footer class="pr-foot">
+            <div class="pr-foot-row">
+                <div class="pr-page-no">Page 1 of 1</div>
+            </div>
+            <div class="pr-foot-rule"></div>
+            <div class="pr-foot-row pr-print-meta">
+                <span>Print Date: {% now "d-M-Y" %} / {% now "g:i a" %}</span>
+                <span>Print User: {{ request.user.username }}</span>
+            </div>
+            <div class="pr-copyright">Copyright © {{ COPYRIGHT_HOLDER }}. All rights reserved. Software by: {{ DEVELOPER_NAME }}. Unauthorized distribution is prohibited.</div>
+        </footer>
+    </section>
+</div>
+{% endblock %}

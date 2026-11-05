@@ -1,0 +1,29 @@
+{% load static student_filters %}
+{% comment %}
+Shared letterhead of the printed result sheets: school badge, red school
+identity lines (current SCHOOL_INFO contact data), the exam title, and the
+class info box (Year / Class / Section-Group / Pass Rate in Class / Total A
+Plus / Golden A Plus).  Optional ``sheet_subtitle`` adds a second title line,
+e.g. "Top Ten (10)".
+{% endcomment %}
+<header class="pr-head">
+    <div class="pr-logo">
+        <img src="{% static 'students/img/school_logo.png' %}" alt="School badge">
+    </div>
+    <div class="pr-identity">
+        <h1 class="pr-school">Principal Kazi Faruky School</h1>
+        <p class="pr-line">Founder: Professor Kazi Faruky Kallan Trust</p>
+        <p class="pr-line">{{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }}</p>
+        <p class="pr-line">Mobile: {{ SCHOOL_INFO.school_phone|default:"01309134783" }}</p>
+        <p class="pr-exam">{{ exam.name }}</p>
+        {% if sheet_subtitle %}<p class="pr-exam-sub">{{ sheet_subtitle }}</p>{% endif %}
+    </div>
+    <table class="pr-info" aria-label="Class result summary">
+        <tr><td class="pr-info-label">Year</td><td>{{ exam_year }}</td></tr>
+        <tr><td class="pr-info-label">Class</td><td>{{ exam.admission_class|class_padded_label }}</td></tr>
+        <tr><td class="pr-info-label">Section/Group</td><td>{{ section_group_label }}</td></tr>
+        <tr><td class="pr-info-label">Pass Rate in Class</td><td>{{ pass_rate_class }} %</td></tr>
+        <tr><td class="pr-info-label">Total A Plus</td><td>{{ a_plus_students }}</td></tr>
+        <tr><td class="pr-info-label">Golden A Plus</td><td>{{ golden_a_plus }}</td></tr>
+    </table>
+</header>

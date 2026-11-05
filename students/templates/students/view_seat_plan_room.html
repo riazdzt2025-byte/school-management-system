@@ -14,7 +14,7 @@
 
 <div class="mb-3 d-print-none">
     <a href="{% url 'signature_sheet' exam.pk room_name|urlencode %}" class="btn btn-sm btn-outline-dark">Signature Sheet</a>
-    <button onclick="window.print()" class="btn btn-sm btn-outline-navy">Print</button>
+    {% include 'students/_print_all.html' %}
     <a href="{% url 'seat_plan_list' exam.pk %}" class="btn btn-sm btn-outline-navy">Back</a>
 </div>
 
@@ -35,4 +35,6 @@
         </tbody>
     </table>
 </div>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}

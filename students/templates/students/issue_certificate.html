@@ -17,9 +17,15 @@
 <div class="form-card mt-2">
     <form method="post">
         {% csrf_token %}
-        <div class="mb-3"><label class="form-label">Certificate Type</label>{{ form.certificate_type }}</div>
-        <div class="mb-3"><label class="form-label">Purpose</label>{{ form.purpose }}</div>
-        <div class="mb-3"><label class="form-label">Issued By</label>{{ form.issued_by }}</div>
+        <div class="mb-3"><label class="form-label">Certificate Type</label>{{ form.certificate_type }}
+            {% for error in form.certificate_type.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="mb-3"><label class="form-label">Purpose</label>{{ form.purpose }}
+            {% for error in form.purpose.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
+        <div class="mb-3"><label class="form-label">Issued By</label>{{ form.issued_by }}
+            {% for error in form.issued_by.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+        </div>
         {% if form.errors %}<div class="alert alert-danger">Please correct the errors below.</div>{% endif %}
         <button type="submit" class="btn btn-navy">Issue Certificate</button>
         <a href="{% url 'certificate_list' student.pk %}" class="btn btn-outline-navy">Cancel</a>

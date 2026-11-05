@@ -85,6 +85,8 @@ for are shown as owned by another department instead of as dead links.
 {% endif %}
 
 <form method="GET" class="row g-2 mb-3" id="subject-req-filter-form">
+    {% include 'students/_pagination_filter_fields.html' with exclude="institution admission_class group q" %}
+
     <div class="col-auto" style="min-width: 220px;">
         <select name="institution" id="sr-institution" class="form-select">
             <option value="">-- All Institutions --</option>
@@ -225,6 +227,8 @@ for are shown as owned by another department instead of as dead links.
 {% empty %}
 <div class="table-card p-4 text-center text-muted">No subject assignments found for this filter.</div>
 {% endfor %}
+
+{% include 'students/_pagination.html' %}
 {% endblock %}
 
 {% block extra_script %}

@@ -136,17 +136,112 @@ The one exception is a student with **no marks in any subject**: they are listed
 `No Marks`, left unranked and not counted as Fail — nobody sat the exam, nobody
 should get a fabricated GPA 0.00 in the position list.
 
+### Final GPA and the fourth subject (D-GPA)
+
+**Owner-corrected policy, 2026-09-23:** the old automatic **4.90–4.99 → 5.00**
+benefit does **not** apply. A student is graded on their main subjects, with at
+most one selected **fourth subject** giving a bonus. A fourth subject is a
+selected paper whose Subject category is **FOURTH** (for example *Agriculture
+Studies (4th Subject)*); an ordinary `OPTIONAL` subject remains a main subject.
+
+For **N main subjects**, the calculation is:
+
+```
+final GPA = min(5.00, (sum(main subject GPA points) + max(0, fourth point - 2.00)) / N)
+```
+
+The fourth paper is **not** an extra denominator: 10 main papers plus
+Agriculture are still graded over 10 main papers, never 11. Decimal
+`ROUND_HALF_UP` makes the final two-place display deterministic, and the final
+GPA is always capped at **5.00** — no result can display 5.10 or 5.20.
+
+| Main point sum / N | Fourth-subject point | Calculation | Published GPA / grade |
+|---|---:|---|---|
+| 49 / 10 | none | 49 / 10 | 4.90 |
+| 49 / 10 | F = 0.00 | (49 + 0) / 10 | 4.90 — Pass if all main papers pass |
+| 48 / 10 | A+ = 5.00 | (48 + 3) / 10 = 5.10 | **5.00 / A+** |
+| 50 / 10 | A+ = 5.00 | (50 + 3) / 10 = 5.30 | **5.00 / A+** |
+
+A fourth-subject **F** (including an AB under the default absent policy) earns
+zero bonus but **does not make the main result Fail**. A failed or absent **main
+subject** still makes the whole result Fail with GPA 0.00. The selected fourth
+paper is included in displayed **total marks, full marks and percentage**; an
+AB therefore adds 0 obtained out of its full marks, but does not fail the main
+result. It remains outside the main GPA denominator and main pass/fail decision.
+When its bonus brings final GPA to 5.00, the published overall grade is A+.
+
+**Merit / position rule:** every passing student receives a unique position,
+ordered by **letter grade** (A+ before A, then A-, B, C, D), then the exact
+**uncapped** fourth-subject formula GPA, then displayed total marks (including
+the fourth paper), then the **lowest numeric roll**. The uncapped GPA is an
+internal tie-break only; published GPA remains two-decimal and capped at 5.00.
+If a duplicate/missing roll needs a final stable fallback, name then record ID
+are used; failed and `No Marks` students are unranked.
+
+A school can offer several FOURTH papers so pupils can choose, but each student
+may select **at most one**. Publishing is blocked with the named student and
+subject list if a pupil has two or more fourth-subject choices; correct the
+student's subject choices before publishing. There is no separate GPA/result
+Excel-export route at present; browser print / Save as PDF uses these same
+rendered result pages.
+
 ## 3. Create the exam
 
 `Exam → Add Exam`. Class, Section and Group are dropdowns; the exam **name is
 generated** from exam type + session (e.g. *Second Term Examination-2026*), it is
-not typed.
+not typed for an ordinary exam.
 
 **Set the group** for classes 9–12. One exam per group is the clean model:
 then marks entry, marks import, seat plan and the result sheet all show exactly
 that group's students and subjects, and no group picker appears. An exam without a
 group still works — every marks page then offers a group picker — but the exam
 matches every group's subjects until you pick one.
+
+### Special exam (বৃত্তি পরীক্ষা / competitive test)
+
+An ordinary exam is a **register**: its cohort is class + section + group, and
+every active student in it sits it — there is no way to leave one pupil out.
+A **special exam** is the opposite: the candidates and the papers are ticked by
+hand, so any student of the institution can sit it whatever their class.
+
+Use it whenever a result must cover *only some* students:
+
+- the class-8 **scholarship / বৃত্তি** test, or
+- a term test where one group of pupils sits the full paper and the rest sit
+  something else — **both** exams have to be special, otherwise the ordinary one
+  picks up the other group's students and prints AB/F (GPA 0.00) for pupils who
+  never sat it.
+
+Tick **Special exam (pick students & subjects by hand)** and two panels open:
+
+| Panel | What to do |
+|---|---|
+| Candidates | Filter by Class / Section, search by name, ID or roll, then tick. *Select all shown* takes everyone the filters leave on screen; the counter above says how many are ticked, and warns when ticks are hidden by a filter. A list of rolls / Student IDs can be pasted into *Quick pick* instead of clicking fifty names. |
+| Papers | Tick every paper the exam is held on — including one the pupils never sit makes them all AB/F. |
+
+Rules that hold for a special exam:
+
+- **Class still matters** — it drives the marks distribution (Mark Evaluation)
+  and the printed heading, even though the cohort ignores it.
+- **Section and group are cleared**: they describe a register, not a hand-picked
+  cohort, and the form blanks them on save.
+- **Every candidate sits every ticked paper**; the per-student optional subject
+  choices of the admission register are not consulted.
+- The picker only offers **active, non-archived** students of the institution,
+  so a TC/discontinued pupil cannot be a candidate.
+
+**Name.** A special exam may take a title of its own (*Exam name (optional)*,
+e.g. *বৃত্তি পরীক্ষা-২০২৬*). Two hand-picked exams of the same class and term
+would otherwise be identical in the Exam List: same generated name, same type,
+same class, same session. Leave the box empty to keep the generated title.
+Ordinary exams ignore the box. The Exam List also prints how many **candidates**
+and **papers** each special exam holds.
+
+Everything downstream — marks entry, Excel import, result sheet, summary, Top 10,
+rank list, seat plan, result cards — reads the same hand-picked cohort and
+papers, so nothing else needs setting up. Use `Exam List → Enter Marks`;
+`Exam → Enter Marks` looks an exam up by type + session and can land on the other
+exam of the same term.
 
 ## 4. Enter the marks
 
@@ -201,22 +296,100 @@ Read them in this order:
    pass mark. A yellow notice at the top lists marks held in **subjects that are
    not assigned to this exam** (they are deliberately excluded from the numbers —
    fix the assignments or the marks, then re-check).
-2. **Result Summary** — Pass/Fail counts, totals, positions, and per-student
-   detail links.
+2. **Result Summary / Published Result** — Pass/Fail counts, totals, positions,
+   and per-student detail links. It prints in **roll order** (see below).
 3. **Top 10** — ranking sanity check: ties share a position, and a student whose
    marks sit only in unassigned subjects must not be ranked.
 4. **One result card** — print preview, because that is what parents see.
+
+### Published Result print order (owner decision, 2026-11-03)
+
+The **Published Result** page is a register, not a merit list. Its rows follow
+numeric roll order — students without a roll last, ties broken by name then
+record ID — on screen, in **Print all / Save PDF** (`?print=1`) and in a normal
+browser print; position never decides the row order. Fail / No Marks students
+therefore stay in their own roll slot instead of being pushed to a tail.
+
+The computed merit position is still printed, but as the table's **last** column
+(after Status), so the printed sheet opens with Roll / ID / Name, like the Result
+Sheet's "Place" column. Sorting the rows does not recalculate or change any
+student's position. **Top 10** and **Full Rank List** remain merit-ordered
+ranking reports. This supersedes the one `exam_result_summary` row of the EX-02
+ordering matrix.
 
 A student with no entered marks at all shows `No Marks` and is left unranked. A
 student who sat some subjects but not others shows `Fail` with the missed subjects as
 **AB** — read those before publishing, because a box left empty by mistake costs
 a student their whole result.
 
+### Seeing a result while 1–2 subjects are still unmarked (Provisional Result)
+
+Entering 9 of 10 subjects and opening the Result Sheet is *supposed* to look bad:
+a blank assigned subject is graded **F** and counted as 0, so every student in
+that class reads Fail with GPA 0.00. That is the correct final reading — but it is
+useless as a progress check, and it is dangerous to publish.
+
+`Exam List → Provisional` (or the **Provisional (pending marks)** button on the
+result sheet) opens a read-only working sheet for exactly this moment:
+
+- it works on an **unpublished** exam — no publishing is needed to see it;
+- a subject with no marks *anywhere* stays a **column**, marked `—`, instead of
+  disappearing from the sheet;
+- a `—` cell is left out of the total, the percentage, the GPA and pass/fail;
+- an entered mark is graded exactly as the official sheet grades it, so a real
+  0 or a real low mark **still shows Fail** — provisional never hides bad news;
+- **Position is withheld** for any student who still has a pending subject:
+  ranking someone on 8 papers against a class that sat 10 is meaningless;
+- the top of the page names every subject that still has no marks, how many
+  students it is missing for, and links straight to `Enter Marks` for that paper.
+  A subject missing for the *whole class* is usually a setup problem (not
+  assigned to the class, group mismatch, or **Count** unticked in Mark
+  Evaluation) rather than a mass absence.
+
+The provisional page changes nothing: no mark, no publish flag, no result. As
+soon as every subject has marks it says so and points at the official sheet. The
+official pages keep the F rule (`EXAM_ABSENT_SUBJECT_FAILS`), so a half-entered
+exam is never published green — publish only after the provisional page reports
+all subjects complete. Bengali walkthrough: [`docs/PROVISIONAL_RESULT_BN.md`](docs/PROVISIONAL_RESULT_BN.md).
+
 ## 6. Publish
 
 `Exam List → Publish`. Publishing only gates the result pages (sheet, summary,
 Top 10, detail, card) — an unpublished exam redirects those visitors to the exam
 list, and the result card carries a *DRAFT* banner if printed anyway.
+
+After publishing, the printable **Published Result Sheet**
+(`Exam List → Published Sheet`, also linked from the result sheet and the
+Published Result list) is the office copy handed to guardians: the school
+letterhead and class info box (Year / Class / Section-Group / Pass Rate in
+Class / Total A Plus / Golden A Plus), one row per student in roll order
+(Roll No., ID No., Student Name, Grade, GP, Total, Place, A Plus, Fail,
+Comments), and a closing Section/Group summary box with the Controller of
+Exam / Head Teacher signatures. The letterhead, the "Guide Teacher" line and
+"Page x of y" repeat on every printed page, with the print date, print user
+and copyright line under the rule. **Golden A Plus** counts only students with
+A+ in *every* paper (stricter than GPA 5.00, which the **Total A Plus** row
+counts); the info box prints the class pass rate truncated ("54 %"), while the
+closing summary prints the exact rate ("54.86 %"). Print with the page's
+Print / Save PDF button (A4 portrait).
+
+Two more pages use the same portrait sheet (letterhead + class info box +
+ruled register):
+
+- **Top Ten** (`Result Analysis → Top 10`, or the Top 10 button on the result
+  pages) prints "Top Ten (10)" in merit order with the columns Roll No. / ID
+  No. / Student Name / Grade / GP / Total / Place / A Plus / Fail / Comments.
+  Place prints as an ordinal (1st, 2nd, … 10th); **A Plus** is the student's
+  A+ subject count and **Fail** the failed subject count; **Comments** writes
+  `Golden` for a Golden A Plus and `Potential` for a student exactly one paper
+  away from one. The Controller of Exam / Head Teacher overlines close it.
+- **Published Result** (`Exam → Published Result`) keeps its own columns —
+  Roll, ID, Name, Total, Percentage, GP, Grade, Status, Place — and now prints
+  A4 portrait, chunked 40 rows to a sheet: `Print all / Save PDF` gives a
+  letterhead on every page, no student split across a page break, and a footer
+  with "Page x of y", the print date and the print user. The closing summary
+  box (Total Student / Pass / Fail / Pass Rate) and the two signatures appear
+  on the last sheet only.
 
 **Only an administrator can delete an exam** (the Exam department cannot). Use
 that for a mistaken exam, not for routine corrections. Marks behind a published
@@ -246,18 +419,34 @@ that has already gone home with a student.
 
 ### Getting to the right subject quickly (Ctrl/Cmd + Click)
 
-While reading a published result, hold **Ctrl** (Windows/Linux) or **Cmd**
-(macOS) and click a subject cell on the **Result Sheet** — that subject's
-`Enter Marks` page opens **in a new tab**, on the same exam and the same group,
-so the register you were reading stays open. The **Full Rank List** has no
-subject columns, so there the same Ctrl/Cmd + Click opens that exam's marks
-entry chooser instead.
+**Where:** only the **Result Sheet** (subject cells) and the **Full Rank List** (rows).
+Student detail, result card, summary and analysis pages have no shortcut (owner decision, EX-07).
 
-A **plain click does nothing** on purpose: these pages are printed straight from
-the browser, so nothing in the cell can navigate away or show up on the printout.
-The Religion column opens the paper *that student* sits, never the column. If
-your account cannot enter marks, the shortcut is switched off and the cell's
-tooltip says *Ask Exam dept*.
+**Who:** only accounts with `students.add_exammark` — the same permission the `Enter Marks`
+page enforces on the server. Without it the pages render **no** correction URL, `data-*`
+attribute, tooltip hint, link or script at all (nothing hidden in the HTML), and typing the
+URL by hand still gives 403. `change_exammark` alone is not enough.
+
+**How:** hold **Ctrl** (Windows/Linux) or **Cmd** (macOS) and **left-click** a subject cell —
+that subject's `Enter Marks` page opens **in a new tab**, same exam and same group, so the
+register stays open. On the Full Rank List a click on a row (not on a link inside it) opens
+the exam's `Enter Marks` subject chooser. The Religion column opens the paper *that student* sits.
+
+| Action | Result |
+|---|---|
+| Plain click, print | nothing — register reading/printing is untouched |
+| Ctrl/Cmd + left-click | correction page in a new tab |
+| Shift/Alt + Ctrl/Cmd, middle- or right-click, keyboard activation | nothing (browser default) |
+| Links/buttons inside a row | normal browser behaviour, never hijacked |
+| Touch / pen / long-press (mobile) | **off** — no accidental correction page |
+
+**Without the keyboard shortcut:** a visible **Correct marks (choose subject)** button in the page
+toolbar (hidden when printing) opens the same `Enter Marks` chooser in a new tab with the group kept.
+
+**Limits:** the shortcut exists only on published results (unpublished exams redirect from these pages).
+It never bypasses the published-marks lock: the opened page is still locked until
+**Unlock to edit published result** is pressed and every blocked/allowed write is audited.
+Exam/institution scoping is server-side — a tampered exam or subject id gives 404 or a redirect and saves nothing.
 
 ---
 

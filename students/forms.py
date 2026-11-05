@@ -3,12 +3,14 @@ from decimal import Decimal
 
 from django import forms
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db.models import F
+from django.utils import timezone
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
     Institution, InstitutionAccess,
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
-    AdmissionApplication, SectionCapacity,
+    AdmissionApplication, SectionCapacity, TeacherAssignment,
     RELIGION_CHOICES, student_religion,
     normalize_guardian_contact, validate_guardian_contact,
 )
@@ -137,9 +139,9 @@ class StudentForm(forms.ModelForm):
 
     def clean_guardian_contact_no(self):
         """The guardian contact number is the single primary contact. Normalise
-        it (trim, Bangla digits -> ASCII) and reject anything that is not a
-        plausible phone number; the leading zero is kept because the value is
-        stored as text."""
+        it (trim, Bangla digits -> ASCII, drop spaces/dashes, +880 -> 0) and
+        reject anything that is not then an 11-digit Bangladeshi mobile; the
+        leading zero is kept because the value is stored as text."""
         value = normalize_guardian_contact(self.cleaned_data.get('guardian_contact_no'))
         validate_guardian_contact(value)
         return value
@@ -186,23 +188,6 @@ class StudentForm(forms.ModelForm):
             raise forms.ValidationError('Select Science, Business Studies or Humanities.')
         return value
 
-    def clean_photo(self):
-        photo = self.cleaned_data.get('photo')
-        if photo:
-            # Size cap (2 MB)
-            max_size = 2 * 1024 * 1024
-            if photo.size > max_size:
-                raise forms.ValidationError('Photo must be under 2 MB.')
-            # Type and extension check
-            valid_exts = {'.jpg', '.jpeg', '.png', '.gif'}
-            name = photo.name.lower()
-            if not any(name.endswith(ext) for ext in valid_exts):
-                raise forms.ValidationError('Only JPG, PNG or GIF images are allowed.')
-            # Content-type guard (Django already checks, but reinforce)
-            if not photo.content_type.startswith('image/'):
-                raise forms.ValidationError('Uploaded file is not a valid image.')
-        return photo
-
     def clean(self):
         cleaned_data = super().clean()
         admission_class = cleaned_data.get('admission_class')
@@ -223,6 +208,31 @@ class StudentForm(forms.ModelForm):
             exclude_id = self.instance.pk if self.instance and self.instance.pk else None
             if not SectionCapacity.has_room(institution, admission_class, section, exclude_student_id=exclude_id):
                 self.add_error('section', f'Section {section} is already at its student limit.')
+
+        # OF-07 owner decision: a roll number already held by another active
+        # student in the same class/section is rejected (the same rule as the
+        # Excel import). Only checked when the roll, class, section or school
+        # is being set to a new value, so editing an old record never trips
+        # over a clash that predates this rule.
+        roll_no = cleaned_data.get('roll_no')
+        if institution and admission_class and roll_no:
+            instance = self.instance if self.instance and self.instance.pk else None
+            unchanged = bool(
+                instance
+                and instance.institution_id == institution.pk
+                and str(instance.admission_class).strip() == str(admission_class).strip()
+                and (instance.section or '') == (section or '')
+                and instance.roll_no == roll_no
+            )
+            if not unchanged and Student.roll_taken(
+                institution, admission_class, section or '', roll_no,
+                exclude_pk=instance.pk if instance else None,
+            ):
+                self.add_error(
+                    'roll_no',
+                    f'Roll no {roll_no} is already used by another active student in this '
+                    'class and section. Choose a different roll number.',
+                )
         return cleaned_data
 
 
@@ -236,10 +246,12 @@ class AdmissionApplicationForm(forms.ModelForm):
             'institution', 'applicant_name', 'date_of_birth', 'gender', 'religion',
             'applicant_address', 'guardian_name',
             'guardian_relation', 'guardian_contact_no', 'guardian_address',
+            'applicant_photo',
             'requested_class', 'requested_group', 'requested_section', 'session',
         ]
         labels = {
             'guardian_contact_no': 'Guardian Contact Number',
+            'applicant_photo': 'Applicant Photo (optional)',
         }
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
@@ -247,6 +259,7 @@ class AdmissionApplicationForm(forms.ModelForm):
             'gender': forms.Select(attrs={'class': 'form-select'}),
             'applicant_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
             'guardian_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'applicant_photo': forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
             # These three start empty and are populated by JS as
             # Institution -> Class -> Group/Section are chosen in sequence.
             'requested_class': forms.Select(choices=[('', '-- Select Institution first --')], attrs={'class': 'form-select'}),
@@ -283,12 +296,31 @@ class AdmissionApplicationForm(forms.ModelForm):
 
     def clean_guardian_contact_no(self):
         """The guardian contact number is the single primary contact for the
-        application. Normalise it (trim, Bangla digits -> ASCII) and reject
-        anything that is not a plausible phone number; the leading zero is
-        kept because the value is stored as text."""
+        application. Normalise it (trim, Bangla digits -> ASCII, drop
+        spaces/dashes, +880 -> 0) and reject anything that is not then an
+        11-digit Bangladeshi mobile; the leading zero is kept because the
+        value is stored as text."""
         value = normalize_guardian_contact(self.cleaned_data.get('guardian_contact_no'))
         validate_guardian_contact(value)
         return value
+
+    def clean_applicant_photo(self):
+        """Optional photo: max 1MB, JPG/PNG/GIF only, must be a real image."""
+        photo = self.cleaned_data.get('applicant_photo')
+        if photo:
+            # Size cap (1 MB)
+            max_size = 1 * 1024 * 1024
+            if photo.size > max_size:
+                raise forms.ValidationError('Photo must be under 1 MB.')
+            # Type and extension check
+            valid_exts = {'.jpg', '.jpeg', '.png', '.gif'}
+            name = photo.name.lower()
+            if not any(name.endswith(ext) for ext in valid_exts):
+                raise forms.ValidationError('Only JPG, PNG or GIF images are allowed.')
+            # Content-type guard
+            if not photo.content_type.startswith('image/'):
+                raise forms.ValidationError('Uploaded file is not a valid image.')
+        return photo
 
     def clean(self):
         cleaned_data = super().clean()
@@ -304,6 +336,75 @@ class AdmissionApplicationForm(forms.ModelForm):
             cleaned_data['requested_group'] = ''
             self.cleaned_data['requested_group'] = ''
         return cleaned_data
+
+
+# ---- Public "check your admission status" form (OF-06) --------------------
+# The applicant's two-part key: the application number from the slip plus the
+# last four digits of the guardian contact number. The form itself never looks
+# at the database — the view does the lookup and answers every mismatch with
+# the same generic message — so nothing here can turn into an oracle.
+
+_APPLICATION_NUMBER_SHAPE = re.compile(r'^[0-9A-F]{12}$')
+
+
+def normalize_application_number(value):
+    """Normalise a typed application number for lookup.
+
+    ``AdmissionApplication.application_number`` is ``APP-`` + 12 uppercase hex
+    characters (e.g. ``APP-1A2B3C4D5E6F``). A parent who types it in lowercase,
+    with spaces/dashes, or without the ``APP-`` prefix still gets a match;
+    anything that is not that shape is returned as typed (uppercased) so the
+    lookup simply finds nothing and the generic "not found" answer is given.
+    """
+    cleaned = re.sub(r'[^0-9A-Za-z]', '', str(value or '')).upper()
+    if cleaned.startswith('APP'):
+        cleaned = cleaned[3:]
+    if _APPLICATION_NUMBER_SHAPE.match(cleaned):
+        return 'APP-' + cleaned
+    return cleaned[:40]
+
+
+class PublicAdmissionStatusForm(forms.Form):
+    """Public status check: application number + guardian contact tail.
+
+    Both fields are plain text (Bangla digits are accepted and normalised) and
+    the widget hints keep the two values easy to type on a phone. Validation
+    failures are never shown field-by-field on the public page: the view
+    renders one generic message for every mismatch so a wrong tail, a bad
+    format and an unknown application number are indistinguishable.
+    """
+
+    application_number = forms.CharField(
+        max_length=40,
+        label='Application Number',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control', 'autocomplete': 'off', 'autocapitalize': 'off',
+            'spellcheck': 'false', 'placeholder': 'APP-1A2B3C4D5E6F',
+        }),
+    )
+    contact_last4 = forms.CharField(
+        max_length=4,
+        label='Guardian contact number — last 4 digits',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control', 'autocomplete': 'off', 'inputmode': 'numeric',
+            'maxlength': '4', 'pattern': '[0-9]{4}', 'placeholder': '5678',
+        }),
+    )
+
+    def clean_application_number(self):
+        value = normalize_application_number(self.cleaned_data.get('application_number'))
+        if not value:
+            raise forms.ValidationError('Enter the application number from your slip.')
+        return value
+
+    def clean_contact_last4(self):
+        # Bangla digits -> ASCII, then exactly four digits.
+        digits = re.sub(r'\D', '', normalize_guardian_contact(self.cleaned_data.get('contact_last4')))
+        if len(digits) != 4:
+            raise forms.ValidationError(
+                'Enter the last 4 digits of the guardian contact number.'
+            )
+        return digits
 
 
 class AdmissionPaymentForm(forms.ModelForm):
@@ -564,21 +665,75 @@ class ExamForm(forms.ModelForm):
         widget=forms.Select(attrs={'class': 'form-select'}),
     )
 
+    special_result_enabled = forms.BooleanField(
+        required=False,
+        label='Enable separate total-marks result',
+        help_text='Show a separate English-language merit result for this special exam.',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
+
     exam_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
     )
 
+    # ---- Special exam (বৃত্তি পরীক্ষা / competitive test) ----
+    # A special exam does not follow the register: the candidates and the
+    # papers are ticked here instead of being derived from class/section/group
+    # and the Subject Assignment table. See Exam.is_special.
+    is_special = forms.BooleanField(
+        required=False,
+        label='Special exam (pick students & subjects by hand)',
+        help_text='বৃত্তি পরীক্ষা বা যেকোনো বিশেষ পরীক্ষার জন্য — নিচে শিক্ষার্থী ও বিষয় টিক দিন। '
+                  'ক্লাস/সেকশন/গ্রুপ দিয়ে সবাইকে ধরা হবে না, শুধু টিক দেওয়া শিক্ষার্থীরাই বসবে।',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
+    special_students = forms.ModelMultipleChoiceField(
+        queryset=Student.objects.none(),
+        required=False,
+        label='Candidates',
+        help_text='যারা এই পরীক্ষায় বসবে — যেকোনো ক্লাস থেকে বাছাই করা যায়।',
+        widget=forms.CheckboxSelectMultiple(),
+    )
+    special_subjects = forms.ModelMultipleChoiceField(
+        queryset=Subject.objects.all(),
+        required=False,
+        label='Papers',
+        help_text='এই পরীক্ষায় যে বিষয়গুলোর নম্বর থাকবে। নম্বর বণ্টন (Full marks / CQ / MCQ) '
+                  'Mark Evaluation-এ ক্লাস ও exam type অনুযায়ী কনফিগার করা সেটিং থেকে আসবে।',
+        widget=forms.CheckboxSelectMultiple(),
+    )
+
+    # A special exam gets an optional name of its own. Two hand-picked exams
+    # (a 2nd-phase test and a scholarship test) share class + exam type +
+    # session, so the generated title is identical for both and the Exam List
+    # shows two rows nobody can tell apart. Ordinary exams keep the generated
+    # title -- see ExamForm.save.
+    custom_name = forms.CharField(
+        required=False,
+        max_length=100,
+        label='Exam name (optional)',
+        help_text='খালি রাখলে পরীক্ষার নাম নিজে থেকেই তৈরি হবে '
+                  '(যেমন Second Term Examination-2026)। বৃত্তি পরীক্ষার মতো '
+                  'আলাদা নাম দিলে Exam List-এ দুইটা পরীক্ষা সহজে আলাদা করা যায়।',
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'যেমন: বৃত্তি পরীক্ষা-২০২৭',
+        }),
+    )
+
     field_order = [
-        'institution', 'admission_class', 'section', 'group', 'exam_type',
-        'session', 'exam_date', 'is_published', 'special_result_enabled',
+        'institution', 'admission_class', 'section', 'group', 'exam_type', 'session',
+        'exam_date', 'is_published', 'is_special', 'special_result_enabled',
+        'custom_name', 'special_students', 'special_subjects',
     ]
 
     class Meta:
         model = Exam
         fields = [
-            'institution', 'admission_class', 'section', 'group', 'exam_type',
-            'session', 'exam_date', 'is_published', 'special_result_enabled',
+            'institution', 'admission_class', 'section', 'group', 'exam_type', 'session',
+            'exam_date', 'is_published', 'is_special', 'special_result_enabled',
+            'special_students', 'special_subjects',
         ]
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
@@ -596,6 +751,27 @@ class ExamForm(forms.ModelForm):
                 pk__in=self.allowed_institution_ids
             )
         self._set_class_choices()
+        self._set_special_querysets()
+        self._prefill_custom_name()
+
+    def _set_special_querysets(self):
+        """Offer only candidates this user may see, in register order.
+
+        The candidate picker is a 300-row table on a real school, so it has to
+        read like the Student List: class -> section -> numeric roll (students
+        without a roll last) -> name. Ordering by name alone (the old
+        behaviour) scattered one section's rolls across the whole list and made
+        ticking fifty pupils by hand far harder than it needed to be.
+        """
+        students = Student.objects.filter(is_archived=False, status='ACTIVE')
+        if self.allowed_institution_ids is not None:
+            students = students.filter(institution_id__in=self.allowed_institution_ids)
+        self.fields['special_students'].queryset = students.select_related(
+            'institution'
+        ).order_by(
+            'institution__name', 'admission_class', 'section',
+            F('roll_no').asc(nulls_last=True), 'name', 'pk',
+        )
 
     def _get_selected_institution(self):
         """The institution this exam belongs to (bound instance or POST choice)."""
@@ -626,6 +802,23 @@ class ExamForm(forms.ModelForm):
             (c, c if not c.isdigit() else f'Class {int(c)}') for c in classes
         ]
 
+    def _prefill_custom_name(self):
+        """Show a saved special exam's own title back in the name box.
+
+        Only when it is genuinely a custom title: an exam still carrying the
+        generated name would otherwise look hand-named and freeze that title
+        (changing the exam type would stop renaming it).
+        """
+        exam = self.instance
+        if not exam or not exam.pk or not exam.is_special or not exam.name:
+            return
+        if exam.name != auto_exam_name(exam.exam_type, exam.session):
+            self.fields['custom_name'].initial = exam.name
+
+    def clean_custom_name(self):
+        """Trim the typed title (a blank box means "generate it")."""
+        return (self.cleaned_data.get('custom_name') or '').strip()
+
     def clean_institution(self):
         institution = self.cleaned_data.get('institution')
         if institution is None:
@@ -639,22 +832,62 @@ class ExamForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        if (
-            cleaned_data.get('special_result_enabled')
-            and cleaned_data.get('exam_type') != 'SPECIAL_EXAM'
-        ):
+        is_special = cleaned_data.get('is_special')
+        students = cleaned_data.get('special_students')
+        subjects = cleaned_data.get('special_subjects')
+        institution = cleaned_data.get('institution')
+
+        if not is_special:
+            # An ordinary exam is a register — its cohort is class/section/group,
+            # so a candidate list left over from an earlier edit must not stick.
+            cleaned_data['special_result_enabled'] = False
+            cleaned_data['special_students'] = self.fields['special_students'].queryset.none()
+            cleaned_data['special_subjects'] = self.fields['special_subjects'].queryset.none()
+            return cleaned_data
+
+        if institution is None:
             self.add_error(
-                'special_result_enabled',
-                'Enable the separate result only for a Special Exam.',
+                'institution', 'A special exam needs an institution.'
             )
+        if not students:
+            self.add_error(
+                'special_students', 'Tick at least one candidate for a special exam.'
+            )
+        if not subjects:
+            self.add_error(
+                'special_subjects', 'Tick at least one paper for a special exam.'
+            )
+        if students and institution is not None:
+            outsiders = [s for s in students if s.institution_id != institution.pk]
+            if outsiders:
+                shown = ', '.join(str(s) for s in outsiders[:3])
+                if len(outsiders) > 3:
+                    shown += f' and {len(outsiders) - 3} more'
+                self.add_error(
+                    'special_students',
+                    f'These candidates do not belong to {institution.name}: {shown}.',
+                )
+        # Section / group filters describe the register, not a hand-picked
+        # cohort, so they must not narrow it.
+        cleaned_data['section'] = ''
+        cleaned_data['group'] = ''
         return cleaned_data
 
     def save(self, commit=True):
         exam = super().save(commit=False)
-        exam.name = auto_exam_name(exam.exam_type, exam.session)
+        # A special exam may carry its own title -- that is how the 2nd-phase
+        # test and the scholarship test stay apart in the Exam List. An
+        # ordinary exam is always named from its type + session, so the same
+        # exam is never filed under two titles.
+        custom_name = ''
+        if exam.is_special:
+            custom_name = (self.cleaned_data.get('custom_name') or '').strip()
+        exam.name = custom_name or auto_exam_name(exam.exam_type, exam.session)
         if commit:
             exam.save()
+            self.save_m2m()
         return exam
+
 
 class ExamExcelImportForm(forms.Form):
     excel_file = forms.FileField(
@@ -851,3 +1084,106 @@ class DailyAttendanceSelectionForm(forms.Form):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Mark Attendance For'
     )
+
+class AttendanceCorrectionForm(forms.Form):
+    """AT-01: correct one already-marked attendance record.
+
+    The date and the student/employee are fixed by the record; only the
+    status/remarks can change, and a reason is mandatory so the AuditLog row
+    explains why the register was altered.
+    """
+    status = forms.ChoiceField(
+        choices=AttendanceRecord.STATUS_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Corrected status',
+    )
+    remarks = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'maxlength': 200}),
+        label='Remarks',
+    )
+    reason = forms.CharField(
+        required=True,
+        max_length=200,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'maxlength': 200}),
+        label='Reason for correction (required, stored in the audit log)',
+    )
+
+    def __init__(self, *args, record=None, **kwargs):
+        self.record = record
+        super().__init__(*args, **kwargs)
+        if record is not None:
+            self.initial.setdefault('status', record.status)
+            self.initial.setdefault('remarks', record.remarks)
+
+    def clean(self):
+        cleaned = super().clean()
+        record = self.record
+        if record is not None and record.date and record.date > timezone.localdate():
+            raise forms.ValidationError(
+                'A future attendance date cannot be corrected. Please wait until the date has passed.'
+            )
+        return cleaned
+
+
+class TeacherAssignmentForm(forms.ModelForm):
+    """EM-01: assign one teacher to one class/section/subject for a session."""
+    class Meta:
+        model = TeacherAssignment
+        fields = ['institution', 'employee', 'admission_class', 'section', 'subject', 'session', 'is_active']
+        widgets = {
+            'institution': forms.Select(attrs={'class': 'form-select'}),
+            'employee': forms.Select(attrs={'class': 'form-select'}),
+            'admission_class': forms.TextInput(attrs={'class': 'form-control', 'list': 'teacher-class-options', 'placeholder': 'e.g. 9'}),
+            'section': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. A (optional)'}),
+            'subject': forms.Select(attrs={'class': 'form-select'}),
+            'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2026-2027'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        if self.allowed_institution_ids is not None:
+            self.fields['institution'].queryset = Institution.objects.filter(pk__in=self.allowed_institution_ids)
+            self.fields['employee'].queryset = Employee.objects.filter(institution_id__in=self.allowed_institution_ids)
+        else:
+            self.fields['employee'].queryset = Employee.objects.all()
+        self.fields['employee'].label_from_instance = lambda obj: f'{obj.name} — {obj.designation}'
+        # The class datalist is rendered by the template from the allowed
+        # institutions; the model still validates the exact class server-side.
+        self.fields['admission_class'].required = True
+        self.fields['session'].required = True
+
+    def clean(self):
+        cleaned = super().clean()
+        institution = cleaned.get('institution')
+        admission_class = (cleaned.get('admission_class') or '').strip()
+        if institution and admission_class:
+            classes = [label.strip() for label in (institution.classes or '').split(',') if label.strip()]
+            if classes and admission_class not in classes:
+                self.add_error('admission_class', 'Select a class offered by this institution.')
+        employee = cleaned.get('employee')
+        if employee and institution and employee.institution_id != institution.pk:
+            self.add_error('employee', 'The employee must belong to the selected institution.')
+        # Friendly duplicate message before the database constraint fires; the
+        # view still catches IntegrityError as a race-safe fallback.
+        if institution and employee and admission_class and cleaned.get('subject') and cleaned.get('session'):
+            duplicates = TeacherAssignment.objects.filter(
+                institution=institution,
+                employee=employee,
+                admission_class=admission_class,
+                section=cleaned.get('section') or '',
+                subject=cleaned['subject'],
+                session=cleaned['session'],
+                is_active=True,
+            )
+            if self.instance and self.instance.pk:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                self.add_error(
+                    None,
+                    'An active assignment for this teacher, class, section, subject and session already exists.',
+                )
+        return cleaned

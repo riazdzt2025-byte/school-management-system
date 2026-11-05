@@ -8,8 +8,12 @@ The formal rule this suite pins:
   ``IntegerField``, so rolls 2 / 10 / 100 must never meet the classic
   string-sort trap — with ``name`` then ``pk`` as stable tie-breaks and
   students *without* a roll always last;
-* merit/rank outputs (exam result summary, full rank list, top 10, merit
-  slides, section arrangement) keep **position order** — intentional.
+* merit/rank outputs (full rank list, top 10, merit slides, section
+  arrangement) keep **position order** — intentional;
+* ``exam_result_summary`` ("Published Result") is a **printed register** —
+  owner decision 2026-11-03: numeric roll order on screen and in print, with
+  the computed merit position shown as the table's *last* column. Merit
+  numbers themselves are unchanged by the sorting.
 
 Rolls 2, 10, 100 and None are exercised everywhere: a string sort would put
 10 before 2, a plain ``order_by('roll_no')`` would put the NULL first.
@@ -192,23 +196,62 @@ class ResultOrderTests(RegisterRollOrderFixture):
             'register order must not disturb merit positions',
         )
 
-    def test_exam_result_summary_stays_in_merit_position_order(self):
-        """Ranking output: position order is intentional (Position column first)."""
+    def test_exam_result_summary_follows_register_roll_order_not_merit(self):
+        """Published Result is a printed register: numeric roll, None last."""
+        expected = self._build_positions()
         response = self.client.get(reverse('exam_result_summary', args=[self.exam.pk]))
         self.assertEqual(response.status_code, 200)
         rows = response.context['results']
-        self.assertEqual([r['student'].roll_no for r in rows], [10, 2, 100, 7, 7, None])
-        self.assertEqual([r['position'] for r in rows], [1, 2, 3, 4, 5, 6])
+        self.assertEqual([r['student'].roll_no for r in rows], [2, 7, 7, 10, 100, None])
+        # Roll order must not disturb the computed merit places.
+        self.assertEqual([r['position'] for r in rows], [2, 4, 5, 1, 3, 6])
+        self.assertEqual(
+            {r['student'].pk: r['position'] for r in rows}, expected,
+            'register order must not disturb merit positions',
+        )
 
-    def test_exam_result_summary_unranked_tail_follows_ranked_rows(self):
-        """Fail / No Marks students have no position and trail the ranked list."""
+    def test_exam_result_summary_full_print_view_uses_the_same_roll_order(self):
+        """?print=1 (Print all / Save PDF) prints the same register order."""
+        response = self.client.get(
+            reverse('exam_result_summary', args=[self.exam.pk]) + '?print=1'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['is_print_view'])
+        rows = response.context['results']
+        self.assertEqual([r['student'].roll_no for r in rows], [2, 7, 7, 10, 100, None])
+        self.assertEqual([r['position'] for r in rows], [2, 4, 5, 1, 3, 6])
+
+    def test_exam_result_summary_unranked_rows_stay_in_their_roll_slot(self):
+        """Fail / No Marks students have no position but are not pushed to a tail."""
         ExamMark.objects.filter(exam=self.exam, student=self.s_2).delete()
+        expected = self._build_positions()
+        self.assertIsNone(expected[self.s_2.pk])
         response = self.client.get(reverse('exam_result_summary', args=[self.exam.pk]))
         rows = response.context['results']
-        ranked = [r['position'] for r in rows if r['position']]
-        self.assertEqual(ranked, sorted(ranked))
-        self.assertIsNone(rows[-1]['position'])
-        self.assertEqual(rows[-1]['student'].pk, self.s_2.pk)
+        self.assertEqual([r['student'].roll_no for r in rows], [2, 7, 7, 10, 100, None])
+        self.assertEqual(rows[0]['student'].pk, self.s_2.pk)
+        self.assertIsNone(rows[0]['position'])
+        self.assertEqual({r['student'].pk: r['position'] for r in rows}, expected)
+
+    def test_exam_result_summary_position_column_is_last_printed_column(self):
+        """Print contract: Roll leads, Position is never the first column."""
+        import re
+
+        html = self.client.get(
+            reverse('exam_result_summary', args=[self.exam.pk])
+        ).content.decode()
+        head = html.split('<thead>', 1)[1].split('</thead>', 1)[0]
+        headers = [
+            (re.sub(r'<[^>]+>', '', label).strip(), 'd-print-none' in attrs)
+            for attrs, label in re.findall(r'<th([^>]*)>(.*?)</th>', head, re.S)
+        ]
+        printed = [label for label, hidden in headers if not hidden]
+        self.assertEqual(printed[0], 'Roll')
+        self.assertEqual(printed[-1], 'Position')
+        self.assertEqual(printed, [
+            'Roll', 'ID', 'Name', 'Total', 'Percentage', 'GPA', 'Grade',
+            'Status', 'Position',
+        ])
 
     def test_full_rank_list_merit_order_intentional(self):
         response = self.client.get(reverse('full_rank_list', args=[self.exam.pk]))

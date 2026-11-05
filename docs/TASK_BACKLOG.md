@@ -1,10 +1,10 @@
 # Task Backlog — first production release scope
 
-_Last updated: ২০২৬-০৯-২০ (EX-03 — Group-based Mark Evaluation + বাকি কাজ সম্পন্ন, ৬৭০ Django + ১৪ Node, base `7a13e33` = `origin/main` + PR #42 commits)_
+_Last updated: ২০২৬-১১-০৪ (re-verification session `arena/c0cb5ee3`, base `aec57cd` = `origin/main` after PR #83 — user-referenced branch `arena/6c9ccd2f-school-management-system` does not exist on remote; AT-01, AT-02, EM-01, EM-03 + DB-02/DB-03 + FN-01 merged via PR #80; full **1176 Django + 29 Node pass**, `check` 0, `makemigrations --check` clean (leaf 0054); EM-02 owner-policy blocked; live ops unverified)_
 _Priorities: P0 = required before first production release · P1 = after release · P2 = optional_
 _Status values verified this session: **Complete** / **Partial** / **Missing** / **Unverified** — see tables. Every remaining task lists Task ID, purpose, status, evidence, priority, dependencies, acceptance, tests, migration/data risk, decision, and small-session scope._
 
-**Bengali TL;DR:** 2026-09-19 baseline **৬২৫ Django + ১৪ Node** → EX-01 (PR #39) **৬৩৮** + EX-02 (PR #41) **৬৫৩** + EX-03 (group-aware marks 0044 + বাকি কাজ finishing) **৬৭০ Django + ১৪ Node সব pass**। P0 isolation/validation/voucher/promotion/backup + guardian contact + result analysis + Full Rank List + row gating + roll-order + group marks সব done। বাকি শুধু live Render ops (P0-7/P0-8-live, P1-11-live) + Office gaps (উন্নত Reports, photo continuity) + Attendance calendar (AT-02) + Employee (assignment/leave/closed-period) + OF-02 বাকি ৭টি pagination + DB-02/03 + FN-01। SSC restore করা হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ।
+**Bengali TL;DR (২০২৬-১১-০৪):** 28-প্রম্পট plan virtually complete — AT-01/AT-02/EM-01/EM-03 merged via PR #80 (2026-11-03), DB-02/DB-03 verified, FN-01 done; re-verified 2026-11-04 on `arena/c0cb5ee3`: **1176 Django + 29 Node pass**, `check` 0, migrations clean (leaf 0054). remaining only owner/live: EM-02 leave policy (⛔), P0-7 / P0-8-live / P1-11-live / P1-10-live / D-8 live Render checks, OF-05 retry-scheduler + deployed bucket verification (issue #66), owner review of open PRs #64/#70/#71/#72. Superseded PRs #79/#40/#23 closed 2026-11-04. SSC restore করা হয়নি। Accounts full fee engine / guardian portal / online payment **future backlog**-এ।
 
 ---
 
@@ -15,8 +15,27 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Missing** — not built, intentionally deferred (large / destructive) or quick-fix not yet done
 - **Unverified** — needs live Render check, cannot be verified from sandbox (rule 7)
 
----
 
+## Update — 2026-11-03 · remaining-work session (`arena/e2d5c9b9`) · ✅ কোড/টেস্ট সম্পন্ন
+
+**User request:** "arena/1928885f-school-management-system এর বাকী কাজ করে মেইনে মার্জ করে দাও।" The referenced branch **does not exist** on the remote (`git ls-remote --heads origin` + GitHub branches API; 84 branches, none matching). The remaining backlog was completed on the session branch `arena/e2d5c9b9-school-management-system` (base `9ff07f4` = `origin/main`) and merged via PR.
+
+| Task | Status | Evidence |
+|---|---|---|
+| **AT-01** Attendance entry/correction | **Complete** | `correct_attendance` page (Office/Exam + `change_attendancerecord`, mandatory reason, old/new AuditLog, future-date block), report filters + Correct link, invalid status skipped, shared rate helper. New `test_attendance_correction_calendar.py`. |
+| **AT-02** Attendance calendar / accuracy | **Complete** | `attendance_calendar` (server-rendered month grid, P/A/L/H, no-record, month rollover, print CSS) + `attendance_calendar_export` (CSV monthly summary). Rate `(P+L)/(P+A+L)`, H excluded, archived excluded; summary + employee detail use the same helper. |
+| **EM-01** Teacher assignment | **Complete** | `TeacherAssignment` model + migration `0052`, validation (class offered, employee in institution, subject in curriculum), conditional unique active row, registry UI, HR/Office permissions, audit, employee detail tab, signature-sheet integration. New `test_teacher_assignment.py`. |
+| **EM-03** Payroll closed-period lock | **Complete** | `SalarySheet.locked_at/locked_by/lock_reason` (migration `0052`), audited lock/unlock, edit/delete frozen while locked, scoped 404. New `test_payroll_lock.py`. |
+| **DB-02** Developer branding | **Verified clean** | `grep -rn "Arena Agent" students/migrations/` → empty; no change needed. |
+| **DB-03** SEC-FU-1/SEC-FU-2 | **Verified implemented** | `CACHES` + `RATE_LIMIT_CACHE=locmem\|db` (`test_rate_limit_cache.py`); `sync_user_department_permissions` strips HR/Subjects/Audit at login (`test_department_group_sync.py`). |
+| **FN-01** Release verification | **Complete** | `docs/prompts/reports/FN-01.md`; full **1131 Django + 29 Node**, `check` 0, `makemigrations --check` clean (leaf `0052`). Live Render/Postgres/S3/browser **not verified** from sandbox. |
+| **EM-02** Leave | **⛔ Blocked (owner policy)** | No leave model / payroll deduction policy; not implemented. Needs written owner policy before code. |
+
+**Full suite:** `manage.py test students` → **Ran 1131 tests — OK**; `node --test students/js/*.test.js` → **29 pass**; `check` 0; `makemigrations --check` clean. New focused tests: **41 pass** (attendance correction/calendar + teacher assignment + payroll lock).
+
+**Still open (owner/live):** EM-02 leave policy; P0-7, P0-8-live, P1-11-live, P1-10-live, D-8 live checks; real browser/print; Postgres CI; production deploy/backup. No production DB, Render, S3 or credentials touched.
+
+---
 ## Complete backlog at `44cbcc3` (verified 2026-09-17)
 
 | ID | Title | Status | Verified evidence (550 tests) |
@@ -100,13 +119,13 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 #### P1-11-live · Create bucket + set 6 env vars on Render (free-tier media durability)
 - **Task ID & Purpose:** P1-11-live — student photos redeploy-এ না হারানোর জন্য bucket wiring।
 - **Current status:** **Partial (tooling Complete, env Unverified)**
-- **Evidence:** `school_system/settings.py:media_storage_config()` + `USE_S3` → `storages.backends.s3.S3Storage`, `checks.py` E011 (missing storages/boto3) + W010 (ephemeral media when DEBUG=False + local MEDIA_ROOT), `copy_media_to_storage` command, `requirements.txt` `django-storages==1.14.6 boto3==1.43.90`, `FREE_TIER_MEDIA_STORAGE.md` + `PRODUCTION_CHECKLIST.md` §3, `test_media_storage.py` 33 tests, CI installs.
+- **Evidence:** `school_system/settings.py:media_storage_config()` + `USE_S3` → `storages.backends.s3.S3Storage`, `checks.py` E011 (missing storages/boto3) + W010 (ephemeral media) + E012 (private student-photo deploy guard), `copy_media_to_storage` command, `requirements.txt` `django-storages==1.14.6 boto3==1.43.90`, `FREE_TIER_MEDIA_STORAGE.md` + `PRODUCTION_CHECKLIST.md` §3, `test_media_storage.py` 39 tests, CI installs.
 - **Priority:** **P1** (data-loss risk, but after P0 backup; prompt depends on whether photos already exist)
 - **Dependencies:** D-7 (resolved: S3-compatible bucket), P0-7
-- **Acceptance:** Bucket (R2/S3/MinIO) + scoped key created, Render env set `USE_S3=True` + `AWS_STORAGE_BUCKET_NAME` + `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (+ `AWS_S3_ENDPOINT_URL`/`AWS_S3_REGION_NAME` if R2/B2, optional `AWS_S3_PUBLIC_BASE_URL`), Build command includes `check --deploy` (so W010 fails build if forgotten), `MEDIA_URL` serves from bucket/CDN (signed URLs if private, default), old `MEDIA_ROOT` files copied via `copy_media_to_storage --dry-run` then real (free service has no shell — see docs §3 step 4 routes). Until owner waived live proof, durability is tests+CI only (explicitly documented as not observed).
-- **Tests:** `test_media_storage.py` 33 (config/URL/checks/copy); CI S3 path proven. No live redeploy test from sandbox.
+- **Acceptance:** Owner confirmed student photos remain private (2026-10-07). Use bucket (R2/S3/MinIO) + scoped key; Render env `USE_S3=True` + bucket/credentials (+ endpoint/region for R2/B2), unset `AWS_S3_PUBLIC_BASE_URL`, no public ACL; signed URLs + `Cache-Control: private, no-store`. `check --deploy` must pass `students.E012`; it cannot inspect bucket policy, so owner verifies anonymous access is blocked. A production filesystem (including persistent disk) is rejected without a reviewed authenticated proxy. Old `MEDIA_ROOT` files copied via `copy_media_to_storage --dry-run` then real (free service has no shell — see docs §3 step 4 routes). Live wiring remains unverified.
+- **Tests:** `test_media_storage.py` 39 (config/URL/checks/copy/private guard); latest CI runs synthetic private/public deploy checks. No live bucket or redeploy test from sandbox.
 - **Migration/data risk:** low (additive, opt-in; half-configured bucket raises `ImproperlyConfigured` at boot instead of silently falling back to wiped disk). No migration.
-- **Decision needed:** Public vs private bucket (`AWS_S3_PUBLIC_BASE_URL` set = public/CDN, empty = private signed URLs — recommended private for student PII).
+- **Decision:** private student photos (owner confirmed 2026-10-07); deployed env and bucket anonymous-read policy verification remains owner-only.
 - **Small session scope:** Yes — docs-only: no code, just owner dashboard action; a doc PR to tick `PRODUCTION_CHECKLIST.md` after owner confirms.
 
 #### P1-10-live · Switch production DB to Postgres (live switch)
@@ -138,19 +157,17 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 - **Small session scope:** Yes — one view + one test file (≤2 files), no migration.
 - **হালনাগাদ (2026-09-19, EX-01 / PR #39):** Acceptance-এর `?subject=&group=` অংশ এখন পুরোপুরি test-এ pinned — আগের `test_import_stay_on_page_redirects_to_same_page`-এর পাশে নতুন `test_import_stay_on_page_preserves_subject_and_group` (group param সংরক্ষণ)। আচরণ `views.py:3803-3810`-এ main-এ ছিলই; এই সেশনে শুধু regression pin + (প্রম্পট ০২ অনুযায়ী) Exam flyout-এ Analysis subtab ও cross-link এসেছে। পুরোনো PR #23 superseded মনে করা যেতে পারে (owner-সিদ্ধান্ত)। → E1 পুরোপুরি **Complete**।
 
-#### O2 · Student pagination: সর্বোচ্চ ১০০ records — ✅ DONE (2026-09-17, Paginator 100)
-- **Task ID & Purpose:** O2 — student list / archived / attendance / employee — প্রতি page 100, pagination nav সহ (was all load)।
-- **Current status (2026-09-19 baseline re-verified):** **Partial** — `Paginator(..., 100)` এখন ৪টি high-volume view-এ আছে: `student_list` (`views.py:1631`), `archived_students` (`:2228`), `employee_list` (`:1501`), `attendance_report` (`:1250`); template-এ `is_paginated`/`page_obj` ব্যবহৃত। **বাকি ১১টি list view** এখনো পুরো queryset render করে: `money_receipt_list` (`:4482`), `voucher_list` (`:4533`), `salary_sheet_list` (`:4588`), `audit_log_list` (`:4820`), `admission_application_list` (`:561`), `exam_list` (`:3456`), `subject_requirement_list` (`:2818`), `student_exams` (`:2419`), `certificate_list` (`:2109`), `student_promotion_history` (`:4799`), `accounts_admission_queue` (`:759`)। `download_*` export ইচ্ছাকৃতভাবে unpaginated (পুরো ডেটা) — রাখতে হবে।
-- **Evidence:** প্রমাণ ও line-ref: `docs/prompts/reports/০০-baseline.md` §৪ (OF-02 সারি); `tests.py:2822+` pagination টেস্ট (`test_pagination_limits_to_100`, `Page 1 of 2`)।
-- **Priority:** **P1** (performance + UX for large roll)
-- **Dependencies:** —
-- **Acceptance:** `student_list` paginated `paginate_by=100` (server-side, institution/class/section/group/search filters + ordering preserved across pages), URL `?page=N` works, `download_student_list` still exports **all** filtered (not just current page) with warning, `archived_students` similarly paginated, page controls show `x–y of total`, direct `?page=999` → last page (not 500). No N+1 query.
-- **Tests required:** `test_student_list_pagination_caps_at_100` (create 105 students → page1 has 100, page2 has 5), `test_pagination_preserves_filters` (class/section/search across pages), `test_download_still_exports_all` (pagination does not affect export).
-- **Migration/data risk:** none.
-- **Decision needed:** Owner to confirm 100 is hard cap or configurable (`?per_page` disallowed? we recommend fixed 100).
-- **Small session scope:** Yes — `views.student_list` + `archived_students` + templates + tests (one session).
+#### O2 · List pagination: default/max ১০০, selectable ১–১০০ — ✅ Complete (local + CI; PR #54 OPEN) (OF-02, 2026-10-01)
+- **Task ID & Purpose:** O2 / OF-02 — সব high-volume list এবং ছোট reference list-এ bounded UI; exports/print ও totals পূর্ণ ডেটা।
+- **Current status:** ২৮ frontend list/report/history surface + students-app admin changelists implemented; **796 Django + 29 Node local pass**; CI sqlite / postgres:16 / Node pass (PR #54)। আগের ৪/১৫ view baseline gap এখন কোডে দূর — পূর্ণ inventory `docs/prompts/reports/OF-02.md` §২।
+- **Owner decision (2026-10-01):** default/max ১০০, user কমাতে/বাড়াতে পারেন (১–১০০); reference list-এও একই। Institution/Subject/Fee-এর standalone frontend list নেই — admin list-এ প্রয়োগ, `?all` cap bypass নয়। Dropdown/input workflows পূর্ণ থাকবে।
+- **Acceptance implemented:** first/prev/next/last + count/empty state; GET filters/search/institution/sort/repeated params বজায়; filter/size বদলালে page reset; invalid page → safe first/last, invalid size → ১০০, oversized → ১০০; unique ordering ties। `download_*`/funnel export ও dedicated signature/class-card print unpaginated; printable reports **Print all**। Full aggregates/GPA/merit/duplicate flags এবং arrangement confirm UI slice-এর আগে।
+- **Evidence:** `students/pagination.py`, `students/admin_pagination.py`, reusable partials; `test_list_pagination.py` **44 test** + navigation/fee/audit/register **46 regression**, combined **90 pass**; Node **29**, check **0**, migrations clean; local 796 Django + 29 Node pass; CI sqlite / postgres:16 / Node pass (PR #54)। Query-count test: ১→১০০ rows-এ FK query per row বাড়ে না; ২১০ attendance summary entity-তে bounded queries।
+- **Priority / dependencies:** P1 / OF-01 (PR #53 merged `a128376`)।
+- **Migration/data risk:** none; production/live/credentials unchanged। Full cohort calculation/export/print server cost remains intentional; no grading/caching refactor।
+- **Owner action:** review/approve PR #54 (OPEN, CI সবুজ), manual browser/PDF smoke test; অনুমোদন ছাড়া merge নয়। পরের prompt ১১ নিজে থেকে শুরু নয়।
 
-#### E8 · Result cell থেকে Ctrl/Cmd+Click correction shortcut — ✅ DONE (2026-09-17)
+#### E8 · Result cell থেকে Ctrl/Cmd+Click correction shortcut — ✅ DONE (2026-09-17; EX-07 hardening 2026-10-01: permission-gated rendering, strict modifier/touch rules, visible fallback — `reports/EX-07.md`)
 - **Task ID & Purpose:** E8 — result sheet-এর subject cell থেকে Ctrl/Cmd+Click করলে সরাসরি `enter_marks` correction page (same exam+subject+group) খোলা।
 - **Current status:** **Complete** — `result_sheet.html` cells carry `data-subject-pk` (Religion cells use `sr.paper.pk`, the paper that student sits) + `data-group`, inside `.result-table-card[data-enter-marks-base]`; `static/students/js/result_cell_shortcut.js` opens `enter_marks` in a **new tab** on Ctrl/Cmd+Click and ignores plain clicks (print stays clean). `full_rank_list.html` has no subject columns, so its rows carry `data-shortcut-url` → `select_marks_subject` (group preserved). Without `students.add_exammark` the cell is `data-shortcut-disabled="true"` and the tooltip says “Ask Exam dept”. Documented in `RESULT_PUBLISHING_GUIDE.md` §7.
 - **Evidence:** `students/static/students/js/result_cell_shortcut.js`, `students/templates/students/result_sheet.html`, `students/templates/students/full_rank_list.html`, `views.result_sheet` (`enter_marks_base_url`), `views.full_rank_list` (`marks_entry_url`).
@@ -169,23 +186,13 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 #### D-HM · Higher Math — no code task (verified complete, doc for traceability)
 - **Status:** **Complete** — see `PROJECT_STATUS.md` §2.1 E5 (curriculum mandatory in SCI 9/10, migration 0042, assigned via SubjectRequirement). No new task; future change would be `curriculum_data` edit + data migration.
 
-#### D-GPA · Final GPA 4.90–5.00 → 5.00 নিয়ম — ✅ DONE (decision 2026-09-17: 4.90-4.99 → 5.00 A+)
-- **Background (current vs proposed — decision needed before code):**
-  - **Current (verified code, 2026-09-17):** `result_utils.get_grade` thresholds (80+ =5.00, 70+ =4.00 …), `build_exam_results` `overall_gpa = round(avg(gpa_points),2)` — no boost. Example: 4.90 stays 4.90, 4.97 stays 4.97, 5.00 only if avg exactly 5.00. **No `if gpa >=4.90: gpa=5.00` anywhere.** Tests use accurate avg.
-  - **Proposed (per request to decide):** “Final GPA 4.90–5.00-কে 5.00 করার নিয়ম” — if implemented, `overall_gpa` in [4.90, 5.00) would be promoted to 5.00 (and grade to A+ if not already). School must decide if GPA is a mathematical avg or a rounding benefit.
-- **Task ID & Purpose:** D-GPA-0 — Owner decision: keep current (accurate) vs adopt proposed boost.
-- **Current status:** **Missing (decision pending)**
-- **Evidence:** `students/result_utils.py:525 get_grade`, `:920 overall_gpa = round(...,2)` — no boost.
-- **Priority:** **P1** (policy, affects all results; do not code without approval)
-- **Dependencies:** —
-- **Acceptance (decision):** ✅ Owner decided 2026-09-17: **(b) 4.90–4.99 → 5.00 (A+)** inclusive of 4.90, <5.00 — implemented in `result_utils.py` Pass branch (Fail/No Marks unchanged).
-- **Tests:** —
-- **Migration/data risk:** none for decision.
-- **Decision needed:** **Owner MUST choose** current vs proposed (and whether grade also becomes A+). No implementation until answered.
-- **Small session scope:** Yes — decision doc only.
-
-- **Follow-up PR 1 (if current chosen):** lock current behavior with regression test `test_gpa_4_90_not_rounded_to_5` and document “no boost” in `RESULT_PUBLISHING_GUIDE.md`.
-- **Follow-up PR 2 (if proposed chosen):** add `if overall_gpa >= Decimal('4.90') and overall_gpa < 5.00: overall_gpa=5.00; overall_grade='A+'` + boundary tests (4.89→4.89, 4.90→5.00, 5.00→5.00) + migration not needed, but **all published historical results change** — requires fresh backup + reprint notice, so own session.
+#### D-GPA · চতুর্থ/অতিরিক্ত বিষয় GPA — ✅ DONE (EX-06 policy correction, 2026-09-23)
+- **Owner-corrected rule:** the automatic 4.90–4.99→5.00 benefit is removed. For N main subjects: `final = min(5.00, (sum(main points) + max(0, fourth point−2.00)) / N)`, then deterministic `ROUND_HALF_UP` to two places. A fourth F/AB earns 0 bonus but does not fail the result; a main F/AB still gives Fail/0.00.
+- **Scope:** only a selected `Subject.category='FOURTH'` paper (such as `AGRI4`) is fourth. An ordinary `OPTIONAL` paper stays a main subject. One fourth choice per student; publishing blocks and names a student with multiple selected FOURTH papers. No migration/model/UI redesign.
+- **Evidence:** `students/result_utils.py::calculate_final_gpa` is the one display calculation source for `build_exam_results`; the selected fourth paper is in total/full/percentage but outside GPA denominator and main pass/fail. Merit is unique: grade → `calculate_uncapped_gpa` → all-paper total → lowest numeric roll. A cap-reached 5.00 is A+.
+- **Tests:** `students/test_fourth_subject_gpa.py` covers formula/cap (no 5.10/5.20), old no-fourth 4.90 behaviour, fourth F versus main F, selected-category scope, total/percentage inclusion, grade/raw-GPA/total/roll merit order, all existing sheet/detail/card/rank/analysis surfaces, and the publish block. `students/tests.py` retains no-fourth 4.90 regression.
+- **Documentation:** `RESULT_PUBLISHING_GUIDE.md` §2 gives formula/examples/limits; `PROJECT_STATUS.md` E7 records the verified state.
+- **Migration/data risk:** none. Existing published marks are calculated on read, so a result with a selected FOURTH paper may change when reprinted; production data was not accessed.
 
 #### D-MIS · Missing/null marks policy — ✅ DONE (decision 2026-09-17: blank = F, AB display, TC/inactive exclusion)
 - **Background (current vs proposed — decision needed before code):**
@@ -223,29 +230,32 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 
 #### O4 · Admission Share Link-এর পাশে উন্নত Reports
 - **Task ID & Purpose:** O4 — admission + class performance আরও analytics (বর্তমান class_section_summary ছাড়াও funnel/section-wise pass funnel)। স্থায়ী পরিচয়: **ADM-REPORTS** (`docs/WORK_TRACKER.md`)।
-- **Current status:** **Complete** (মূল funnel/report চাহিদা পূর্ণ; capacity/trend chart আলাদা Optional enhancement `ADM-REPORTS-OPT-1` — ওটি না থাকায় এই কাজ Partial নয়)
-- **Evidence:** `views.admission_funnel_report` + `views.admission_funnel_export` (routes `reports/admission-funnel/`, `reports/admission-funnel/export/`), template `admission_funnel_report.html`; institution scoping `_resolve_requested_institution` + `_scope_institution_qs`; guard `students.view_admissionapplication` (`raise_exception`) + Office/Accounts department; `?from`/`?to` date filter (`submitted_at` whole-day inclusive); Excel-এ multi-institution scope হলে `By Institution` sheet। **মূল navigation চাহিদা:** `admission_application_list.html`-এ `📲 Share Application Link`-এর ঠিক পাশে `📊 Reports / রিপোর্টস` (named URL, কোনো query string নেই — session-selected institution নিরাপদভাবে বহাল); Office flyout `Admission Funnel` + `class_section_summary` cross-link অক্ষত। `download_admission_sheet` ও public form/Thank You page অপরিবর্তিত (public পেজে internal report link নেই)। **PR/merge:** PR #32 **MERGED** (`11cd35d`, 2026-09-18) — funnel code `main`-এ যাচাইকৃত; PR #33 **OPEN, merge হয়নি** (অনুমোদনের অপেক্ষায়)। **Live deployment: Unverified**।
+- **Current status:** **Complete** (মূল funnel/report চাহিদা পূর্ণ); **follow-up (২০২৬-১০-০৬):** owner-অনুমোদিত capacity vs enrolled + payment-vs-enrolment/date-wise trend রিপোর্টও যোগ হয়েছে — তাই `ADM-REPORTS-OPT-1`-ও **Complete** (নিচে P2 সারি দেখুন)
+- **Evidence:** `views.admission_funnel_report` + `views.admission_funnel_export` (routes `reports/admission-funnel/`, `reports/admission-funnel/export/`), template `admission_funnel_report.html`; institution scoping `_resolve_requested_institution` + `_scope_institution_qs`; guard `students.view_admissionapplication` (`raise_exception`) + Office/Accounts department; `?from`/`?to` date filter (`submitted_at` whole-day inclusive); Excel-এ multi-institution scope হলে `By Institution` sheet। **মূল navigation চাহিদা:** `admission_application_list.html`-এ `📲 Share Application Link`-এর ঠিক পাশে `📊 Reports / রিপোর্টস` (named URL, কোনো query string নেই — session-selected institution নিরাপদভাবে বহাল); Office flyout `Admission Funnel` + `class_section_summary` cross-link অক্ষত। `download_admission_sheet` ও public form/Thank You page অপরিবর্তিত (public পেজে internal report link নেই)। **PR/merge:** PR #32 **MERGED** (`11cd35d`, 2026-09-18) — funnel code `main`-এ যাচাইকৃত; PR #33 **MERGED** (`2026-09-19`)। **Live deployment: Unverified**। **Follow-up (২০২৬-১০-০৬, prompt 12 §৮ owner-সিদ্ধান্ত):** একই view/export-এ `_capacity_vs_enrolled` (limit বনাম seat gate-এর `status='ACTIVE'` student; `No limit`/`Over by N`; capacity 0 → `—`; দুই aggregate query, N+1 নয়, দুই-শত সারিতে bounded কিন্তু export full) + `_trend_rows` (payment-vs-enrolment ও date-wise trend; `?bucket=day|week|month`, timezone-aware `TruncDate`, আলাদা `Undated` সারি; পেজ ২০০ bucket bounded, export full) + `_funnel_stage_keys` (**Accounts payment stage-সীমিত** — `ACCOUNT_PENDING → PAYMENT_APPROVED → ENROLLED`; পেজ/Excel funnel sheet/trend একই slice, তাই export দিয়ে view বাড়ে না)। Excel sheets: `Admission Funnel` / `Capacity vs Enrolled` / `Trend` (+ multi-institution scope-এ `By Institution`)। কোনো model/migration/URL/JS বদল নেই; guard/scope/date-filter অপরিবর্তিত।
 - **Priority:** **P1** → সম্পন্ন
 - **Dependencies:** — (কোনো model/migration নেই)
-- **Acceptance:** (a) admission funnel counts per status with date filter — **done** (institution-scoped, print-friendly, Excel export)। Share link stays as is — **done** (অপরিবর্তিত, regression test আছে)। মূল navigation চাহিদা (Share Link-এর পাশে Reports) — **done** (PR #33)। (b) section-wise student bar chart/export ও (c) capacity vs enrolled per class/section — **আলাদা Optional enhancement `ADM-REPORTS-OPT-1`** হিসেবে নিচে `P2 — Optional / deferred`-এ সরানো হয়েছে; এগুলো মূল O4 চাহিদার শর্ত নয়।
-- **Tests required → run:** `test_reports_show_funnel_counts` ✅, `test_reports_scoped_by_institution` ✅, `test_report_excel_export` ✅ — সবগুলো আছে ও pass করেছে। মোট `students/test_admission_funnel_report.py` = **20 tests OK**; এই follow-up-এ ৪টি নতুন (placement/named URL, link-এর institution scope, unauthorised user-এর জন্য 403/302 + anonymous redirect, public form ও Thank You page-এ internal report link নেই)। লোকাল ফুল suite **625 tests OK**, `manage.py check` 0 issue, `makemigrations --check` clean, `node --test` 14 pass (README fallback Django 5.2.17 / Python 3.11); CI (Django 6.1 / Python 3.12, sqlite + postgres) PR #32-এ সবুজ যাচাই করা ছিল, PR #33-এর চেক PR-এ।
+- **Acceptance:** (a) admission funnel counts per status with date filter — **done** (institution-scoped, print-friendly, Excel export)। Share link stays as is — **done** (অপরিবর্তিত, regression test আছে)। মূল navigation চাহিদা (Share Link-এর পাশে Reports) — **done** (PR #33)। (b) section-wise student bar chart/export ও (c) capacity vs enrolled per class/section — ২০২৬-১০-০৬-এ **owner অনুমোদন দিয়েছেন ও implement হয়েছে** (capacity vs enrolled + payment-vs-enrolment ও date-wise trend, table + CSS bar — নতুন JS dependency ছাড়া); মূল চাহিদার শর্ত ছিল না, তাই O4 আগেও Complete ছিল এবং এখন আরও সম্পূর্ণ।
+- **Tests required → run:** `test_reports_show_funnel_counts` ✅, `test_reports_scoped_by_institution` ✅, `test_report_excel_export` ✅ — সবগুলো আছে ও pass করেছে। `students/test_admission_funnel_report.py` = **২৪ tests OK** (২০ মূল + ৪টি boundary/cross-link regression pin: same-day inclusive, inverted/future range safe, Class/Section link — PR #57); follow-up-এ আরও **২৬টি** নতুন টেস্ট — `students/test_admission_capacity_trend.py` (capacity vs enrolled, trend buckets/Undated/truncation, Accounts slice, empty scope) → **সব pass**। লোকাল ফুল suite **৮২৬ Django + ২৯ Node pass**, `manage.py check` 0 issue, `makemigrations --check` clean, `node --test` 29 pass (Django 5.2.17 / Python 3.11 sandbox; CI (sqlite + postgres:16 + Node) PR #57-এ ৩/৩ সবুজ ছিল, follow-up চেক PR-এ)।
 - **Migration/data risk:** none (query-only) — যাচাইকৃত: `makemigrations --check` → No changes detected।
-- **Decision needed:** funnel-first সিদ্ধান্ত কার্যকর হয়েছে (funnel done)। **খোলা সিদ্ধান্ত:** funnel report ও Admission page-এর Reports button বিদ্যমান নীতি অনুযায়ী Office **ও** Accounts উভয়কে দেখা যায় — Accounts কি পুরো funnel (enrolment stage-সহ) দেখবে, নাকি শুধু payment stage-সীমিত view পাবে? এই follow-up-এ নীতি বদলানো হয়নি।
+- **Decision needed:** নেই — funnel-first সিদ্ধান্ত কার্যকর হয়েছে। **Owner সিদ্ধান্ত (২০২৬-১০-০৬):** Accounts শুধু **payment stage-সীমিত view** পাবে (implement হয়েছে: পেজ/export/trend একই slice); chart রূপ = **table + CSS bar** (নতুন JS chart library নয়); তিনটি report-ই অনুমোদিত।
 - **Small session scope:** Yes — হয়ে গেছে (এক view + template + tests, কোনো migration নেই)।
-- **অবশিষ্ট:** শুধু PR #33 merge-এর অনুমোদন; merge-এর পরে চাইলে live Render যাচাই (sandbox থেকে সম্ভব নয়)।
+- **অবশিষ্ট:** follow-up PR-এর CI + owner merge; এরপর চাইলে live Render যাচাই (sandbox থেকে সম্ভব নয়)। ভবিষ্যতের (ঐচ্ছিক, চাহিদা নয়): section-wise student bar chart/export — trend রিপোর্টের bucket প্যাটার্ন পুনর্ব্যবহার করে করা যাবে।
 
 
-#### O5 · Application থেকে student record ও প্রয়োজনীয় documents-এ photo continuity
-- **Task ID & Purpose:** O5 — application-এ আপলোড করা photo student record + ID/TC/certificate-এ দেখা।
-- **Current status (2026-09-19 baseline re-verified):** **Partial** — (১) `AdmissionApplication`-এ **photo field নেই** (admission থেকে ছবি আসে না), (২) **student list template-এ ছবি দেখানো হয় না** (`school_system/templates/students/student_list.html`-এ `photo` নেই; ছবি ব্যবহৃত শুধু `id_card_print.html`, `result_analysis_merit_slides.html`, `add_student.html`), (৩) **`purge_archived_student` ছবির ফাইল মোছে না** — `views.py:2312-2334` শুধু `student.delete()` করে (Django model delete-এ file delete হয় না)। `Student.photo` + 2MB/type validation + S3 storage path আগে থেকেই কাজ করে।
-- **Evidence:** `models.AdmissionApplication` has no `photo` field; `forms.AdmissionApplicationForm` no image; `views.accounts_approve_payment` creates `Student` without photo (L912). `Student.photo` exists separately, `student_id_card`, `tc_print`, `certificate_print` use `student.photo` but admission flow leaves it blank.
-- **Priority:** **P1**
-- **Dependencies:** P1-11-live (S3 bucket determines where photos live persistently)
-- **Acceptance:** `AdmissionApplication.photo` (optional ImageField, 2MB, image type `clean_photo` same as Student), stored via same `MEDIA_STORAGE` (S3 if enabled), preview in `admission_application_detail`, copied to `Student.photo` on `accounts_approve_payment` (preserves file, not just path), shown on `student_detail`, `student_id_card`, `view_tc`/`certificate_print`. Existing applications without photo still work (blank).
-- **Tests required:** `test_application_photo_carries_to_student`, `test_application_without_photo_still_enrolls`, `test_photo_validated_size_type`.
-- **Migration/data risk:** **Additive nullable FK/FileField** (`photo` ImageField) — migration 00xx, safe (nullable, no backfill). Media copy must handle same-file-name collision (uuid suffix).
-- **Decision needed:** Whether application photo is required or optional (we recommend optional).
-- **Small session scope:** Yes — model + migration (nullable) + forms + two views + 3 templates + tests (one session, but separate from large fee engine).
+#### O5 · Student photo upload, display ও retention (admission photo নয়)
+- **Task ID & Purpose:** OF-05 / O5 — enrolled Student-এর photo-র secure upload/display, authorized clear ও storage lifecycle; AdmissionApplication photo এই scope-এ নেই।
+- **Current status (২০২৬-১০-০৭):** implementation ও isolated local validation সম্পন্ন; **review/merge gate pending**। `Student.photo` validator: ২ MiB max, 300×300–4096×4096 px inclusive; JPG/JPEG/PNG/GIF; opaque UUID storage key। Migration `0047_alter_student_photo.py` state-only; `0048_studentphotodeletionjob.py` durable deletion-outbox table/index যোগ করে। কোনো existing media/data backfill নেই।
+- **Retention/actions:** photo archive/TC-তেও row থাকা পর্যন্ত থাকে। Student detail-এ permission-gated per-student clear (archived row-সহ); bulk clear active ও archived list থেকে, সর্বোচ্চ ১০০ unique student, `_scope_write_queryset`-এর institution-scoped all-or-nothing check ও audit সহ। Clear/replace/hard-purge transaction-এ outbox row তৈরি; commit-এর পর immediate delete, ব্যর্থ হলে command retry করে।
+- **Display:** student list lazy thumbnail + initials fallback; archived list thumbnail; student detail portrait; ID card, single/class result cards ও result detail-এ photo/fallback। List photo rendering-এর N+1 query-count regression আছে; Merit Slides-এর পুরোনো display অক্ষত।
+- **Storage/tests:** `test_upload_security` 12 + `test_student_photo_workflow` 26 + `test_institution_write_isolation` 44 + `test_media_storage` 39 = **121 focused pass**; full **860 Django + 29 Node pass**, `check` 0, migration check clean। `0047` SQL no-op; `0048` creates only outbox table/index. Filesystem lifecycle uses a temporary directory; S3 config/UUID key/signed URL/cache header via fake R2 settings, no network/bucket request. Private `check --deploy` accepts synthetic private settings and rejects public settings with E012. Outbox failure/retry mock-tested; periodic runner not configured. Details `docs/prompts/reports/OF-05.md`; Draft PR #61 open/draft; privacy-guard CI passed 3/3 on `4ff84e2` (run `37593462790`).
+- **Priority:** **P1** (student PII ও media lifecycle)
+- **Dependencies:** privacy policy confirmed; `P1-11-live` deployed private bucket config/policy verification remains a separate live-only task.
+- **Acceptance:** secure upload/replace/clear; approved dimensions/types/size; list/detail/ID/result-card/print display + fallback; permission/institution scope; archive/TC retention; hard-purge storage cleanup — locally verified. Admission photo intentionally excluded.
+- **Migration/data risk:** no student/media backfill or destructive data change; `0047` is state-only, `0048` adds an empty outbox table/index. Existing files retain old storage keys; new uploads use opaque UUID keys. Durable retry exists, but an approved periodic scheduler for `retry_student_photo_deletions` is **not configured/verified**; failed jobs persist until it runs. **Owner confirmed private student photos (2026-10-07).** Deploy check `students.E012` now rejects public URL/ACL/signing/cache settings and production filesystem media; deployed environment and bucket policy still require owner verification.
+- **Owner সিদ্ধান্ত (২০২৬-১০-০৬):** admission photo নয়; max 2 MiB, min 300×300, max 4096×4096; photo remains through archive/TC, clear per student and in institution-scoped bulk, delete file on hard purge.
+- **Owner সিদ্ধান্ত (২০২৬-১০-১২, merge-এ):** উপরের 2 MiB cap **1 MB**-তে বদলানো হলো (PR #62-এর নীতি বজায়); admission photo-ও বাদ থাকেনি — PR #62-এর `applicant_photo` (internal form, 1 MB) main-এ আছে। Dimension bounds, privacy guard ও outbox অপরিবর্তিত।
+- **অবশিষ্ট / merge gate:** Fresh Django 6.1 SQLite/Postgres/Node CI for private-media guard commit `4ff84e2` passed 3/3 (run `37593462790`; local Python 3.11 uses Django 5.2.17 fallback). Browser/print/PDF and deployed MEDIA_URL/bucket policy remain unverified. Live S3/production/Render access is deliberately prohibited. Private policy is owner-confirmed; owner still must verify effective deployed config, plus configure/approve a periodic runner for the durable deletion queue. Do not merge until these operational checks are reviewed.
+- **Small session scope:** Yes — student photo workflow, no admission form field or admission migration.
 
 #### P0-9 · Documentation refresh (doc-only) — ✅ DONE (2026-09-17)
 - **Task ID & Purpose:** P0-9 — README roadmap ticks + stale SSC mentions fix।
@@ -351,7 +361,7 @@ _Status values verified this session: **Complete** / **Partial** / **Missing** /
 |---|---|---|---|
 | P2-3 | i18n / Bengali UI strings | **Missing** (deferred, large) | Entire UI English; needs marks + runbook + locale switcher — own session(s) |
 | P2-7 | Remove legacy `StudentSubject` model entirely | **Missing** (deferred, destructive) | Keep admin-only; drop needs backup + migration (destructive) — own session, after FINAL |
-| ADM-REPORTS-OPT-1 | Admission reports — capacity / trend charts | **Missing** (Optional, not started) | O4 (ADM-REPORTS) থেকে 2026-09-18-এ আলাদা করা **Optional enhancement** — মূল funnel/report চাহিদা Complete, এটি তার শর্ত নয়। Scope: capacity vs enrolled per class/section (`SectionCapacity` vs actual), payment-vs-enrolled trend, date-wise trend chart, section-wise student bar chart/export। যাচাইকৃত ভিত্তি: `admission_funnel_report` / `admission_funnel_export` institution-scoped, print-ready, Excel export সহ `main`-এ আছে (PR #32 merged `11cd35d`), তাই নতুন chart পেজ একই scoping/guard প্যাটার্ন পুনর্ব্যবহার করতে পারে। Migration/data risk: none (query-only) হওয়ার সম্ভাবনা; chart লাইব্রেরি নির্বাচন মালিকের সিদ্ধান্ত (বর্তমানে কোনো JS chart নেই)। |
+| ADM-REPORTS-OPT-1 | Admission reports — capacity / trend charts | **Complete** (২০২৬-১০-০৬) | Owner-অনুমোদিত (prompt 12 §৮): capacity vs enrolled per class/section (`SectionCapacity` বনাম ACTIVE student; দুই aggregate query) + payment-vs-enrolment ও date-wise trend (`?bucket=day|week|month`, timezone-aware `TruncDate`, `Undated` সারি) — table + CSS bar, নতুন JS chart library নেই; Excel-এ `Capacity vs Enrolled`/`Trend` sheet। Accounts payment stage-সীমিত view। Evidence: `bbcaa3a`, `students/test_admission_capacity_trend.py` ২৬ tests OK, full ৮২৬ Django + ২৯ Node pass. বাকি (ঐচ্ছিক): section-wise student bar chart/export। Migration/data risk: none (query-only)। |
 
 ## Future backlog — out of implementation scope per instruction (do not start now)
 
@@ -376,11 +386,11 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 | D-4 | Admission/fee amounts: free-form or class-wise fee schedule? | **Resolved — class-wise `Fee` schedule guideline + warning** (P1-2) |
 | D-5 | Keep unauthenticated public admission form? Protection? | **Resolved — keep form, rate limit 5/10min** (P1-9) |
 | D-6 | Confirm intended permission sets (Exam `delete_exam`? Accounts `Exam`/`ExamMark`?) | **Unverified / policy** — single source `permissions.py`, live policy unknown until P0-7 check |
-| D-7 | Student photos: persistent disk or object storage? | **Resolved — S3-compatible (`USE_S3`, P1-11-tooling merged); live bucket not yet set (P1-11-live)** |
+| D-7 | Student photos: storage and privacy policy | **Resolved — private S3-compatible storage (`USE_S3`, owner confirmed private 2026-10-07); deploy guard `students.E012`; live bucket/config policy still unverified (P1-11-live)** |
 | D-8 | Production DB: SQLite on persistent disk or Postgres? | **Partial** — CI Postgres proven; live engine **UNKNOWN** (P0-7) → P1-10-live |
 | D-9 | Promotion scoping: query-only vs column? | **Resolved — column added (0037)** |
 | D-10 | Legacy `StudentSubject` data: keep forever, migrate, or drop? | **Resolved — keep admin-only, stop rendering (P1-5); drop deferred to P2-7** |
-| **D-GPA** | **Final GPA 4.90–5.00 → 5.00 boost** | **✅ Decided 2026-09-17 — 4.90-4.99 →5.00 A+ implemented** |
+| **D-GPA** | **Final GPA / fourth-subject bonus** | **✅ Owner-corrected 2026-09-23 — old 4.90–4.99→5.00 boost removed; one selected FOURTH subject uses the documented bonus formula** |
 | **D-MIS** | **Missing/null marks: blank = F (keep `EXAM_ABSENT_SUBJECT_FAILS=True`)** | **✅ Decided 2026-09-17 — keep blank=F, show AB, exclude TC/DISCONTINUED from register** |
 
 ---
@@ -432,7 +442,7 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 - `O5` — status `Partial`: admission photo field অনুপস্থিত + student list-এ ছবি নেই + purge-এ ছবির ফাইল মুছে ফেলা হয় না — তিনটি গ্যাপ entry-তে যোগ করা হলো।
 - `E1` / `D-GPA` / `D-MIS` / `E8` / `O4` / `R1` — baseline-এ যাচাই করে **সঠিক** পাওয়া গেছে (কোনো পরিবর্তন দরকার হয়নি)।
 
-**নতুনভাবে Baseline-এ Complete প্রমাণিত (backlog-এ আলাদা কাজ দরকার নেই):** EX-01 (PR #39) + EX-02 (PR #41) + EX-03 (0044 group-aware — `reports/EX-03.md`) + EX-04 (Higher Math — curriculum 0042 + seeds + ৪৭+ test) + EX-05 (missing marks → AB/F — `EXAM_ABSENT_SUBJECT_FAILS=True` + টেস্ট) + EX-06 (GPA 4.90–4.99 → 5.00 boost + টেস্ট) + EX-07 (Ctrl/Cmd+Click — Node ৮ + Django ৩) + OF-01 (guardian contact 0039–0041 + ৩৯ test) + OF-03 (Subject Assignment subtab + ২৮ test) + DB-01 (dashboard scoping + nav টেস্ট) + DB-04/DB-05/DB-06 (settings/CI/backup tooling + drill এই সেশনে হাতে চালিয়ে pass)।
+**নতুনভাবে Baseline-এ Complete প্রমাণিত (backlog-এ আলাদা কাজ দরকার নেই):** EX-01 (PR #39) + EX-02 (PR #41) + EX-03 (0044 group-aware — `reports/EX-03.md`) + EX-04 (Higher Math — curriculum 0042 + seeds + ৪৭+ test) + EX-05 (missing marks → AB/F — `EXAM_ABSENT_SUBJECT_FAILS=True` + টেস্ট) + EX-06 (তৎকালীন GPA 4.90–4.99 → 5.00 boost + টেস্ট; **2026-09-23-এ fourth-subject policy দিয়ে superseded**) + EX-07 (Ctrl/Cmd+Click — Node ৮ + Django ৩) + OF-01 (guardian contact 0039–0041 + ৩৯ test) + OF-03 (Subject Assignment subtab + ২৮ test; **regression pin ২০২৬-১০-০৫ `reports/OF-03.md` — 796+29, dead link শূন্য, cross-link উভয় দিকে**) + DB-01 (dashboard scoping + nav টেস্ট) + DB-04/DB-05/DB-06 (settings/CI/backup tooling + drill এই সেশনে হাতে চালিয়ে pass)।
 
 **অপরিবর্তিত বাকি কাজ (এই baseline-এও খোলা):** EX-01 Analysis subtab · EX-02 বাকি output-এর roll-order নিয়ম · EX-03 `SubjectMarkSetting.group` · OF-02 বাকি list views · OF-05 তিন গ্যাপ · OF-06 public progress page + share · OF-07/OF-08 integrity audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification। পূর্ণ matrix: `docs/prompts/reports/০০-baseline.md`।
 **২০২৬-০৯-২০ হালনাগাদ (EX-03 + বাকি কাজ সম্পন্ন):** EX-01 ✅ (PR #39) · EX-02 ✅ (PR #41) · **EX-03 ✅** (PR পরবর্তী — `SubjectMarkSetting.group` 0044 + group-aware chain + ১৭ test (১৫+২) + **weekly_test column non-MID-এ hide** finishing — `reports/EX-03.md`)। **এখন খোলা:** OF-02 বাকি ৭টি list views · OF-05 তিন গ্যাপ · OF-06 public progress page + share · OF-07/OF-08 integrity audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification।
@@ -447,3 +457,29 @@ Each will become its own P1/P2 epic after release 1, with spec + decision + back
 - **Docs:** `RESULT_PUBLISHING_GUIDE.md` §2-তে প্রদর্শন-token টেবিল (কোন অবস্থায় `AB` / `0` / blank / no column) + পুরনো "dash" শব্দগুলো `AB`-তে সংশোধন।
 - **Tests:** নতুন `students/test_absent_token_consistency.py` (৬ — cross-view GPA/status একমুখ, AB token সব surface-এ, entered-0 ≠ AB, False-path display, TC/DISCONTINUED বাদ)। **পূর্ণ suite ৭২১ Django + ১৪ Node pass** (৭১৫+৬), `check` 0, `makemigrations --check` clean (leaf 0046), কোনো migration নেই।
 - রিপোর্ট: `docs/prompts/reports/EX-05.md`। পরবর্তী খোলা কাজ অপরিবর্তিত (OF-02/OF-05/OF-06/OF-07/OF-08/DB-02/DB-03/AT-01/AT-02/EM-01/EM-03/FN-01)।
+
+## Update — 2026-10-12 · সেশন OF-06 — Public success page ও progress (প্রম্পট ১৪/২৮) · ✅ সম্পন্ন
+
+- **আগের খোলা আইটেম বন্ধ:** baseline **Partial** ছিল “public status/progress route নেই + success page-এ share/copy নেই”। এখন দুটোই আছে — নতুন public route **`admission/status/`** (`public_admission_status`) + ছাপার-উপযোগী **slip**। কোনো model/migration/JS dependency লাগেনি (migration leaf 0047 অপরিবর্তিত)।
+- **Owner সিদ্ধান্ত ৩টি (২০২৬-১০-১২):** যাচাই = **Application No. + guardian contact-এর শেষ ৪ ডিজিট** · REJECTED = **সাধারণ বার্তা + অফিসে যোগাযোগ (কারণ নয়)** · lookback = **সব session**।
+- **নতুন public surface:** `PublicAdmissionStatusForm` (lowercase/hyphen/prefix-ছাড়া number ও বাংলা অঙ্ক চলে) · এক query-তে number+tail মিলিয়ে status · ৪-ধাপ **timeline** (তারিখসহ) · masked name/contact · ENROLLED-এ Student ID · slip-এ print CSS, Copy details, WhatsApp share, জমার তারিখ; পুরোনো internal `dashboard` link সরানো; তিন public template-এ `noindex, nofollow`।
+- **Privacy (pinned):** ভুল number / ভুল tail / malformed input — সবেতেই একই generic বার্তা এবং (visitor-এর নিজের typed number echo বাদে) একই byte-body ⇒ enumeration oracle নয়; cross-applicant isolation দুই দিকেই; remarks/actor/amount/`next_step` কোনো public template-এ নেই (source pin).
+- **Throttle:** P1-9 helper reuse — ৩০ lookup/১০মিনিট per address + ৫ ভুল/১৫মিনিট per (address, application number); XFF-এর বাঁ দিক spoof করে bypass হয় না; `RATE_LIMIT_CACHE=db`-তেও কাজ করে।
+- **প্রমাণ:** নতুন `students/test_public_admission_status.py` **৩৫**; regression ৬ মডিউলে **১১৭**; পূর্ণ suite **৮৭৩ Django + ২৯ Node pass**, `check` 0, `makemigrations --check` clean। রিপোর্ট `docs/prompts/reports/OF-06.md`; PR #63 (OPEN, owner merge সাপেক্ষ)।
+- **এখন খোলা (ক্রম অনুযায়ী):** OF-07 integrity audit (baseline Unverified) · OF-08 archive/promotion/certificates audit · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification + **OF-06-এর নতুন owner-decision আইটেম** (institution contact phone field হবে কি না)। OF-02-এর ৭টি list view ও OF-05-এর তিন গ্যাপ এর মধ্যে বন্ধ হয়েছে (PR #54 / PR #62 MERGED)।
+
+## Update — 2026-10-13 · সেশন OF-07 — Admission/import integrity (প্রম্পট ১৫/২৮) · ✅ কোড/টেস্ট সম্পন্ন
+
+- owner-সিদ্ধান্ত: capacity race = block · duplicate roll/ID = reject · fee mismatch = block।
+- Fix: fee block; approval/import/office transition-এ row lock; import `09`/`9` re-run ও capacity bypass বন্ধ; duplicate roll reject (import + Add/Edit form)।
+- **প্রমাণ:** `students` **942 Django OK** (নতুন ৩৮); Node **29/29**; `check` 0; `makemigrations --check` clean।
+- **খোলা বাকি (OF-07):** আসল parallel race test (শুধু SQLite-এ যাচাই); Add Student form-এর capacity lock; import all-or-nothing নীতি (owner); class-কে institution class list-এর সাথে মেলানো (নীতি নয়, এখনো নেই); marks import-এ sheet/subject যাচাই।
+- **এখন খোলা (ক্রম অনুযায়ী):** OF-08 archive/promotion/certificates audit · DB-02 · DB-03 · AT-01 · AT-02 · EM-01 · EM-03 · FN-01।
+
+## Update — 2026-10-15 · সেশন OF-08 — Archive/promotion/certificates (প্রম্পট ১৬/২৮) · ✅ কোড/টেস্ট সম্পন্ন
+
+- **owner-সিদ্ধান্ত ৩:** purge = warn-only + audit (block নয়) · নম্বর year-wise-ই কিন্তু collision-safe ও পুনর্ব্যবহার-মুক্ত · একই class+session-এ দ্বিতীয় promotion run block (rollback করলে আবার অনুমোদিত)।
+- **Fix:** `DocumentSequence` counter (migration `0050`) — TC/certificate নম্বর এখন lock করা counter থেকে, হাতে বসানো নম্বরের সাথে ধাক্কা খেলেও 500 নয়, purge-এর পরেও নম্বর ফেরে না; `issue_tc`/`issue_certificate`-এ audit row; purge-এ `destroyed_documents` audit + warning + archived পেজে সতর্কবার্তা; certificate form-এ field error; promotion duplicate-run block (`_promotion_already_run`, spelling-tolerant)।
+- **প্রমাণ:** `students` **৯৯৩ Django OK** (নতুন `test_archive_promotion_certificate_audit.py` ৫১); Node **29/29**; `check` 0; `makemigrations --check` clean; প্রাক-ফিক্স কোডে নতুন test ১৪টি fail (bug-প্রমাণ)। রিপোর্ট `docs/prompts/reports/OF-08.md`।
+- **খোলা বাকি (OF-08):** counter lock-এর আসল parallel test (Postgres); certificate eligibility নীতি (owner); read view-এর permission নীতি (এখন login-only); print-এর চেহারা/আসল প্রিন্টার যাচাই।
+- **এখন খোলা (ক্রম অনুযায়ী):** DB-01 regression (baseline Complete) · DB-02 `0034`-এর agent-নামের comment · DB-03 SEC-FU-1/SEC-FU-2 · AT-01 per-record correction · AT-02 calendar view · EM-01 assignment · EM-03 closed-period · FN-01 final verification।

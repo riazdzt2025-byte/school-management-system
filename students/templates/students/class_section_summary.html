@@ -15,6 +15,8 @@
     </div>
     <div class="page-actions d-flex gap-2">
         <form method="GET" class="d-flex gap-2">
+    {% include 'students/_pagination_filter_fields.html' with exclude="institution" %}
+
             <select name="institution" class="form-select" onchange="this.form.submit()">
                 <option value="">-- All Institutions --</option>
                 {% for inst in institutions %}
@@ -25,7 +27,7 @@
         {% if perms.students.view_admissionapplication %}
         <a href="{% url 'admission_funnel_report' %}" class="btn btn-outline-secondary">Admission Funnel</a>
         {% endif %}
-        <button onclick="window.print()" class="btn btn-outline-secondary">🖨️ Print</button>
+        {% include 'students/_print_all.html' %}
     </div>
 </div>
 
@@ -68,4 +70,6 @@
         </table>
     </div>
 </div>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}

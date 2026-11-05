@@ -42,4 +42,6 @@
     </table>
 </div>
 <a href="{% url 'student_detail' student.pk %}" class="btn btn-outline-navy mt-3">Back to Student Details</a>
+
+{% include 'students/_pagination.html' %}
 {% endblock %}

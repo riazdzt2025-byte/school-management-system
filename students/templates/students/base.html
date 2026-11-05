@@ -1,12 +1,15 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Principal Kazi Faruky School And College{% endblock %}</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <title>{% block title %}Principal Kazi Faruky School{% endblock %}</title>
+    <!-- Same release, served with the app: a slow/unreachable third-party CDN
+         must not block the result table (or any other page) from rendering. -->
+    <link href="{% static 'students/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
+    <link href="{% static 'students/vendor/bootstrap-icons/bootstrap-icons.min.css' %}" rel="stylesheet">
+    <link href="{% static 'students/vendor/fonts/fonts.css' %}" rel="stylesheet">
     <style>
         :root {
             --navy: #0F2D52;
@@ -104,7 +107,35 @@
         }
         .table-card tbody tr:hover { background: rgba(15,45,82,0.03); }
 
-        .print-header { display: none; text-align: center; margin-bottom: 20px; }
+        /* ---- Back to top ---- */
+        .back-to-top {
+            position: fixed; right: 22px; bottom: 22px; z-index: 1040;
+            width: 44px; height: 44px; border: none; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--navy); color: #fff; font-size: 1.1rem;
+            box-shadow: 0 6px 18px rgba(15,45,82,0.28); cursor: pointer;
+            opacity: 0; visibility: hidden; transform: translateY(10px);
+            transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease, background 0.15s ease;
+        }
+        .back-to-top:hover, .back-to-top:focus-visible {
+            background: var(--gold); color: var(--navy); outline: none;
+        }
+        .back-to-top:focus-visible { box-shadow: 0 0 0 3px rgba(201,162,39,0.45), 0 6px 18px rgba(15,45,82,0.28); }
+        .back-to-top.is-visible { opacity: 1; visibility: visible; transform: translateY(0); }
+        @media (max-width: 768px) {
+            .back-to-top { right: 14px; bottom: 14px; width: 40px; height: 40px; font-size: 1rem; }
+        }
+
+        /* Printed masthead: the school badge and identity head every report.
+           School papers print the school name only — the college has its own
+           name and is never folded into a school document. */
+        .print-header { display: none; margin-bottom: 14px; }
+        .print-masthead { display: flex; align-items: center; justify-content: center; gap: 12px; }
+        .print-masthead .print-logo { width: 54px; height: auto; flex: 0 0 auto; }
+        .print-masthead .print-identity { text-align: center; }
+        .print-masthead h2 { margin: 0; font-size: 16pt; line-height: 1.2; color: #000; }
+        .print-masthead .print-address { margin: 2px 0 0; font-size: 8.5pt; color: #000; }
+        .print-masthead .print-subtitle { margin: 4px 0 0; font-size: 10pt; font-weight: 700; color: #000; }
 
         .menu-toggle {
             display: none; background: var(--navy); color: #fff; border: none;
@@ -150,7 +181,7 @@
         }
 
         @media print {
-            .sidebar, .menu-toggle, .sidebar-overlay, .sidebar-collapse-btn { display: none !important; }
+            .sidebar, .menu-toggle, .sidebar-overlay, .sidebar-collapse-btn, .back-to-top { display: none !important; }
             .main, .school-header { margin-left: 0 !important; padding: 0 !important; }
             .d-print-none { display: none !important; }
             .print-header { display: block !important; }
@@ -216,6 +247,7 @@
             {% if perms.students.add_attendancerecord %}<a href="{% url 'mark_attendance' %}"><i class="bi bi-pencil-fill"></i> Mark Attendance</a>{% endif %}
             {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_report' %}"><i class="bi bi-clipboard-data"></i> Attendance Report</a>{% endif %}
             {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_summary' %}"><i class="bi bi-bar-chart-fill"></i> Attendance Summary</a>{% endif %}
+            {% if perms.students.view_attendancerecord %}<a href="{% url 'attendance_calendar' %}"><i class="bi bi-calendar3"></i> Attendance Calendar</a>{% endif %}
         </div>
     </div>
     {% endif %}
@@ -269,6 +301,7 @@
         <div class="flyout">
             <a href="{% url 'employee_list' %}"><i class="bi bi-people-fill"></i> Employee List</a>
             <a href="{% url 'add_employee' %}"><i class="bi bi-person-plus-fill"></i> Add Employee</a>
+            {% if perms.students.view_teacherassignment %}<a href="{% url 'teacher_assignment_list' %}"><i class="bi bi-diagram-3-fill"></i> Teacher Assignments</a>{% endif %}
         </div>
     </div>
 
@@ -286,14 +319,22 @@
     <h1><i class="bi bi-mortarboard-fill me-2"></i>{% now "Y" %}</h1>
     <div class="school-info">
         <strong>{{ SCHOOL_INFO.name|default:"Principal Kazi Faruky School And College" }}</strong><br>
-        {{ SCHOOL_INFO.address|default:"Rakhalia, Raipur, Lakshmipur" }} | Phone: {{ SCHOOL_INFO.phone|default:"+880 1234-567890" }}
+        {{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }}
+        | School: {{ SCHOOL_INFO.school_phone|default:"01309134783" }}
+        &middot; College: {{ SCHOOL_INFO.college_phone|default:"01309135326" }}
     </div>
 </div>
 
 <div class="main">
     <div class="print-header">
-        <h2>Principal Kazi Faruky School And College</h2>
-        <p>{% block print_subtitle %}{% endblock %}</p>
+        <div class="print-masthead">
+            <img class="print-logo" src="{% static 'students/img/school_logo.png' %}" alt="">
+            <div class="print-identity">
+                <h2>{{ SCHOOL_INFO.school_name|default:"Principal Kazi Faruky School" }}</h2>
+                <p class="print-address">{{ SCHOOL_INFO.address|default:"West Rakhalia, Raipur, Lakshmipur-3700" }} &middot; {{ SCHOOL_INFO.school_phone|default:"01309134783" }}</p>
+                <p class="print-subtitle">{% block print_subtitle %}{% endblock %}</p>
+            </div>
+        </div>
     </div>
 
     {% block content %}{% endblock %}
@@ -303,7 +344,11 @@
     </footer>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<button type="button" id="backToTop" class="back-to-top d-print-none" aria-label="Back to top" title="Back to top">
+    <i class="bi bi-arrow-up" aria-hidden="true"></i>
+</button>
+
+<script defer src="{% static 'students/vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
 <script>
     if (window.matchMedia('(max-width: 768px)').matches) {
         document.querySelectorAll('.nav-group > .group-label').forEach(function (label) {
@@ -342,6 +387,57 @@
                 toggleSidebar();
             }
         });
+    })();
+
+    // ---- Back to top: appears once the page is scrolled, smooth-scrolls to the top ----
+    (function () {
+        var btn = document.getElementById('backToTop');
+        if (!btn) return;
+        var THRESHOLD = 400;
+        var ticking = false;
+
+        function syncVisibility() {
+            ticking = false;
+            btn.classList.toggle('is-visible', window.scrollY > THRESHOLD);
+        }
+
+        function onScroll() {
+            if (ticking) return;
+            ticking = true;
+            window.requestAnimationFrame(syncVisibility);
+        }
+
+        btn.addEventListener('click', function () {
+            var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduceMotion) {
+                window.scrollTo(0, 0);
+            } else {
+                try {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                } catch (err) {
+                    window.scrollTo(0, 0);
+                }
+            }
+            // Move focus back to the top of the page content for keyboard/screen-reader users.
+            var target = document.querySelector('.result-toolbar .toolbar-title') ||
+                         document.querySelector('.page-header h1') ||
+                         document.querySelector('.main h1');
+            if (target) {
+                target.setAttribute('tabindex', '-1');
+                try {
+                    target.focus({ preventScroll: true });
+                } catch (err) {
+                    target.focus();
+                }
+                target.addEventListener('blur', function () {
+                    target.removeAttribute('tabindex');
+                }, { once: true });
+            }
+        });
+
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('resize', onScroll);
+        syncVisibility();
     })();
 </script>
 {% block extra_script %}{% endblock %}

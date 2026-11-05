@@ -180,7 +180,9 @@ class AdmissionFunnelReportTests(TestCase):
         response = self.client.get(reverse(FUNNEL_PAGE))
         body = response.content.decode()
         self.assertIn('<div class="print-header">', body)
-        self.assertIn('<p>Admission Funnel Report</p>', body)
+        # The printed masthead: school badge + identity, then the page title.
+        self.assertIn('school_logo.png', body)
+        self.assertIn('<p class="print-subtitle">Admission Funnel Report</p>', body)
         # Filters / Excel / print buttons are marked so @media print hides them,
         # while the scope + date line above stays on the paper.
         self.assertIn('class="page-actions d-flex gap-2 d-print-none"', body)
@@ -251,6 +253,72 @@ class AdmissionFunnelReportTests(TestCase):
         broken = self.client.get(reverse(FUNNEL_PAGE), {'from': 'not-a-date'})
         self.assertEqual(broken.status_code, 200)
         self.assertEqual(broken.context['total_applications'], TOTAL_A + TOTAL_B + 3)
+
+    def test_reports_funnel_counts_same_day_boundary_inclusive(self):
+        """from=D and to=D bounds all submissions within day D from 00:00 to 23:59."""
+        target_day = timezone.localdate() - timedelta(days=60)
+        self._application(
+            self.institution_a, 'SUBMITTED', name='Target day early',
+            submitted_at=datetime.combine(target_day, time(0, 1)),
+        )
+        self._application(
+            self.institution_a, 'PAYMENT_APPROVED', name='Target day late',
+            submitted_at=datetime.combine(target_day, time(23, 59)),
+        )
+        self._application(
+            self.institution_a, 'ENROLLED', name='Previous day',
+            submitted_at=datetime.combine(target_day - timedelta(days=1), time(23, 59)),
+        )
+        self._application(
+            self.institution_a, 'ENROLLED', name='Next day',
+            submitted_at=datetime.combine(target_day + timedelta(days=1), time(0, 1)),
+        )
+        self._login(self.admin)
+        response = self.client.get(reverse(FUNNEL_PAGE), {
+            'institution': self.institution_a.pk,
+            'from': target_day.isoformat(),
+            'to': target_day.isoformat(),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_applications'], 2)
+        self.assertEqual(_count_on_page(response, 'SUBMITTED'), 1)
+        self.assertEqual(_count_on_page(response, 'PAYMENT_APPROVED'), 1)
+        self.assertEqual(_count_on_page(response, 'ENROLLED'), 0)
+
+    def test_reports_funnel_counts_inverted_date_range_safely_empty(self):
+        """from > to yields an empty result set without errors."""
+        base = timezone.localdate() - timedelta(days=50)
+        self._login(self.admin)
+        response = self.client.get(reverse(FUNNEL_PAGE), {
+            'institution': self.institution_a.pk,
+            'from': (base + timedelta(days=10)).isoformat(),
+            'to': base.isoformat(),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_applications'], 0)
+        self.assertEqual(response.context['conversion_percent'], 0.0)
+        self.assertContains(response, 'No applications match this filter.')
+
+    def test_reports_funnel_counts_future_date_range_safely_empty(self):
+        """A future date range returns zero applications without errors."""
+        future_day = timezone.localdate() + timedelta(days=365)
+        self._login(self.admin)
+        response = self.client.get(reverse(FUNNEL_PAGE), {
+            'institution': self.institution_a.pk,
+            'from': future_day.isoformat(),
+            'to': (future_day + timedelta(days=30)).isoformat(),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_applications'], 0)
+        self.assertEqual(response.context['conversion_percent'], 0.0)
+        self.assertContains(response, 'No applications match this filter.')
+
+    def test_reports_funnel_links_to_class_section_summary(self):
+        """The funnel page provides a direct link to the Class/Section summary report."""
+        self._login(self.admin)
+        response = self.client.get(reverse(FUNNEL_PAGE))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('class_section_summary'))
 
     # ------------------------------------------------- institution isolation
     @requires_openpyxl
@@ -339,11 +407,35 @@ class AdmissionFunnelReportTests(TestCase):
                 self.assertEqual(self.client.get(url).status_code, 403)
 
     def test_reports_allow_the_accounts_department(self):
-        """Accounts reads the same funnel (it owns the payment stages)."""
+        """Accounts reads the funnel — its own payment stages only (OF-04 §8).
+
+        The department may still open the report, but the copy it gets is the
+        payment slice (owner decision, follow-up session), and every number on
+        it — total, conversion, table rows, export — is computed over that
+        slice. The office stages are what the payment slice must never show.
+        """
         self._login(self.accounts_clerk, institution=self.institution_a, department='Accounts')
         response = self.client.get(reverse(FUNNEL_PAGE))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['total_applications'], TOTAL_A)
+        self.assertEqual(
+            response.context['stage_keys'],
+            ['ACCOUNT_PENDING', 'PAYMENT_APPROVED', 'ENROLLED'],
+        )
+        payment_total = (
+            FIXTURE_COUNTS['ACCOUNT_PENDING'] + FIXTURE_COUNTS['PAYMENT_APPROVED']
+            + FIXTURE_COUNTS['ENROLLED']
+        )
+        self.assertEqual(response.context['total_applications'], payment_total)
+        self.assertEqual(
+            [row['key'] for row in response.context['funnel_rows']],
+            ['ACCOUNT_PENDING', 'PAYMENT_APPROVED', 'ENROLLED'],
+        )
+        self.assertEqual(_count_on_page(response, 'ACCOUNT_PENDING'), FIXTURE_COUNTS['ACCOUNT_PENDING'])
+        self.assertEqual(_count_on_page(response, 'ENROLLED'), FIXTURE_COUNTS['ENROLLED'])
+        body = response.content.decode()
+        self.assertNotIn(f'<td>{LABELS["SUBMITTED"]}</td>', body)
+        self.assertNotIn(f'<td>{LABELS["OFFICE_APPROVED"]}</td>', body)
+        self.assertIn('Accounts view — payment stages only', body)
 
     def test_reports_department_guard_blocks_other_departments(self):
         """Holding the permission is not enough from a department that does not run admissions."""
@@ -387,7 +479,15 @@ class AdmissionFunnelReportTests(TestCase):
         self.assertIn('admission_funnel_report.xlsx', response['Content-Disposition'])
 
         workbook = load_workbook(BytesIO(response.content), data_only=True)
-        self.assertEqual(workbook.sheetnames, ['Admission Funnel'])
+        # The follow-up session adds the capacity and trend sheets; 'By
+        # Institution' is still only built for an all-institution scope, so a
+        # single-institution export must not carry it. The stage sheet itself
+        # keeps its layout.
+        self.assertEqual(
+            workbook.sheetnames,
+            ['Admission Funnel', 'Capacity vs Enrolled', 'Trend'],
+        )
+        self.assertNotIn('By Institution', workbook.sheetnames)
         counts = _funnel_sheet(workbook)
         # Only the January row, in the filtered institution — and the stage
         # order in the sheet is the funnel order, not an arbitrary GROUP BY.

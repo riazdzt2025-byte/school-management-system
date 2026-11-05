@@ -77,7 +77,7 @@
     </div>
 
     <div class="admission-form-body">
-        <form method="post" novalidate>
+        <form method="post" enctype="multipart/form-data" novalidate>
             {% csrf_token %}
             {% if form.non_field_errors %}
             <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
@@ -116,6 +116,12 @@
                     {{ form.applicant_address }}
                     {% for error in form.applicant_address.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                 </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="id_applicant_photo">Applicant Photo (optional)</label>
+                    {{ form.applicant_photo }}
+                    <div class="form-text small">Max 1 MB · JPG, PNG or GIF</div>
+                    {% for error in form.applicant_photo.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                </div>
             </div>
 
             <div class="section-title"><span class="section-icon"><i class="bi bi-people-fill"></i></span>Guardian Information</div>
@@ -133,7 +139,7 @@
                 <div class="col-md-6">
                     <label class="form-label" for="id_guardian_contact_no">Guardian Contact Number <span class="required-star">*</span> <span class="text-muted small">(অভিভাবকের যোগাযোগ নম্বর)</span></label>
                     {{ form.guardian_contact_no }}
-                    <div class="form-text small">The one number the school contacts — keep the leading 0, e.g. 01812345678.</div>
+                    <div class="form-text small">The one number the school contacts — an 11-digit mobile number, e.g. 01812345678 (+880 and spaces are tidied up).</div>
                     {% for error in form.guardian_contact_no.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                 </div>
                 <div class="col-md-6">

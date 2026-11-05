@@ -36,12 +36,15 @@
         </div>
         <div class="col-md-3">
             <label class="form-label fw-semibold">Group</label>
-            <select name="group" class="form-select" onchange="this.form.submit()">
+            <select name="group" class="form-select" onchange="this.form.submit()" {% if selected_class and not class_has_group %}disabled{% endif %}>
                 <option value="">All groups</option>
                 {% for code, label in group_choices %}
                 <option value="{{ code }}" {% if selected_group == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
+            {% if selected_class and not class_has_group %}
+            <div class="form-text text-muted small">This class has no group — groups start from class 9.</div>
+            {% endif %}
         </div>
         <div class="col-md-3">
             <label class="form-label fw-semibold">Exam Type</label>
