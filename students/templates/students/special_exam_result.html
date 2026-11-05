@@ -52,7 +52,7 @@
                 <option value="">Select an exam</option>
                 {% for exam in exams %}
                 <option value="{{ exam.pk }}" {% if selected_exam.pk == exam.pk %}selected{% endif %}>
-                    {{ exam.institution.name }} · Class {{ exam.admission_class }}{% if exam.group %} · {{ exam.get_group_display }}{% endif %} · {{ exam.session }}
+                    {{ exam.name }} · {{ exam.get_exam_type_display }} · Class {{ exam.admission_class }} · {{ exam.session }}
                 </option>
                 {% endfor %}
             </select>
@@ -90,9 +90,9 @@
     <a href="{{ merit_export_url }}" class="btn btn-outline-navy">Download merit-order Excel</a>
 </div>
 <div class="mb-3">
-    <h2 class="h4 mb-1">{{ selected_exam.institution.name }}</h2>
+    <h2 class="h4 mb-1">{{ selected_exam.name }}</h2>
     <div class="text-muted">
-        {{ selected_exam.name }} · Class {{ selected_exam.admission_class }}
+        {{ selected_exam.institution.name }} · {{ selected_exam.get_exam_type_display }} · Class {{ selected_exam.admission_class }}
         {% if selected_exam.section %}· Section {{ selected_exam.section }}{% endif %}
         {% if selected_group_label %}· {{ selected_group_label }}{% elif selected_exam.group %}· {{ selected_exam.get_group_display }}{% endif %}
         · Session {{ selected_exam.session }}

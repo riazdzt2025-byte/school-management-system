@@ -78,6 +78,8 @@ class SpecialExamResultTests(TestCase):
         response = self._report()
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Student ID')
+        self.assertContains(response, 'Special Exam Examination-2026')
+        self.assertContains(response, 'First Term')
         self.assertContains(response, 'SP001')
         self.assertContains(response, 'Candidate Three')
         self.assertContains(response, '80')
