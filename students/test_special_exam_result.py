@@ -25,11 +25,12 @@ class SpecialExamResultTests(TestCase):
         )
         self.exam = Exam.objects.create(
             name='Special Exam Examination-2026',
-            exam_type='SPECIAL_EXAM',
+            exam_type='FIRST_TERM',
             institution=self.institution,
             admission_class='6',
             session='2026',
             is_published=True,
+            is_special=True,
             special_result_enabled=True,
         )
         self.roll_three = Student.objects.create(
@@ -44,6 +45,10 @@ class SpecialExamResultTests(TestCase):
             institution=self.institution, student_id='SP002',
             name='Candidate Two', admission_class='6', roll_no=2,
         )
+        self.exam.special_students.set([
+            self.roll_one, self.roll_two, self.roll_three,
+        ])
+        self.exam.special_subjects.set([self.subject])
         for student, marks in (
             (self.roll_three, 80), (self.roll_one, 80), (self.roll_two, 70),
         ):
@@ -161,11 +166,12 @@ class SpecialExamResultTests(TestCase):
     def test_institution_class_and_session_filters_limit_available_exams(self):
         other_exam = Exam.objects.create(
             name='Special Exam Examination-2025',
-            exam_type='SPECIAL_EXAM',
+            exam_type='FIRST_TERM',
             institution=self.institution,
             admission_class='7',
             session='2025',
             is_published=True,
+            is_special=True,
             special_result_enabled=True,
         )
         response = self.client.get(
@@ -184,11 +190,12 @@ class SpecialExamResultTests(TestCase):
         other = Institution.objects.create(name='Other School', classes='6')
         other_exam = Exam.objects.create(
             name='Other Special Exam',
-            exam_type='SPECIAL_EXAM',
+            exam_type='FIRST_TERM',
             institution=other,
             admission_class='6',
             session='2026',
             is_published=True,
+            is_special=True,
             special_result_enabled=True,
         )
         InstitutionAccess.objects.create(
@@ -201,7 +208,7 @@ class SpecialExamResultTests(TestCase):
         self.assertIsNone(response.context['selected_exam'])
         self.assertNotContains(response, 'Other Special Exam')
 
-    def test_special_result_setting_is_only_valid_for_special_exam_type(self):
+    def test_special_result_setting_is_cleared_for_regular_exams(self):
         form_data = {
             'institution': self.institution.pk,
             'admission_class': '6',
@@ -214,5 +221,5 @@ class SpecialExamResultTests(TestCase):
             'special_result_enabled': 'on',
         }
         form = ExamForm(data=form_data)
-        self.assertFalse(form.is_valid())
-        self.assertIn('special_result_enabled', form.errors)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertFalse(form.cleaned_data['special_result_enabled'])
