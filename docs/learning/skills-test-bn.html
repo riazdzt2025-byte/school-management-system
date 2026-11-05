@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>আইটি কো-অর্ডিনেটর যোগ্যতা যাচাই — ৪৮ প্রশ্ন</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#12263f;--navy2:#1d3a5f;--ink:#1b2430;--muted:#5d6b7a;--line:#dbe3ec;
+        --bg:#f5f7fa;--ok:#13704a;--okbg:#e9f7ef;--bad:#a3291f;--badbg:#fdeeec;--gold:#b3811f}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.7;
+       font-family:'Noto Sans Bengali','SolaimanLipi','Kalpurush','Inter',system-ui,sans-serif}
+  .wrap{max-width:880px;margin:0 auto;padding:28px 18px 80px}
+  header{background:var(--navy);color:#fff;border-radius:14px;padding:24px 26px;margin-bottom:18px}
+  header h1{margin:0 0 6px;font-size:22px;line-height:1.5}
+  header p{margin:0;color:#c9d6e5;font-size:13.5px}
+  .bar{position:sticky;top:0;z-index:9;background:rgba(245,247,250,.95);backdrop-filter:blur(6px);
+       padding:10px 0;display:flex;gap:12px;align-items:center;font-size:13px;color:var(--muted);flex-wrap:wrap}
+  .bar b{color:var(--navy)}
+  progress{flex:1;min-width:140px;height:8px;border-radius:99px;overflow:hidden}
+  section.dom{margin:26px 0 10px}
+  section.dom > h2{font-size:16px;color:var(--navy);margin:0 0 4px;font-weight:700}
+  section.dom > .hint{font-size:12.5px;color:var(--muted);margin:0 0 12px}
+  .q{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:12px 0}
+  .q .n{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.3px}
+  .q p{font-weight:600;margin:2px 0 10px;font-size:15px}
+  label{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+  label:hover{background:#f4f7fb}
+  input[type=radio]{margin-top:6px;accent-color:#12263f}
+  .exp{display:none;margin-top:10px;padding:10px 13px;border-radius:8px;font-size:13.5px;background:#f4f7fb;border-left:3px solid var(--navy)}
+  .q.right{border-color:#b6e0c6;background:var(--okbg)} .q.right .exp{display:block;border-left-color:var(--ok)}
+  .q.wrong{border-color:#f0c5be;background:var(--badbg)} .q.wrong .exp{display:block;border-left-color:var(--bad)}
+  .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;background:#e8eef7;color:var(--navy2);margin-left:6px}
+  .actions{position:sticky;bottom:0;background:linear-gradient(to top,#f5f7fa 70%,rgba(245,247,250,0));padding:14px 0 0;text-align:center}
+  button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:13px 26px;cursor:pointer;background:var(--navy);color:#fff;font-size:15px}
+  button.ghost{background:#eef2f7;color:var(--navy)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  #result{display:none;background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;margin:22px 0}
+  #result h2{margin:0 0 4px;color:var(--navy);font-size:20px}
+  .score{font-family:'Inter',sans-serif;font-size:40px;font-weight:700;color:var(--navy);line-height:1.1}
+  .lvl{display:inline-block;background:var(--navy);color:#fff;padding:4px 14px;border-radius:99px;font-size:13px;font-weight:700;margin:6px 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:14px 0}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left}
+  th{background:#eef2f7;color:var(--navy)}
+  td.num{text-align:right;font-family:'Inter',sans-serif;font-weight:600}
+  .meter{height:8px;border-radius:99px;background:#e6ecf3;overflow:hidden;min-width:70px}
+  .meter i{display:block;height:100%;border-radius:99px;background:var(--ok)}
+  .meter i.mid{background:var(--gold)} .meter i.low{background:var(--bad)}
+  .note{background:#f0f4f9;border-left:4px solid var(--navy);padding:12px 16px;border-radius:0 8px 8px 0;font-size:13.5px;margin:14px 0}
+  ul{margin:6px 0;padding-left:20px} li{margin:4px 0}
+  code{background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:13px}
+  @media print{.bar,.actions,button{display:none} .q .exp{display:block} body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>আইটি কো-অর্ডিনেটর যোগ্যতা যাচাই</h1>
+  <p>৪৮টি প্রশ্ন · ৬টি বিষয় · নিজের সিস্টেমের বাস্তব উদাহরণ · সময় ৪০–৬০ মিনিট। বই বন্ধ করে দিন — এটা পরীক্ষা, নিজের সাথে সৎ থাকলে সবচেয়ে বেশি কাজে দেবে।</p>
+</header>
+
+<div class="bar">
+  <span>উত্তর দেওয়া হয়েছে: <b id="count">০</b> / ৪৮</span>
+  <progress id="prog" max="48" value="0"></progress>
+  <span id="pctbar">০%</span>
+</div>
+
+<div class="note">
+  <b>কীভাবে দেবেন:</b> অনুমান করে দিন, ফাঁকা রাখবেন না — ভুল উত্তরই আপনাকে বলে দেবে কোথায় পড়তে হবে। শেষে প্রতিটি উত্তরের ব্যাখ্যা ও বিষয়ভিত্তিক স্কোর দেখতে পাবেন। এই ফাইলটি সম্পূর্ণ অফলাইনে কাজ করে, কোনো উত্তর কোথাও পাঠায় না।
+</div>
+
+<form id="quiz" onsubmit="return false"></form>
+
+<div class="actions">
+  <button id="submitBtn" onclick="grade()" disabled>ফলাফল দেখুন</button>
+  <button class="ghost" onclick="location.reload()">আবার শুরু</button>
+</div>
+
+<div id="result"></div>
+</div>
+
+<script>
+const Q = [
+/* ---------- ১. Django ও Python ---------- */
+{d:"Django ও Python", q:"<code>makemigrations</code> আর <code>migrate</code> — কোনটা কী করে?", o:["makemigrations ডেটাবেসে টেবিল বানায়, migrate ফাইল লেখে","makemigrations মডেল দেখে মাইগ্রেশন ফাইল লেখে, migrate সেটা ডেটাবেসে প্রয়োগ করে","দুটোই একই কাজ করে","makemigrations ডেটা ব্যাকআপ নেয়"], a:1, e:"মডেল বদলালে আগে <code>makemigrations</code> (ফাইল তৈরি), তারপর <code>migrate</code> (প্রয়োগ)। সার্ভারে শুধু migrate চলে, তাই মাইগ্রেশন ফাইল কমিট করতেই হয়।"},
+{d:"Django ও Python", q:"সিস্টেমে শিক্ষার্থীর নতুন ফিল্ড (যেমন রক্তের গ্রুপ) যোগ করার সঠিক ধাপ কোনটা?", o:["সরাসরি ডেটাবেসে কলাম যোগ করা","models.py-তে ফিল্ড লেখা → makemigrations → migrate → টেস্ট","শুধু সার্ভার রিস্টার্ট","ফর্মে যোগ করলেই হবে"], a:1, e:"তিনটি জায়গা লাগে: মডেল (ডেটা), ফর্ম/টেমপ্লেট (ইনপুট), টেস্ট (প্রমাণ)। ডেটাবেসে হাতে কলাম যোগ করলে পরের মাইগ্রেশনে অমিল হবে।"},
+{d:"Django ও Python", q:"<code>select_related()</code> কখন ব্যবহার করবেন?", o:["ManyToMany দ্রুত করতে","ForeignKey/OneToOne জোড়ার জন্য একই কোয়েরিতে JOIN করতে","পেজিনেশন করতে","টেস্ট দ্রুত করতে"], a:1, e:"লিস্টে প্রতিটি সারির জন্য শিক্ষার্থী→ইনস্টিটিউশন আলাদা কোয়েরি হলে সেটাই N+1। <code>select_related</code> এক কোয়েরিতে JOIN করে; উল্টো দিকের (reverse FK/M2M) জন্য <code>prefetch_related</code>।"},
+{d:"Django ও Python", q:"POST ফর্মে <code>{% csrf_token %}</code> বাদ পড়লে সাধারণত কী হয়?", o:["ফর্ম স্বাভাবিকভাবে জমা হয়","403 Forbidden (CSRF verification failed)","500 Server Error","কোনো পরিবর্তন হয় না"], a:1, e:"আপনার লগইন পেজে CSRF 403 দেখার কারণও একই পরিবার — প্রক্সির পেছনে <code>CSRF_TRUSTED_ORIGINS</code>/<code>TRUST_FORWARDED_PROTO</code>।"},
+{d:"Django ও Python", q:"<code>transaction.atomic()</code> কী নিশ্চিত করে?", o:["ভেতরের সব ধাপ সফল না হলে কিছুই সেভ হবে না (rollback)","কোয়েরি দ্রুত হবে","স্বয়ংক্রিয় ব্যাকআপ হবে","অডিট লগ লেখা হবে"], a:0, e:"ভর্তি → রিসিট → স্ট্যাটাস — একটার পর একটা ধাপ; মাঝপথে ফেল করলে অর্ধেক ডেটা থেকে যাওয়া আটকায়।"},
+{d:"Django ও Python", q:"দুই অফিস একই সময়ে শেষ সিটে ভর্তি করলে সিট-সংখ্যা ছাড়িয়ে যাচ্ছে — কোডে কী দিয়ে আটকাবেন?", o:["<code>select_for_update()</code> + <code>atomic()</code> দিয়ে সারি লক","<code>.filter().update()</code>","<code>bulk_create()</code>","<code>cache.clear()</code>"], a:0, e:"দুটো রিকোয়েস্ট একসাথে একই সারি পড়ে দুজনেই 'জায়গা আছে' ভাবে — এটাই race condition। সারি লক করে একজনের পর একজনকে ঢোকাতে হয়। (আপনার প্রজেক্টে capacity lock এভাবেই করা হয়েছে।)"},
+{d:"Django ও Python", q:"<code>get_object_or_404()</code> ব্যবহারের সুবিধা কী?", o:["ডেটা না মিললে সরাসরি 404 রেসপন্স, আলাদা exception handling লাগে না","ডেটা দ্রুত আসে","স্বয়ংক্রিয় ক্যাশ করে","পারমিশন চেক করে"], a:0, e:"পারমিশন চেক করে না — সেটা আলাদা দায়িত্ব। ভুল আইডি দিয়ে কেউ অন্যের ডেটা দেখতে পারে কি না, সেটা টেস্টে যাচাই করুন।"},
+{d:"Django ও Python", q:"<code>python manage.py backup_data</code>-এর মতো কাস্টম কমান্ড ফাইল কোথায় রাখতে হয়?", o:["<app>/management/commands/ ফোল্ডারে","<app>/views/ এ","প্রজেক্ট রুটে যেকোনো নামে","templates/ এ"], a:0, e:"ঠিক এই কারণে আপনার রিপোতে <code>students/management/commands/</code> ফোল্ডারে <code>backup_data.py</code>, <code>restore_backup.py</code> ইত্যাদি আছে।"},
+
+/* ---------- ২. ডেটাবেস ও SQL ---------- */
+{d:"ডেটাবেস ও SQL", q:"৩,৫০০ শিক্ষার্থীর লিস্টে প্রতিটি সারির জন্য আলাদা কোয়েরি চলছে। এই সমস্যার নাম কী?", o:["N+1 query সমস্যা","Deadlock","Race condition","Index bloat"], a:0, e:"১টি কোয়েরি + Nটি অতিরিক্ত = N+1। সমাধান <code>select_related</code>/<code>prefetch_related</code>। মাপার উপায়: কোয়েরি সংখ্যা গোনা (<code>assertNumQueries</code> বা <code>connection.queries</code>)।"},
+{d:"ডেটাবেস ও SQL", q:"ইনডেক্স সাধারণত কী করে?", o:["পড়া দ্রুত করে, লেখা কিছুটা ধীর করে","সবকিছু দ্রুত করে","ডেটার সাইজ কমায়","ব্যাকআপ দ্রুত করে"], a:0, e:"প্রতিটি INSERT/UPDATE-এ ইনডেক্সও আপডেট হয়। তাই 'সব কলামে ইনডেক্স দিলাম' ভুল — যেখানে খোঁজা/সাজানো হয় সেখানে দিন।"},
+{d:"ডেটাবেস ও SQL", q:"SQLite-এ একসাথে অনেক ব্যবহারকারী লিখলে সবচেয়ে বড় সমস্যা কী?", o:["ডেটা এনক্রিপ্ট হয় না","write lock — 'database is locked' এরর ও অপেক্ষা","ফাইল খুব বড় হয়ে যায়","সব কোয়েরি ধীরে চলে"], a:1, e:"একসাথে একজনই লিখতে পারে। ৩,৫০০ শিক্ষার্থী + ২৪০ কর্মীর ভর্তি/হাজিরা/বেতন একসাথে চললে এটাই বাস্তব সমস্যা — তাই Postgres-এ যাওয়া জরুরি।"},
+{d:"ডেটাবেস ও SQL", q:"PostgreSQL-এ কোন কোয়েরি ধীর হচ্ছে তা খুঁজতে?", o:["<code>EXPLAIN ANALYZE</code>","<code>VACUUM</code>","<code>pg_dump</code>","<code>COPY</code>"], a:0, e:"EXPLAIN ANALYZE দেখায় কোথায় সময় যাচ্ছে — index scan নাকি full table scan, কত সারি পড়ছে।"},
+{d:"ডেটাবেস ও SQL", q:"চলমান SQLite ফাইল কপি করে ব্যাকআপ নেওয়া কেন ঝুঁকিপূর্ণ?", o:["কপি ধীর হয়","লেখার সময় কপি করলে অর্ধসম্পূর্ণ/অসামঞ্জস্য ফাইল হতে পারে","ফাইল সাইজ বাড়ে","SQLite কপি করতে দেয় না"], a:1, e:"সঠিক উপায় <code>sqlite3 db.sqlite3 \".backup out.sqlite3\"</code> বা অ্যাপের নিজের <code>backup_data</code> কমান্ড। আর সবচেয়ে ভালো — Postgres-এ <code>pg_dump</code>।"},
+{d:"ডেটাবেস ও SQL", q:"<code>on_delete=models.CASCADE</code> মানে কী?", o:["প্যারেন্ট মুছলে চাইল্ড রেকর্ডও মুছে যায়","চাইল্ড থাকলে প্যারেন্ট মুছবে না","ফিল্ড NULL হয়ে যায়","মুছতে গেলে এরর দেয়"], a:0, e:"শিক্ষার্থী মুছলে তার ExamMark/RECEIPT মুছে যাবে কি না — এই সিদ্ধান্তটাই। তাই মুছুন কম, <b>আর্কাইভ</b> করুন বেশি (আপনার সিস্টেমে archived_at আছে)।"},
+{d:"ডেটাবেস ও SQL", q:"একই রোল নম্বর একই শ্রেণিতে দুইবার ঢোকা ডেটাবেস স্তরে আটকাতে?", o:["unique constraint (যেমন unique_together)","সাধারণ ইনডেক্স","foreign key","order_by"], a:0, e:"অ্যাপে চেক + ডেটাবেসে unique — দুটোই লাগে, কারণ অ্যাপের চেক দুই ইউজার একসাথে টপকে যেতে পারে।"},
+{d:"ডেটাবেস ও SQL", q:"একটি পেজে ৪,০০০ শিক্ষার্থীর সারি একসাথে দেখানো কেন খারাপ?", o:["সার্ভার ধীর, মেমরি বেশি, ব্রাউজার জমে যায়","ডেটা নষ্ট হয়","নিরাপত্তা ঝুঁকি তৈরি হয়","কোনো সমস্যা নেই"], a:0, e:"তাই পেজিনেশন লাগে (আপনার সিস্টেমে ডিফল্ট ১০০) — আর পূর্ণ তালিকা দরকার হলে Excel এক্সপোর্ট।"},
+
+/* ---------- ৩. লিনাক্স ও ডিপ্লয় ---------- */
+{d:"লিনাক্স ও ডিপ্লয়", q:"ওয়েবসাইট 502 Bad Gateway দেখাচ্ছে — প্রথমে সবচেয়ে সম্ভাব্য কারণ কী?", o:["ব্রাউজার ক্যাশ পুরোনো","রিভার্স প্রক্সি (Nginx/Render) অ্যাপে পৌঁছাতে পারছে না — অ্যাপ ক্র্যাশ বা বন্ধ","ডোমেইনের মেয়াদ শেষ","DNS ভুল"], a:1, e:"502 মানে 'প্রক্সি ঠিক আছে, পেছনের অ্যাপ নেই'। প্রথম কাজ: অ্যাপের লগ দেখুন (crash হলে সাধারণত traceback থাকে), প্রসেস চালু আছে কি না দেখুন।"},
+{d:"লিনাক্স ও ডিপ্লয়", q:"<code>SECRET_KEY</code>, ডেটাবেস পাসওয়ার্ড, বাকেট কী — কোথায় থাকা উচিত?", o:["settings.py-তে","এনভায়রনমেন্ট ভ্যারিয়েবলে (.env লোকালে, হোস্টিং ড্যাশবোর্ডে প্রোডাকশনে) — git-এ নয়","README-তে","টেমপ্লেটে"], a:1, e:"আপনার সেটিংস ঠিক এইভাবেই বানানো — <code>SECRET_KEY</code> env var থেকে, আর ডিফল্ট ফলের কী দিয়ে DEBUG=False চালাতে দেয় না।"},
+{d:"লিনাক্স ও ডিপ্লয়", q:"<code>python manage.py check --deploy</code> কেন চালাবেন?", o:["DEBUG=True, HTTPS কুকি, HSTS, SECRET_KEY-র মতো প্রোডাকশন ঝুঁকি ধরতে","ডেটা ব্যাকআপ নিতে","টেস্ট চালাতে","মাইগ্রেশন তৈরি করতে"], a:0, e:"এটি ত্রুটি নয়, সতর্কবার্তা দেয়। ডিপ্লয়ের আগে চালানো ভালো অভ্যাস।"},
+{d:"লিনাক্স ও ডিপ্লয়", q:"সার্ভারের ডিস্ক ভরে গেছে সন্দেহ হলে প্রথম কোন কমান্ড?", o:["<code>df -h</code> (তারপর <code>du -sh</code>)","<code>ls -la</code>","<code>top</code>","<code>ping google.com</code>"], a:0, e:"বড় কারণ: লগ ফাইল, ব্যাকআপ কপি, আপলোড করা ছবি, <code>__pycache__</code>। ডিস্ক ভরে গেলে অ্যাপ লেখতে গিয়ে 500 দেয় — লগেও লেখা বন্ধ হয়ে যায়।"},
+{d:"লিনাক্স ও ডিপ্লয়", q:"cron এক্সপ্রেশন <code>0 2 * * *</code> মানে?", o:["প্রতি ২ ঘণ্টায়","প্রতিদিন রাত ২:০০টায়","প্রতি ২ মিনিটে","মাসে একবার"], a:1, e:"আপনার <code>render.cron.yaml</code>-এ ডেইলি ব্যাকআপ ঠিক এই সময়েই সেট করা। মনে রাখুন — সার্ভারের সময় সাধারণত UTC, তাই ২:০০ UTC = বাংলাদেশে সকাল ৮টা।"},
+{d:"লিনাক্স ও ডিপ্লয়", q:"Render-এর ফ্রি ইনস্ট্যান্সে অ্যাপ কিছুক্ষণ কেউ ব্যবহার না করলে কী হয়?", o:["অ্যাপ মুছে যায়","স্লিপ করে; পরের রিকোয়েস্টে জাগতে ৩০–৫০ সেকেন্ড লাগে","ডেটাবেস রিসেট হয়","ব্যাকআপ বন্ধ হয়"], a:1, e:"আরও গুরুত্বপূর্ণ: ফ্রি টিয়ারে ডিস্ক স্থায়ী নয় — রিডিপ্লয়ে SQLite ও আপলোড করা ছবি হারাতে পারে।"},
+{d:"লিনাক্স ও ডিপ্লয়", q:"gunicorn কী কাজ করে?", o:["ডেটাবেস চালায়","Django অ্যাপকে প্রোডাকশনে চালানোর WSGI সার্ভার হিসেবে কাজ করে","রিভার্স প্রক্সি","ব্যাকগ্রাউন্ড টাস্ক কিউ"], a:1, e:"প্রোডাকশনে <code>runserver</code> কখনো নয় — সেটা শুধু ডেভেলপমেন্টের জন্য, নিরাপদও নয়, দ্রুতও নয়।"},
+{d:"লিনাক্স ও ডিপ্লয়", q:"লগে <code>OperationalError: no such table: students_student</code> — সবচেয়ে সম্ভাব্য কারণ?", o:["মাইগ্রেশন চালানো হয়নি (নতুন/খালি ডেটাবেসে)","ইন্টারনেট নেই","টেমপ্লেট ফাইল ভুল","পাসওয়ার্ড ভুল"], a:0, e:"নতুন ডেটাবেসে <code>migrate</code> চালাতে ভুলে যাওয়া, বা ভুল ডেটাবেসে (<code>DATABASE_URL</code>) কানেক্ট হওয়া।"},
+
+/* ---------- ৪. নিরাপত্তা ও ডেটা সুরক্ষা ---------- */
+{d:"নিরাপত্তা ও ডেটা", q:"ব্যবহারকারীর পাসওয়ার্ড ডেটাবেসে কীভাবে রাখা উচিত?", o:["প্লেইন টেক্সট","হ্যাশ (যেমন PBKDF2 — Django ডিফল্টে যা করে)","base64","এনক্রিপ্টেড জিপ"], a:1, e:"হ্যাশ উল্টো করা যায় না। তাই 'পাসওয়ার্ড দেখে দিন' কখনো সম্ভব নয় — শুধু রিসেট।"},
+{d:"নিরাপত্তা ও ডেটা", q:"<code>SECRET_KEY</code> ফাঁস হয়ে গেলে (যেমন পাবলিক রিপোতে কমিট) কী করবেন?", o:["কিছু করার নেই","নতুন কী তৈরি করে রোটেট করুন; পুরোনো সেশন/টোকেন বাতিল হবে ধরুন","শুধু পাসওয়ার্ড বদলাবেন","ডেটাবেস ডিলিট করবেন"], a:1, e:"আপনার settings-এর কমেন্টেও লেখা আছে — পুরোনো কী রোটেট করা হয়েছে। কমিট ইতিহাসেও পুরোনো কী থেকে যায়, তাই রোটেশনই একমাত্র সমাধান।"},
+{d:"নিরাপত্তা ও ডেটা", q:"Django ORM ব্যবহার করলে SQL ইনজেকশনের ঝুঁকি কেমন?", o:["সাধারণত প্রতিরোধ হয়; তবে <code>raw()</code>/<code>extra()</code>/স্ট্রিং জোড়া দিলে ঝুঁকি ফিরে আসে","কখনোই হয় না","সবসময় হয়","শুধু MySQL-এ হয়"], a:0, e:"ORM প্যারামিটার আলাদা করে পাঠায়। বিপদ তখনই যখন কোয়েরিতে সরাসরি ইউজারের লেখা জোড়া দেন।"},
+{d:"নিরাপত্তা ও ডেটা", q:"টেমপ্লেটে ইউজারের লেখা <code>|safe</code> দিয়ে দেখালে কোন ঝুঁকি?", o:["XSS (ব্রাউজারে ক্ষতিকর স্ক্রিপ্ট চলা)","CSRF","SQL injection","DDoS"], a:0, e:"Django ডিফল্টে autoescape করে — <code>|safe</code> বা <code>mark_safe</code> দিলে সেই সুরক্ষা নিজে হাতে খুলে ফেলছেন।"},
+{d:"নিরাপত্তা ও ডেটা", q:"'Least privilege' নীতি মানে কী?", o:["সবাইকে অ্যাডমিন দেওয়া","প্রত্যেককে শুধু তার কাজের জন্য যতটুকু দরকার ততটুকু অনুমতি","সব অনুমতি একজনকে কেন্দ্রীভূত করা","কাউকে কোনো অনুমতি না দেওয়া"], a:1, e:"আপনার সিস্টেমে ডিপার্টমেন্ট (অফিস/পরীক্ষা/হিসাব) + ইনস্টিটিউশনভিত্তিক অ্যাক্সেস — এটাই বাস্তব প্রয়োগ। বছরে একবার কে কী দেখছে তা রিভিউ করুন।"},
+{d:"নিরাপত্তা ও ডেটা", q:"অডিট লগ সবচেয়ে বেশি কাজে দেয় কোথায়?", o:["মার্কেটিংয়ে","কে, কখন, কোন ফিল্ড পুরোনো মান থেকে নতুন মানে বদলেছে তা পুনর্গঠনে","সাইটের গতি বাড়াতে","ব্যাকআপ নিতে"], a:1, e:"শিক্ষক বললেন 'নম্বর তো আমি এটাই দিয়েছি' — অডিট লগই সত্য বলে দেয়। এটাই আপনাকে অভিযোগ থেকে বাঁচায়।"},
+{d:"নিরাপত্তা ও ডেটা", q:"কেউ বারবার লগইনে ভুল পাসওয়ার্ড দিলে কী করা উচিত?", o:["পেজ রিফ্রেশ করতে বলা","রেট লিমিটিং + নির্দিষ্টসংখ্যক ব্যর্থ চেষ্টার পর ব্লক/সতর্কতা","শুধু বড় ফন্ট","শুধু ক্যাপচা"], a:1, e:"এটা brute-force আটকায়। আপনার সিস্টেমে রেট লিমিট আছে — সেটা কতটা কাজ করছে বছরে একবার যাচাই করুন।"},
+{d:"নিরাপত্তা ও ডেটা", q:"ব্যাকআপ ফাইল ক্লাউড/বাকেটে রাখলে অন্তত কী করতে হবে?", o:["এনক্রিপশন + অ্যাক্সেস নিয়ন্ত্রণ (পাবলিক লিংক নয়)","সবাইকে লিংক দেওয়া","ইমেইলে পাঠানো","শুধু ডেস্কটপে রাখা"], a:0, e:"ব্যাকআপে ৩,৫০০ শিক্ষার্থীর নাম, অভিভাবকের ফোন, ফলাফল থাকে — সেটা অনিরাপদ হলে সিস্টেমের নিরাপত্তা সব বৃথা।"},
+
+/* ---------- ৫. Git, টেস্ট ও ডিবাগিং ---------- */
+{d:"Git ও টেস্ট", q:"ভুল কোড প্রোডাকশনে চলে গেছে — সবচেয়ে নিরাপদ সমাধান?", o:["<code>git reset --hard</code> করে ফোর্স পুশ","<code>git revert</code> দিয়ে উল্টো কমিট তৈরি","ফাইলগুলো হাতে মুছে ফেলা","সার্ভার রিস্টার্ট"], a:1, e:"revert নতুন কমিট যোগ করে ইতিহাস অটুট রাখে — দল/ভবিষ্যতের জন্য নিরাপদ। reset+force push অন্যদের কাজ নষ্ট করে।"},
+{d:"Git ও টেস্ট", q:"একটি বাগ পাওয়ার পর প্রথম কাজ কী?", o:["সাথে সাথে কোড বদলানো","বাগটি ধরতে পারে এমন একটি ফেল-করা টেস্ট লেখা","ডেটাবেস রিসেট","সার্ভার রিস্টার্ট"], a:1, e:"টেস্ট আগে লিখলে (ক) বাগটা সত্যিই আছে তা প্রমাণ হয়, (খ) ঠিক করার পর প্রমাণ থাকে, (গ) ভবিষ্যতে ফিরে এলে ধরা পড়ে।"},
+{d:"Git ও টেস্ট", q:"<code>python manage.py test students</code> কী করে?", o:["আসল ডেটাবেসে টেস্ট চালায়","আলাদা অস্থায়ী টেস্ট ডেটাবেস তৈরি করে টেস্ট চালায়, শেষে মুছে ফেলে","ডেটা মাইগ্রেট করে","সাইট চালু করে"], a:1, e:"তাই আসল ডেটার ক্ষতি হয় না। তবে মাইগ্রেশন ফাইল হারানো/ভুল হলে টেস্টও ফেল করবে — সেটাই ভালো সংকেত।"},
+{d:"Git ও টেস্ট", q:"CI (যেমন GitHub Actions) মূলত কী করে?", o:["প্রতিবার পুশে স্বয়ংক্রিয়ভাবে টেস্ট ও চেক চালায়, ফল দেখায়","শুধু কোড ফরম্যাট করে","শুধু ডিপ্লয় করে","ব্যাকআপ নেয়"], a:0, e:"আপনার রিপোতে CI দুই ডেটাবেসে (SQLite ও PostgreSQL) টেস্ট চালায় — এটাই সবচেয়ে বড় ভরসার প্রমাণ, যেটা ক্লায়েন্ট/চাকরিদাতাকে দেখাতে পারেন।"},
+{d:"Git ও টেস্ট", q:"ভুলে <code>.env</code> কমিট হয়ে গেলে সঠিক প্রতিক্রিয়া?", o:["কিছু করার নেই","কী/পাসওয়ার্ড রোটেট করুন, <code>.gitignore</code>-এ যোগ করুন, প্রয়োজন হলে ইতিহাস থেকে সরান","শুধু ফাইল ডিলিট","ব্রাঞ্চ ডিলিট"], a:1, e:"কমিট ইতিহাস = পাবলিক। ফাইল মুছে দিলেও পুরোনো কমিটে থেকে যায় — তাই প্রথম কাজ: কী বদলানো (rotate)।"},
+{d:"Git ও টেস্ট", q:"টেস্ট ফেল করলে প্রথমে কী দেখবেন?", o:["পুরো এরর মেসেজ — কোন ফাইল, কোন লাইন, কোন assertion ফেল করেছে","শুধু সার্ভার রিস্টার্ট","সাথে সাথে কোড মুছে ফেলা",".env বদলানো"], a:0, e:"এরর মেসেজ পড়ার অভ্যাসটাই সবচেয়ে বড় দক্ষতা। শেষ লাইনটি সাধারণত আসল কারণ বলে, তার উপরে call stack থাকে।"},
+{d:"Git ও টেস্ট", q:"নতুন ফিচার যোগ করার সঠিক পদ্ধতি?", o:["সরাসরি main-এ পুশ","ছোট ব্রাঞ্চ → ফিচার + টেস্ট → PR → রিভিউ → merge","ডেটাবেসে হাতে যোগ","শুধু চ্যাটে জানানো"], a:1, e:"ছোট ব্রাঞ্চ মানে ভুল হলে ফেরানো সহজ, আর একসাথে ২০টি ফাইল বদলের ভয় থাকে না।"},
+{d:"Git ও টেস্ট", q:"প্রোডাকশনে সমস্যা খুঁজতে <code>print()</code>-এর চেয়ে ভালো উপায়?", o:["<code>print()</code>-ই সবচেয়ে ভালো","<code>logging</code> মডিউল দিয়ে লগ লেভেল (INFO/WARNING/ERROR) সহ লেখা","echo","সমস্যা গোপন রাখা"], a:1, e:"প্রিন্ট স্ক্রিনে যায়, রিস্টার্টে হারায়। লগ ফাইলে থাকে, সময় ও স্তর থাকে, পরে খোঁজা যায়।"},
+
+/* ---------- ৬. আইটি কো-অর্ডিনেটরের কাজ ---------- */
+{d:"আইটি কো-অর্ডিনেটর", q:"শিক্ষক বললেন 'আমার ক্লাসের একজনের GPA ভুল দেখাচ্ছে' — প্রথম ধাপ?", o:["সরাসরি ডেটাবেসে হাত দেওয়া","রোল/শ্রেণি/বিষয় যাচাই → নম্বর বণ্টনের সেটিং ও নম্বর এন্ট্রি দেখা → অডিট লগে কে কী বদলেছে তা দেখা","সিস্টেম রিস্টার্ট","সবাইকে ইমেইল"], a:1, e:"ক্রমটা মনে রাখুন: রিপোর্ট (কী দেখাচ্ছে) → উৎস ডেটা (নম্বর, বণ্টন) → পরিবর্তনের ইতিহাস। ডেটাবেসে হাত দেওয়া শেষ উপায়, এবং সবসময় ব্যাকআপের পরে।"},
+{d:"আইটি কো-অর্ডিনেটর", q:"পরীক্ষার ফল প্রকাশের দিন সকালে ইন্টারনেট নেই, অভিভাবকরা ফল চাইছেন — সঠিক প্রস্তুতি কোনটা?", o:["কোনো প্রস্তুতিই নেওয়া যায় না","আগেই PDF/প্রিন্ট কপি ও ফলাফলের অফলাইন কপি রাখা, আর মোবাইল ডেটা/অন্য লাইন ভাড়া রাখা","শুধু অপেক্ষা করা","ফল প্রকাশ পিছিয়ে দেওয়া"], a:1, e:"পরিকল্পনা আগে, সংকটের সময়ে নয়। প্রতিটি বড় দিনের (ভর্তি, ফল, বেতন) জন্য 'যদি ইন্টারনেট/কারেন্ট না থাকে' — এই এক-পাতার প্ল্যান রাখুন।"},
+{d:"আইটি কো-অর্ডিনেটর", q:"কেউ ফোনে ৩,৫০০ শিক্ষার্থীর সম্পূর্ণ তালিকা (অভিভাবকের নম্বরসহ) চাইলেন?", o:["সাথে সাথে পাঠিয়ে দেওয়া","কর্তৃপক্ষের অনুমোদন নিয়ে, শুধু প্রয়োজনীয় অংশ, কেন দরকার তা লিখে রাখা","সবার গ্রুপে পোস্ট করা","পাসওয়ার্ড দিয়ে পাঠানো"], a:1, e:"নাবালকদের তথ্য — 'কে চাইল' নয়, 'কেন ও কার অনুমতিতে' সেটাই প্রশ্ন। একটি রেজিস্টার রাখুন: কে, কখন, কী, কেন।"},
+{d:"আইটি কো-অর্ডিনেটর", q:"একজন কর্মচারী চাকরি ছেড়ে চলে গেছেন — সিস্টেমে কী করবেন?", o:["অ্যাকাউন্ট নিষ্ক্রিয় করা (মুছবেন না), অ্যাক্সেস রিভিউ করা, অডিট লগ রেখে দেওয়া","পাসওয়ার্ড অপরিবর্তিত রেখে দেওয়া","শুধু জানিয়ে দেওয়া","কিছু না"], a:0, e:"মুছে ফেললে অডিট লগের সংযোগ হারায় ('কে কাজটা করেছিল' জানা যায় না)। নিষ্ক্রিয় করাই নিরাপদ ও প্রমাণ-বান্ধব।"},
+{d:"আইটি কো-অর্ডিনেটর", q:"প্রিন্সিপাল নতুন একটি ফিচার চাইলেন — আপনার প্রথম কাজ?", o:["সাথে সাথে বানিয়ে ফেলা","লিখিতভাবে চাহিদা স্পষ্ট করা → কত সময়/কত ঝুঁকি/কত খরচ → অগ্রাধিকার ঠিক করা","'সম্ভব না' বলা","অন্য কারও উপর ছেড়ে দেওয়া"], a:1, e:"'পাঁচ মিনিটের কাজ' ভেবে শুরু করে তিন দিন লাগলে বিশ্বাস কমে। আগে এক লাইনে লিখে নিন: কী, কেন, কখন দরকার, কী বদলাবে।"},
+{d:"আইটি কো-অর্ডিনেটর", q:"ব্যবহারকারীরা বলছেন 'সিস্টেম ধীর' — কী করবেন?", o:["মনে করবেন ইন্টারনেট খারাপ","প্রমাণ সংগ্রহ: কোন পেজ, কত সময়, কত কোয়েরি, কখন (একই সময়ে কতজন)","সাথে সাথে সার্ভার আপগ্রেড","অভিযোগ উপেক্ষা"], a:1, e:"সংখ্যা ছাড়া সমাধান করা যায় না — আর সংখ্যা থাকলে 'ধীর লাগছে' বনাম 'আসলে ধীর' এর পার্থক্যও বোঝা যায়।"},
+{d:"আইটি কো-অর্ডিনেটর", q:"'আমাদের ব্যাকআপ আছে' — এই কথাটি কখন সত্য?", o:["ফাইল তৈরিই হলে","একবার সত্যিই রিস্টোর করে দেখা হলে","প্রতিদিন হলে","ক্লাউডে থাকলে"], a:1, e:"টেস্ট না করা ব্যাকআপ = আশা। তাই বছরে অন্তত দুইবার restore drill করুন — আপনার রিপোতে এর কমান্ড ও গাইড আছে।"},
+{d:"আইটি কো-অর্ডিনেটর", q:"শিক্ষকদের প্রশিক্ষণে সবচেয়ে কার্যকর কোনটা?", o:["এক ঘণ্টা লেকচার","তাদের নিজের ক্লাস-বিষয়ের উদাহরণ দিয়ে ছোট ছোট ধাপে হাতে-কলমে, সাথে ভিডিও রেফারেন্স","শুধু ম্যানুয়াল দেওয়া","শুধু ইমেইলে লিখে পাঠানো"], a:1, e:"প্রশিক্ষণের পর ২ সপ্তাহের মধ্যে ছোট অনুশীলনী দিন — না হলে ৮০% ভুলে যাবে। এই কাজটাই আপনার ভূমিকাকে 'টেকনিশিয়ান' থেকে 'কো-অর্ডিনেটর' বানায়।"}
+];
+
+const DOMAINS = ["Django ও Python","ডেটাবেস ও SQL","লিনাক্স ও ডিপ্লয়","নিরাপত্তা ও ডেটা","Git ও টেস্ট","আইটি কো-অর্ডিনেটর"];
+const NEXT = {
+  "Django ও Python":"মডিউল ২ (সপ্তাহ ২–৬): Python মৌলিক + Django request→view→template→model। ল্যাব ৬–৯।",
+  "ডেটাবেস ও SQL":"মডিউল ৩ (সপ্তাহ ৭–১০): SQL ক্র্যাশ কোর্স + ORM কোয়েরি + N+1 শিকার। ল্যাব ৫, ১০, ১৭।",
+  "লিনাক্স ও ডিপ্লয়":"মডিউল ৪ (সপ্তাহ ১১–১৪): Linux কমান্ড, লগ পড়া, বাক্য-নিরাপত্তা, Postgres/S3 মাইগ্রেশন। ল্যাব ১১–১৬।",
+  "নিরাপত্তা ও ডেটা":"মডিউল ৫ (সপ্তাহ ৯–১৪ জুড়ে): OWASP টপ ১০ পড়া, check --deploy, পারমিশন রিভিউ, ব্যাকআপ এনক্রিপশন। ল্যাব ১২, ১৫, ১৬।",
+  "Git ও টেস্ট":"মডিউল ৬ (সপ্তাহ ১৫–১৮): Git শাখা-প্রবাহ, টেস্ট ড্রাইভেন ডেভেলপমেন্ট, CI। ল্যাব ২, ১৮, ১৯।",
+  "আইটি কো-অর্ডিনেটর":"মডিউল ৭ (সপ্তাহ ১–২৪ জুড়ে): রানবুক, SLA, তথ্য-অনুরোধ রেজিস্টার, প্রশিক্ষণ চক্র। ল্যাব ১৩, ২০ ও 'প্রথম ৭ দিন' চেকলিস্ট।"
+};
+
+// অপশনের ক্রম প্রতিবার এলোমেলো — নাহলে "সবসময় প্রথম অপশন" দিলেই পাস হয়ে যাবে
+function shuffle(a){ for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const ORDER = Q.map(q => shuffle(q.o.map((t, j) => ({ t, ok: j === q.a }))));
+
+const form = document.getElementById('quiz');
+let n = 0;
+DOMAINS.forEach(d => {
+  const left = Q.filter(x => x.d === d).length;
+  const sec = document.createElement('section');
+  sec.className = 'dom';
+  sec.innerHTML = `<h2>${d} <span class="tag">${left} প্রশ্ন</span></h2>`;
+  form.appendChild(sec);
+  Q.forEach((qq, i) => {
+    if (qq.d !== d) return;
+    n++;
+    const card = document.createElement('div');
+    card.className = 'q'; card.dataset.i = i;
+    let html = `<div class="n">প্রশ্ন ${n} / 48</div><p>${qq.q}</p>`;
+    ORDER[i].forEach((opt, j) => {
+      html += `<label><input type="radio" name="q${i}" value="${j}"> <span>${opt.t}</span></label>`;
+    });
+    html += `<div class="exp"><b>ব্যাখ্যা:</b> ${qq.e}</div>`;
+    card.innerHTML = html;
+    sec.appendChild(card);
+  });
+});
+
+const total = Q.length;
+const countEl = document.getElementById('count');
+const progEl = document.getElementById('prog');
+const pctEl = document.getElementById('pctbar');
+const btn = document.getElementById('submitBtn');
+const bn = s => String(s).replace(/[0-9]/g, dd => '০১২৩৪৫৬৭৮৯'[+dd]);
+
+form.addEventListener('change', () => {
+  let answered = 0;
+  Q.forEach((_, i) => { if (form.querySelector(`input[name="q${i}"]:checked`)) answered++; });
+  countEl.textContent = bn(answered);
+  progEl.value = answered;
+  const p = Math.round(answered / total * 100);
+  pctEl.textContent = bn(p) + '%';
+  btn.disabled = false;
+  btn.textContent = answered < total ? `ফলাফল দেখুন (আরও ${bn(total - answered)}টি বাকি)` : 'ফলাফল দেখুন';
+});
+
+function grade() {
+  const per = {}; DOMAINS.forEach(d => per[d] = {r:0, t:0});
+  let right = 0;
+  Q.forEach((qq, i) => {
+    const sel = form.querySelector(`input[name="q${i}"]:checked`);
+    const card = form.querySelector(`.q[data-i="${i}"]`);
+    per[qq.d].t++;
+    if (sel && ORDER[i][+sel.value].ok) { right++; per[qq.d].r++; card.classList.add('right'); }
+    else { card.classList.add('wrong'); }
+    const ci = ORDER[i].findIndex(o => o.ok);
+    card.querySelectorAll(`input[name="q${i}"]`)[ci].parentElement.style.fontWeight = '700';
+  });
+  const pct = Math.round(right / total * 100);
+  let lvl, desc;
+  if (pct < 40) { lvl = 'লেভেল ০ · অপারেটর'; desc = 'সিস্টেম চালাতে পারেন, কিন্তু সমস্যা এলে বুঝতে পারবেন না। এখনই সবচেয়ে জরুরি: ব্যাকআপ/রিস্টোর ড্রিল আর লগ পড়া শেখা। টাকা চাওয়ার আগে মডিউল ১–৩ শেষ করুন।'; }
+  else if (pct < 60) { lvl = 'লেভেল ১ · অ্যাডমিনিস্ট্রেটর'; desc = 'দৈনন্দিন ব্যবহার, ব্যবহারকারী ও রিপোর্ট সামলাতে পারবেন। এখন দরকার: কোয়েরি/ডেটাবেস বোঝা ও নিরাপত্তার বেসিক — যাতে বাগ ধরতে পারেন, শুধু রিপোর্ট না করেন।'; }
+  else if (pct < 80) { lvl = 'লেভেল ২ · মেইনটেইনার (ডেভেলপার ট্র্যাক)'; desc = 'ভালো ভিত্তি আছে — ছোট ফিচার/বাগ নিজে করতে পারবেন, AI-এর কোডও যাচাই করতে পারবেন। এখন লক্ষ্য: টেস্ট-আগে ডেভেলপমেন্ট, পারফরম্যান্স ও ডিপ্লয় মজবুত করা।'; }
+  else { lvl = 'লেভেল ৩ · ইঞ্জিনিয়ার ট্র্যাক'; desc = 'আপনি সিস্টেমের মালিকানার যোগ্যতা রাখেন — কারিগরি সিদ্ধান্ত নিতে, রিভিউ করতে, অন্যকে শেখাতে পারবেন। এখন বাকি: বাস্তব চাপে (৩,৫০০ ইউজার, পরীক্ষার দিন) প্রমাণ ও লিখিত রানবুক।'; }
+
+  let rows = '';
+  DOMAINS.forEach(d => {
+    const p = Math.round((per[d].r / per[d].t) * 100);
+    const cls = p >= 75 ? '' : (p >= 50 ? 'mid' : 'low');
+    rows += `<tr><td>${d}</td><td class="num">${bn(per[d].r)}/${bn(per[d].t)}</td>
+      <td><div class="meter"><i class="${cls}" style="width:${p}%"></i></div></td>
+      <td class="num">${bn(p)}%</td></tr>`;
+  });
+
+  const weak = DOMAINS.filter(d => (per[d].r / per[d].t) < 0.6);
+  let weakHtml = '';
+  if (weak.length) {
+    weakHtml = '<h3 style="color:#12263f;font-size:15px;margin:18px 0 6px">কোথায় পড়তে হবে (দুর্বল বিষয়)</h3><ul>';
+    weak.forEach(d => weakHtml += `<li><b>${d}</b> — ${NEXT[d]}</li>`);
+    weakHtml += '</ul>';
+  } else {
+    weakHtml = '<div class="note"><b>দুর্বল বিষয় নেই।</b> এবার কঠিন অংশে যান: বাস্তব পরীক্ষায় নিজেকে ফেলুন — ল্যাব ১৭ (পারফরম্যান্স), ১৯ (নিজের কমান্ড), ২০ (সংকট ড্রিল), আর একজন সহকর্মীকে সিস্টেম শেখানো।</div>';
+  }
+
+  document.getElementById('result').innerHTML = `
+    <h2>আপনার ফলাফল</h2>
+    <div class="score">${bn(pct)}%</div>
+    <div class="lvl">${lvl}</div>
+    <p style="margin:4px 0 0">${bn(right)}টি সঠিক, ${bn(total - right)}টি ভুল বা অজানা। ${desc}</p>
+    <table><thead><tr><th>বিষয়</th><th class="num">সঠিক</th><th>অবস্থা</th><th class="num">%</th></tr></thead><tbody>${rows}</tbody></table>
+    ${weakHtml}
+    <div class="note" style="margin-top:18px">
+      <b>এখন কী করবেন:</b> এই ফলাফলের স্ক্রিনশট রাখুন — আজকের তারিখ দিয়ে সেভ করুন। ৬ সপ্তাহ পর আবার একই টেস্ট দিন। ২০% উন্নতি না হলে বোঝা যাবে পড়ার ধরনটা বদলাতে হবে (বেশি হাতে-কলমে, কম ভিডিও)।
+    </div>
+    <p style="margin-top:16px"><button class="ghost" onclick="location.href='#top';window.scrollTo({top:0,behavior:'smooth'})">উপরে গিয়ে উত্তরগুলো দেখুন</button></p>
+  `;
+  const res = document.getElementById('result');
+  res.style.display = 'block';
+  if (typeof res.scrollIntoView === 'function') res.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+</script>
+</body>
+</html>

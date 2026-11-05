@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>২০টি ল্যাব — নিজের সিস্টেম দিয়ে শেখা</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#12263f;--navy2:#1d3a5f;--ink:#1b2430;--muted:#5d6b7a;--line:#dbe3ec;
+        --bg:#f5f7fa;--ok:#13704a;--okbg:#eefaf3;--gold:#b3811f;--goldbg:#fdf4e7;--red:#a3291f;--redbg:#fdeeec}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.75;
+       font-family:'Noto Sans Bengali','SolaimanLipi','Kalpurush','Inter',system-ui,sans-serif}
+  .page{max-width:920px;margin:0 auto;background:#fff;padding:42px 48px 60px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  h1{font-size:25px;line-height:1.45;margin:0 0 6px;color:var(--navy);font-weight:700}
+  h2{font-size:19.5px;margin:38px 0 10px;color:var(--navy);border-bottom:2px solid var(--line);padding-bottom:7px}
+  h3{font-size:16px;margin:20px 0 6px;color:var(--navy2)}
+  p{margin:9px 0} ul,ol{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 4px}
+  .warn{background:var(--goldbg);border-left:4px solid var(--gold);padding:13px 18px;margin:16px 0;border-radius:0 8px 8px 0}
+  .bad{background:var(--redbg);border-left:4px solid var(--red);padding:13px 18px;margin:16px 0;border-radius:0 8px 8px 0}
+  .good{background:var(--okbg);border-left:4px solid var(--ok);padding:13px 18px;margin:16px 0;border-radius:0 8px 8px 0}
+  .lab{border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0;background:#fcfdff;page-break-inside:avoid}
+  .lab > h3{margin-top:0}
+  .risk{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:99px;margin-left:8px;vertical-align:middle}
+  .r0{background:#e9f7ef;color:var(--ok)} .r1{background:#fdf4e7;color:var(--gold)} .r2{background:#fdeeec;color:var(--red)}
+  pre{background:#12263f;color:#e6edf6;padding:12px 15px;border-radius:8px;overflow-x:auto;font-size:12.8px;line-height:1.7}
+  pre code{background:none;padding:0;color:inherit}
+  code{background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:13px;word-break:break-word}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.4px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#eef2f7;color:var(--navy)}
+  .meta{font-size:12.8px;color:var(--muted);margin:2px 0 10px}
+  .out{background:#f4f7fb;border-left:3px solid var(--navy);padding:9px 13px;border-radius:0 6px 6px 0;font-size:13px;margin:10px 0}
+  .muted{color:var(--muted)} .small{font-size:12.8px}
+  @media print{
+    body{background:#fff} .page{box-shadow:none;max-width:none;padding:0 8mm}
+    pre{background:#f2f4f7;color:#12263f} h2,h3{page-break-after:avoid}
+    @page{size:A4;margin:12mm}
+  }
+  @media(max-width:640px){.page{padding:22px 14px}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<p class="sub">সহায়ক ফাইল: curriculum-bn.html (২৪ সপ্তাহের প্ল্যান) · skills-test-bn.html (যোগ্যতা যাচাই)</p>
+<h1>২০টি ল্যাব — শেখা হবে আপনার নিজের সিস্টেম দিয়ে, টিউটোরিয়ালের খেলনা অ্যাপ দিয়ে নয়</h1>
+
+<div class="bad">
+  <b>নিরাপত্তার তিনটি নিয়ম (প্রতিটি ল্যাবের আগে পড়ুন):</b>
+  <ol style="margin:6px 0 0">
+    <li><b>প্রোডাকশন ডেটাবেসে কখনোই কোনো ল্যাব নয়।</b> ল্যাব সবসময় আপনার নিজের ল্যাপটপের কপি ডেটাবেসে।</li>
+    <li>শুরুতেই কপি: <code>cp db.sqlite3 db.lab.sqlite3</code> — এবং প্রয়োজনে <code>DATABASE_URL=sqlite:///$(pwd)/db.lab.sqlite3</code> দিয়ে সেটাই ব্যবহার করুন।</li>
+    <li>যে কমান্ড ডেটা মুছে ফেলতে পারে (<code>flush</code>, <code>delete</code>, <code>restore_backup --yes</code>) — সেটি কেবল ল্যাব কপিতে, আর আগে ব্যাকআপ নিয়ে।</li>
+  </ol>
+</div>
+
+<h2>০. একবারের সেটআপ</h2>
+<div class="lab">
+<h3>Lab 0 · নিজের মেশিনে সিস্টেম চালু করা <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ৩০–৬০ মিনিট · সপ্তাহ ১ · প্রয়োজন: Python ৩.১২+ (Django ৬.১-এর জন্য), না থাকলে Django ৫.২</p>
+<pre><code>cd school-management-system
+python3 --version                 # ৩.১২+ হলে নিচের লাইন, নাহলে Django ৫.২ সংস্করণ
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Python ৩.১১ হলে পরিবর্তে:
+# pip install "Django&gt;=5.2,&lt;6" openpyxl Pillow python-dotenv dj-database-url whitenoise
+
+python manage.py check                       # ০ issue হওয়া উচিত
+python manage.py migrate
+python manage.py loaddata students/fixtures/institutions.json
+python manage.py createsuperuser
+python manage.py runserver                   # তারপর http://127.0.0.1:8000/</code></pre>
+<div class="out"><b>সফল হলে:</b> লগইন পেজ আসবে, লগইন করে ড্যাশবোর্ড দেখা যাবে, ইনস্টিটিউশন লিস্টে ৬টি প্রতিষ্ঠান থাকবে।</div>
+<p class="small muted"><b>কেন:</b> এরপরের ১৯টি ল্যাবের ভিত্তি — নিজের মেশিনে সিস্টেম না চললে কিছুই শেখা যায় না। কোথাও আটকালে এরর মেসেজটি হুবহু নিয়ে জিজ্ঞেস করুন (মূল অংশটি কপি করুন, পুরো স্ক্রিন নয়)।</p>
+</div>
+
+<h2>১. ফেজ ১ — বোঝা (সপ্তাহ ১–৮)</h2>
+
+<div class="lab">
+<h3>Lab 1 · টেস্ট স্যুট চালানো, আর একটি টেস্ট ইচ্ছাকৃতভাবে ভাঙা <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ৪৫ মিনিট · সপ্তাহ ১ · শেখার বিষয়: টেস্ট = সিস্টেমের সত্য</p>
+<pre><code>python manage.py test students --verbosity 1        # পুরো স্যুট (ধৈর্য ধরুন, কয়েক মিনিট)
+python manage.py test students.test_navigation -v 2 # একটি ফাইল, বিস্তারিত
+
+# এখন ইচ্ছাকৃতভাবে একটি টেস্ট ভাঙুন:
+# students/templates/students/base.html ফাইলে কোনো মেনু লেখা একটু বদলে ফেলুন
+python manage.py test students.test_navigation -v 2
+git checkout students/templates/students/base.html   # ফেরানো</code></pre>
+<div class="out"><b>সফল হলে:</b> প্রথমে সব সবুজ; বদলানোর পরে একটি টেস্ট লাল, আর মেসেজে দেখাবে <b>কোন assertion</b> ফেল করেছে। ফেরানোর পর আবার সবুজ।</div>
+<p class="small muted"><b>কেন:</b> এখানেই আপনি শিখবেন "টেস্ট সবুজ" মানে কী — এবং নিজের হাতে প্রমাণ পাবেন যে টেস্ট আসলে কিছু পাহারা দিচ্ছে, শুধু সাজসজ্জা নয়।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 2 · Python shell-এ ডেটাবেসকে প্রশ্ন করা <span class="risk r1">🟡 কপি ডেটাবেসে</span></h3>
+<p class="meta">সময়: ৪৫ মিনিট · সপ্তাহ ২ · শেখার বিষয়: ORM</p>
+<pre><code>python manage.py shell</code></pre>
+<pre><code>from students.models import Student, Institution, Exam, ExamMark
+Student.objects.count()
+Student.objects.filter(status='ACTIVE').count()
+Student.objects.filter(admission_class='9', gender='M').count()
+Institution.objects.all()
+Student.objects.filter(roll_no__isnull=True).count()      # রোল ছাড়া কতজন?
+Student.objects.order_by('-id')[:5]                        # সাম্প্রতিক ৫
+from django.db.models import Count
+Student.objects.values('admission_class').annotate(n=Count('id')).order_by('admission_class')</code></pre>
+<div class="out"><b>সফল হলে:</b> প্রতিটি কমান্ডের ফলাফল দেখবেন; শেষ কমান্ডে শ্রেণিভিত্তিক সংখ্যা।</div>
+<p class="small muted"><b>কেন:</b> এই একটি সেশনই আপনাকে "ডেটাবেস কীভাবে ভাবতে হয়" শেখাবে। পরে রিপোর্ট নিয়ে প্রশ্ন এলে (যেমন "কতজন ৯ম শ্রেণির ছাত্রী?") — উত্তরে ৩০ সেকেন্ড লাগবে, এক ঘণ্টা নয়।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 3 · একটি পেজের পূর্ণ প্রবাহ কাগজে আঁকা (কোডিং নেই) <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ১ ঘণ্টা · সপ্তাহ ৪ · শেখার বিষয়: Django-র মূল কাঠামো</p>
+<p>শিক্ষার্থী তালিকা পেজটি নিন। কাগজে পাঁচটি বাক্স আঁকুন ও তীর দিয়ে যুক্ত করুন:</p>
+<ol>
+  <li><b>ব্রাউজার</b> → কোন URL? (<code>students/</code>)</li>
+  <li><b>urls.py</b> → কোন ভিউ? (<code>student_list</code>)</li>
+  <li><b>views.py</b> → কোন মডেল পড়ছে, কোন ফিল্টার/সার্চ, কতটি কোয়েরি?</li>
+  <li><b>template</b> → কোন ফাইল? (<code>student_list.html</code>) কোন context?</li>
+  <li><b>ডেটাবেস</b> → কোন টেবিল, কোন কলাম?</li>
+</ol>
+<pre><code>grep -n "student_list" students/urls.py
+grep -n "def student_list" -A 40 students/views.py</code></pre>
+<div class="out"><b>সফল হলে:</b> আপনি নিজের হাতে আঁকা ছবি দেখে এমন কেউকে বোঝাতে পারবেন, যে Django জানে না।</div>
+<p class="small muted"><b>কেন:</b> এটাই ইন্টারভিউয়ে সবচেয়ে বেশি জিজ্ঞেস করা প্রশ্নের উত্তর — "আপনার অ্যাপে একটা রিকোয়েস্ট এলে কী হয়?"</p>
+</div>
+
+<div class="lab">
+<h3>Lab 4 · একটি ভিউ ফাংশন লাইন-বাই-লাইন ব্যাখ্যা <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ১–২ ঘণ্টা · সপ্তাহ ৬ · শেখার বিষয়: কোড পড়া</p>
+<pre><code># যেকোনো একটি বেছে নিন (ছোট দিয়ে শুরু করুন)
+grep -n "def student_detail" -A 60 students/views.py
+grep -n "def dashboard" -A 80 students/views.py</code></pre>
+<p>প্রতিটি লাইনের পাশে বাংলায় লিখুন: কী করছে, আর <b>কেন</b>। যেটা বুঝছেন না — সেটির নম্বর লিখে রাখুন (সেটাই আপনার পড়ার তালিকা)।</p>
+<div class="out"><b>সফল হলে:</b> ৯০% লাইনে ব্যাখ্যা লেখা হয়ে যাবে; বাকি ১০% নিয়ে নির্দিষ্ট প্রশ্ন করা যাবে।</div>
+<p class="small muted"><b>কেন:</b> AI-কে জিজ্ঞেস করলে উত্তর পাবেন, কিন্তু ব্যাখ্যা লেখার অভ্যাসটাই আপনার — এটাই "বুঝেছি" আর "কপি করেছি"-র পার্থক্য।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 5 · কোয়েরি সংখ্যা গোনা (N+1 ধরা) <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ১ ঘণ্টা · সপ্তাহ ৮ · শেখার বিষয়: পারফরম্যান্স</p>
+<pre><code>python manage.py shell</code></pre>
+<pre><code>from django.db import connection
+from django.test.utils import CaptureQueriesContext
+
+with CaptureQueriesContext(connection) as ctx:
+    list(__import__('students.models', fromlist=['Student']).Student.objects.all()[:50])
+print("queries:", len(ctx))
+
+# এখন select_related দিয়ে দেখুন
+from students.models import Student
+with CaptureQueriesContext(connection) as ctx:
+    list(Student.objects.select_related('institution').all()[:50])
+print("queries:", len(ctx))</code></pre>
+<div class="out"><b>সফল হলে:</b> দুটি সংখ্যা পাবেন। সাধারণত দ্বিতীয়টি কম বা সমান — কারণ JOIN এক কোয়েরিতেই হচ্ছে।</div>
+<p class="small muted"><b>কেন:</b> "সিস্টেম ধীর" অভিযোগের উত্তর কখনো অনুভূতিতে দেবেন না — সংখ্যায় দিন। এই ৫ লাইনই আপনার প্রথম পারফরম্যান্স-প্রমাণ।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 6 · নতুন ফিল্ড যোগ করা (scratch ব্রাঞ্চে) <span class="risk r1">🟡 কপি ডেটাবেস + ব্রাঞ্চ</span></h3>
+<p class="meta">সময়: ২ ঘণ্টা · সপ্তাহ ৬ · শেখার বিষয়: মডেল → মাইগ্রেশন → ফর্ম → টেস্ট</p>
+<pre><code>git checkout -b lab/blood-group
+cp db.sqlite3 db.lab.sqlite3</code></pre>
+<ol>
+  <li><code>students/models.py</code>-তে <code>Student</code> ক্লাসে যোগ করুন: <code>blood_group = models.CharField(max_length=3, blank=True)</code></li>
+  <li><code>python manage.py makemigrations students</code> → নতুন মাইগ্রেশন ফাইল তৈরি হবে; <b>ফাইলটি খুলে পড়ুন</b> — কী লেখা হচ্ছে?</li>
+  <li><code>python manage.py migrate</code></li>
+  <li>ফর্ম (<code>students/forms.py</code>) ও টেমপ্লেটে ফিল্ডটি দেখান</li>
+  <li>একটি টেস্ট লিখুন: ফিল্ড সেভ হয় ও ফর্মে দেখা যায়</li>
+  <li><code>python manage.py test students</code> → সবুজ</li>
+</ol>
+<div class="out"><b>সফল হলে:</b> অ্যাড স্টুডেন্ট ফর্মে নতুন ইনপুট, ডেটাবেসে নতুন কলাম, টেস্ট সবুজ। শেষে <code>git checkout main &amp;&amp; git branch -D lab/blood-group</code> (অথবা রাখুন — শেখার প্রমাণ)।</div>
+<p class="small muted"><b>কেন:</b> ডেটা মডেল বদলানোই সবচেয়ে ঝুঁকিপূর্ণ দৈনন্দিন কাজ। একবার নিজে করলে "মাইগ্রেশন ভয়" চলে যাবে।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 7 · ছোট একটি নতুন পেজ (view + url + template + test) <span class="risk r1">🟡 ব্রাঞ্চে</span></h3>
+<p class="meta">সময়: ২–৩ ঘণ্টা · সপ্তাহ ৭ · শেখার বিষয়: পূর্ণ ফিচার-চক্র</p>
+<p>উদাহরণ: "রোল নম্বর ছাড়া শিক্ষার্থীর তালিকা" —</p>
+<pre><code># students/urls.py
+path('students/missing-roll/', views.students_missing_roll, name='students_missing_roll'),
+
+# students/views.py
+@login_required
+def students_missing_roll(request):
+    rows = Student.objects.filter(roll_no__isnull=True, is_archived=False)[:100]
+    return render(request, 'students/students_missing_roll.html', {'rows': rows})</code></pre>
+<p>একটি সাধারণ টেমপ্লেট বানান (<code>base.html</code> এক্সটেন্ড করে), তারপর টেস্ট: লগইন ছাড়া ৩০২/৪০৩, লগইন করে ২০০।</p>
+<div class="out"><b>সফল হলে:</b> টেস্টে সবুজ, ব্রাউজারে পেজ দেখা যায়, আর আপনি বলতে পারেন "এটা আমি বানিয়েছি" — AI নয়।</div>
+<p class="small muted"><b>কেন:</b> ছোট ফিচার পুরো চক্রে (নকশা → কোড → টেস্ট → যাচাই) করা শেখার সবচেয়ে দ্রুত পথ।</p>
+</div>
+
+<h2>২. ফেজ ২ — রক্ষণ ও নিরাপত্তা (সপ্তাহ ৯–১৬)</h2>
+
+<div class="lab">
+<h3>Lab 8 · আগে ফেল-করা টেস্ট, তারপর সমাধান <span class="risk r1">🟡 ব্রাঞ্চে</span></h3>
+<p class="meta">সময়: ২ ঘণ্টা · সপ্তাহ ৯ · শেখার বিষয়: TDD</p>
+<pre><code># students/test_lab_missing_roll.py
+from django.test import TestCase
+from django.urls import reverse
+from django.contrib.auth.models import User
+from .models import Student, Institution
+
+class MissingRollLab(TestCase):
+    def setUp(self):
+        self.inst = Institution.objects.create(name='Lab School', classes='9,10')
+        self.user = User.objects.create_user('labuser', password='labpass12345')
+        self.student = Student.objects.create(name='Lab Student', admission_class='9',
+                                              institution=self.inst, student_id='LAB-1',
+                                              guardian_contact_no='01700000000')
+
+    def test_page_lists_students_without_roll(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('students_missing_roll'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(self.student, resp.context['rows'])</code></pre>
+<p>প্রথমে চালান — ফেল করবে (URL নেই)। তারপর Lab 7-এর কোড লিখুন — সবুজ হবে।</p>
+<div class="out"><b>সফল হলে:</b> ফেল → কোড → সবুজ, এই তিন ধাপ নিজের চোখে দেখবেন।</div>
+<p class="small muted"><b>কেন:</b> এই অভ্যাসটাই AI-এর সাথেনিরাপদে কাজ করার মূল কৌশল — "টেস্ট আগে" বললে AI-ও ভুল কম করে, আর আপনার কাছে প্রমাণ থাকে।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 9 · ইচ্ছাকৃত বাগ তৈরি করে traceback পড়া <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ৪৫ মিনিট · সপ্তাহ ১০ · শেখার বিষয়: ডিবাগিং</p>
+<pre><code># students/views.py-তে student_list ফাংশনের ভেতরে সাময়িকভাবে যোগ করুন:
+raise ValueError("শেখার জন্য ইচ্ছাকৃত বাগ")</code></pre>
+<p>ব্রাউজারে পেজটি খুলুন, পুরো ট্রেসব্যাক পড়ুন — <b>শেষ ৩ লাইন</b> ও <b>আপনার ফাইলের লাইন নম্বর</b> খুঁজে বের করুন। তারপর লাইনটি মুছে ফেলুন।</p>
+<div class="out"><b>সফল হলে:</b> আপনি বলতে পারবেন "এররটা কোন লাইনে, কী কারণে" — ট্রেসব্যাকের শেষ অংশটাই আসল কারণ।</div>
+<p class="small muted"><b>কেন:</b> প্রোডাকশনে DEBUG বন্ধ থাকে, তাই সেখানে ট্রেসব্যাক দেখতে হয় লগে — কিন্তু পড়ার দক্ষতা একই।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 10 · লগ, ডিস্ক ও প্রসেস (Linux) <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ১ ঘণ্টা · সপ্তাহ ১১ · শেখার বিষয়: অপারেশন</p>
+<pre><code>df -h                                  # ডিস্ক কত ভরা
+du -sh . backups/ media/ staticfiles/ 2&gt;/dev/null | sort -h
+ps aux | grep -i gunicorn | grep -v grep
+tail -n 50 logs/*.log 2&gt;/dev/null || echo "লোকালে লগ ফাইল নেই — হোস্টিংয়ে দেখুন"
+grep -i "error\|traceback" logs/*.log 2&gt;/dev/null | tail -20</code></pre>
+<div class="out"><b>সফল হলে:</b> বলতে পারবেন কোন ফোল্ডার কত জায়গা নিচ্ছে, আর লগে এরর আছে কি না।</div>
+<p class="small muted"><b>কেন:</b> "সাইট কাজ করছে না" — ৭০% ক্ষেত্রে কারণ ডিস্ক ভরা, প্রসেস বন্ধ, বা মাইগ্রেশন হয়নি। এই চারটি কমান্ডেই সেগুলো ধরা পড়ে।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 11 · ব্যাকআপ ও রিস্টোর ড্রিল (সবচেয়ে গুরুত্বপূর্ণ ল্যাব) <span class="risk r1">🟡 কপি ডেটাবেসে</span></h3>
+<p class="meta">সময়: ২ ঘণ্টা · সপ্তাহ ১৩ · শেখার বিষয়: ডেটা সুরক্ষা</p>
+<pre><code># ১) ব্যাকআপ নিন (কপি ডেটাবেসে, টেম্প ফোল্ডারে)
+export DATABASE_URL="sqlite:///$(pwd)/db.lab.sqlite3"
+python manage.py backup_data --backup-root /tmp/lab-backups --keep 3
+ls -la /tmp/lab-backups/
+
+# ২) ব্যাকআপের স্বাস্থ্য যাচাই
+python manage.py check_backups --backup-root /tmp/lab-backups --max-age-hours 48
+
+# ৩) রিস্টোর ড্রিল — আলাদা কপিতে
+cp db.lab.sqlite3 db.restore-target.sqlite3
+B=$(ls -d /tmp/lab-backups/backup-* | tail -1)     # সর্বশেষ ব্যাকআপ ফোল্ডার
+DATABASE_URL="sqlite:///$(pwd)/db.restore-target.sqlite3" \
+  python manage.py restore_backup --backup "$B" --yes --verify --media-dir /tmp/lab-media
+
+# ৪) সংখ্যা মিলিয়ে দেখুন
+DATABASE_URL="sqlite:///$(pwd)/db.restore-target.sqlite3" python manage.py shell -c \
+  "from students.models import Student; print('students:', Student.objects.count())"</code></pre>
+<div class="out"><b>সফল হলে:</b> রিস্টোর করা ডেটাবেসে শিক্ষার্থীর সংখ্যা আসলটার সমান। <b>এই সংখ্যাটা মিললেই আপনি বলতে পারবেন "ব্যাকআপ আছে"।</b></div>
+<p class="small muted"><b>কেন:</b> এটাই আপনার কাজের সবচেয়ে বড় দায়িত্ব। টাকা বা পদ চাওয়ার আগে এই ল্যাব শেষ করুন — তারপর আত্মবিশ্বাসের সাথে বলতে পারবেন "ডেটার দায়িত্ব আমি নিতে পারি"।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 12 · নিরাপত্তা চেক ও তার ফলোআপ <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ১ ঘণ্টা · সপ্তাহ ১৪ · শেখার বিষয়: প্রোডাকশন হার্ডেনিং</p>
+<pre><code>python manage.py check --deploy                     # DEV সেটিংসে ৬টি warning স্বাভাবিক
+DEBUG=False SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(50))')" \
+ALLOWED_HOSTS="example.com" python manage.py check --deploy</code></pre>
+<p>প্রতিটি warning লিখে নিন, তারপর <code>school_system/settings.py</code> পড়ে দেখুন কোনটা কোথায় সেট হয়েছে।</p>
+<div class="out"><b>সফল হলে:</b> কোন সেটিং কী বিপদ, তা বাংলায় ব্যাখ্যা করতে পারবেন (যেমন: কুকি HTTP-তে গেলে কী হয়)।</div>
+<p class="small muted"><b>কেন:</b> নিরাপত্তা মানে জাদু নয় — কয়েকটি সেটিং ও অভ্যাস। এই ল্যাবই আপনাকে "ভাইরাস ধরার" ভুল ধারণা থেকে সরিয়ে আসল কাজে আনবে।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 13 · পারমিশন ও ইনস্টিটিউশন আইসোলেশন পরীক্ষা <span class="risk r1">🟡 কপি ডেটাবেস</span></h3>
+<p class="meta">সময়: ১.৫ ঘণ্টা · সপ্তাহ ১৪ · শেখার বিষয়: অ্যাক্সেস কন্ট্রোল</p>
+<p>প্রশ্ন: A প্রতিষ্ঠানের একজন ইউজার B প্রতিষ্ঠানের শিক্ষার্থীর পেজ খুলতে পারবে কি? পরীক্ষা করুন —</p>
+<pre><code>python manage.py shell</code></pre>
+<pre><code>from django.contrib.auth.models import User
+from students.models import Student, Institution, InstitutionAccess
+u = User.objects.first()
+u.institution_accesses.all()          # এই ইউজার কোন কোন প্রতিষ্ঠানে
+Student.objects.exclude(institution__in=[a.institution for a in u.institution_accesses.all()]).count()</code></pre>
+<p>তারপর ব্রাউজারে লগইন করে অন্য প্রতিষ্ঠানের একটি শিক্ষার্থীর <code>/students/&lt;id&gt;/</code> খোলার চেষ্টা করুন — <b>৪০৪</b> আশা করবেন, ২০০ নয়।</p>
+<div class="out"><b>সফল হলে:</b> ৪০৪ পাবেন, আর <code>students/test_institution_isolation.py</code> পড়ে দেখবেন এটা কীভাবে টেস্টে পাহারা দেওয়া হয়।</div>
+<p class="small muted"><b>কেন:</b> এক স্কুলের ডেটা আরেক স্কুলের কাছে যাওয়া = চাকরি শেষ হওয়ার মতো ঘটনা। এই একটি পরীক্ষা বছরে একবার করুন।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 14 · PostgreSQL-এ সিস্টেম চালানো <span class="risk r1">🟡 আলাদা ডেটাবেস</span></h3>
+<p class="meta">সময়: ২–৩ ঘণ্টা · সপ্তাহ ১৩ · শেখার বিষয়: প্রোডাকশন ডেটাবেস</p>
+<pre><code># সবচেয়ে সহজ: Docker
+docker run -d --name lab-pg -e POSTGRES_PASSWORD=labpass -e POSTGRES_DB=school \
+  -p 5432:5432 postgres:16
+
+export DATABASE_URL="postgres://postgres:labpass@127.0.0.1:5432/school"
+python manage.py migrate
+python manage.py loaddata students/fixtures/institutions.json
+python manage.py test students --parallel 1</code></pre>
+<div class="out"><b>সফল হলে:</b> একই টেস্ট Postgres-এ সবুজ — অর্থাৎ কোডটি দুই ডেটাবেসেই সঠিক (যেটা CI-তেও প্রমাণিত)।</div>
+<p class="small muted"><b>কেন:</b> ৩,৫০০ শিক্ষার্থী + ২৪০ কর্মী একসাথে ব্যবহার করলে SQLite-এ "database is locked" আসবেই। এটাই আপনার পরবর্তী বড় আপগ্রেড।</p>
+</div>
+
+<h2>৩. ফেজ ৩ — ইঞ্জিনিয়ারিং অভ্যাস (সপ্তাহ ১৭–২৪)</h2>
+
+<div class="lab">
+<h3>Lab 15 · একটি ধীর পেজের N+1 শিকার ও প্রমাণ <span class="risk r1">🟡 ব্রাঞ্চে</span></h3>
+<p class="meta">সময়: ৩ ঘণ্টা · সপ্তাহ ১৮ · শেখার বিষয়: পারফরম্যান্স</p>
+<p>রেজাল্ট শীট/সামারি পেজ বেছে নিন। আগে মাপুন, তারপর ঠিক করুন, তারপর আবার মাপুন।</p>
+<pre><code>python manage.py shell</code></pre>
+<pre><code>import time
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.test import Client
+from django.contrib.auth.models import User
+
+c = Client()
+c.force_login(User.objects.filter(is_superuser=True).first())
+url = "/students/"                      # পরে রেজাল্ট শীটের আসল URL বসান
+
+with CaptureQueriesContext(connection) as ctx:
+    t = time.time(); r = c.get(url); dt = time.time() - t
+print("status", r.status_code, "| queries", len(ctx), "| ms", round(dt*1000))
+print(ctx.captured_queries[0]['sql'][:200])     # কোন কোয়েরি বারবার হচ্ছে দেখুন</code></pre>
+<div class="out"><b>সফল হলে:</b> "আগে ২৩০ কোয়েরি → পরে ১১, সময় ২.৪s → ০.৬s" — এই ধরনের একটি বাক্য আপনি নিজের সংখ্যা দিয়ে বলতে পারবেন। এটাই সিভির সবচেয়ে শক্তিশালী লাইন।</div>
+<p class="small muted"><b>কেন:</b> পারফরম্যান্স কাজে "অনুভূতি" নয়, মাপ লাগে। আর এই একটি কাজই ৩,৫০০ ইউজারের সিস্টেমে সবার জীবন সহজ করে দেয়।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 16 · নিজের একটি management command + টেস্ট <span class="risk r1">🟡 ব্রাঞ্চে</span></h3>
+<p class="meta">সময়: ৩ ঘণ্টা · সপ্তাহ ১৯ · শেখার বিষয়: টুলিং</p>
+<p>উদাহরণ: "যেসব শিক্ষার্থীর অভিভাবকের নম্বর নেই" রিপোর্ট।</p>
+<pre><code># students/management/commands/report_missing_contact.py
+from django.core.management.base import BaseCommand
+from students.models import Student
+
+class Command(BaseCommand):
+    help = "অভিভাবকের যোগাযোগ নম্বর ছাড়া সক্রিয় শিক্ষার্থীর সংখ্যা দেখায়"
+
+    def add_arguments(self, parser):
+        parser.add_argument('--class-name', default=None)
+
+    def handle(self, *args, **opts):
+        qs = Student.objects.filter(guardian_contact_no='', is_archived=False)
+        if opts['class_name']:
+            qs = qs.filter(admission_class=opts['class_name'])
+        self.stdout.write(f"missing contact: {qs.count()}")
+        for s in qs[:20]:
+            self.stdout.write(f"  {s.student_id} {s.name} {s.admission_class}")</code></pre>
+<pre><code>python manage.py report_missing_contact --class-name 9</code></pre>
+<div class="out"><b>সফল হলে:</b> সংখ্যা ও তালিকা দেখবেন। এখন এর জন্য একটি টেস্ট লিখুন (ডেটা তৈরি → কমান্ড চালানো → আউটপুট যাচাই)।</div>
+<p class="small muted"><b>কেন:</b> স্কুলের আসল চাহিদা প্রায়ই "রিপোর্ট" — একবার কমান্ড লিখতে শিখলে প্রতিটি অনুরোধ ৩০ মিনিটের কাজ হয়ে যায়।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 17 · Git ব্রাঞ্চ → PR → CI সবুজ <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ১ ঘণ্টা · সপ্তাহ ১৫ · শেখার বিষয়: সহযোগিতা</p>
+<pre><code>git checkout -b lab/my-first-pr
+# Lab 7 বা Lab 16-এর পরিবর্তন এখানে রাখুন
+git add -A
+git commit -m "Add missing-roll report page with tests"
+git push -u origin lab/my-first-pr
+gh pr create --title "শিক্ষার্থী: রোল ছাড়া তালিকা" --body "কী বদলেছে, কেন, কীভাবে যাচাই করেছি"</code></pre>
+<div class="out"><b>সফল হলে:</b> GitHub Actions সবুজ (SQLite + PostgreSQL + Node), তারপর merge।</div>
+<p class="small muted"><b>কেন:</b> CI সবুজ থাকা মানে আপনার কাজ অন্য কারো মেশিনেও চলবে — এটাই পেশাদারিত্বের সংজ্ঞা।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 18 · নিজের লেখা কোড রিভিউ করা (AI-এর কোডও) <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ১ ঘণ্টা · সপ্তাহ ২০ · শেখার বিষয়: কোড মান</p>
+<p>যেকোনো একটি PR-এর diff নিন (<code>git diff main...lab/my-first-pr</code>) এবং এই ৮টি প্রশ্নের উত্তর দিন:</p>
+<ol>
+  <li>ভুল ইনপুট এলে কী হয়? (খালি, খুব বড়, ভুল ধরন)</li>
+  <li>অনুমতি ছাড়া কেউ এই পেজ/অ্যাকশনে ঢুকতে পারবে?</li>
+  <li>এই কোড অন্য প্রতিষ্ঠানের ডেটা দেখাতে পারে?</li>
+  <li>কতটি কোয়েরি চলছে? (লুপের ভেতরে কোয়েরি আছে?)</li>
+  <li>ব্যর্থ হলে ডেটা অর্ধেক সেভ থেকে যাবে? (<code>atomic</code> দরকার?)</li>
+  <li>ব্যবহারকারী ভুল করলে বার্তা বুঝতে পারবে?</li>
+  <li>এর জন্য টেস্ট আছে? কোনটা ফেল করলে বোঝা যাবে?</li>
+  <li>৬ মাস পরে আরেকজন এই কোড পড়ে বুঝবে?</li>
+</ol>
+<div class="out"><b>সফল হলে:</b> অন্তত একটি সমস্যা পাবেন — সেটাই আসল শেখা (প্রথমবার প্রায় সবাই একটি করে ভুল ধরেন, এটাই স্বাভাবিক)।</div>
+<p class="small muted"><b>কেন:</b> AI-এর কোড গ্রহণ করার আগে এই ৮টি প্রশ্নই আপনার একমাত্র ঢাল।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 19 · ডকুমেন্টেশন ও প্রশিক্ষণ তৈরি <span class="risk r0">🟢 নিরাপদ</span></h3>
+<p class="meta">সময়: ২ ঘণ্টা · সপ্তাহ ২২ · শেখার বিষয়: যোগাযোগ</p>
+<p>একজন শিক্ষকের চোখে সবচেয়ে সাধারণ তিনটি কাজ বেছে নিন (যেমন: নম্বর এন্ট্রি, উপস্থিতি, রেজাল্ট দেখা)। প্রতিটির জন্য:</p>
+<ol>
+  <li>এক পাতার স্ক্রিনশট-সহ গাইড (বাংলায়, সহজ শব্দে)</li>
+  <li>২–৩ মিনিটের স্ক্রিন-রেকর্ডিং</li>
+  <li>একটি "সাধারণ ভুল" তালিকা (৩টি)</li>
+</ol>
+<div class="out"><b>সফল হলে:</b> প্রশিক্ষণের পরে প্রশ্ন ৫০% কমে যাবে — নিজের সময়ও বাঁচবে।</div>
+<p class="small muted"><b>কেন:</b> IT কো-অর্ডিনেটরের কাজের অর্ধেকটাই শেখানো ও বোঝানো — এবং এটাই পদোন্নতির সময় সবচেয়ে বেশি দেখা হয়।</p>
+</div>
+
+<div class="lab">
+<h3>Lab 20 · সংকট ড্রিল: "সাইট বন্ধ, ৩০ মিনিটে ফল দিতে হবে" <span class="risk r0">🟢 নিরাপদ (টেবিলটপ)</span></h3>
+<p class="meta">সময়: ১ ঘণ্টা · সপ্তাহ ২১ · শেখার বিষয়: চাপে সিদ্ধান্ত</p>
+<p>নিজের ঘড়ি ধরে বসুন এবং লিখিতভাবে উত্তর দিন:</p>
+<ol>
+  <li>সাইট না খুললে প্রথম ৩টি জিনিস কোথায় দেখবেন? (হোস্টিং ড্যাশবোর্ড, লগ, হেলথ চেক)</li>
+  <li>ডেটা ঠিক আছে কি না বুঝবেন কীভাবে?</li>
+  <li>৩০ মিনিটের মধ্যে ফল দিতে হলে বিকল্প পথ কী? (আগের PDF প্রিন্ট, Excel এক্সপোর্ট, অফলাইন কপি)</li>
+  <li>কাকে, কীভাবে জানাবেন? (একটি বার্তার খসড়া লিখুন — আতঙ্ক নয়, তথ্য)</li>
+  <li>ঘটনার পরে কী করবেন? (কারণ, প্রতিরোধ, টেস্ট)</li>
+</ol>
+<div class="out"><b>সফল হলে:</b> এই পাঁচটির উত্তর এক পাতায় লিখে ফেলবেন — এটাই আপনার <b>রানবুক</b>। প্রিন্ট করে ডেস্কে রাখুন।</div>
+<p class="small muted"><b>কেন:</b> সংকটের সময় কেউ নতুন কিছু ভাবে না — শুধু আগে ভাবা জিনিস বাস্তবায়ন করে। এই এক পাতা আপনার সবচেয়ে বড় পেশাদার সম্পদ।</p>
+</div>
+
+<h2>৪. কোন ল্যাব কোন সপ্তাহে</h2>
+<table>
+  <thead><tr><th>ফেজ</th><th>ল্যাব</th><th>মূল দক্ষতা</th></tr></thead>
+  <tbody>
+    <tr><td>০ (শুরু)</td><td>0, 1</td><td>পরিবেশ ও টেস্ট</td></tr>
+    <tr><td>১ (১–৮)</td><td>2, 3, 4, 5, 6, 7</td><td>ORM, কোড পড়া, মাইগ্রেশন, ছোট ফিচার</td></tr>
+    <tr><td>২ (৯–১৬)</td><td>8, 9, 10, 11, 12, 13, 14</td><td>TDD, ডিবাগ, Linux, ব্যাকআপ, নিরাপত্তা, Postgres</td></tr>
+    <tr><td>৩ (১৭–২৪)</td><td>15, 16, 17, 18, 19, 20</td><td>পারফরম্যান্স, টুলিং, সহযোগিতা, রিভিউ, প্রশিক্ষণ, সংকট</td></tr>
+  </tbody>
+</table>
+
+<div class="good">
+<b>ল্যাব শেষ করার প্রমাণ কীভাবে রাখবেন:</b> প্রতিটি ল্যাবের শেষে এক লাইনে লিখুন — "Lab ১১: রিস্টোর ড্রিল সফল, ৩,৫০০ শিক্ষার্থীর সংখ্যা মিলেছে, তারিখ ১২/১১/২০২৬।" এগুলো <code>docs/learning/evidence.md</code>-এ জমা করুন। ৬ মাস পরে এই ফাইলটাই আপনার সিভি।
+</div>
+
+<div class="good">
+<b>যাচাই করা হয়েছে:</b> এই ফাইলের মূল কমান্ডগুলো (Lab 0, 2, 11) Django ৫.২ দিয়ে সত্যিই চালিয়ে দেখা হয়েছে — <code>check</code> ০ issue, <code>migrate</code> সম্পূর্ণ, ফিক্সচার থেকে ৬টি প্রতিষ্ঠান, <code>backup_data</code> → <code>check_backups</code> → <code>restore_backup --yes --verify</code> সব সফল, রিস্টোর করা ডেটাবেসে শিক্ষার্থীর সংখ্যা মিলেছে (৫ নভেম্বর ২০২৬)। কোনো কমান্ড ভিন্ন আউটপুট দিলে আপনার ইনস্টল করা সংস্করণ ভিন্ন — সেটাই শেখার সুযোগ।
+</div>
+
+<p class="small muted" style="margin-top:26px">এই ফাইলটি নিজের রিপোর সাথে মিলিয়ে লেখা (ফিল্ড, কমান্ড ও URL-এর নাম আসল কোড থেকে যাচাই করা)। কোনো কমান্ড ভিন্ন আউটপুট দিলে সেটাই শেখার সুযোগ — এরর মেসেজটি পড়ুন, তারপর প্রশ্ন করুন।</p>
+
+</div>
+</body>
+</html>

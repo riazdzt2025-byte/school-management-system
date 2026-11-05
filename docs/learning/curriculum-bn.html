@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>আইটি কো-অর্ডিনেটর থেকে ইঞ্জিনিয়ার — ২৪ সপ্তাহের পাঠ্যক্রম</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#12263f;--navy2:#1d3a5f;--ink:#1b2430;--muted:#5d6b7a;--line:#dbe3ec;
+        --bg:#f5f7fa;--ok:#13704a;--okbg:#eefaf3;--gold:#b3811f;--goldbg:#fdf4e7;--red:#a3291f;--redbg:#fdeeec}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.75;
+       font-family:'Noto Sans Bengali','SolaimanLipi','Kalpurush','Inter',system-ui,sans-serif}
+  .page{max-width:920px;margin:0 auto;background:#fff;padding:44px 50px 60px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  h1{font-size:26px;line-height:1.45;margin:0 0 6px;color:var(--navy);font-weight:700}
+  h2{font-size:20px;margin:42px 0 12px;color:var(--navy);border-bottom:2px solid var(--line);padding-bottom:7px}
+  h3{font-size:16.5px;margin:22px 0 8px;color:var(--navy2)}
+  p{margin:9px 0} ul,ol{margin:8px 0;padding-left:22px} li{margin:5px 0}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 4px}
+  .lede{background:#f0f4f9;border-left:4px solid var(--navy);padding:14px 18px;margin:18px 0;border-radius:0 8px 8px 0}
+  .good{background:var(--okbg);border-left:4px solid var(--ok);padding:13px 18px;margin:16px 0;border-radius:0 8px 8px 0}
+  .warn{background:var(--goldbg);border-left:4px solid var(--gold);padding:13px 18px;margin:16px 0;border-radius:0 8px 8px 0}
+  .bad{background:var(--redbg);border-left:4px solid var(--red);padding:13px 18px;margin:16px 0;border-radius:0 8px 8px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.4px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#eef2f7;color:var(--navy);font-weight:700}
+  tbody tr:nth-child(even){background:#fafbfd}
+  td.num,th.num{text-align:right;white-space:nowrap}
+  code{background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:13px;word-break:break-word}
+  pre{background:#12263f;color:#e6edf6;padding:13px 16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.65}
+  pre code{background:none;padding:0;color:inherit}
+  .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}
+  .kpi div{background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:10px 12px;text-align:center}
+  .kpi b{display:block;font-size:18px;color:var(--navy);font-family:'Inter',sans-serif}
+  .kpi span{font-size:11.5px;color:var(--muted)}
+  .card{border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0;background:#fcfdff}
+  .card h3{margin-top:0}
+  .tag{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:99px;background:#e8eef7;color:var(--navy2);margin-left:6px}
+  .chk{list-style:none;padding-left:0}
+  .chk li{padding-left:26px;position:relative}
+  .chk li:before{content:"☐";position:absolute;left:0;font-size:16px;color:var(--navy2)}
+  .muted{color:var(--muted)} .small{font-size:12.8px}
+  .phase{background:var(--navy);color:#fff;display:inline-block;padding:2px 12px;border-radius:99px;font-size:12px;font-weight:700;margin-bottom:6px}
+  hr{border:0;border-top:1px solid var(--line);margin:30px 0}
+  @media print{
+    body{background:#fff} .page{box-shadow:none;max-width:none;padding:0 8mm}
+    h2,h3{page-break-after:avoid} table,.card,.lede,.good,.warn,.bad{page-break-inside:avoid}
+    pre{background:#f2f4f7;color:#12263f}
+    @page{size:A4;margin:12mm}
+  }
+  @media(max-width:640px){.page{padding:24px 16px}.kpi{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<p class="sub">প্রস্তুত: ৫ নভেম্বর ২০২৬ · জন্য: riOn Dev · প্রতিষ্ঠান: ৬ ইউনিট, ~৩,৫০০ শিক্ষার্থী, ~২৪০ শিক্ষক-কর্মচারী</p>
+<h1>আইটি কো-অর্ডিনেটর থেকে বাজারের ইঞ্জিনিয়ার — ২৪ সপ্তাহের বাস্তব পাঠ্যক্রম</h1>
+
+<div class="lede">
+  <b>শুরুতেই সত্যি কথাটা, কারণ এই ডকুমেন্টের মূল্য এখানেই:</b> আপনি AI-এর সহায়তায় ২০ হাজার লাইন কোড বানিয়ে ফেলেছেন — এটা ছোট অর্জন নয়, বরং বেশিরভাগ মানুষের পক্ষে অসম্ভব। কিন্তু <b>কোড লেখা আর সিস্টেমের দায়িত্ব নেওয়া এক জিনিস নয়</b>। পরীক্ষার দিন সকালে সাইট না খুললে, ব্যাকআপ নষ্ট হলে, বা কেউ জিজ্ঞেস করলে "এই লাইনটা কেন এখানে?" — সেই সময়ে AI পাশে থাকবে না; থাকতে হবে আপনার বোঝাপড়া। তাই এই পাঠ্যক্রমের লক্ষ্য নতুন কিছু বানানো নয় — <b>আপনার নিজের সিস্টেমটাকে ব্যাখ্যা করতে, চালাতে, রক্ষা করতে এবং বাড়াতে পারা</b>। এটাই আইটি কো-অর্ডিনেটরের যোগ্যতা, এবং এটাই পরে ইঞ্জিনিয়ারিং চাকরির দরজা।
+</div>
+
+<h2>১. লক্ষ্য: চারটি লেভেল</h2>
+<p>বাজারে "জানি/জানি না" বলে কিছু নেই — আছে "কী করতে পারেন"। তাই লেভেলগুলো কাজের ভাষায় লেখা:</p>
+<table>
+  <thead><tr><th style="width:12%">লেভেল</th><th style="width:30%">যা করতে পারেন</th><th>বাস্তবে তার মানে</th><th class="num">সময়</th></tr></thead>
+  <tbody>
+    <tr><td><b>L0 অপারেটর</b></td><td>ভর্তি, নম্বর এন্ট্রি, রিপোর্ট, পাসওয়ার্ড রিসেট, প্রিন্ট</td><td>সিস্টেম চলে, কিন্তু কিছু ভাঙলে আপনি থেমে যান — AI/অন্য কারও মুখাপেক্ষী</td><td class="num">এখন আছেন</td></tr>
+    <tr><td><b>L1 অ্যাডমিনিস্ট্রেটর</b></td><td>ব্যবহারকারী/পারমিশন, ব্যাকআপ-রিস্টোর, ডিপ্লয়, লগ পড়ে কারণ নির্ণয়, ডেটা এক্সপোর্ট/ইমপোর্ট</td><td>সিস্টেম <b>টিকে থাকে</b>; দৈনন্দিন সমস্যা নিজে সমাধান</td><td class="num">১–২ মাস</td></tr>
+    <tr><td><b>L2 মেইনটেইনার</b></td><td>বাগ ধরা ও ঠিক করা, ছোট ফিচার, মাইগ্রেশন, টেস্ট লেখা, কোয়েরি অপটিমাইজ, নিরাপত্তা চেক</td><td>সিস্টেম <b>বাড়ে</b>; AI-এর দেওয়া কোড যাচাই করে নিতে পারেন</td><td class="num">৪–৬ মাস</td></tr>
+    <tr><td><b>L3 ইঞ্জিনিয়ার</b></td><td>ফিচারের নকশা, রিভিউ, ডেটা মডেলের সিদ্ধান্ত, পারফরম্যান্স ও ব্যয়ের ভারসাম্য, অন্যকে শেখানো, রানবুক</td><td>সিস্টেমের <b>দায়িত্ব নিতে পারেন</b>; চাকরির বাজারে junior/mid ডেভেলপার</td><td class="num">১২–২৪ মাস</td></tr>
+  </tbody>
+</table>
+<div class="good"><b>আপনার সুবিধা:</b> বেশিরভাগ শিক্ষানবিশের হাতে বাস্তব সিস্টেম থাকে না — শুধু টিউটোরিয়ালের "টু-ডু অ্যাপ"। আপনার হাতে <b>৩,৫০০ শিক্ষার্থীর চলমান সিস্টেম, ১,১৩১টি টেস্ট, CI, বাংলা ডকুমেন্টেশন</b>। শেখার সবচেয়ে বড় শর্তটা আপনার কাছে আগেই আছে — শুধু ক্রমটা দরকার।</div>
+
+<h2>২. প্রথম ৭ দিন — এগুলো আগে, পড়াশোনা পরে</h2>
+<p>টাকা বা পদ চাওয়ার আগে, এবং নিজের মানসিক শান্তির জন্য, এই সাতটি কাজ আগে করুন। এগুলো <b>কোডিং নয়, দায়িত্ব</b> — আর এখানেই একজন কো-অর্ডিনেটর তৈরি হয়:</p>
+<ul class="chk">
+  <li><b>ব্যাকআপ ড্রিল:</b> একটি ব্যাকআপ নিন, <code>restore_backup</code> দিয়ে <b>আলাদা জায়গা</b> থেকে রিস্টোর করুন, শিক্ষার্থীর সংখ্যা মিলিয়ে দেখুন। (একবার নিজের চোখে না দেখলে "ব্যাকআপ আছে" বলা যাবে না।)</li>
+  <li><b>কী-অডিট:</b> <code>SECRET_KEY</code>, ডেটাবেস পাসওয়ার্ড, বাকেট কী — কোথায় আছে, কে জানে, কবে বদলানো হয়েছে। একটি ফাইলে (কাগজ/পাসওয়ার্ড ম্যানেজারে, রিপোতে নয়) লিখে রাখুন।</li>
+  <li><b>অ্যাক্সেস-তালিকা:</b> কে কোন ডিপার্টমেন্ট/ইনস্টিটিউশনে ঢুকতে পারে; কে সুপার-অ্যাডমিন; চলে যাওয়া কেউ এখনো সক্রিয় কি না।</li>
+  <li><b>রানবুক (এক পাতা):</b> সাইট না খুললে কী করবেন — ৫টি ধাপ; ব্যাকআপ কোথায়; কার ফোন; সার্ভারের লগ কোথায়। (<code>docs/HANDOFF.md</code> আছে — সেটা পড়ে নিজের ভাষায় ছোট করুন।)</li>
+  <li><b>সংখ্যা সংগ্রহ শুরু:</b> ফল প্রকাশে আগে কত সময় লাগত, এখন কত; অফিসের কত ঘণ্টা বাঁচছে; মাসিক কত রিসিট। <b>এই সংখ্যা-ই আপনার দাম।</b></li>
+  <li><b>একজন ব্যাকআপ মানুষ:</b> অফিসের এক সহকর্মীকে শুধু "রিপোর্ট বের করা + ব্যবহারকারী তৈরি" শেখান। আপনি একমাত্র ব্যক্তি হলে প্রতিষ্ঠান ঝুঁকিতে — এটা কমালে আপনার দাম বাড়ে।</li>
+  <li><b>হোস্টিং কাগজ:</b> ক্লাউড অ্যাকাউন্ট, বিল, ডোমেইন কার নামে — প্রতিষ্ঠানের নামে নাকি আপনার? এই প্রশ্নটা আজই পরিষ্কার করুন।</li>
+</ul>
+
+<h2>৩. ২৪ সপ্তাহের পাঠ্যক্রম <span class="tag">সপ্তাহে ৮–১০ ঘণ্টা</span></h2>
+<p class="small muted">আগে <b>skills-test-bn.html</b> দিয়ে নিজের লেভেল মাপুন। স্কোর ৬০%-এর বেশি হলে ফেজ ১ দ্রুত (২ সপ্তাহে) শেষ করে ফেজ ২-এ যান। প্রতিটি "ল্যাব" নম্বরের বিস্তারিত আছে <b>labs-bn.html</b> ফাইলে — সব ল্যাব নিজের রিপোতে, নিরাপদ নকল ডেটাবেসে।</p>
+
+<h3><span class="phase">ফেজ ১ · সপ্তাহ ১–৮</span> ভিত্তি: অপারেশন, Python, Django, SQL</h3>
+<table>
+  <thead><tr><th style="width:9%">সপ্তাহ</th><th style="width:26%">বিষয়</th><th style="width:30%">পড়া/দেখা</th><th style="width:15%">ল্যাব</th><th>প্রমাণ (হলে বুঝবেন শিখেছেন)</th></tr></thead>
+  <tbody>
+    <tr><td>১</td><td>টার্মিনাল ও প্রজেক্ট চালানো: venv, <code>manage.py</code>, সেটিংস, <code>.env</code></td><td>Django ডক্স "Overview" + নিজের <code>settings.py</code> লাইন ধরে পড়া</td><td>১, ২</td><td>নিজের মেশিনে সাইট চালু + টেস্ট স্যুট চালানো</td></tr>
+    <tr><td>২–৩</td><td>Python মৌলিক: লিস্ট/ডিক্ট, ফাংশন, ক্লাস, exception, ফাইল পড়া</td><td>CS50P (১–৫ সপ্তাহ) বা "Automate the Boring Stuff" প্রথম ৬ অধ্যায়; Exercism Python (১০টি অনুশীলনী)</td><td>৩</td><td>বোঝা ছাড়া কোড কপি না করা — ছোট স্ক্রিপ্ট নিজে লেখা</td></tr>
+    <tr><td>৪–৫</td><td>Django ধারণা: request → urls → view → template → model</td><td>Django official tutorial ১–৪; Django Girls tutorial</td><td>৪, ৬</td><td>কাগজে নিজের সিস্টেমের একটি পেজের প্রবাহ আঁকতে পারা</td></tr>
+    <tr><td>৬</td><td>নিজের কোড পড়া: <code>students/urls.py</code> → <code>views.py</code> → টেমপ্লেট</td><td>—</td><td>৫, ৭</td><td>একটি ভিউ ফাংশন লাইন-বাই-লাইন ব্যাখ্যা (কেউ শুনলে ধরতে পারে)</td></tr>
+    <tr><td>৭–৮</td><td>SQL: SELECT/JOIN/GROUP BY/COUNT, ইনডেক্স, N+1</td><td>SQLBolt (সম্পূর্ণ, ~৩ ঘণ্টা); Django ডক্স "Database access optimization"</td><td>৮, ১৭</td><td>একটি ধীর পেজের কোয়েরি সংখ্যা মেপে কমানো</td></tr>
+  </tbody>
+</table>
+
+<h3><span class="phase">ফেজ ২ · সপ্তাহ ৯–১৬</span> মেইনটেইনার: টেস্ট, ডিবাগ, নিরাপত্তা, ডিপ্লয়</h3>
+<table>
+  <thead><tr><th style="width:9%">সপ্তাহ</th><th style="width:26%">বিষয়</th><th style="width:30%">পড়া/দেখা</th><th style="width:15%">ল্যাব</th><th>প্রমাণ</th></tr></thead>
+  <tbody>
+    <tr><td>৯</td><td>টেস্ট: কেন, কীভাবে, <code>manage.py test</code>, ফেল করা টেস্ট পড়া</td><td>"Test-Driven Development with Python" (Percival, ফ্রি অনলাইন) অধ্যায় ১–৬</td><td>২, ৯</td><td>নিজে একটি ফেল-করা টেস্ট লিখে সবুজ করা</td></tr>
+    <tr><td>১০</td><td>ডিবাগিং: traceback পড়া, লগ, <code>manage.py shell</code>, ডেটা যাচাই</td><td>Django "Logging" ডক্স; Python <code>pdb</code> বেসিক</td><td>১০, ২০</td><td>একটি ইচ্ছাকৃত বাগ নিজে খুঁজে বের করা (৩০ মিনিটে)</td></tr>
+    <tr><td>১১</td><td>Linux অপারেশন: <code>df</code>, <code>du</code>, <code>tail -f</code>, <code>grep</code>, <code>ps</code>, <code>systemctl</code>, cron</td><td>Linux Journey "Grasshopper" + "Journeyman" অংশ</td><td>১১, ১২</td><td>লগ দেখে "কী হয়েছে" বলা</td></tr>
+    <tr><td>১২</td><td>ডিপ্লয়: gunicorn, env var, <code>check --deploy</code>, static, HTTPS</td><td>Django "How to deploy"; 12factor.net</td><td>১৩</td><td>সার্ভারে নিজে ডিপ্লয় ও রোলব্যাক</td></tr>
+    <tr><td>১৩</td><td>PostgreSQL ও ব্যাকআপ: <code>pg_dump</code>, restore, এনক্রিপশন, off-box কপি</td><td><code>docs/BACKUP_RESTORE_GUIDE.md</code> + Postgres tutorial</td><td>১১, ১৪</td><td>Postgres-এ মাইগ্রেট + রিস্টোর ড্রিল সফল</td></tr>
+    <tr><td>১৪</td><td>নিরাপত্তা: CSRF, XSS, SQLi, পাসওয়ার্ড, পারমিশন, রেট লিমিট</td><td>OWASP Top 10; Django "Security in Django"</td><td>১৫, ১৬</td><td>নিজের সিস্টেমে ৩টি দুর্বলতা খুঁজে ঠিক করা</td></tr>
+    <tr><td>১৫–১৬</td><td>Git ও CI: ব্রাঞ্চ, PR, রিভিউ, Actions</td><td>Pro Git অধ্যায় ২–৩; GitHub Skills</td><td>১৮, ১৯</td><td>একটি ফিচার ব্রাঞ্চ → PR → CI সবুজ → merge</td></tr>
+  </tbody>
+</table>
+
+<h3><span class="phase">ফেজ ৩ · সপ্তাহ ১৭–২৪</span> ইঞ্জিনিয়ার: নকশা, রিভিউ, পারফরম্যান্স, শেখানো</h3>
+<table>
+  <thead><tr><th style="width:9%">সপ্তাহ</th><th style="width:26%">বিষয়</th><th style="width:30%">পড়া/দেখা</th><th style="width:15%">ল্যাব</th><th>প্রমাণ</th></tr></thead>
+  <tbody>
+    <tr><td>১৭</td><td>ডেটা মডেল ও মাইগ্রেশন নকশা (নতুন ফিচারের কাঠামো)</td><td>Django "Models" + নিজের <code>models.py</code> (৩২টি মডেল)</td><td>৬</td><td>একটি নতুন ফিচারের মডেল+মাইগ্রেশন নকশা লিখিতভাবে</td></tr>
+    <tr><td>১৮</td><td>পারফরম্যান্স: কোয়েরি সংখ্যা, ইনডেক্স, ক্যাশ, পেজিনেশন, ভারী রিপোর্ট</td><td>Django "Performance and optimization"</td><td>১৭</td><td>একটি পেজের সময় মেপে আগে/পরে সংখ্যা দেখানো</td></tr>
+    <tr><td>১৯</td><td>নিজের ফিচার: চাহিদা → নকশা → কোড → টেস্ট → ডিপ্লয়</td><td>—</td><td>১৯</td><td>একটি ছোট ফিচার শূন্য থেকে শেষ পর্যন্ত</td></tr>
+    <tr><td>২০</td><td>কোড রিভিউ: AI-এর লেখা কোড যাচাইয়ের চেকলিস্ট</td><td>Google "Code Review Developer Guide"</td><td>১৮</td><td>একটি PR-এ নিজের ৫টি রিভিউ কমেন্ট</td></tr>
+    <tr><td>২১</td><td>সংকট ব্যবস্থাপনা: পরীক্ষার দিন, ডেটা লস, অভিযোগ</td><td>নিজের <code>docs/</code> + রানবুক</td><td>২০</td><td>একটি টেবিলটপ ড্রিল: "সাইট বন্ধ, ৩০ মিনিটে ফল দিতে হবে"</td></tr>
+    <tr><td>২২</td><td>ডকুমেন্টেশন ও প্রশিক্ষণ: শিক্ষকদের জন্য গাইড, ভিডিও</td><td>—</td><td>১৩</td><td>৩ মিনিটের একটি বাংলা ভিডিও + এক পাতা গাইড</td></tr>
+    <tr><td>২৩</td><td>খরচ ও সিদ্ধান্ত: সার্ভার, বাকেট, ব্যাকআপ, লাইসেন্স, SLA</td><td>—</td><td>১১</td><td>এক পাতা "সিস্টেম চালানোর বার্ষিক ব্যয়"</td></tr>
+    <tr><td>২৪</td><td>পর্যালোচনা: আবার skills-test, পোর্টফোলিও, সিভি</td><td>—</td><td>সব</td><td>স্কোর তুলনা + ৩টি চাকরির আবেদন যোগ্য পোর্টফোলিও</td></tr>
+  </tbody>
+</table>
+
+<h2>৪. কোন বিষয় কত গভীরে লাগবে</h2>
+<table>
+  <thead><tr><th style="width:26%">বিষয়</th><th style="width:14%">গভীরতা</th><th>কেন এতটুকু</th></tr></thead>
+  <tbody>
+    <tr><td>Python</td><td>মজবুত বেসিক</td><td>সব কিছুর ভিত্তি; লাইব্রেরি কোড পড়তে ও ChatGPT-এর উত্তর যাচাই করতে লাগে</td></tr>
+    <tr><td>Django (ORM, view, template, migration)</td><td>মজবুত</td><td>আপনার সিস্টেমের ৯০%; বাগ ও ফিচার এখানেই</td></tr>
+    <tr><td>SQL</td><td>মাধ্যম</td><td>রিপোর্ট, রেজাল্ট, ফানেল — সব জায়গায়; ধীর পেজের কারণ খুঁজতে</td></tr>
+    <tr><td>Linux + ডিপ্লয়</td><td>মাধ্যম (কমান্ড মুখস্থ নয়, বুঝে)</td><td>রাত ২টার সমস্যা এখানেই হয়</td></tr>
+    <tr><td>নিরাপত্তা ও ডেটা সুরক্ষা</td><td>মাধ্যম, কিন্তু <b>অবহেলা নয়</b></td><td>নাবালকদের তথ্য; একবার ফাঁস হলে ক্ষতি অপূরণীয়</td></tr>
+    <tr><td>টেস্ট</td><td>মাধ্যম (লিখতে পারা)</td><td>আপনার সবচেয়ে বড় ভরসা — ৩,৫০০ ইউজারের সিস্টেম হাতে পরীক্ষা করা যায় না</td></tr>
+    <tr><td>Docker, Kubernetes, ক্লাউড আর্কিটেকচার</td><td>পরিচিতি</td><td>চাকরির ইন্টারভিউতে প্রশ্ন আসে; শেখা ফেজ ৩-এর পরে</td></tr>
+    <tr><td>JavaScript/React</td><td>ঐচ্ছিক</td><td>আপনার সিস্টেমে server-rendered টেমপ্লেটই যথেষ্ট; আগে Django মজবুত করুন</td></tr>
+    <tr><td>DSA (অ্যালগরিদম)</td><td>সীমিত (সপ্তাহে ২টি সমস্যা)</td><td>বড় কোম্পানির ইন্টারভিউতে লাগে; স্কুল সিস্টেমে খুব কম</td></tr>
+  </tbody>
+</table>
+
+<h2>৫. AI-এর সাথে কাজ করার ৭টি নিয়ম <span class="tag">সবচেয়ে জরুরি অংশ</span></h2>
+<p>AI-কে দূরে সরাবেন না — এটাই আপনার সুবিধা। কিন্তু <b>নির্ভরশীল</b> হয়ে পড়লে আপনি কখনোই কো-অর্ডিনেটর থেকে ইঞ্জিনিয়ার হতে পারবেন না। নিয়মগুলো:</p>
+<ol>
+  <li><b>যে কোড আপনি ব্যাখ্যা করতে পারবেন না, সেটা মাঠে ছাড়বেন না।</b> "এই ১০ লাইনে কী হচ্ছে, বাংলায় বলো" — এভাবেই AI দিয়ে শেখা শুরু।</li>
+  <li><b>প্রথমে টেস্ট, তারপর কোড।</b> AI-কে বলুন: "আগে একটা ফেল-করা টেস্ট লেখো যা এই বাগ ধরবে, তারপর ঠিক করো।" এতে সে নিজের ভুল নিজেই ধরতে পারে এবং আপনার কাছে প্রমাণ থাকে।</li>
+  <li><b>তিনটি প্রশ্ন সবসময় করুন:</b> "এটা কেন কাজ করে?", "কীভাবে ভাঙতে পারে?", "এর বিকল্প কী ছিল?" — উত্তরে যেটা বুঝবেন না, সেটাই আপনার পড়ার বিষয়।</li>
+  <li><b>diff দেখুন, কপি-পেস্ট নয়।</b> প্রতিটি পরিবর্তন <code>git diff</code>-এ দেখুন। যে লাইনটা বুঝছেন না, সেটার উপরেই প্রশ্ন করুন।</li>
+  <li><b>AI-এর কথাকে সত্য ধরে নেবেন না।</b> ডকুমেন্টেশন/সোর্স কোডে মিলিয়ে দেখুন। (সংস্করণ, API নাম, "এটা নিশ্চিত কাজ করবে" — সবই ভুল হতে পারে।)</li>
+  <li><b>প্রোডাকশনে যা চালাবেন, আগে নকল পরিবেশে চালান।</b> ব্যাকআপ নিন, তারপর <code>migrate</code>; ল্যাব ডেটাবেসে আগে পরীক্ষা।</li>
+  <li><b>শেখার লগ রাখুন।</b> দিনে এক লাইনে: আজ কী শিখলাম, কী বুঝলাম না। মাসে একবার পড়ুন — এটাই আপনার আসল অগ্রগতির মাপকাঠি, ঘণ্টা নয়।</li>
+</ol>
+<div class="warn"><b>সতর্কতা:</b> "AI দিয়ে যা হয়, আমি নিজে কেন শিখব?" — এই চিন্তাটা এখানেই বিপজ্জনক। AI দিয়ে <b>বানানো</b> যায়, কিন্তু <b>দায়িত্ব নেওয়া</b> যায় না। আর আইটি কো-অর্ডিনেটরের চাকরিটাই দায়িত্ব নেওয়ার চাকরি — তাই বেতন ও পদ দুটোই আসে সেখান থেকেই।</div>
+
+<h2>৬. প্রমাণ-লগ: শেখাটাকে কাগজে পরিণত করুন</h2>
+<p>চাকরি/পদ/দরকষাকষি — সব জায়গায় "শিখেছি" নয়, "করেছি" কাজে দেয়। এই টেবিলটা নিজের জন্য রাখুন (খাতায় বা <code>docs/learning/evidence.md</code>-এ):</p>
+<table>
+  <thead><tr><th style="width:12%">তারিখ</th><th style="width:34%">কী করেছি</th><th style="width:28%">কীভাবে যাচাই করেছি</th><th>সংখ্যা/ফল</th></tr></thead>
+  <tbody>
+    <tr><td>উদাহরণ</td><td>রেজাল্ট শীট পেজের N+1 ঠিক করেছি (<code>select_related</code>)</td><td>কোয়েরি সংখ্যা ৪১২ → ৯, টেস্ট সবুজ</td><td>লোড সময় ৩.১s → ০.৮s</td></tr>
+    <tr><td></td><td></td><td></td><td></td></tr>
+    <tr><td></td><td></td><td></td><td></td></tr>
+  </tbody>
+</table>
+<p class="small muted">মাসে অন্তত ২টি সারি ভরতে পারলে আপনি সঠিক পথে আছেন। ৬ মাসে ১২টি সারি = সিভিতে ৬টি বাস্তব অর্জন, যা কোথাও লেখা থাকে না কিন্তু সবাই জিজ্ঞেস করে।</p>
+
+<h2>৭. "বাজারের পারফেক্ট ইঞ্জিনিয়ার" হতে যা যা লাগে</h2>
+<p>শুধু Django জানলে junior হওয়া যায়, mid নয়। বাজারের চাহিদা অনুযায়ী পূর্ণ ছবিটা:</p>
+<table>
+  <thead><tr><th style="width:24%">দক্ষতা</th><th>কী বুঝতে হবে</th><th style="width:16%">কখন</th></tr></thead>
+  <tbody>
+    <tr><td><b>ডোমেইন বোঝা</b></td><td>শিক্ষা খাতের নিয়ম: GPA, গ্রুপ, ভর্তি চক্র, বেতন — আপনি এখানে এগিয়ে</td><td>এখনই</td></tr>
+    <tr><td><b>ডেটাবেস ডিজাইন</b></td><td>সঠিক টেবিল, সম্পর্ক, ইনডেক্স, মাইগ্রেশন — ভুল ডিজাইন পরে মহাবিপদ</td><td>৩–৬ মাস</td></tr>
+    <tr><td><b>টেস্টিং</b></td><td>unit + integration; "কীভাবে ভাঙবে" ভেবে টেস্ট লেখা</td><td>২–৪ মাস</td></tr>
+    <tr><td><b>ডিপ্লয় ও অপারেশন</b></td><td>Linux, gunicorn, env, ব্যাকআপ, মনিটরিং, রোলব্যাক</td><td>২–৪ মাস</td></tr>
+    <tr><td><b>নিরাপত্তা</b></td><td>OWASP ১০, পারমিশন, গোপনীয়তা, ইনপুট যাচাই</td><td>৩–৬ মাস</td></tr>
+    <tr><td><b>Git ও সহযোগিতা</b></td><td>ব্রাঞ্চ, PR, রিভিউ, দ্বন্দ্ব (conflict) মেটানো</td><td>১–৩ মাস</td></tr>
+    <tr><td><b>পারফরম্যান্স</b></td><td>কোয়েরি, ক্যাশ, পেজিনেশন, মাপা ও প্রমাণ</td><td>৪–৮ মাস</td></tr>
+    <tr><td><b>যোগাযোগ</b></td><td>অ-টেকনিক্যাল মানুষকে বোঝানো; স্পষ্ট লেখা; সময় ও প্রত্যাশা ঠিক রাখা</td><td>এখনই</td></tr>
+    <tr><td><b>ইংরেজি</b></td><td>ডকুমেন্টেশন পড়া (লেখার চেয়ে পড়া বেশি জরুরি), ইন্টারভিউ</td><td>চলমান</td></tr>
+    <tr><td><b>Docker / ক্লাউড</b></td><td>পরিবেশ একই রাখা, স্কেলিং, খরচ</td><td>১২–১৮ মাস</td></tr>
+    <tr><td><b>সিস্টেম ডিজাইন</b></td><td>একই সিস্টেম ২০ স্কুলে চালালে কী হয়: আইসোলেশন, ব্যাকআপ, বিলিং, লোড</td><td>১২–২৪ মাস</td></tr>
+    <tr><td><b>DSA</b></td><td>বেসিক গঠন-কৌশল (array, map, sorting, complexity) — সপ্তাহে ২টি সমস্যা</td><td>৬–১৮ মাস</td></tr>
+  </tbody>
+</table>
+<div class="good"><b>বাস্তব সময়রেখা (সৎভাবে):</b> ৬ মাসে আপনি <b>নিয়োগযোগ্য L2</b> (junior Django ডেভেলপার / IT coordinator — বাজার ৳৩৫,০০০–৭০,০০০/মাস)। ১৮–২৪ মাসে <b>mid</b> (৳৭০,০০০–১,২০,০০০)। ৩–৫ বছরে <b>senior</b> (৳১,২০,০০০+) — তবে শর্ত একটাই: কাজের প্রমাণ ও দায়িত্ব, শুধু কোর্স সার্টিফিকেট নয়।</div>
+
+<h2>৮. চাকরি/পদোন্নতির জন্য প্রস্তুতি</h2>
+<h3>আপনার রেজুমে যা লিখবেন (সংখ্যা দিয়ে)</h3>
+<ul>
+  <li>"৬ প্রতিষ্ঠান, ৩,৫০০+ শিক্ষার্থী ও ২৪০ কর্মচারীর জন্য Django-ভিত্তিক স্কুল ম্যানেজমেন্ট সিস্টেমের ডিজাইন ও অপারেশন (ভর্তি, পরীক্ষা-ফলাফল, উপস্থিতি, পে-রোল, হিসাব)"</li>
+  <li>"১,১০০+ স্বয়ংক্রিয় টেস্ট ও CI (SQLite + PostgreSQL) — প্রকাশের আগে রিগ্রেশন শূন্য"</li>
+  <li>"ফল প্রকাশের সময় X → Y-তে নামানো; রেজাল্ট পেজে কোয়েরি Z% কমানো"</li>
+  <li>"দৈনিক অটো ব্যাকআপ, রিস্টোর ড্রিল ও অডিট লগ — শিক্ষার্থীর তথ্যের গোপনীয়তা রক্ষা"</li>
+  <li>"৩ দিনের প্রশিক্ষণ কর্মসূಚি — ২৪০ কর্মচারীকে সিস্টেমে দক্ষ করা"</li>
+</ul>
+<h3>ইন্টারভিউতে যা জিজ্ঞেস করবে (এবং উত্তরের কাঠামো)</h3>
+<table>
+  <thead><tr><th style="width:38%">প্রশ্ন</th><th>উত্তর কীভাবে দেবেন</th></tr></thead>
+  <tbody>
+    <tr><td>"আপনার প্রজেক্ট সম্পর্কে বলুন"</td><td>৩০ সেকেন্ডে: সমস্যা (৩,৫০০ শিক্ষার্থী, ম্যানুয়াল রেজাল্ট), সমাধান (Django, ৬ প্রতিষ্ঠান), ফল (সংখ্যা), আপনার ভূমিকা</td></tr>
+    <tr><td>"N+1 কী, কীভাবে ঠিক করবেন?"</td><td>সংজ্ঞা → নিজের পেজের উদাহরণ → <code>select_related</code> → আগে/পরে কোয়েরি সংখ্যা</td></tr>
+    <tr><td>"ডিপ্লয় কীভাবে করেন?"</td><td>env var → migrate → gunicorn → static → check --deploy → ব্যাকআপ → রোলব্যাক</td></tr>
+    <tr><td>"সবচেয়ে কঠিন বাগ কী ছিল?"</td><td>একটি বাস্তব ঘটনা: লক্ষণ → কীভাবে মেপেছেন → মূল কারণ → সমাধান → প্রতিরোধ (টেস্ট)</td></tr>
+    <tr><td>"ডেটা লস হলে কী করবেন?"</td><td>ব্যাকআপ → রিস্টোর → ব্যবহারকারীকে জানানো → কারণ বিশ্লেষণ → প্রতিরোধ</td></tr>
+    <tr><td>"কেন আমরা আপনাকে নেব?"</td><td>বিরল সমন্বয়: শিক্ষা-ডোমেইন + কোড + অপারেশন + প্রশিক্ষণের অভিজ্ঞতা</td></tr>
+  </tbody>
+</table>
+<div class="note" style="background:#f0f4f9;border-left:4px solid var(--navy);padding:12px 16px;border-radius:0 8px 8px 0;font-size:13.5px">
+  <b>পোর্টফোলিওর ৩টি জিনিস:</b> (১) GitHub রিপো — README-তে স্ক্রিনশট, স্থাপত্যের এক পাতার ছবি, "১,১০০+ টেস্ট, CI সবুজ" শিরোনামে; (২) ৩ মিনিটের বাংলা ডেমো ভিডিও (অ্যাডমিন প্যানেল নয় — আসল ব্যবহারকারীর চোখে: শিক্ষক নম্বর দিচ্ছেন, অভিভাবক ফল দেখছেন); (৩) এক পাতা কেস-স্টাডি: সমস্যা → সমাধান → ফলাফল (সংখ্যাসহ)।
+</div>
+
+<h2>৯. সম্পদ তালিকা (সব ফ্রি)</h2>
+<table>
+  <thead><tr><th style="width:32%">বিষয়</th><th>কোথায়</th></tr></thead>
+  <tbody>
+    <tr><td>Python</td><td>CS50P (cs50.harvard.edu/python) · Automate the Boring Stuff (automatetheboringstuff.com) · Exercism (exercism.org/tracks/python)</td></tr>
+    <tr><td>Django</td><td>docs.djangoproject.com (official tutorial + "Topics") · tutorial.djangogirls.org · Simple is Better Than Complex (simpleisbetterthancomplex.com)</td></tr>
+    <tr><td>SQL</td><td>sqlbolt.com · PostgreSQL Tutorial (postgresqltutorial.com) · Django "Database access optimization"</td></tr>
+    <tr><td>Linux</td><td>linuxjourney.com · OverTheWire Bandit (overthewire.org/wargames/bandit)</td></tr>
+    <tr><td>টেস্ট</td><td>Test-Driven Development with Python (obeythetestinggoat.com, ফ্রি) · Django "Testing" ডক্স</td></tr>
+    <tr><td>Git</td><td>Pro Git বই (git-scm.com/book) · skills.github.com</td></tr>
+    <tr><td>নিরাপত্তা</td><td>owasp.org/www-project-top-ten · Django "Security in Django" · Mozilla Web Security (infosec.mozilla.org)</td></tr>
+    <tr><td>অপারেশন</td><td>12factor.net · Django "How to deploy" · আপনার নিজের <code>docs/</code> ফোল্ডার (এটাই সবচেয়ে প্রাসঙ্গিক পাঠ্য!)</td></tr>
+    <tr><td>সিস্টেম ডিজাইন</td><td>github.com/donnemartin/system-design-primer · "Designing Data-Intensive Applications" (পরে)</td></tr>
+  </tbody>
+</table>
+
+<h2>১০. শেষ কথা</h2>
+<div class="lede">
+আপনার প্রশ্ন ছিল — "ম্যানুয়ালি এটা আমার পক্ষে সম্ভব নয়, AI ছাড়া"। <b>এটাই আপনার আসল শক্তি, দুর্বলতা নয়</b> — কারণ বাজারে এখন সবাই AI ব্যবহার করে; পার্থক্য হয় কে <b>যাচাই করতে, চালাতে ও ব্যাখ্যা করতে</b> পারে তাতে। পরের ৬ মাসে আপনার লক্ষ্য নতুন ২০ হাজার লাইন কোড নয় — বরং এই তিনটি বাক্য নিজের মুখে নির্ভুলভাবে বলতে পারা: <b>"আমার সিস্টেমে এই জিনিসটা এভাবে কাজ করে"</b>, <b>"এটা ভাঙলে আমি এভাবে ঠিক করব"</b>, আর <b>"এর জন্য আমার এত সময় ও এত টাকা লাগবে"</b>। এই তিনটি এলে পদ, বেতন আর চাকরির বাজার — তিনটাই আপনার নিয়ন্ত্রণে।
+</div>
+
+<p class="small muted" style="margin-top:26px">এই পাঠ্যক্রমের সাথে: <b>skills-test-bn.html</b> (৪৮ প্রশ্নের যোগ্যতা যাচাই) · <b>labs-bn.html</b> (২০টি হাতে-কলমে ল্যাব, নিজের রিপোতে) · <b>PRICING_CAREER_PLAN_BN.html</b> (দাম ও দরকষাকষির কৌশল)।</p>
+
+</div>
+</body>
+</html>
