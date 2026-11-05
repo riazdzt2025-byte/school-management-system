@@ -569,15 +569,22 @@ class ExamForm(forms.ModelForm):
         widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
     )
 
-    field_order = ['institution', 'admission_class', 'section', 'group', 'exam_type', 'session', 'exam_date', 'is_published']
+    field_order = [
+        'institution', 'admission_class', 'section', 'group', 'exam_type',
+        'session', 'exam_date', 'is_published', 'special_result_enabled',
+    ]
 
     class Meta:
         model = Exam
-        fields = ['institution', 'admission_class', 'section', 'group', 'exam_type', 'session', 'exam_date', 'is_published']
+        fields = [
+            'institution', 'admission_class', 'section', 'group', 'exam_type',
+            'session', 'exam_date', 'is_published', 'special_result_enabled',
+        ]
         widgets = {
             'institution': forms.Select(attrs={'class': 'form-select'}),
             'exam_type': forms.Select(attrs={'class': 'form-select'}),
             'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2026-2027'}),
+            'special_result_enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -629,6 +636,18 @@ class ExamForm(forms.ModelForm):
                     'Select an institution you have access to.'
                 )
         return institution
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if (
+            cleaned_data.get('special_result_enabled')
+            and cleaned_data.get('exam_type') != 'SPECIAL_EXAM'
+        ):
+            self.add_error(
+                'special_result_enabled',
+                'Enable the separate result only for a Special Exam.',
+            )
+        return cleaned_data
 
     def save(self, commit=True):
         exam = super().save(commit=False)

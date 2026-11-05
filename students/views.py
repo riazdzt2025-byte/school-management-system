@@ -18,7 +18,7 @@ from .curriculum_apply import apply_curriculum
 from .models import SubjectMarkSetting
 from .models import (
     Student, Subject, Institution, InstitutionAccess, TransferCertificate, Certificate,
-    Exam, ExamMark, SeatPlan,
+    Exam, ExamMark, SeatPlan, SpecialExamRankOrder,
     Employee, EmployeeStatusLog, AttendanceRecord, MoneyReceipt, Voucher, SalarySheet,
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
     StudentSubjectChoice, SectionCapacity,
@@ -66,6 +66,7 @@ from .result_utils import (
     failed_subject_rows,
     section_arrangement_rows,
 )
+from .special_exam_results import build_special_exam_result
 
 
 def subject_assignments_url(exam, group=''):
@@ -3601,7 +3602,12 @@ def download_import_template(request):
 def exam_list(request):
     exams = Exam.objects.all().order_by('-session', 'admission_class', 'name')
     exams = _filter_by_selected_institution(request, exams)
-    return render(request, 'students/exam_list.html', {'exams': exams})
+    return render(request, 'students/exam_list.html', {
+        'exams': exams,
+        'has_special_exam_results': exams.filter(
+            exam_type='SPECIAL_EXAM', special_result_enabled=True,
+        ).exists(),
+    })
 
 
 def _institutions_data_json(request=None):
@@ -4303,6 +4309,151 @@ def result_sheet(request, pk):
         'show_group_picker': not exam.group and bool(group_choices),
         'group_querystring': group_querystring,
     })
+
+
+@login_required
+def special_exam_result_list(request):
+    """Filter and display enabled, published Special Exam total-mark results."""
+    exams = Exam.objects.filter(
+        exam_type='SPECIAL_EXAM', special_result_enabled=True,
+        is_published=True,
+    ).select_related('institution').order_by(
+        'institution__name', '-session', 'admission_class', 'group', 'name',
+    )
+    institutions = _visible_institutions(request)
+    institution_id = request.GET.get('institution', '')
+    institution = _resolve_requested_institution(request, institution_id)
+    if institution is not None:
+        exams = exams.filter(institution=institution)
+        institution_id = str(institution.pk)
+    else:
+        exams = _filter_by_selected_institution(request, exams)
+        institution_id = ''
+
+    session_choices = list(
+        exams.order_by().values_list('session', flat=True).distinct().order_by('-session')
+    )
+    selected_session = request.GET.get('session', '')
+    if selected_session:
+        exams = exams.filter(session=selected_session)
+
+    class_choices = list(
+        exams.order_by().values_list('admission_class', flat=True).distinct()
+    )
+    selected_class = request.GET.get('admission_class', '')
+    if selected_class:
+        exams = exams.filter(admission_class=selected_class)
+
+    exam_id = request.GET.get('exam', '')
+    selected_exam = exams.filter(pk=exam_id).first() if exam_id.isdigit() else None
+    group_choices = []
+    selected_group = ''
+    report = None
+    if selected_exam:
+        group_choices, selected_group = _exam_group_selection(request, selected_exam)
+        report = build_special_exam_result(
+            selected_exam, group=selected_group or None,
+        )
+
+    return render(request, 'students/special_exam_result.html', {
+        'exams': exams,
+        'institutions': institutions,
+        'institution_id': institution_id,
+        'class_choices': class_choices,
+        'selected_class': selected_class,
+        'session_choices': session_choices,
+        'selected_session': selected_session,
+        'selected_exam': selected_exam,
+        'group_choices': group_choices,
+        'selected_group': selected_group,
+        'selected_group_label': dict(group_choices).get(selected_group, ''),
+        'report': report,
+        'can_correct_order': request.user.has_perm('students.change_exam'),
+    })
+
+
+@login_required
+@permission_required('students.change_exam', raise_exception=True)
+@require_POST
+def correct_special_exam_tie_order(request, pk):
+    """Save an explicit order for every student in one equal-total group."""
+    from decimal import InvalidOperation
+    from urllib.parse import urlencode
+
+    exam = _get_scoped_object_or_404(
+        request, Exam, pk, lambda item: item.institution,
+    )
+    if exam.exam_type != 'SPECIAL_EXAM' or not exam.special_result_enabled:
+        raise Http404
+    if not exam.is_published:
+        messages.error(request, 'Publish this Special Exam before correcting its result order.')
+        return redirect('special_exam_result_list')
+
+    group_choices, selected_group = _exam_group_selection(request, exam)
+    report = build_special_exam_result(exam, group=selected_group or None)
+    raw_total = (request.POST.get('total_marks') or '').strip()
+    raw_ids = (request.POST.get('student_ids') or '').strip()
+    try:
+        total_marks = Decimal(raw_total)
+        requested_ids = [int(value) for value in raw_ids.split(',') if value]
+    except (InvalidOperation, ValueError):
+        messages.error(request, 'Select a valid equal-total group and ordering.')
+        return redirect('special_exam_result_list')
+    if not total_marks.is_finite():
+        messages.error(request, 'Select a valid equal-total group and ordering.')
+        return redirect('special_exam_result_list')
+
+    tie_group = next(
+        (item for item in report['tie_groups']
+         if item['total_marks'] == total_marks),
+        None,
+    )
+    expected_ids = (
+        {row['student'].pk for row in tie_group['members']}
+        if tie_group else set()
+    )
+    if (
+        tie_group is None
+        or len(requested_ids) != len(expected_ids)
+        or set(requested_ids) != expected_ids
+        or len(requested_ids) < 2
+    ):
+        messages.error(
+            request,
+            'Ordering can only be changed for every student in the selected equal-total group.',
+        )
+        return redirect('special_exam_result_list')
+
+    effective_group = report['effective_group']
+    with transaction.atomic():
+        SpecialExamRankOrder.objects.filter(
+            exam=exam, group=effective_group, total_marks=total_marks,
+        ).delete()
+        SpecialExamRankOrder.objects.bulk_create([
+            SpecialExamRankOrder(
+                exam=exam, student_id=student_id, group=effective_group,
+                total_marks=total_marks, order=index,
+            )
+            for index, student_id in enumerate(requested_ids, start=1)
+        ])
+        record_audit(
+            request.user, 'special_exam_merit_order_updated', exam,
+            snapshot={
+                'total_marks': str(total_marks),
+                'students_reordered': len(requested_ids),
+            },
+            details={'group': effective_group},
+        )
+
+    messages.success(request, 'Special Exam merit order recalculated.')
+    filters = {
+        key: request.POST.get(key, '')
+        for key in ('institution', 'admission_class', 'session', 'exam', 'group')
+        if request.POST.get(key, '')
+    }
+    query = urlencode(filters)
+    url = reverse('special_exam_result_list')
+    return redirect(f'{url}?{query}' if query else url)
 
 
 @login_required

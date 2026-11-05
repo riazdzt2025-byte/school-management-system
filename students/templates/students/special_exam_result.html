@@ -1,0 +1,198 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Special Exam Result - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div>
+        <h1>Special Exam Result</h1>
+        <div class="subtitle">English-language result ordered by total subject marks</div>
+    </div>
+    <button type="button" class="btn btn-outline-navy" onclick="window.print()">Print</button>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} d-print-none">{{ message }}</div>
+    {% endfor %}
+{% endif %}
+
+<div class="table-card p-3 mb-4 d-print-none">
+    <form method="get" class="row g-3 align-items-end">
+        <div class="col-md-3">
+            <label for="filter-institution" class="form-label">Institution</label>
+            <select class="form-select" name="institution" id="filter-institution">
+                <option value="">All available institutions</option>
+                {% for institution in institutions %}
+                <option value="{{ institution.pk }}" {% if institution_id == institution.pk|stringformat:"s" %}selected{% endif %}>{{ institution.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label for="filter-class" class="form-label">Class</label>
+            <select class="form-select" name="admission_class" id="filter-class">
+                <option value="">All classes</option>
+                {% for value in class_choices %}
+                <option value="{{ value }}" {% if selected_class == value %}selected{% endif %}>{{ value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label for="filter-session" class="form-label">Session</label>
+            <select class="form-select" name="session" id="filter-session">
+                <option value="">All sessions</option>
+                {% for value in session_choices %}
+                <option value="{{ value }}" {% if selected_session == value %}selected{% endif %}>{{ value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label for="filter-exam" class="form-label">Special Exam</label>
+            <select class="form-select" name="exam" id="filter-exam">
+                <option value="">Select an exam</option>
+                {% for exam in exams %}
+                <option value="{{ exam.pk }}" {% if selected_exam.pk == exam.pk %}selected{% endif %}>
+                    {{ exam.institution.name }} · Class {{ exam.admission_class }}{% if exam.group %} · {{ exam.get_group_display }}{% endif %} · {{ exam.session }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if selected_exam and group_choices %}
+        <div class="col-md-2">
+            <label for="filter-group" class="form-label">Group</label>
+            <select class="form-select" name="group" id="filter-group">
+                <option value="">All groups</option>
+                {% for value, label in group_choices %}
+                <option value="{{ value }}" {% if selected_group == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        <div class="col-12">
+            <button type="submit" class="btn btn-navy">Show selected result</button>
+            <a href="{% url 'special_exam_result_list' %}" class="btn btn-outline-secondary">Clear filters</a>
+        </div>
+    </form>
+</div>
+
+{% if selected_exam %}
+<div class="mb-3">
+    <h2 class="h4 mb-1">{{ selected_exam.institution.name }}</h2>
+    <div class="text-muted">
+        {{ selected_exam.name }} · Class {{ selected_exam.admission_class }}
+        {% if selected_exam.section %}· Section {{ selected_exam.section }}{% endif %}
+        {% if selected_group_label %}· {{ selected_group_label }}{% elif selected_exam.group %}· {{ selected_exam.get_group_display }}{% endif %}
+        · Session {{ selected_exam.session }}
+    </div>
+</div>
+
+{% if report %}
+    {% if report.columns %}
+    <div class="table-responsive table-card mb-4">
+        <table class="table table-bordered table-striped table-sm align-middle mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th scope="col">Merit Rank</th>
+                    <th scope="col">Roll</th>
+                    <th scope="col">Student ID</th>
+                    <th scope="col">Student Name</th>
+                    {% for column in report.columns %}<th scope="col">{{ column.name }}</th>{% endfor %}
+                    <th scope="col">Total Marks</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report.results %}
+                <tr>
+                    <td class="text-center fw-bold">{{ row.special_rank|default:"—" }}</td>
+                    <td class="text-center">{{ row.student.roll_no|default:"—" }}</td>
+                    <td>{{ row.student.student_id }}</td>
+                    <td>{{ row.student.name }}</td>
+                    {% for marks in row.subject_marks %}
+                    <td class="text-center">{% if marks is not None %}{{ marks|floatformat:"-2" }}{% else %}—{% endif %}</td>
+                    {% endfor %}
+                    <td class="text-center fw-bold">{% if row.has_marks %}{{ row.total_obtained|floatformat:"-2" }}{% else %}—{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center py-4">No result rows are available for this selection.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">No applicable subject marks are available for this exam selection.</div>
+    {% endif %}
+
+    {% if report.tie_groups %}
+    <section class="d-print-none">
+        <h2 class="h5">Correct ordering among equal totals</h2>
+        <p class="text-muted small">Move students within a tied total only. Saving the complete group recalculates merit ranks immediately; changes to marks or filters are reflected when the result is loaded again.</p>
+        {% for tie in report.tie_groups %}
+        <div class="table-card p-3 mb-3">
+            <h3 class="h6">Total Marks: {{ tie.total_marks|floatformat:"-2" }}</h3>
+            {% if can_correct_order %}
+            <form method="post" action="{% url 'correct_special_exam_tie_order' selected_exam.pk %}" class="special-tie-order-form">
+                {% csrf_token %}
+                <input type="hidden" name="total_marks" value="{{ tie.total_marks }}">
+                <input type="hidden" name="student_ids" value="{{ tie.student_ids }}" class="special-order-ids">
+                <input type="hidden" name="group" value="{{ selected_group }}">
+                <input type="hidden" name="institution" value="{{ institution_id }}">
+                <input type="hidden" name="admission_class" value="{{ selected_class }}">
+                <input type="hidden" name="session" value="{{ selected_session }}">
+                <input type="hidden" name="exam" value="{{ selected_exam.pk }}">
+                <ol class="list-group list-group-numbered special-order-list mb-3">
+                    {% for row in tie.members %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center" data-student-id="{{ row.student.pk }}">
+                        <span>{{ row.student.name }} (Roll {{ row.student.roll_no|default:"—" }}, ID {{ row.student.student_id }})</span>
+                        <span class="btn-group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary move-up" aria-label="Move {{ row.student.name }} up">↑</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary move-down" aria-label="Move {{ row.student.name }} down">↓</button>
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                <button type="submit" class="btn btn-sm btn-outline-primary">Save order and recalculate ranks</button>
+                {% if tie.has_manual_order %}<span class="badge text-bg-info ms-2">Manual order active</span>{% endif %}
+            </form>
+            {% else %}
+            <ol class="mb-0">
+                {% for row in tie.members %}
+                <li>{{ row.student.name }} (Roll {{ row.student.roll_no|default:"—" }}, ID {{ row.student.student_id }})</li>
+                {% endfor %}
+            </ol>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+{% else %}
+<div class="alert alert-info">Select a published, enabled Special Exam to view its result.</div>
+{% endif %}
+{% else %}
+<div class="alert alert-info">No published Special Exams with the separate result enabled match these filters.</div>
+{% endif %}
+
+<script>
+(function () {
+    document.querySelectorAll('.special-tie-order-form').forEach(function (form) {
+        var list = form.querySelector('.special-order-list');
+        var ids = form.querySelector('.special-order-ids');
+        function updateIds() {
+            ids.value = Array.from(list.querySelectorAll('[data-student-id]'))
+                .map(function (item) { return item.dataset.studentId; }).join(',');
+        }
+        list.addEventListener('click', function (event) {
+            var button = event.target.closest('button');
+            if (!button) return;
+            var item = button.closest('[data-student-id]');
+            if (button.classList.contains('move-up') && item.previousElementSibling) {
+                list.insertBefore(item, item.previousElementSibling);
+            } else if (button.classList.contains('move-down') && item.nextElementSibling) {
+                list.insertBefore(item.nextElementSibling, item);
+            }
+            updateIds();
+        });
+        updateIds();
+    });
+})();
+</script>
+{% endblock %}

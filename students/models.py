@@ -761,6 +761,7 @@ class Exam(models.Model):
         ('MID_TERM_1', 'Mid Term-1'),
         ('MID_TERM_2', 'Mid Term-2'),
         ('MID_TERM_3', 'Mid Term-3'),
+        ('SPECIAL_EXAM', 'Special Exam'),
     ]
 
     name = models.CharField(max_length=100)
@@ -772,9 +773,43 @@ class Exam(models.Model):
     session = models.CharField(max_length=20, help_text='e.g. 2025-2026')
     exam_date = models.DateField(null=True, blank=True)
     is_published = models.BooleanField(default=False)
+    special_result_enabled = models.BooleanField(
+        default=False,
+        help_text='Allow the separate English-language Special Exam result by total marks.',
+    )
 
     def __str__(self):
         return f"{self.name} ({self.get_exam_type_display()}) - Class {self.admission_class}"
+
+
+class SpecialExamRankOrder(models.Model):
+    """Saved manual ordering for one equal-total group in a Special Exam.
+
+    These rows only affect the separate total-marks report, and are applied
+    only while the whole set of students still has the same total.
+    """
+    exam = models.ForeignKey(
+        Exam, on_delete=models.CASCADE, related_name='special_rank_orders',
+    )
+    student = models.ForeignKey(
+        Student, on_delete=models.CASCADE, related_name='special_exam_rank_orders',
+    )
+    group = models.CharField(max_length=5, blank=True)
+    total_marks = models.DecimalField(max_digits=10, decimal_places=2)
+    order = models.PositiveIntegerField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['exam', 'student', 'group'],
+                name='unique_special_exam_student_order',
+            ),
+            models.UniqueConstraint(
+                fields=['exam', 'group', 'total_marks', 'order'],
+                name='unique_special_exam_tie_order',
+            ),
+        ]
+
 
 class SubjectMarkSetting(MarksConfigMixin):
     """
