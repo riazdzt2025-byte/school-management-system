@@ -61,6 +61,15 @@ def build_special_exam_result(exam, group=None, order='roll'):
                 if not subject_result.get('not_applicable') else None
                 for subject_result in result['subject_results']
             ]
+            result['result_percentage'] = (
+                Decimal(result['total_obtained']) * 100 / Decimal(result['total_full'])
+                if result['total_full'] else None
+            )
+            result['result_status'] = (
+                'No Marks' if result['result_percentage'] is None
+                else 'Pass' if result['result_percentage'] >= 40
+                else 'Fail'
+            )
             ordered_rows.append(result)
             group_members.append(result)
         if len(members) > 1:
@@ -79,6 +88,8 @@ def build_special_exam_result(exam, group=None, order='roll'):
             if not subject_result.get('not_applicable') else None
             for subject_result in result['subject_results']
         ]
+        result['result_percentage'] = None
+        result['result_status'] = 'No Marks'
         ordered_rows.append(result)
 
     if order == 'merit':

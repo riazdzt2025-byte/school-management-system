@@ -107,6 +107,56 @@ class SpecialExamResultTests(TestCase):
         )
         self.assertContains(response, 'value="merit" selected')
 
+    def test_total_mark_result_uses_40_percent_of_applicable_marks(self):
+        ExamMark.objects.filter(
+            exam=self.exam, student=self.roll_one, subject=self.subject,
+        ).update(marks_obtained=40)
+        ExamMark.objects.filter(
+            exam=self.exam, student=self.roll_two, subject=self.subject,
+        ).update(marks_obtained=39)
+
+        response = self._report()
+        rows = {
+            row['student'].pk: row
+            for row in response.context['report']['results']
+        }
+        self.assertEqual(rows[self.roll_one.pk]['total_full'], 100)
+        self.assertEqual(rows[self.roll_one.pk]['result_percentage'], 40)
+        self.assertEqual(rows[self.roll_one.pk]['result_status'], 'Pass')
+        self.assertEqual(rows[self.roll_two.pk]['total_full'], 100)
+        self.assertEqual(rows[self.roll_two.pk]['result_percentage'], 39)
+        self.assertEqual(rows[self.roll_two.pk]['result_status'], 'Fail')
+        self.assertContains(response, 'Result (40%)')
+        self.assertContains(response, 'special-result-box is-fail')
+        self.assertContains(response, 'PASS')
+        self.assertContains(response, 'FAIL')
+
+        # Result classification is independent of the existing merit ranks and
+        # register-roll display order.
+        self.assertEqual(
+            [row['student'].pk for row in response.context['report']['results']],
+            [self.roll_one.pk, self.roll_two.pk, self.roll_three.pk],
+        )
+        self.assertEqual(
+            [row['special_rank'] for row in response.context['report']['results']],
+            [2, 3, 1],
+        )
+
+    def test_candidate_without_marks_is_not_classified_as_fail(self):
+        unmarked = Student.objects.create(
+            institution=self.institution, student_id='SP004',
+            name='Candidate Four', admission_class='6', roll_no=4,
+        )
+        self.exam.special_students.add(unmarked)
+
+        response = self._report()
+        row = next(
+            row for row in response.context['report']['results']
+            if row['student'].pk == unmarked.pk
+        )
+        self.assertEqual(row['result_status'], 'No Marks')
+        self.assertIsNone(row['result_percentage'])
+
     def test_excel_exports_preserve_both_row_orders_and_column_order(self):
         from openpyxl import load_workbook
 
