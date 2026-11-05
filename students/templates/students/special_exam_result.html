@@ -68,6 +68,15 @@
             </select>
         </div>
         {% endif %}
+        {% if selected_exam %}
+        <div class="col-md-2">
+            <label for="filter-order" class="form-label">Row order</label>
+            <select class="form-select" name="order" id="filter-order">
+                <option value="roll" {% if result_order == "roll" %}selected{% endif %}>Roll number</option>
+                <option value="merit" {% if result_order == "merit" %}selected{% endif %}>Merit rank</option>
+            </select>
+        </div>
+        {% endif %}
         <div class="col-12">
             <button type="submit" class="btn btn-navy">Show selected result</button>
             <a href="{% url 'special_exam_result_list' %}" class="btn btn-outline-secondary">Clear filters</a>
@@ -76,6 +85,10 @@
 </div>
 
 {% if selected_exam %}
+<div class="d-flex flex-wrap gap-2 mb-3 d-print-none">
+    <a href="{{ roll_export_url }}" class="btn btn-outline-navy">Download roll-order Excel</a>
+    <a href="{{ merit_export_url }}" class="btn btn-outline-navy">Download merit-order Excel</a>
+</div>
 <div class="mb-3">
     <h2 class="h4 mb-1">{{ selected_exam.institution.name }}</h2>
     <div class="text-muted">
@@ -92,18 +105,17 @@
         <table class="table table-bordered table-striped table-sm align-middle mb-0">
             <thead class="table-dark">
                 <tr>
-                    <th scope="col">Merit Rank</th>
                     <th scope="col">Roll</th>
                     <th scope="col">Student ID</th>
                     <th scope="col">Student Name</th>
                     {% for column in report.columns %}<th scope="col">{{ column.name }}</th>{% endfor %}
                     <th scope="col">Total Marks</th>
+                    <th scope="col">Merit Rank</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in report.results %}
                 <tr>
-                    <td class="text-center fw-bold">{{ row.special_rank|default:"—" }}</td>
                     <td class="text-center">{{ row.student.roll_no|default:"—" }}</td>
                     <td>{{ row.student.student_id }}</td>
                     <td>{{ row.student.name }}</td>
@@ -111,9 +123,10 @@
                     <td class="text-center">{% if marks is not None %}{{ marks|floatformat:"-2" }}{% else %}—{% endif %}</td>
                     {% endfor %}
                     <td class="text-center fw-bold">{% if row.has_marks %}{{ row.total_obtained|floatformat:"-2" }}{% else %}—{% endif %}</td>
+                    <td class="text-center fw-bold">{{ row.special_rank|default:"—" }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="5" class="text-center py-4">No result rows are available for this selection.</td></tr>
+                <tr><td colspan="{{ report.columns|length|add:5 }}" class="text-center py-4">No result rows are available for this selection.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

@@ -1,3 +1,5 @@
+from io import BytesIO
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
@@ -81,12 +83,80 @@ class SpecialExamResultTests(TestCase):
         self.assertContains(response, '80')
         self.assertEqual(
             [row['special_rank'] for row in response.context['report']['results']],
-            [1, 1, 3],
+            [1, 3, 1],
         )
         self.assertEqual(
-            [row['student'].pk for row in response.context['report']['results'][:2]],
-            [self.roll_one.pk, self.roll_three.pk],
+            [row['student'].pk for row in response.context['report']['results']],
+            [self.roll_one.pk, self.roll_two.pk, self.roll_three.pk],
         )
+        self.assertLess(
+            response.content.index(b'Total Marks'),
+            response.content.index(b'Merit Rank'),
+        )
+
+    def test_merit_order_option_sorts_rows_by_rank(self):
+        response = self.client.get(
+            reverse('special_exam_result_list'),
+            {'institution': self.institution.pk, 'exam': self.exam.pk, 'order': 'merit'},
+        )
+        self.assertEqual(
+            [row['student'].pk for row in response.context['report']['results']],
+            [self.roll_one.pk, self.roll_three.pk, self.roll_two.pk],
+        )
+        self.assertContains(response, 'value="merit" selected')
+
+    def test_excel_exports_preserve_both_row_orders_and_column_order(self):
+        from openpyxl import load_workbook
+
+        url = reverse('download_special_exam_result', args=[self.exam.pk])
+        orders = (
+            ('roll', [self.roll_one.student_id, self.roll_two.student_id, self.roll_three.student_id]),
+            ('merit', [self.roll_one.student_id, self.roll_three.student_id, self.roll_two.student_id]),
+        )
+        for order, expected_students in orders:
+            with self.subTest(order=order):
+                response = self.client.get(url, {
+                    'institution': self.institution.pk,
+                    'admission_class': '6',
+                    'session': '2026',
+                    'exam': self.exam.pk,
+                    'order': order,
+                })
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response['Content-Type'],
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                )
+                sheet = load_workbook(BytesIO(response.content), data_only=True).active
+                headers = [cell.value for cell in sheet[1]]
+                self.assertEqual(
+                    headers,
+                    ['Roll', 'Student ID', 'Student Name', 'English', 'Total Marks', 'Merit Rank'],
+                )
+                self.assertEqual(
+                    [sheet.cell(row=row, column=2).value for row in range(2, 5)],
+                    expected_students,
+                )
+
+    def test_excel_export_respects_institution_access(self):
+        other = Institution.objects.create(name='Other School', classes='6')
+        other_exam = Exam.objects.create(
+            name='Other Special Exam',
+            exam_type='FIRST_TERM',
+            institution=other,
+            admission_class='6',
+            session='2026',
+            is_published=True,
+            is_special=True,
+            special_result_enabled=True,
+        )
+        InstitutionAccess.objects.create(
+            user=self.user, institution=self.institution, department='Exam',
+        )
+        response = self.client.get(
+            reverse('download_special_exam_result', args=[other_exam.pk]),
+        )
+        self.assertEqual(response.status_code, 404)
 
     def test_manual_order_breaks_only_equal_total_and_recalculates_ranks(self):
         # Default register order is roll 1 then roll 3. Move roll 3 ahead.
@@ -115,9 +185,9 @@ class SpecialExamResultTests(TestCase):
         self.assertEqual(
             [(row['student'].pk, row['special_rank']) for row in rows],
             [
-                (self.roll_three.pk, 1),
                 (self.roll_one.pk, 2),
                 (self.roll_two.pk, 3),
+                (self.roll_three.pk, 1),
             ],
         )
 

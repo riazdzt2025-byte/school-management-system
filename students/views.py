@@ -5811,11 +5811,30 @@ def special_exam_result_list(request):
     group_choices = []
     selected_group = ''
     report = None
+    result_order = 'merit' if request.GET.get('order') == 'merit' else 'roll'
     if selected_exam:
         group_choices, selected_group = _exam_group_selection(request, selected_exam)
         report = build_special_exam_result(
-            selected_exam, group=selected_group or None,
+            selected_exam, group=selected_group or None, order=result_order,
         )
+
+    export_filters = {
+        key: value for key, value in {
+            'institution': institution_id,
+            'admission_class': selected_class,
+            'session': selected_session,
+            'exam': selected_exam.pk if selected_exam else '',
+            'group': selected_group,
+        }.items() if value
+    }
+    roll_export_url = ''
+    merit_export_url = ''
+    if selected_exam:
+        export_path = reverse(
+            'download_special_exam_result', args=[selected_exam.pk],
+        )
+        roll_export_url = f'{export_path}?{urlencode({**export_filters, "order": "roll"})}'
+        merit_export_url = f'{export_path}?{urlencode({**export_filters, "order": "merit"})}'
 
     return render(request, 'students/special_exam_result.html', {
         'exams': exams,
@@ -5830,8 +5849,66 @@ def special_exam_result_list(request):
         'selected_group': selected_group,
         'selected_group_label': dict(group_choices).get(selected_group, ''),
         'report': report,
+        'result_order': result_order,
+        'roll_export_url': roll_export_url,
+        'merit_export_url': merit_export_url,
         'can_correct_order': request.user.has_perm('students.change_exam'),
     })
+
+
+@login_required
+def download_special_exam_result(request, pk):
+    """Download the filtered Special Exam total-marks report as an Excel file."""
+    exam = _get_scoped_object_or_404(
+        request, Exam, pk, lambda item: item.institution,
+    )
+    if not exam.is_special or not exam.special_result_enabled:
+        raise Http404
+    if not exam.is_published:
+        messages.error(request, 'Publish this Special Exam before downloading its result.')
+        return redirect('special_exam_result_list')
+    if openpyxl is None:
+        messages.error(request, 'Excel export is unavailable because openpyxl is not installed.')
+        return redirect('special_exam_result_list')
+
+    _group_choices, selected_group = _exam_group_selection(request, exam)
+    order = 'merit' if request.GET.get('order') == 'merit' else 'roll'
+    report = build_special_exam_result(
+        exam, group=selected_group or None, order=order,
+    )
+    headers = [
+        'Roll', 'Student ID', 'Student Name',
+        *(column.name for column in report['columns']),
+        'Total Marks', 'Merit Rank',
+    ]
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = 'Special Exam Result'
+    sheet.append(headers)
+    for row in report['results']:
+        sheet.append([
+            row['student'].roll_no,
+            row['student'].student_id,
+            row['student'].name,
+            *row['subject_marks'],
+            row['total_obtained'] if row['has_marks'] else None,
+            row['special_rank'],
+        ])
+    for column in sheet.columns:
+        max_length = max(
+            (len(str(cell.value)) for cell in column if cell.value is not None),
+            default=8,
+        )
+        sheet.column_dimensions[column[0].column_letter].width = min(max_length + 4, 40)
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="special_exam_result_{exam.pk}_{order}.xlsx"'
+    )
+    workbook.save(response)
+    return response
 
 
 @login_required

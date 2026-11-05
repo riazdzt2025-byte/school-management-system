@@ -101,6 +101,7 @@ urlpatterns = [
     path('audit/<int:pk>/', views.audit_log_detail, name='audit_log_detail'),
     path('exams/<int:pk>/result-sheet/', views.result_sheet, name='result_sheet'),
     path('exams/special-results/', views.special_exam_result_list, name='special_exam_result_list'),
+    path('exams/<int:pk>/special-results/download/', views.download_special_exam_result, name='download_special_exam_result'),
     path('exams/<int:pk>/special-results/tie-order/', views.correct_special_exam_tie_order, name='correct_special_exam_tie_order'),
     path('exams/<int:pk>/provisional-result/', views.result_provisional, name='result_provisional'),
     path('exams/<int:pk>/result-summary/', views.result_summary, name='exam_result_summary'),

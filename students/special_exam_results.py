@@ -15,13 +15,14 @@ def _register_order(result):
     )
 
 
-def build_special_exam_result(exam, group=None):
+def build_special_exam_result(exam, group=None, order='roll'):
     """Build the live total-marks report and its editable equal-total groups.
 
     The normal exam result applies GPA/pass ranking rules. This separate report
-    uses the existing per-student subject calculations, but orders candidates
+    uses the existing per-student subject calculations, but calculates merit
     by raw total marks. Saved tie orders are used only when their student set
     still exactly matches the current equal-total set for this selected group.
+    Rows are returned in register order unless merit order is requested.
     """
     from .models import SpecialExamRankOrder
 
@@ -80,9 +81,19 @@ def build_special_exam_result(exam, group=None):
         ]
         ordered_rows.append(result)
 
+    if order == 'merit':
+        ordered_rows.sort(key=lambda row: (
+            row['special_rank'] is None,
+            row['special_rank'] if row['special_rank'] is not None else 0,
+            _register_order(row),
+        ))
+    else:
+        ordered_rows.sort(key=_register_order)
+
     return {
         'columns': columns,
         'results': ordered_rows,
         'tie_groups': tie_groups,
         'effective_group': effective_group,
+        'order': 'merit' if order == 'merit' else 'roll',
     }
