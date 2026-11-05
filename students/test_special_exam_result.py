@@ -107,13 +107,13 @@ class SpecialExamResultTests(TestCase):
         )
         self.assertContains(response, 'value="merit" selected')
 
-    def test_total_mark_result_uses_40_percent_of_applicable_marks(self):
+    def test_failing_subject_mark_is_highlighted_without_overall_result_column(self):
         ExamMark.objects.filter(
             exam=self.exam, student=self.roll_one, subject=self.subject,
         ).update(marks_obtained=40)
         ExamMark.objects.filter(
             exam=self.exam, student=self.roll_two, subject=self.subject,
-        ).update(marks_obtained=39)
+        ).update(marks_obtained=20)
 
         response = self._report()
         rows = {
@@ -121,18 +121,16 @@ class SpecialExamResultTests(TestCase):
             for row in response.context['report']['results']
         }
         self.assertEqual(rows[self.roll_one.pk]['total_full'], 100)
-        self.assertEqual(rows[self.roll_one.pk]['result_percentage'], 40)
-        self.assertEqual(rows[self.roll_one.pk]['result_status'], 'Pass')
         self.assertEqual(rows[self.roll_two.pk]['total_full'], 100)
-        self.assertEqual(rows[self.roll_two.pk]['result_percentage'], 39)
-        self.assertEqual(rows[self.roll_two.pk]['result_status'], 'Fail')
-        self.assertContains(response, 'Result (40%)')
-        self.assertContains(response, 'special-result-box is-fail')
-        self.assertContains(response, 'PASS')
-        self.assertContains(response, 'FAIL')
+        self.assertEqual(rows[self.roll_two.pk]['subject_marks'], [20])
+        self.assertTrue(rows[self.roll_two.pk]['subject_mark_details'][0]['failed'])
+        self.assertNotIn('result_status', rows[self.roll_two.pk])
+        self.assertContains(response, 'A+ Count')
+        self.assertContains(response, '<span class="special-failing-mark">20</span>', html=True)
+        self.assertNotContains(response, 'Result (40%)')
+        self.assertNotContains(response, 'special-result-box')
 
-        # Result classification is independent of the existing merit ranks and
-        # register-roll display order.
+        # Existing merit ranks and register-roll display order remain unchanged.
         self.assertEqual(
             [row['student'].pk for row in response.context['report']['results']],
             [self.roll_one.pk, self.roll_two.pk, self.roll_three.pk],
@@ -142,7 +140,16 @@ class SpecialExamResultTests(TestCase):
             [2, 3, 1],
         )
 
-    def test_candidate_without_marks_is_not_classified_as_fail(self):
+    def test_a_plus_count_counts_subject_grades_and_absence_is_not_a_display_mark(self):
+        response = self._report()
+        rows = {
+            row['student'].pk: row
+            for row in response.context['report']['results']
+        }
+        self.assertEqual(rows[self.roll_one.pk]['a_plus_count'], 1)
+        self.assertEqual(rows[self.roll_two.pk]['a_plus_count'], 0)
+        self.assertEqual(rows[self.roll_three.pk]['a_plus_count'], 1)
+
         unmarked = Student.objects.create(
             institution=self.institution, student_id='SP004',
             name='Candidate Four', admission_class='6', roll_no=4,
@@ -154,8 +161,9 @@ class SpecialExamResultTests(TestCase):
             row for row in response.context['report']['results']
             if row['student'].pk == unmarked.pk
         )
-        self.assertEqual(row['result_status'], 'No Marks')
-        self.assertIsNone(row['result_percentage'])
+        self.assertEqual(row['subject_marks'], [None])
+        self.assertFalse(row['subject_mark_details'][0]['failed'])
+        self.assertEqual(row['a_plus_count'], 0)
 
     def test_excel_exports_preserve_both_row_orders_and_column_order(self):
         from openpyxl import load_workbook
@@ -183,12 +191,35 @@ class SpecialExamResultTests(TestCase):
                 headers = [cell.value for cell in sheet[1]]
                 self.assertEqual(
                     headers,
-                    ['Roll', 'Student ID', 'Student Name', 'English', 'Total Marks', 'Merit Rank'],
+                    [
+                        'Roll', 'Student ID', 'Student Name', 'English',
+                        'Total Marks', 'A+ Count', 'Merit Rank',
+                    ],
                 )
                 self.assertEqual(
                     [sheet.cell(row=row, column=2).value for row in range(2, 5)],
                     expected_students,
                 )
+                self.assertEqual(
+                    [sheet.cell(row=row, column=6).value for row in range(2, 5)],
+                    [1, 0, 1] if order == 'roll' else [1, 1, 0],
+                )
+
+    def test_excel_export_marks_failing_subject_cells_black(self):
+        from openpyxl import load_workbook
+
+        ExamMark.objects.filter(
+            exam=self.exam, student=self.roll_two, subject=self.subject,
+        ).update(marks_obtained=20)
+        response = self.client.get(
+            reverse('download_special_exam_result', args=[self.exam.pk]),
+            {'institution': self.institution.pk},
+        )
+        sheet = load_workbook(BytesIO(response.content), data_only=False).active
+        failing_mark = sheet.cell(row=3, column=4)
+        self.assertEqual(failing_mark.value, 20)
+        self.assertEqual(failing_mark.fill.fgColor.rgb[-6:], '000000')
+        self.assertEqual(failing_mark.font.color.rgb[-6:], 'FFFFFF')
 
     def test_excel_export_respects_institution_access(self):
         other = Institution.objects.create(name='Other School', classes='6')

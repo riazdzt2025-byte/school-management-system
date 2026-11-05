@@ -5879,7 +5879,7 @@ def download_special_exam_result(request, pk):
     headers = [
         'Roll', 'Student ID', 'Student Name',
         *(column.name for column in report['columns']),
-        'Total Marks', 'Merit Rank',
+        'Total Marks', 'A+ Count', 'Merit Rank',
     ]
     workbook = openpyxl.Workbook()
     sheet = workbook.active
@@ -5892,8 +5892,20 @@ def download_special_exam_result(request, pk):
             row['student'].name,
             *row['subject_marks'],
             row['total_obtained'] if row['has_marks'] else None,
+            row['a_plus_count'],
             row['special_rank'],
         ])
+        first_subject_column = 4
+        for offset, detail in enumerate(row['subject_mark_details']):
+            if detail['failed']:
+                cell = sheet.cell(
+                    row=sheet.max_row,
+                    column=first_subject_column + offset,
+                )
+                cell.fill = openpyxl.styles.PatternFill(
+                    fill_type='solid', fgColor='000000',
+                )
+                cell.font = openpyxl.styles.Font(color='FFFFFF')
     for column in sheet.columns:
         max_length = max(
             (len(str(cell.value)) for cell in column if cell.value is not None),

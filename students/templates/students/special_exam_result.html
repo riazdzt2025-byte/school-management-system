@@ -4,33 +4,15 @@
 
 {% block content %}
 <style>
-    .special-result-cell {
-        padding: 0 !important;
-        border: 2px solid #000 !important;
-        min-width: 100px;
-    }
-    .special-result-box {
-        display: flex;
-        min-height: 42px;
-        width: 100%;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 4px 6px;
-        background: #fff;
-        color: #000;
-        font-weight: 700;
-        line-height: 1.2;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .special-result-box.is-fail {
+    .special-failing-mark {
+        display: inline-block;
+        min-width: 2.5em;
+        padding: 2px 6px;
         background: #000;
         color: #fff;
-    }
-    .special-result-box small {
-        font-size: .75em;
-        font-weight: 600;
+        font-weight: 700;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
 </style>
 <div class="page-header d-print-none">
@@ -140,7 +122,7 @@
                     <th scope="col">Student Name</th>
                     {% for column in report.columns %}<th scope="col">{{ column.name }}</th>{% endfor %}
                     <th scope="col">Total Marks</th>
-                    <th scope="col">Result (40%)</th>
+                    <th scope="col">A+ Count</th>
                     <th scope="col">Merit Rank</th>
                 </tr>
             </thead>
@@ -150,24 +132,19 @@
                     <td class="text-center">{{ row.student.roll_no|default:"—" }}</td>
                     <td>{{ row.student.student_id }}</td>
                     <td>{{ row.student.name }}</td>
-                    {% for marks in row.subject_marks %}
-                    <td class="text-center">{% if marks is not None %}{{ marks|floatformat:"-2" }}{% else %}—{% endif %}</td>
+                    {% for detail in row.subject_mark_details %}
+                    <td class="text-center">
+                        {% if detail.mark is not None %}
+                            {% if detail.failed %}<span class="special-failing-mark">{{ detail.mark|floatformat:"-2" }}</span>{% else %}{{ detail.mark|floatformat:"-2" }}{% endif %}
+                        {% else %}—{% endif %}
+                    </td>
                     {% endfor %}
                     <td class="text-center fw-bold">{% if row.has_marks %}{{ row.total_obtained|floatformat:"-2" }}{% else %}—{% endif %}</td>
-                    <td class="special-result-cell text-center">
-                        {% if row.result_status == "No Marks" %}
-                        <span class="special-result-box" aria-label="No marks">—</span>
-                        {% else %}
-                        <span class="special-result-box{% if row.result_status == 'Fail' %} is-fail{% endif %}" aria-label="{{ row.result_status }} at {{ row.result_percentage|floatformat:2 }} percent">
-                            {{ row.result_status|upper }}
-                            <small>{{ row.result_percentage|floatformat:2 }}%</small>
-                        </span>
-                        {% endif %}
-                    </td>
+                    <td class="text-center">{{ row.a_plus_count }}</td>
                     <td class="text-center fw-bold">{{ row.special_rank|default:"—" }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="{{ report.columns|length|add:5 }}" class="text-center py-4">No result rows are available for this selection.</td></tr>
+                <tr><td colspan="{{ report.columns|length|add:6 }}" class="text-center py-4">No result rows are available for this selection.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

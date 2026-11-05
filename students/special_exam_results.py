@@ -15,6 +15,34 @@ def _register_order(result):
     )
 
 
+def _set_subject_report_marks(result):
+    """Prepare visible marks, failures and A+ count from subject calculations."""
+    subject_mark_details = []
+    for subject_result in result['subject_results']:
+        has_mark = (
+            not subject_result.get('not_applicable')
+            and not subject_result.get('absent')
+            and not subject_result.get('pending')
+            and subject_result.get('obtained') is not None
+        )
+        subject_mark_details.append({
+            'mark': subject_result.get('obtained') if has_mark else None,
+            'failed': has_mark and subject_result.get('grade') == 'F',
+        })
+
+    result['subject_mark_details'] = subject_mark_details
+    result['subject_marks'] = [
+        detail['mark'] for detail in subject_mark_details
+    ]
+    result['a_plus_count'] = sum(
+        1 for subject_result in result['subject_results']
+        if not subject_result.get('not_applicable')
+        and not subject_result.get('absent')
+        and not subject_result.get('pending')
+        and subject_result.get('grade') == 'A+'
+    )
+
+
 def build_special_exam_result(exam, group=None, order='roll'):
     """Build the live total-marks report and its editable equal-total groups.
 
@@ -56,20 +84,7 @@ def build_special_exam_result(exam, group=None, order='roll'):
         group_members = []
         for index, result in enumerate(members):
             result['special_rank'] = rank_cursor + index if has_manual_order else rank_cursor
-            result['subject_marks'] = [
-                subject_result.get('obtained')
-                if not subject_result.get('not_applicable') else None
-                for subject_result in result['subject_results']
-            ]
-            result['result_percentage'] = (
-                Decimal(result['total_obtained']) * 100 / Decimal(result['total_full'])
-                if result['total_full'] else None
-            )
-            result['result_status'] = (
-                'No Marks' if result['result_percentage'] is None
-                else 'Pass' if result['result_percentage'] >= 40
-                else 'Fail'
-            )
+            _set_subject_report_marks(result)
             ordered_rows.append(result)
             group_members.append(result)
         if len(members) > 1:
@@ -83,13 +98,7 @@ def build_special_exam_result(exam, group=None, order='roll'):
 
     for result in sorted(unmarked_candidates, key=_register_order):
         result['special_rank'] = None
-        result['subject_marks'] = [
-            subject_result.get('obtained')
-            if not subject_result.get('not_applicable') else None
-            for subject_result in result['subject_results']
-        ]
-        result['result_percentage'] = None
-        result['result_status'] = 'No Marks'
+        _set_subject_report_marks(result)
         ordered_rows.append(result)
 
     if order == 'merit':
