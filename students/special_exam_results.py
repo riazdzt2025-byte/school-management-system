@@ -119,6 +119,11 @@ def build_special_exam_result(exam, group=None, order='roll'):
             row['special_serial'] if row['special_serial'] is not None else 0,
             _register_order(row),
         ))
+        serial = 1
+        for row in ordered_rows:
+            if row['special_serial'] is not None:
+                row['special_serial'] = serial
+                serial += 1
     else:
         ordered_rows.sort(key=_register_order)
 

@@ -5811,7 +5811,7 @@ def special_exam_result_list(request):
     group_choices = []
     selected_group = ''
     report = None
-    result_order = 'merit' if request.GET.get('order') == 'merit' else 'roll'
+    result_order = 'roll' if request.GET.get('order') == 'roll' else 'merit'
     if selected_exam:
         group_choices, selected_group = _exam_group_selection(request, selected_exam)
         report = build_special_exam_result(
@@ -5872,7 +5872,7 @@ def download_special_exam_result(request, pk):
         return redirect('special_exam_result_list')
 
     _group_choices, selected_group = _exam_group_selection(request, exam)
-    order = 'merit' if request.GET.get('order') == 'merit' else 'roll'
+    order = 'roll' if request.GET.get('order') == 'roll' else 'merit'
     report = build_special_exam_result(
         exam, group=selected_group or None, order=order,
     )

@@ -71,7 +71,7 @@ class SpecialExamResultTests(TestCase):
     def _report(self):
         return self.client.get(
             reverse('special_exam_result_list'),
-            {'institution': self.institution.pk, 'exam': self.exam.pk},
+            {'institution': self.institution.pk, 'exam': self.exam.pk, 'order': 'roll'},
         )
 
     def test_report_lists_student_identity_marks_total_and_total_based_merit(self):
@@ -210,7 +210,6 @@ class SpecialExamResultTests(TestCase):
             {
                 'institution': self.institution.pk,
                 'exam': self.exam.pk,
-                'order': 'merit',
             },
         )
         rows = response.context['report']['results']
@@ -218,9 +217,28 @@ class SpecialExamResultTests(TestCase):
             [row['student'].pk for row in rows],
             [self.roll_one.pk, self.roll_three.pk, self.roll_two.pk],
         )
+        self.assertEqual(response.context['result_order'], 'merit')
         self.assertEqual(
-            [(row['total_obtained'], row['special_rank']) for row in rows],
-            [(80, 1), (80, 1), (120, 0)],
+            [
+                (row['total_obtained'], row['special_rank'], row['special_serial'])
+                for row in rows
+            ],
+            [(80, 1, 1), (80, 1, 2), (120, 0, 3)],
+        )
+        from openpyxl import load_workbook
+
+        export = self.client.get(
+            reverse('download_special_exam_result', args=[self.exam.pk]),
+            {'institution': self.institution.pk},
+        )
+        sheet = load_workbook(BytesIO(export.content), data_only=True).active
+        self.assertEqual(
+            [sheet.cell(row=row, column=3).value for row in range(2, 5)],
+            ['SP001', 'SP003', 'SP002'],
+        )
+        self.assertEqual(
+            [sheet.cell(row=row, column=1).value for row in range(2, 5)],
+            [1, 2, 3],
         )
 
     def test_a_plus_count_counts_subject_grades_and_absence_is_not_a_display_mark(self):
@@ -300,7 +318,7 @@ class SpecialExamResultTests(TestCase):
         ).update(marks_obtained=20)
         response = self.client.get(
             reverse('download_special_exam_result', args=[self.exam.pk]),
-            {'institution': self.institution.pk},
+            {'institution': self.institution.pk, 'order': 'roll'},
         )
         sheet = load_workbook(BytesIO(response.content), data_only=False).active
         failing_mark = sheet.cell(row=3, column=5)
