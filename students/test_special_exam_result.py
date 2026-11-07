@@ -91,6 +91,10 @@ class SpecialExamResultTests(TestCase):
             [row['student'].pk for row in response.context['report']['results']],
             [self.roll_one.pk, self.roll_two.pk, self.roll_three.pk],
         )
+        self.assertEqual(
+            [row['special_serial'] for row in response.context['report']['results']],
+            [1, 3, 2],
+        )
         self.assertLess(
             response.content.index(b'Total Marks'),
             response.content.index(b'Merit Rank'),
@@ -124,6 +128,7 @@ class SpecialExamResultTests(TestCase):
         self.assertEqual(rows[self.roll_two.pk]['total_full'], 100)
         self.assertEqual(rows[self.roll_two.pk]['subject_marks'], [20])
         self.assertTrue(rows[self.roll_two.pk]['subject_mark_details'][0]['failed'])
+        self.assertEqual(rows[self.roll_two.pk]['status'], 'Fail')
         self.assertNotIn('result_status', rows[self.roll_two.pk])
         self.assertContains(response, 'A+ Count')
         self.assertContains(response, '<span class="special-failing-mark">20</span>', html=True)
@@ -137,7 +142,41 @@ class SpecialExamResultTests(TestCase):
         )
         self.assertEqual(
             [row['special_rank'] for row in response.context['report']['results']],
+            [2, 0, 1],
+        )
+        self.assertEqual(
+            [row['special_serial'] for row in response.context['report']['results']],
             [2, 3, 1],
+        )
+        self.assertContains(response, '<td class="text-center fw-bold">0</td>', html=True)
+
+    def test_only_passed_students_advance_merit_positions(self):
+        ExamMark.objects.filter(
+            exam=self.exam, student=self.roll_two, subject=self.subject,
+        ).update(marks_obtained=20)
+        ExamMark.objects.filter(
+            exam=self.exam, student=self.roll_three, subject=self.subject,
+        ).update(marks_obtained=30)
+
+        response = self.client.get(
+            reverse('special_exam_result_list'),
+            {
+                'institution': self.institution.pk,
+                'exam': self.exam.pk,
+                'order': 'merit',
+            },
+        )
+        rows = response.context['report']['results']
+        self.assertEqual(
+            [
+                (row['student'].pk, row['special_serial'], row['special_rank'])
+                for row in rows
+            ],
+            [
+                (self.roll_one.pk, 1, 1),
+                (self.roll_three.pk, 2, 0),
+                (self.roll_two.pk, 3, 0),
+            ],
         )
 
     def test_a_plus_count_counts_subject_grades_and_absence_is_not_a_display_mark(self):
@@ -192,17 +231,21 @@ class SpecialExamResultTests(TestCase):
                 self.assertEqual(
                     headers,
                     [
-                        'Roll', 'Student ID', 'Student Name', 'English',
+                        'Serial', 'Roll', 'Student ID', 'Student Name', 'English',
                         'Total Marks', 'A+ Count', 'Merit Rank',
                     ],
                 )
                 self.assertEqual(
-                    [sheet.cell(row=row, column=2).value for row in range(2, 5)],
+                    [sheet.cell(row=row, column=3).value for row in range(2, 5)],
                     expected_students,
                 )
                 self.assertEqual(
-                    [sheet.cell(row=row, column=6).value for row in range(2, 5)],
+                    [sheet.cell(row=row, column=7).value for row in range(2, 5)],
                     [1, 0, 1] if order == 'roll' else [1, 1, 0],
+                )
+                self.assertEqual(
+                    [sheet.cell(row=row, column=1).value for row in range(2, 5)],
+                    [1, 3, 2] if order == 'roll' else [1, 2, 3],
                 )
 
     def test_excel_export_marks_failing_subject_cells_black(self):
@@ -216,7 +259,7 @@ class SpecialExamResultTests(TestCase):
             {'institution': self.institution.pk},
         )
         sheet = load_workbook(BytesIO(response.content), data_only=False).active
-        failing_mark = sheet.cell(row=3, column=4)
+        failing_mark = sheet.cell(row=3, column=5)
         self.assertEqual(failing_mark.value, 20)
         self.assertEqual(failing_mark.fill.fgColor.rgb[-6:], '000000')
         self.assertEqual(failing_mark.font.color.rgb[-6:], 'FFFFFF')

@@ -117,6 +117,7 @@
         <table class="table table-bordered table-striped table-sm align-middle mb-0">
             <thead class="table-dark">
                 <tr>
+                    <th scope="col">Serial</th>
                     <th scope="col">Roll</th>
                     <th scope="col">Student ID</th>
                     <th scope="col">Student Name</th>
@@ -129,6 +130,7 @@
             <tbody>
                 {% for row in report.results %}
                 <tr>
+                    <td class="text-center">{{ row.special_serial|default:"—" }}</td>
                     <td class="text-center">{{ row.student.roll_no|default:"—" }}</td>
                     <td>{{ row.student.student_id }}</td>
                     <td>{{ row.student.name }}</td>
@@ -141,10 +143,10 @@
                     {% endfor %}
                     <td class="text-center fw-bold">{% if row.has_marks %}{{ row.total_obtained|floatformat:"-2" }}{% else %}—{% endif %}</td>
                     <td class="text-center">{{ row.a_plus_count }}</td>
-                    <td class="text-center fw-bold">{{ row.special_rank|default:"—" }}</td>
+                    <td class="text-center fw-bold">{{ row.special_rank|default_if_none:"—" }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="{{ report.columns|length|add:6 }}" class="text-center py-4">No result rows are available for this selection.</td></tr>
+                <tr><td colspan="{{ report.columns|length|add:7 }}" class="text-center py-4">No result rows are available for this selection.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

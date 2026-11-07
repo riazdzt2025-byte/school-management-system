@@ -66,6 +66,7 @@ def build_special_exam_result(exam, group=None, order='roll'):
     ordered_rows = []
     tie_groups = []
     rank_cursor = 1
+    serial_cursor = 1
     for total in sorted(by_total, reverse=True):
         members = by_total[total]
         saved = list(
@@ -82,8 +83,16 @@ def build_special_exam_result(exam, group=None, order='roll'):
             members.sort(key=_register_order)
 
         group_members = []
+        passed_index = 0
         for index, result in enumerate(members):
-            result['special_rank'] = rank_cursor + index if has_manual_order else rank_cursor
+            result['special_serial'] = serial_cursor + index
+            if result['status'] == 'Pass':
+                result['special_rank'] = (
+                    rank_cursor + passed_index if has_manual_order else rank_cursor
+                )
+                passed_index += 1
+            else:
+                result['special_rank'] = 0
             _set_subject_report_marks(result)
             ordered_rows.append(result)
             group_members.append(result)
@@ -94,17 +103,19 @@ def build_special_exam_result(exam, group=None, order='roll'):
                 'student_ids': ','.join(str(row['student'].pk) for row in group_members),
                 'has_manual_order': has_manual_order,
             })
-        rank_cursor += len(members)
+        rank_cursor += passed_index
+        serial_cursor += len(members)
 
     for result in sorted(unmarked_candidates, key=_register_order):
         result['special_rank'] = None
+        result['special_serial'] = None
         _set_subject_report_marks(result)
         ordered_rows.append(result)
 
     if order == 'merit':
         ordered_rows.sort(key=lambda row: (
-            row['special_rank'] is None,
-            row['special_rank'] if row['special_rank'] is not None else 0,
+            row['special_serial'] is None,
+            row['special_serial'] if row['special_serial'] is not None else 0,
             _register_order(row),
         ))
     else:

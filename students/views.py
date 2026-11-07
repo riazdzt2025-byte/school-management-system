@@ -5877,7 +5877,7 @@ def download_special_exam_result(request, pk):
         exam, group=selected_group or None, order=order,
     )
     headers = [
-        'Roll', 'Student ID', 'Student Name',
+        'Serial', 'Roll', 'Student ID', 'Student Name',
         *(column.name for column in report['columns']),
         'Total Marks', 'A+ Count', 'Merit Rank',
     ]
@@ -5887,6 +5887,7 @@ def download_special_exam_result(request, pk):
     sheet.append(headers)
     for row in report['results']:
         sheet.append([
+            row['special_serial'],
             row['student'].roll_no,
             row['student'].student_id,
             row['student'].name,
@@ -5895,7 +5896,7 @@ def download_special_exam_result(request, pk):
             row['a_plus_count'],
             row['special_rank'],
         ])
-        first_subject_column = 4
+        first_subject_column = 5
         for offset, detail in enumerate(row['subject_mark_details']):
             if detail['failed']:
                 cell = sheet.cell(
