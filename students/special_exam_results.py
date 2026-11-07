@@ -115,6 +115,7 @@ def build_special_exam_result(exam, group=None, order='roll'):
     if order == 'merit':
         ordered_rows.sort(key=lambda row: (
             row['special_serial'] is None,
+            row['special_rank'] == 0,
             row['special_serial'] if row['special_serial'] is not None else 0,
             _register_order(row),
         ))

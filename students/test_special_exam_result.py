@@ -179,6 +179,50 @@ class SpecialExamResultTests(TestCase):
             ],
         )
 
+    def test_zero_merit_students_follow_passed_students_in_total_order(self):
+        second_subject = Subject.objects.create(
+            code='SCI', name='Science', full_marks=100,
+        )
+        SubjectRequirement.objects.create(
+            institution=self.institution, admission_class='6',
+            subject=second_subject, requirement_type='MANDATORY',
+        )
+        self.exam.special_subjects.add(second_subject)
+        ExamMark.objects.filter(
+            exam=self.exam, student=self.roll_one, subject=self.subject,
+        ).update(marks_obtained=40)
+        ExamMark.objects.filter(
+            exam=self.exam, student=self.roll_two, subject=self.subject,
+        ).update(marks_obtained=20)
+        ExamMark.objects.filter(
+            exam=self.exam, student=self.roll_three, subject=self.subject,
+        ).update(marks_obtained=40)
+        for student, marks in (
+            (self.roll_one, 40), (self.roll_two, 100), (self.roll_three, 40),
+        ):
+            ExamMark.objects.create(
+                exam=self.exam, student=student, subject=second_subject,
+                marks_obtained=marks,
+            )
+
+        response = self.client.get(
+            reverse('special_exam_result_list'),
+            {
+                'institution': self.institution.pk,
+                'exam': self.exam.pk,
+                'order': 'merit',
+            },
+        )
+        rows = response.context['report']['results']
+        self.assertEqual(
+            [row['student'].pk for row in rows],
+            [self.roll_one.pk, self.roll_three.pk, self.roll_two.pk],
+        )
+        self.assertEqual(
+            [(row['total_obtained'], row['special_rank']) for row in rows],
+            [(80, 1), (80, 1), (120, 0)],
+        )
+
     def test_a_plus_count_counts_subject_grades_and_absence_is_not_a_display_mark(self):
         response = self._report()
         rows = {
