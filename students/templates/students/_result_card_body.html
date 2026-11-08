@@ -2,15 +2,10 @@
 <article class="result-card{% if result_card_class %} {{ result_card_class }}{% endif %}" aria-label="Result card for {{ result.student.name }}">
     <header class="result-card__masthead">
         <div class="result-card__seal">
-            <img src="/{% static 'students/img/school_logo.png' %}" alt="School logo" class="result-card__logo">
+            <img src="{% static 'students/img/school_logo.png' %}" alt="School logo" class="result-card__logo">
         </div>
         <div class="result-card__identity">
-            <div class="result-card__identity-topline">
-                <span>Academic Record</span>
-                <span>Session {{ exam.session }}</span>
-            </div>
             <h1>{{ exam.institution.name|default:'School Name'|school_only }}</h1>
-            <div class="result-card__identity-footer">Official Student Result</div>
         </div>
     </header>
 
@@ -38,10 +33,6 @@
                     <tr>
                         <th scope="row">Section</th><td>{{ result.student.section|default:'-' }}</td>
                         <th scope="row">Group</th><td>{{ result.student.get_group_display|default:'-' }}</td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Father's Name</th><td>{{ result.student.father_name|default:'-' }}</td>
-                        <th scope="row">Session</th><td>{{ exam.session }}</td>
                     </tr>
                 </tbody>
             </table>

@@ -137,7 +137,7 @@ body.result-card-page {
     position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: center;
     min-width: 0;
     overflow: hidden;
     background: linear-gradient(118deg, #263675 0%, #394990 58%, #596ab0 100%);
@@ -157,28 +157,6 @@ body.result-card-page {
     pointer-events: none;
 }
 
-.result-card__identity-topline,
-.result-card__identity-footer {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 7px 15px;
-    background: rgba(255, 255, 255, .1);
-    color: #f6f7ff;
-    font-size: .68rem;
-    font-weight: 700;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-}
-
-.result-card__identity-topline span:last-child {
-    color: #ffe0a5;
-    white-space: nowrap;
-}
-
 .result-card__identity h1 {
     position: relative;
     z-index: 1;
@@ -188,15 +166,6 @@ body.result-card-page {
     font-weight: 700;
     line-height: 1.15;
     overflow-wrap: anywhere;
-}
-
-.result-card__identity-footer {
-    justify-content: flex-end;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    background: rgba(13, 23, 62, .23);
-    font-size: .62rem;
-    letter-spacing: .12em;
 }
 
 .result-card__exam-heading {
@@ -473,15 +442,16 @@ body.result-card-page {
 }
 
 .result-card__signatures {
-    display: flex;
-    justify-content: space-between;
-    gap: 30px;
-    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 34px;
+    width: min(100%, 520px);
+    margin: 28px auto 0;
     padding: 0 3px;
 }
 
 .result-card__signatures div {
-    width: 185px;
+    width: 100%;
     padding-top: 5px;
     border-top: 1px solid #596174;
     color: #444b5d;
@@ -521,13 +491,6 @@ body.result-card-page {
     .result-card__logo {
         width: 58px;
         height: 58px;
-    }
-
-    .result-card__identity-topline,
-    .result-card__identity-footer {
-        padding-right: 9px;
-        padding-left: 9px;
-        font-size: .57rem;
     }
 
     .result-card__identity h1 {
@@ -588,7 +551,7 @@ body.result-card-page {
     }
 
     .result-card__signatures div {
-        width: min(42%, 185px);
+        width: 100%;
     }
 }
 
@@ -646,12 +609,6 @@ body.result-card-page {
     .result-card__logo {
         width: 18mm;
         height: 18mm;
-    }
-
-    .result-card__identity-topline,
-    .result-card__identity-footer {
-        padding: 1.2mm 3mm;
-        font-size: 6.5pt;
     }
 
     .result-card__identity h1 {
@@ -764,7 +721,7 @@ body.result-card-page {
     }
 
     .result-card__signatures div {
-        width: 48mm;
+        width: 100%;
         font-size: 7pt;
     }
 }

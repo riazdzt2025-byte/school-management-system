@@ -295,6 +295,23 @@ class StudentPhotoWorkflowTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, self.photo_name)
 
+    def test_result_cards_use_root_static_urls_and_compact_school_header(self):
+        urls = (
+            reverse('result_card', args=[self.exam.pk, self.student.pk]),
+            f"{reverse('result_analysis_result_cards')}?exam={self.exam.pk}",
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'href="/static/students/css/result_card.css"')
+                self.assertContains(response, 'src="/static/students/img/school_logo.png"')
+                self.assertNotContains(response, 'Academic Record')
+                self.assertNotContains(response, 'Official Student Result')
+                self.assertNotContains(response, 'Father')
+                self.assertContains(response, 'Class Teacher')
+                self.assertContains(response, 'Head Teacher')
+
     def test_missing_photo_uses_accessible_fallback(self):
         other = self.make_student(
             self.institution, student_id='PHOTO-2', name='No Photo Student', roll_no=2,
