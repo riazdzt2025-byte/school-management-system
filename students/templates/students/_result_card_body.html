@@ -1,0 +1,125 @@
+{% load static student_filters %}
+<article class="result-card{% if result_card_class %} {{ result_card_class }}{% endif %}" aria-label="Result card for {{ result.student.name }}">
+    <header class="result-card__masthead">
+        <div class="result-card__seal">
+            <img src="/{% static 'students/img/school_logo.png' %}" alt="School logo" class="result-card__logo">
+        </div>
+        <div class="result-card__identity">
+            <div class="result-card__identity-topline">
+                <span>Academic Record</span>
+                <span>Session {{ exam.session }}</span>
+            </div>
+            <h1>{{ exam.institution.name|default:'School Name'|school_only }}</h1>
+            <div class="result-card__identity-footer">Official Student Result</div>
+        </div>
+    </header>
+
+    <section class="result-card__exam-heading" aria-label="Examination">
+        <span class="result-card__eyebrow">Examination Result</span>
+        <h2>{{ exam.name }} &mdash; Result Card</h2>
+        <p>Class {{ exam.admission_class }}{% if exam.section %} &middot; Section {{ exam.section }}{% endif %}{% if exam.group %} &middot; {{ exam.get_group_display }}{% endif %}</p>
+    </section>
+
+    <section class="result-card__profile" aria-label="Student information">
+        <div class="result-card__portrait">
+            {% include 'students/_student_photo.html' with photo=result.student.photo display_name=result.student.name alt_text=result.student.name image_class='result-card__photo-image' fallback_class='result-card__photo-fallback' fallback_text=result.student.name|first|upper width='58' height='72' %}
+        </div>
+        <div class="result-card__profile-table-wrap">
+            <table class="result-card__student-table" aria-label="Student details">
+                <tbody>
+                    <tr>
+                        <th scope="row">Student Name</th><td>{{ result.student.name }}</td>
+                        <th scope="row">Roll No.</th><td>{{ result.student.roll_no|default:'-' }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Student ID</th><td>{{ result.student.student_id }}</td>
+                        <th scope="row">Class</th><td>{{ exam.admission_class }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Section</th><td>{{ result.student.section|default:'-' }}</td>
+                        <th scope="row">Group</th><td>{{ result.student.get_group_display|default:'-' }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Father's Name</th><td>{{ result.student.father_name|default:'-' }}</td>
+                        <th scope="row">Session</th><td>{{ exam.session }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="result-card__grade-sheet" aria-label="Subject grades">
+        <div class="result-card__section-heading">
+            <span class="result-card__section-mark" aria-hidden="true"></span>
+            <h3>Grade Sheet</h3>
+            <span class="result-card__section-rule" aria-hidden="true"></span>
+        </div>
+        <div class="result-card__table-wrap">
+            <table class="result-card__marks" aria-label="Subject-wise marks and grades">
+                <thead>
+                    <tr>
+                        <th scope="col" class="result-card__code-col">Code</th>
+                        <th scope="col" class="result-card__subject-col">Subject</th>
+                        <th scope="col" class="result-card__full-col">Full Marks</th>
+                        <th scope="col" class="result-card__parts-col">Breakdown</th>
+                        <th scope="col" class="result-card__obtained-col">Obtained</th>
+                        <th scope="col" class="result-card__grade-col">Grade</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sr in result.subject_results %}
+                        {% if sr.religion_unassigned %}
+                            <tr>
+                                <td>&mdash;</td>
+                                <td>Religion <small>Not assigned</small></td>
+                                <td>&mdash;</td>
+                                <td>&mdash;</td>
+                                <td>&mdash;</td>
+                                <td>&mdash;</td>
+                            </tr>
+                        {% elif sr.not_applicable %}
+                        {% else %}
+                            <tr>
+                                <td>{% if sr.religion_column %}&mdash;{% else %}{{ sr.subject.code }}{% endif %}</td>
+                                <td>{% if sr.religion_column %}Religion{% else %}{{ sr.subject.name }}{% endif %}</td>
+                                <td>{{ sr.full }}</td>
+                                <td class="result-card__parts">
+                                    {% for part in sr.parts %}{{ part.label }} {{ part.obtained|default:'&mdash;' }}/{{ part.max_marks }}{% if not forloop.last %} + {% endif %}{% empty %}&mdash;{% endfor %}
+                                    {% if sr.failed_parts %}<small class="result-card__failed-parts">Failed: {{ sr.failed_parts|join:', ' }}</small>{% endif %}
+                                </td>
+                                <td>{% if sr.absent %}{% if result_card_class %}AB{% else %}AB<br><small>Absent</small>{% endif %}{% else %}{{ sr.obtained }}{% endif %}</td>
+                                <td>
+                                    <span class="result-card__grade-value">{{ sr.grade }}</span>
+                                    <span class="result-card__subject-status {% if sr.passed %}is-pass{% else %}is-fail{% endif %}">{% if sr.passed %}Pass{% else %}Fail{% endif %}</span>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="result-card__overall" aria-label="Overall result summary">
+        <div class="result-card__section-heading result-card__section-heading--summary">
+            <span class="result-card__section-mark" aria-hidden="true"></span>
+            <h3>Overall Result</h3>
+            <span class="result-card__section-rule" aria-hidden="true"></span>
+        </div>
+        <div class="result-card__summary-grid">
+            <div class="result-card__summary-item"><strong>Total: {{ result.total_obtained }} / {{ result.total_full }}</strong></div>
+            <div class="result-card__summary-item"><strong>GPA: {{ result.gpa|default:'-' }}</strong></div>
+            <div class="result-card__summary-item"><strong>Grade: {{ result.grade|default:'-' }}</strong></div>
+            <div class="result-card__summary-item">
+                <strong>Status: <span class="result-card__status{% if result.status == 'Pass' %} is-pass{% elif result.status == 'Fail' %} is-fail{% else %} is-other{% endif %}">{{ result.status }}</span></strong>
+            </div>
+            <div class="result-card__summary-item"><strong>Position: {{ result.position|default:'-' }}</strong></div>
+        </div>
+        <p class="result-card__note"><span><b>AB</b> = Absent</span>{% if result.absent_subject_count %}<span>{{ result.absent_subject_count }} absent subject{{ result.absent_subject_count|pluralize }}</span>{% endif %}</p>
+    </section>
+
+    <footer class="result-card__signatures" aria-label="Approval signatures">
+        <div><span>Class Teacher</span></div>
+        <div><span>Head Teacher</span></div>
+    </footer>
+</article>
