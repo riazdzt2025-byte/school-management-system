@@ -6528,13 +6528,62 @@ def published_results(request, pk):
     })
 
 
-def _exam_result(request, exam, student_pk):
+def _result_subject_high_mark_key(result_row, subject_result):
+    """Group-wise key for a subject's class high mark.
+
+    Religion is one displayed column even though students may sit different
+    religion papers. Keep that merged column together within each group; other
+    subjects are identified by their actual Subject row.
+    """
+    group = result_row['student'].group or ''
+    if subject_result.get('religion_column'):
+        return ('religion', group)
+    subject = subject_result.get('subject')
+    subject_pk = getattr(subject, 'pk', None)
+    return ('subject', subject_pk, group) if subject_pk is not None else None
+
+
+def _attach_result_subject_high_marks(results):
+    """Add the highest actually-entered mark per subject to each result row.
+
+    Unassigned optional subjects do not participate, and absent papers are not
+    treated as a zero high mark. A real entered zero still counts. Results for
+    different class groups are kept separate because their mark configurations
+    can differ.
+    """
+    high_marks = {}
+    for result_row in results:
+        for subject_result in result_row.get('subject_results', []):
+            if subject_result.get('not_applicable') or subject_result.get('absent'):
+                continue
+            obtained = subject_result.get('obtained')
+            if obtained is None:
+                continue
+            key = _result_subject_high_mark_key(result_row, subject_result)
+            if key is None:
+                continue
+            if key not in high_marks or obtained > high_marks[key]:
+                high_marks[key] = obtained
+
+    for result_row in results:
+        for subject_result in result_row.get('subject_results', []):
+            key = _result_subject_high_mark_key(result_row, subject_result)
+            subject_result['highest_mark'] = (
+                high_marks.get(key)
+                if key is not None and not subject_result.get('not_applicable')
+                else None
+            )
+
+
+def _exam_result(request, exam, student_pk, *, include_subject_high_marks=False):
     # A result row only exists for a student of the exam's own class/institution;
     # requesting someone else's pk must not leak another institution's profile.
     student = _get_scoped_object_or_404(
         request, Student, student_pk, lambda s: s.institution,
     )
     _, results = build_exam_results(exam, group=exam.group or None)
+    if include_subject_high_marks:
+        _attach_result_subject_high_marks(results)
     return student, next((r for r in results if r['student'].pk == student.pk), None)
 
 
@@ -6560,7 +6609,9 @@ def result_card(request, pk, student_pk):
     if not exam.is_published:
         messages.error(request, 'This exam result has not been published.')
         return redirect('exam_list')
-    student, result = _exam_result(request, exam, student_pk)
+    student, result = _exam_result(
+        request, exam, student_pk, include_subject_high_marks=True,
+    )
     if not result or not result['has_marks']:
         messages.error(request, 'No marks found for this student in this exam.')
         return redirect('exam_result_summary', pk=exam.pk)
@@ -7448,6 +7499,7 @@ def result_analysis_result_cards(request):
     results = []
     if exam:
         _columns, results = build_exam_results(exam, request.GET.get('group') or None)
+        _attach_result_subject_high_marks(results)
         results = [row for row in results if row['has_marks']]
         results = sorted(results, key=lambda row: (
             row['student'].roll_no is None,

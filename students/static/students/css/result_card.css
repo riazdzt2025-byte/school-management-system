@@ -312,7 +312,7 @@ body.result-card-page {
 
 .result-card__marks {
     width: 100%;
-    min-width: 600px;
+    min-width: 660px;
     border-collapse: collapse;
     table-layout: fixed;
     font-size: .76rem;
@@ -347,12 +347,31 @@ body.result-card-page {
     border-bottom: 0;
 }
 
-.result-card__marks .result-card__code-col { width: 10%; }
-.result-card__marks .result-card__subject-col { width: 24%; }
-.result-card__marks .result-card__full-col { width: 12%; }
-.result-card__marks .result-card__parts-col { width: 27%; }
-.result-card__marks .result-card__obtained-col { width: 14%; }
-.result-card__marks .result-card__grade-col { width: 13%; }
+.result-card__marks .result-card__code-col { width: 8%; }
+.result-card__marks .result-card__subject-col { width: 22%; }
+.result-card__marks .result-card__full-col { width: 10%; }
+.result-card__marks .result-card__parts-col { width: 23%; }
+.result-card__marks .result-card__obtained-col { width: 12%; }
+.result-card__marks .result-card__highest-col { width: 13%; }
+.result-card__marks .result-card__grade-col { width: 12%; }
+
+.result-card__marks th:first-child,
+.result-card__marks td:first-child,
+.result-card__marks th:nth-child(3),
+.result-card__marks td:nth-child(3),
+.result-card__marks th:nth-child(5),
+.result-card__marks td:nth-child(5),
+.result-card__marks th:nth-child(6),
+.result-card__marks td:nth-child(6),
+.result-card__marks th:nth-child(7),
+.result-card__marks td:nth-child(7) {
+    text-align: center;
+}
+
+.result-card__marks td:nth-child(6) {
+    color: var(--result-primary);
+    font-weight: 700;
+}
 
 .result-card__marks td:nth-child(2) {
     font-weight: 600;

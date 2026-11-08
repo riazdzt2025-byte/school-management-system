@@ -154,6 +154,33 @@ class AnalysisRouteTests(ResultAnalysisFixture):
         self.assertContains(response, 'First')
         self.assertContains(response, 'Second')
 
+    def test_result_cards_show_the_class_high_mark_for_each_subject(self):
+        single = self.client.get(
+            reverse('result_card', args=[self.exam.pk, self.second.pk]),
+        )
+        self.assertEqual(single.status_code, 200)
+        single_subject = next(
+            row for row in single.context['result']['subject_results']
+            if not row.get('not_applicable')
+        )
+        self.assertEqual(single_subject['highest_mark'], Decimal('80'))
+        self.assertContains(single, 'Highest Mark')
+        self.assertContains(single, '<td class="result-card__highest">80.00</td>')
+
+        class_cards = self.client.get(
+            reverse('result_analysis_result_cards'), {'exam': self.exam.pk},
+        )
+        second_row = next(
+            row for row in class_cards.context['results']
+            if row['student'] == self.second
+        )
+        second_subject = next(
+            row for row in second_row['subject_results']
+            if not row.get('not_applicable')
+        )
+        self.assertEqual(second_subject['highest_mark'], Decimal('80'))
+        self.assertContains(class_cards, '<td class="result-card__highest">80.00</td>')
+
     def test_multi_term_accepts_two_exams(self):
         response = self.client.get(reverse('result_analysis_multi_term'), {'exams': [self.exam.pk, self.exam2.pk]})
         self.assertEqual(len(response.context['selected_exams']), 2)

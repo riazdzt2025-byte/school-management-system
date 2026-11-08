@@ -54,6 +54,7 @@
                         <th scope="col" class="result-card__full-col">Full Marks</th>
                         <th scope="col" class="result-card__parts-col">Breakdown</th>
                         <th scope="col" class="result-card__obtained-col">Obtained</th>
+                        <th scope="col" class="result-card__highest-col">Highest Mark</th>
                         <th scope="col" class="result-card__grade-col">Grade</th>
                     </tr>
                 </thead>
@@ -63,6 +64,7 @@
                             <tr>
                                 <td>&mdash;</td>
                                 <td>Religion <small>Not assigned</small></td>
+                                <td>&mdash;</td>
                                 <td>&mdash;</td>
                                 <td>&mdash;</td>
                                 <td>&mdash;</td>
@@ -79,6 +81,7 @@
                                     {% if sr.failed_parts %}<small class="result-card__failed-parts">Failed: {{ sr.failed_parts|join:', ' }}</small>{% endif %}
                                 </td>
                                 <td>{% if sr.absent %}{% if result_card_class %}AB{% else %}AB<br><small>Absent</small>{% endif %}{% else %}{{ sr.obtained }}{% endif %}</td>
+                                <td class="result-card__highest">{{ sr.highest_mark|default_if_none:'-' }}</td>
                                 <td>
                                     <span class="result-card__grade-value">{{ sr.grade }}</span>
                                     <span class="result-card__subject-status {% if sr.passed %}is-pass{% else %}is-fail{% endif %}">{% if sr.passed %}Pass{% else %}Fail{% endif %}</span>
