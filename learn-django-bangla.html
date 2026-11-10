@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>শূন্য থেকে Django ডেভেলপার — দ্রুত শেখার রোডম্যাপ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f172a; --bg2:#1e293b; --card:#1e293b; --line:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#22c55e; --accent2:#38bdf8;
+    --gold:#f59e0b; --pink:#f472b6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--text);line-height:1.75}
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px 80px}
+
+  /* ---------- Hero ---------- */
+  .hero{text-align:center;padding:64px 20px 40px;background:radial-gradient(ellipse at top,#1e3a5f 0%,var(--bg) 65%)}
+  .hero .badge{display:inline-block;background:rgba(34,197,94,.15);color:var(--accent);border:1px solid rgba(34,197,94,.4);padding:4px 16px;border-radius:99px;font-size:14px;font-weight:600;margin-bottom:18px}
+  .hero h1{font-size:clamp(28px,5vw,44px);font-weight:700;line-height:1.35}
+  .hero h1 .grad{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:var(--muted);font-size:17px;max-width:600px;margin:14px auto 0}
+  .hero .meta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:26px}
+  .hero .meta span{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 16px;font-size:14px}
+  .hero .meta b{color:var(--accent2)}
+
+  /* ---------- Progress ---------- */
+  .progress-box{position:sticky;top:0;z-index:50;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:14px 20px}
+  .progress-box .inner{max-width:860px;margin:0 auto}
+  .progress-box .row{display:flex;justify-content:space-between;font-size:14px;color:var(--muted);margin-bottom:8px}
+  .progress-box .row b{color:var(--accent)}
+  .bar{height:10px;background:var(--bg2);border-radius:99px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:99px;transition:width .5s ease}
+
+  /* ---------- Mindset ---------- */
+  .mindset{background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(244,114,182,.08));border:1px solid rgba(245,158,11,.35);border-radius:16px;padding:22px 26px;margin:34px 0}
+  .mindset h2{color:var(--gold);font-size:20px;margin-bottom:8px}
+  .mindset p{color:var(--text);font-size:15.5px}
+  .mindset p b{color:var(--gold)}
+
+  /* ---------- Phase ---------- */
+  .phase{margin-top:44px}
+  .phase-head{display:flex;align-items:center;gap:16px;margin-bottom:6px}
+  .phase-num{flex:none;width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#0f172a}
+  .phase h2{font-size:24px;line-height:1.3}
+  .phase .days{color:var(--muted);font-size:14px}
+  .phase-desc{color:var(--muted);font-size:15px;margin:6px 0 20px 68px}
+
+  /* ---------- Lesson card ---------- */
+  .lesson{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 24px;margin-bottom:16px;transition:border-color .2s}
+  .lesson:hover{border-color:#475569}
+  .lesson.done{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.04)}
+  .lesson-head{display:flex;align-items:flex-start;gap:12px}
+  .lesson-head h3{font-size:18px;flex:1;line-height:1.5}
+  .lesson-head h3 .no{color:var(--accent2);font-size:14px;display:block;font-weight:600}
+  .check{flex:none;width:26px;height:26px;border-radius:8px;border:2px solid var(--line);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:transparent;font-size:15px;transition:all .2s;margin-top:2px}
+  .check:hover{border-color:var(--accent)}
+  .lesson.done .check{background:var(--accent);border-color:var(--accent);color:#0f172a}
+  .lesson p{font-size:15.5px;margin-top:10px}
+  .lesson p b{color:var(--accent2)}
+  .lesson .try{margin-top:12px;background:rgba(56,189,248,.08);border-left:3px solid var(--accent2);padding:10px 14px;border-radius:0 10px 10px 0;font-size:14.5px}
+  .lesson .try b{color:var(--accent2)}
+
+  /* ---------- Code ---------- */
+  pre{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow-x:auto;margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:13.5px;line-height:1.65}
+  pre .c{color:#64748b}
+  pre .k{color:#f472b6}
+  pre .s{color:#86efac}
+  pre .n{color:#fbbf24}
+  pre .f{color:#38bdf8}
+  .cmd{font-family:'JetBrains Mono',monospace;background:#0b1220;border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-size:13px;color:#86efac}
+
+  /* ---------- Flow diagram ---------- */
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .flow span{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:14px;font-weight:600}
+  .flow span.hot{border-color:var(--accent);color:var(--accent)}
+  .flow i{color:var(--muted);font-style:normal;font-weight:700}
+
+  /* ---------- Table ---------- */
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14.5px}
+  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left}
+  th{background:var(--bg2);color:var(--accent2)}
+  td .cmd{white-space:nowrap}
+
+  /* ---------- Final ---------- */
+  .final{background:linear-gradient(135deg,rgba(34,197,94,.14),rgba(56,189,248,.1));border:1px solid rgba(34,197,94,.4);border-radius:16px;padding:26px;margin-top:44px;text-align:center}
+  .final h2{font-size:22px;margin-bottom:10px}
+  .final p{color:var(--muted);font-size:15.5px;max-width:560px;margin:0 auto}
+  .final .btn{display:inline-block;margin-top:18px;background:var(--accent);color:#0f172a;font-weight:700;padding:12px 28px;border-radius:12px;text-decoration:none;font-size:16px}
+  .final .btn:hover{filter:brightness(1.1)}
+  .dl-btn{display:inline-flex;align-items:center;gap:8px;margin-top:22px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0f172a;font-weight:700;padding:13px 30px;border-radius:12px;border:none;cursor:pointer;font-size:16px;font-family:inherit;box-shadow:0 8px 24px rgba(34,197,94,.35);transition:transform .15s,filter .15s}
+  .dl-btn:hover{transform:translateY(-2px);filter:brightness(1.08)}
+  .dl-btn:active{transform:translateY(0)}
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:50px}
+  @media(max-width:560px){.phase-desc{margin-left:0}}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <span class="badge">🎯 লক্ষ্য: এই স্কুল সিস্টেমের মতো ওয়েব অ্যাপ নিজে বানানো</span>
+  <h1>শূন্য থেকে <span class="grad">Django ডেভেলপার</span><br>দ্রুত শেখার রোডম্যাপ</h1>
+  <p>এই প্রজেক্টটা Python + Django দিয়ে তৈরি। নিচের ৫টি ধাপ শেষ করলেই আপনি নিজে এই ধরনের অ্যাপ বানাতে পারবেন। প্রতিটি লেসন ছোট — পড়ুন, কোড চালান, টিক দিন।</p>
+  <div class="meta">
+    <span>⏱️ মোট সময়: <b>~১৪ দিন</b></span>
+    <span>📅 প্রতিদিন: <b>১–২ ঘণ্টা</b></span>
+    <span>📚 লেসন: <b>২২টি</b></span>
+    <span>🛠️ লাগবে: <b>শুধু একটি কম্পিউটার</b></span>
+  </div>
+  <a class="dl-btn" href="learn-django-bangla.html" download="django-shikhar-guide.html" style="text-decoration:none">⬇️ এই গাইডটি ডাউনলোড করুন</a>
+  <p style="color:var(--muted);font-size:13.5px;margin-top:10px">⚠️ যদি ডাউনলোড না হয়: পেজে <b>রাইট-ক্লিক</b> করুন → <b>"Save page as…"</b> (পেজ সংরক্ষণ) বেছে নিন</p>
+</div>
+
+<div class="progress-box">
+  <div class="inner">
+    <div class="row"><span>আপনার অগ্রগতি</span><span><b id="pct">0%</b> · <span id="count">0/22</span> লেসন শেষ</span></div>
+    <div class="bar"><i id="barFill"></i></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="mindset">
+    <h2>🧠 শেখার আগে ৩টি সত্য</h2>
+    <p><b>১.</b> প্রোগ্রামিং মানে মুখস্থ করা না — <b>বোঝা + অনুশীলন</b>। ভুল হবে, সেটাই শেখা।<br>
+    <b>২.</b> এই প্রজেক্টের ৯০% কাজ হলো <b>CRUD</b> (Create, Read, Update, Delete) — তথ্য যোগ, দেখা, বদলানো, মোছা। এটা শিখলেই অর্ধেক কাজ শেষ।<br>
+    <b>৩.</b> প্রতিটি লেসনের <b>“নিজে করুন”</b> অংশটা না করলে শেখা হবে না। কোড কপি না করে নিজে টাইপ করুন।</p>
+  </div>
+
+  <!-- ============ PHASE 0 ============ -->
+  <section class="phase">
+    <div class="phase-head">
+      <div class="phase-num" style="background:linear-gradient(135deg,#f59e0b,#f97316)">০</div>
+      <div><h2>প্রস্তুতি — ওয়েব কীভাবে চলে</h2><div class="days">দিন ১ · ~১ ঘণ্টা</div></div>
+    </div>
+    <p class="phase-desc">কোড লেখার আগে জানুন — আপনি আসলে কী বানাচ্ছেন।</p>
+
+    <div class="lesson" data-id="0-1">
+      <div class="lesson-head"><h3><span class="no">লেসন ০.১</span>ওয়েব অ্যাপের ৩টি অংশ</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>আপনি ব্রাউজারে ওয়েবসাইট খোলেন। পেছনে ৩টি জিনিস কাজ করে:</p>
+      <div class="flow"><span>🌐 ব্রাউজার</span><i>→</i><span class="hot">🖥️ সার্ভার (Django)</span><i>→</i><span>🗄️ ডাটাবেস</span></div>
+      <p>ব্রাউজার অনুরোধ পাঠায় → Django সার্ভার সেটা প্রসেস করে → ডাটাবেস থেকে তথ্য এনে ব্রাউজারে পাঠায়। <b>এই পুরো প্রজেক্ট এই একই চক্রের ওপর দাঁড়িয়ে।</b></p>
+      <div class="try"><b>✍️ নিজে করুন:</b> আপনার স্কুল সিস্টেমের লাইভ সাইট খুলুন। F12 চাপুন → Network ট্যাবে ক্লিক করুন → পেজ রিফ্রেশ করুন। দেখুন কতগুলো অনুরোধ গেল।</div>
+    </div>
+
+    <div class="lesson" data-id="0-2">
+      <div class="lesson-head"><h3><span class="no">লেসন ০.২</span>টুলস ইনস্টল করুন</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>মাত্র ৩টি সফটওয়্যার লাগবে:</p>
+      <table>
+        <tr><th>টুল</th><th>কাজ</th><th>কোথা থেকে</th></tr>
+        <tr><td><b>Python 3</b></td><td>প্রোগ্রামিং ভাষা</td><td>python.org</td></tr>
+        <tr><td><b>VS Code</b></td><td>কোড লেখার সফটওয়্যার</td><td>code.visualstudio.com</td></tr>
+        <tr><td><b>Git</b></td><td>কোড সংরক্ষণ ও GitHub-এ পাঠানো</td><td>git-scm.com</td></tr>
+      </table>
+      <div class="try"><b>✍️ নিজে করুন:</b> টার্মিনালে লিখুন <span class="cmd">python --version</span> — সংস্করণ দেখালে ইনস্টল সফল।</div>
+    </div>
+
+    <div class="lesson" data-id="0-3">
+      <div class="lesson-head"><h3><span class="no">লেসন ০.৩</span>টার্মিনালের ৫টি কমান্ড</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>টার্মিনাল হলো কম্পিউটারের সাথে কথা বলার জানালা। এই ৫টি কমান্ডই ৯০% কাজে লাগবে:</p>
+      <table>
+        <tr><th>কমান্ড</th><th>অর্থ</th></tr>
+        <tr><td><span class="cmd">cd folder</span></td><td>ফোল্ডারে ঢোকা</td></tr>
+        <tr><td><span class="cmd">ls</span> / <span class="cmd">dir</span></td><td>ফাইলের তালিকা</td></tr>
+        <tr><td><span class="cmd">mkdir name</span></td><td>নতুন ফোল্ডার</td></tr>
+        <tr><td><span class="cmd">python file.py</span></td><td>প্রোগ্রাম চালানো</td></tr>
+        <tr><td><span class="cmd">pip install package</span></td><td>টুল যোগ করা</td></tr>
+      </table>
+      <div class="try"><b>✍️ নিজে করুন:</b> একটি ফোল্ডার বানিয়ে সেখানে ঢুকে <span class="cmd">ls</span> চালান।</div>
+    </div>
+  </section>
+
+  <!-- ============ PHASE 1 ============ -->
+  <section class="phase">
+    <div class="phase-head">
+      <div class="phase-num" style="background:linear-gradient(135deg,#22c55e,#16a34a)">১</div>
+      <div><h2>Python — ভাষাটা শিখুন</h2><div class="days">দিন ২–৪ · দিনে ~১.৫ ঘণ্টা</div></div>
+    </div>
+    <p class="phase-desc">Django শেখার আগে Python-এর এইটুকু জানলেই হবে। বেশি গভীরে যাবেন না।</p>
+
+    <div class="lesson" data-id="1-1">
+      <div class="lesson-head"><h3><span class="no">লেসন ১.১</span>ভেরিয়েবল ও ডেটা টাইপ</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>ভেরিয়েবল হলো <b>নাম দিয়ে মান রাখার বাক্স</b>। টাইপ মানে কী ধরনের মান — সংখ্যা, লেখা, হ্যাঁ/না।</p>
+      <pre><span class="c"># ভেরিয়েবল = নাম, ডানদিকে মান</span>
+name = <span class="s">"রহিম"</span>        <span class="c"># লেখা (string)</span>
+roll = <span class="n">101</span>            <span class="c"># সংখ্যা (integer)</span>
+gpa = <span class="n">4.85</span>          <span class="c"># দশমিক (float)</span>
+is_passed = <span class="k">True</span>      <span class="c"># হ্যাঁ/না (boolean)</span>
+
+<span class="f">print</span>(name, roll, gpa)  <span class="c"># পর্দায় দেখানো</span></pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> <span class="cmd">hello.py</span> ফাইল বানিয়ে নিজের নাম, রোল লিখে চালান।</div>
+    </div>
+
+    <div class="lesson" data-id="1-2">
+      <div class="lesson-head"><h3><span class="no">লেসন ১.২</span>if / else — সিদ্ধান্ত নেওয়া</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>প্রোগ্রামকে <b>“যদি…তাহলে…”</b> শেখান। GPA ৫.০ হলে “A+”, না হলে “পাস”।</p>
+      <pre>gpa = <span class="n">4.85</span>
+<span class="k">if</span> gpa >= <span class="n">5.0</span>:
+    <span class="f">print</span>(<span class="s">"A+"</span>)
+<span class="k">elif</span> gpa >= <span class="n">3.0</span>:
+    <span class="f">print</span>(<span class="s">"পাস"</span>)
+<span class="k">else</span>:
+    <span class="f">print</span>(<span class="s">"ফেল"</span>)</pre>
+      <p>⚠️ Python-এ <b>ইনডেন্টেশন (স্পেস)</b> খুব গুরুত্বপূর্ণ — <span class="cmd">if</span>-এর নিচের লাইন অবশ্যই ডানদিকে সরাতে হবে।</p>
+      <div class="try"><b>✍️ নিজে করুন:</b> GPA বদলে বদলে চালান, আউটপুট বদলায় কিনা দেখুন।</div>
+    </div>
+
+    <div class="lesson" data-id="1-3">
+      <div class="lesson-head"><h3><span class="no">লেসন ১.৩</span>লুপ — একই কাজ বারবার</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>১০০ জন ছাত্রের নাম ছাপতে হলে ১০০ বার লিখবেন না — <b>লুপ</b> করবেন।</p>
+      <pre>students = [<span class="s">"রহিম"</span>, <span class="s">"করিম"</span>, <span class="s">"সালমা"</span>]
+<span class="k">for</span> s <span class="k">in</span> students:
+    <span class="f">print</span>(s)</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> ১ থেকে ১০ পর্যন্ত সংখ্যা ছাপার লুপ লিখুন (<span class="cmd">range(1, 11)</span> ব্যবহার করুন)।</div>
+    </div>
+
+    <div class="lesson" data-id="1-4">
+      <div class="lesson-head"><h3><span class="no">লেসন ১.৪</span>লিস্ট ও ডিকশনারি — তথ্য জমানো</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p><b>লিস্ট</b> = অনেক মানের সারি। <b>ডিকশনারি</b> = নাম-মান জোড়া (একজন ছাত্রের সব তথ্য)। ডাটাবেসের ধারণা এখান থেকেই আসে।</p>
+      <pre><span class="c"># ডিকশনারি: একজন ছাত্র = একটি dict</span>
+student = {<span class="s">"name"</span>: <span class="s">"রহিম"</span>, <span class="s">"roll"</span>: <span class="n">101</span>, <span class="s">"class"</span>: <span class="s">"Six"</span>}
+<span class="f">print</span>(student[<span class="s">"name"</span>])   <span class="c"># → রহিম</span></pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> ৩ জন ছাত্রের ডিকশনারি বানিয়ে লুপ দিয়ে সবাইকে ছাপুন।</div>
+    </div>
+
+    <div class="lesson" data-id="1-5">
+      <div class="lesson-head"><h3><span class="no">লেসন ১.৫</span>ফাংশন — কাজের প্যাকেজ</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>একই কোড বারবার না লিখে <b>ফাংশনে</b> রাখুন। GPA হিসাবের মতো কাজ ফাংশনে রাখুন।</p>
+      <pre><span class="k">def</span> <span class="f">grade</span>(gpa):
+    <span class="k">return</span> <span class="s">"A+"</span> <span class="k">if</span> gpa >= <span class="n">5.0</span> <span class="k">else</span> <span class="s">"পাস"</span>
+
+<span class="f">print</span>(<span class="f">grade</span>(<span class="n">4.9</span>))   <span class="c"># → পাস</span></pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> এমন একটি ফাংশন লিখুন যা ছাত্রের নাম নিয়ে “স্বাগতম, রহিম!” ছাপে।</div>
+    </div>
+  </section>
+
+  <!-- ============ PHASE 2 ============ -->
+  <section class="phase">
+    <div class="phase-head">
+      <div class="phase-num" style="background:linear-gradient(135deg,#38bdf8,#0ea5e9)">২</div>
+      <div><h2>HTML ও CSS — পেজের চেহারা</h2><div class="days">দিন ৫ · ~১.৫ ঘণ্টা</div></div>
+    </div>
+    <p class="phase-desc">Django পেজ বানায় HTML দিয়ে। এইটুকু জানলেই চলবে — ডিজাইনার হওয়ার দরকার নেই।</p>
+
+    <div class="lesson" data-id="2-1">
+      <div class="lesson-head"><h3><span class="no">লেসন ২.১</span>HTML কাঠামো</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>HTML হলো ওয়েবপেজের <b>কাঠামো</b> — ট্যাগ দিয়ে বোঝানো হয় কোনটা শিরোনাম, কোনটা লেখা, কোনটা বাটন।</p>
+      <pre>&lt;<span class="k">h1</span>&gt;ছাত্র তালিকা&lt;/<span class="k">h1</span>&gt;
+&lt;<span class="k">p</span>&gt;মোট ছাত্র: ১০০ জন&lt;/<span class="k">p</span>&gt;
+&lt;<span class="k">table</span>&gt;
+  &lt;<span class="k">tr</span>&gt;&lt;<span class="k">td</span>&gt;রহিম&lt;/<span class="k">td</span>&gt;&lt;<span class="k">td</span>&gt;১০১&lt;/<span class="k">td</span>&gt;&lt;/<span class="k">tr</span>&gt;
+&lt;/<span class="k">table</span>&gt;</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> <span class="cmd">test.html</span> ফাইল বানিয়ে ব্রাউজারে খুলুন।</div>
+    </div>
+
+    <div class="lesson" data-id="2-2">
+      <div class="lesson-head"><h3><span class="no">লেসন ২.২</span>ফর্ম — তথ্য পাঠানোর রাস্তা</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>“ছাত্র যোগ করুন” ফর্মটাই এই প্রজেক্টের প্রাণ। <b>input</b> দিয়ে তথ্য নেওয়া হয়, <b>button</b> দিয়ে পাঠানো হয়।</p>
+      <pre>&lt;<span class="k">form</span> method=<span class="s">"post"</span>&gt;
+  &lt;<span class="k">input</span> name=<span class="s">"name"</span> placeholder=<span class="s">"নাম"</span>&gt;
+  &lt;<span class="k">input</span> name=<span class="s">"roll"</span> placeholder=<span class="s">"রোল"</span>&gt;
+  &lt;<span class="k">button</span>&gt;যোগ করুন&lt;/<span class="k">button</span>&gt;
+&lt;/<span class="k">form</span>&gt;</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> উপরের ফর্মটি বানিয়ে দেখুন — বাটনে ক্লিক করলে পেজ রিফ্রেশ হয়।</div>
+    </div>
+
+    <div class="lesson" data-id="2-3">
+      <div class="lesson-head"><h3><span class="no">লেসন ২.৩</span>CSS — রঙ ও সাজসজ্জা</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>CSS দিয়ে <b>রঙ, ফন্ট, স্পেসিং</b> ঠিক করা হয়। এই প্রজেক্টে Bootstrap ব্যবহার হয়েছে — তৈরি CSS লাইব্রেরি, তাই হাতে বেশি লিখতে হয়নি।</p>
+      <pre><span class="c">/* CSS: দেখতে সুন্দর করার নিয়ম */</span>
+<span class="f">h1</span> { color: <span class="n">green</span>; }
+<span class="f">button</span> { background: <span class="n">blue</span>; color: <span class="n">white</span>; padding: <span class="n">10px</span>; }</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> আগের পেজে রঙ যোগ করুন। তারপর Bootstrap-এর <span class="cmd">btn btn-primary</span> ক্লাস লাগিয়ে দেখুন পার্থক্য।</div>
+    </div>
+  </section>
+
+  <!-- ============ PHASE 3 ============ -->
+  <section class="phase">
+    <div class="phase-head">
+      <div class="phase-num" style="background:linear-gradient(135deg,#a78bfa,#8b5cf6)">৩</div>
+      <div><h2>Django — আসল কাজ</h2><div class="days">দিন ৬–৯ · দিনে ~২ ঘণ্টা</div></div>
+    </div>
+    <p class="phase-desc">এখানেই এই প্রজেক্টের রহস্য। Django-কে মনে রাখুন <b>MVT</b> দিয়ে: Model → View → Template।</p>
+
+    <div class="lesson" data-id="3-1">
+      <div class="lesson-head"><h3><span class="no">লেসন ৩.১</span>Django ইনস্টল ও প্রজেক্ট তৈরি</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>Django হলো Python-এর তৈরি <b>ওয়েব ফ্রেমওয়ার্ক</b> — সার্ভার, ডাটাবেস, লগইন সব তৈরি করে দেয়।</p>
+      <pre><span class="cmd">pip install django</span>
+<span class="cmd">django-admin startproject school_system</span>
+<span class="cmd">cd school_system</span>
+<span class="cmd">python manage.py runserver</span>   <span class="c"># → http://127.0.0.1:8000 খুলুন</span></pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> সার্ভার চালিয়ে “Congratulations!” পেজ দেখুন।</div>
+    </div>
+
+    <div class="lesson" data-id="3-2">
+      <div class="lesson-head"><h3><span class="no">লেসন ৩.২</span>App — প্রজেক্টের অংশ</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>প্রজেক্টের প্রতিটি <b>বিভাগ</b> একটি App। এই প্রজেক্টে <span class="cmd">students</span> App-এ ছাত্র, পরীক্ষা, হিসাব সব আছে।</p>
+      <pre><span class="cmd">python manage.py startapp students</span></pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> App বানিয়ে <span class="cmd">settings.py</span>-এর <span class="cmd">INSTALLED_APPS</span>-এ যোগ করুন।</div>
+    </div>
+
+    <div class="lesson" data-id="3-3">
+      <div class="lesson-head"><h3><span class="no">লেসন ৩.৩</span>Model — ডাটাবেসের টেবিল</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>Model হলো <b>ডাটাবেসের টেবিলের বর্ণনা</b>। ছাত্র টেবিলে কী কী কলাম থাকবে, তা এখানে লেখা হয়।</p>
+      <pre><span class="c"># students/models.py</span>
+<span class="k">from</span> django.db <span class="k">import</span> models
+
+<span class="k">class</span> <span class="f">Student</span>(models.Model):
+    name = models.CharField(max_length=<span class="n">100</span>)
+    roll = models.IntegerField()
+    klass = models.CharField(max_length=<span class="n">20</span>)</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> Model লিখে <span class="cmd">python manage.py makemigrations</span> ও <span class="cmd">migrate</span> চালান।</div>
+    </div>
+
+    <div class="lesson" data-id="3-4">
+      <div class="lesson-head"><h3><span class="no">লেসন ৩.৪</span>View + URL — অনুরোধের উত্তর</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p><b>View</b> = অনুরোধ এলে কী করবে। <b>URL</b> = কোন ঠিকানায় কোন View চলবে।</p>
+      <pre><span class="c"># students/views.py</span>
+<span class="k">from</span> django.http <span class="k">import</span> HttpResponse
+
+<span class="k">def</span> <span class="f">home</span>(request):
+    <span class="k">return</span> HttpResponse(<span class="s">"স্বাগতম!"</span>)
+
+<span class="c"># students/urls.py</span>
+<span class="k">from</span> django.urls <span class="k">import</span> path
+<span class="k">from</span> . <span class="k">import</span> views
+
+urlpatterns = [path(<span class="s">""</span>, views.home)]</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> নিজের নাম ছাপার View বানিয়ে ব্রাউজারে দেখুন।</div>
+    </div>
+
+    <div class="lesson" data-id="3-5">
+      <div class="lesson-head"><h3><span class="no">লেসন ৩.৫</span>Template — HTML-এ ডাটা বসানো</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>View ডাটা পাঠায়, <b>Template</b> সেটা HTML-এ বসায়। <span class="cmd">{{ }}</span> দিয়ে মান বসানো হয়, <span class="cmd">{% %}</span> দিয়ে লুপ/শর্ত।</p>
+      <pre><span class="c">&lt;!-- list.html --&gt;</span>
+&lt;<span class="k">h1</span>&gt;ছাত্র তালিকা&lt;/<span class="k">h1</span>&gt;
+{% <span class="k">for</span> s <span class="k">in</span> students %}
+  &lt;<span class="k">p</span>&gt;{{ s.name }} — রোল {{ s.roll }}&lt;/<span class="k">p</span>&gt;
+{% endfor %}</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> ৩ জন ছাত্রের তালিকা Template দিয়ে ছাপুন।</div>
+    </div>
+
+    <div class="lesson" data-id="3-6">
+      <div class="lesson-head"><h3><span class="no">লেসন ৩.৬</span>CRUD — পুরো প্রজেক্টের প্রাণ</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>এই ৪টি কাজই ছাত্র যোগ, ফলাফল, বেতন — সবকিছুর ভিত্তি:</p>
+      <table>
+        <tr><th>C</th><th>R</th><th>U</th><th>D</th></tr>
+        <tr><td><b>Create</b><br>নতুন ছাত্র যোগ</td><td><b>Read</b><br>তালিকা দেখা</td><td><b>Update</b><br>তথ্য বদলানো</td><td><b>Delete</b><br>মোছা</td></tr>
+      </table>
+      <pre><span class="c"># View-এ চারটি কাজ</span>
+Student.objects.<span class="f">create</span>(name=<span class="s">"রহিম"</span>)      <span class="c"># Create</span>
+Student.objects.<span class="f">all</span>()                        <span class="c"># Read</span>
+s = Student.objects.<span class="f">get</span>(roll=<span class="n">101</span>); s.name=<span class="s">"করিম"</span>; s.<span class="f">save</span>()  <span class="c"># Update</span>
+s.<span class="f">delete</span>()                              <span class="c"># Delete</span></pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> শেল-এ (<span class="cmd">python manage.py shell</span>) উপরের ৪টি লাইন একে একে চালান।</div>
+    </div>
+
+    <div class="lesson" data-id="3-7">
+      <div class="lesson-head"><h3><span class="no">লেসন ৩.৭</span>Form — ফর্ম থেকে ডাটাবেস</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>Form হলো <b>ফর্মের ডাটা যাচাই করে Model-এ পাঠানোর সেতু</b>।</p>
+      <pre><span class="c"># students/forms.py</span>
+<span class="k">from</span> django <span class="k">import</span> forms
+<span class="k">from</span> .models <span class="k">import</span> Student
+
+<span class="k">class</span> <span class="f">StudentForm</span>(forms.ModelForm):
+    <span class="k">class</span> Meta:
+        model = Student
+        fields = [<span class="s">"name"</span>, <span class="s">"roll"</span>, <span class="s">"klass"</span>]</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> “ছাত্র যোগ করুন” পেজ বানান — ফর্ম সাবমিট করলে ডাটাবেসে জমা হোক।</div>
+    </div>
+
+    <div class="lesson" data-id="3-8">
+      <div class="lesson-head"><h3><span class="no">লেসন ৩.৮</span>Admin প্যানেল — বিনামূল্যে পাওয়া</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>Django দেয় <b>তৈরি অ্যাডমিন প্যানেল</b> — কোড না লিখেই ডাটা দেখা-বদলানো যায়। এই প্রজেক্টেও আছে।</p>
+      <pre><span class="c"># students/admin.py</span>
+<span class="k">from</span> django.contrib <span class="k">import</span> admin
+<span class="k">from</span> .models <span class="k">import</span> Student
+
+admin.site.<span class="f">register</span>(Student)</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> সুপারইউজার বানিয়ে <span class="cmd">/admin/</span> খুলুন — ছাত্রদের দেখুন।</div>
+    </div>
+  </section>
+
+  <!-- ============ PHASE 4 ============ -->
+  <section class="phase">
+    <div class="phase-head">
+      <div class="phase-num" style="background:linear-gradient(135deg,#f472b6,#ec4899)">৪</div>
+      <div><h2>এই প্রজেক্টের ফিচারগুলো</h2><div class="days">দিন ১০–১২ · দিনে ~২ ঘণ্টা</div></div>
+    </div>
+    <p class="phase-desc">এখন মূল CRUD-এর ওপর এই প্রজেক্টের বিশেষ ফিচারগুলো যোগ করুন।</p>
+
+    <div class="lesson" data-id="4-1">
+      <div class="lesson-head"><h3><span class="no">লেসন ৪.১</span>লগইন ও পারমিশন</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>সবাই সবকিছু দেখতে পারবে না — <b>লগইন</b> ও <b>গ্রুপ-ভিত্তিক অনুমতি</b> (ভর্তি, পরীক্ষা, হিসাব) লাগানো হয়েছে।</p>
+      <pre><span class="c"># শুধু লগইন করা ব্যবহারকারী দেখতে পারবে</span>
+<span class="k">from</span> django.contrib.auth.decorators <span class="k">import</span> login_required
+
+<span class="f">@login_required</span>
+<span class="k">def</span> <span class="f">dashboard</span>(request):
+    ...</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> লগইন পেজ বানান — ভুল পাসওয়ার্ডে ঢুকতে না পারে।</div>
+    </div>
+
+    <div class="lesson" data-id="4-2">
+      <div class="lesson-head"><h3><span class="no">লেসন ৪.২</span>সার্চ ও পেজিনেশন</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>১০০০ ছাত্রের তালিকা এক পেজে না দেখিয়ে <b>খোঁজা</b> ও <b>পেজ ভাগ</b> করা হয়েছে।</p>
+      <pre><span class="c"># নামে খোঁজা</span>
+students = Student.objects.<span class="f">filter</span>(name__icontains=query)
+
+<span class="c"># ১০০টি করে পেজ</span>
+<span class="k">from</span> django.core.paginator <span class="k">import</span> Paginator
+page = Paginator(students, <span class="n">100</span>).<span class="f">get_page</span>(request.GET.<span class="f">get</span>(<span class="s">"page"</span>))</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> নাম লিখে সার্চ করলে শুধু মিলে যাওয়া ছাত্র দেখান।</div>
+    </div>
+
+    <div class="lesson" data-id="4-3">
+      <div class="lesson-head"><h3><span class="no">লেসন ৪.৩</span>ছবি আপলোড</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>ছাত্রের ছবি সার্ভারে জমা রাখা হয়। Model-এ <b>ImageField</b>, ফর্মে <span class="cmd">enctype="multipart/form-data"</span> লাগে।</p>
+      <pre>photo = models.<span class="f">ImageField</span>(upload_to=<span class="s">"photos/"</span>, blank=<span class="k">True</span>)</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> ছাত্র ফর্মে ছবি যোগ করার অপশন দিন।</div>
+    </div>
+
+    <div class="lesson" data-id="4-4">
+      <div class="lesson-head"><h3><span class="no">লেসন ৪.৪</span>Excel ইমপোর্ট</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>ভর্তির Excel ফাইল থেকে একসাথে অনেক ছাত্র যোগ হয় — <b>openpyxl</b> লাইব্রেরি দিয়ে।</p>
+      <pre><span class="k">import</span> openpyxl
+wb = openpyxl.<span class="f">load_workbook</span>(file)
+<span class="k">for</span> row <span class="k">in</span> wb.active.<span class="f">iter_rows</span>(values_only=<span class="k">True</span>):
+    Student.objects.<span class="f">create</span>(name=row[<span class="n">0</span>], roll=row[<span class="n">1</span>])</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> ৫ জনের Excel বানিয়ে ইমপোর্ট করুন।</div>
+    </div>
+
+    <div class="lesson" data-id="4-5">
+      <div class="lesson-head"><h3><span class="no">লেসন ৪.৫</span>ফলাফল হিসাব (GPA)</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>বিষয়ভিত্তিক নম্বর থেকে <b>GPA হিসাব</b> — এটা সাধারণ Python লজিক, Django-র বাইরে।</p>
+      <pre><span class="k">def</span> <span class="f">calculate_gpa</span>(marks):
+    total = <span class="f">sum</span>(marks)
+    <span class="k">return</span> total / <span class="f">len</span>(marks)</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> ৫টি বিষয়ের নম্বর দিয়ে GPA বের করুন।</div>
+    </div>
+  </section>
+
+  <!-- ============ PHASE 5 ============ -->
+  <section class="phase">
+    <div class="phase-head">
+      <div class="phase-num" style="background:linear-gradient(135deg,#fbbf24,#f59e0b)">৫</div>
+      <div><h2>লাইভ করা — Deploy</h2><div class="days">দিন ১৩–১৪ · ~২ ঘণ্টা</div></div>
+    </div>
+    <p class="phase-desc">আপনার অ্যাপ ইন্টারনেটে সবার জন্য খুলে দিন — এই প্রজেক্ট Render-এ আছে।</p>
+
+    <div class="lesson" data-id="5-1">
+      <div class="lesson-head"><h3><span class="no">লেসন ৫.১</span>Git ও GitHub</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>Git দিয়ে কোডের <b>সংস্করণ</b> রাখা হয়, GitHub-এ ব্যাকআপ। এই ৩টি কমান্ডই যথেষ্ট:</p>
+      <pre><span class="cmd">git add .</span>            <span class="c"># কোন ফাইলগুলো পাঠাবেন</span>
+<span class="cmd">git commit -m "বার্তা"</span>  <span class="c"># সংরক্ষণ</span>
+<span class="cmd">git push</span>           <span class="c"># GitHub-এ পাঠানো</span></pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> GitHub-এ অ্যাকাউন্ট খুলে এই প্রজেক্টের রিপোজিটরি দেখুন।</div>
+    </div>
+
+    <div class="lesson" data-id="5-2">
+      <div class="lesson-head"><h3><span class="no">লেসন ৫.২</span>Render-এ ডেপ্লয়</h3><button class="check" title="শেষ হয়েছে">✓</button></div>
+      <p>Render-এ GitHub রিপো বাছলেই অ্যাপ লাইভ। লাগে শুধু <b>requirements.txt</b> (কোন টুল লাগবে তার তালিকা) ও <b>gunicorn</b> সার্ভার।</p>
+      <pre><span class="c"># requirements.txt</span>
+Django==6.1
+gunicorn==26.1.0
+psycopg2-binary==2.9.12</pre>
+      <div class="try"><b>✍️ নিজে করুন:</b> Render-এ ফ্রি অ্যাকাউন্ট খুলে নিজের ছোট অ্যাপটি লাইভ করুন।</div>
+    </div>
+  </section>
+
+  <!-- ============ FINAL ============ -->
+  <div class="final">
+    <h2>🎓 ১৪ দিন পর আপনি কী পারবেন</h2>
+    <p>নিজে একটি ছাত্র ম্যানেজমেন্ট সিস্টেম বানাতে, GitHub-এ রাখতে এবং ইন্টারনেটে লাইভ করতে। তারপর এই প্রজেক্টের কোড খুলে প্রতিটি ফাইল পড়তে পারবেন — কারণ প্রতিটি অংশ আপনি নিজে বানিয়েছেন।</p>
+    <p style="margin-top:14px;color:var(--text)"><b>সবচেয়ে গুরুত্বপূর্ণ:</b> আটকে গেলে আমাকে জিজ্ঞেস করুন — আমি আছি।</p>
+    <a class="btn" href="https://school-management-system-27mn.onrender.com/" target="_blank" rel="noopener">🌐 আপনার স্কুল সিস্টেম দেখুন</a>
+  </div>
+
+  <footer>শূন্য থেকে Django ডেভেলপার · প্রতিটি লেসনের টিক চিহ্ন আপনার ব্রাউজারে সংরক্ষিত থাকে</footer>
+</div>
+
+<script>
+  const lessons = document.querySelectorAll('.lesson');
+  const total = lessons.length;
+  const KEY = 'django-roadmap-progress';
+
+  function load(){
+    try{ return JSON.parse(localStorage.getItem(KEY) || '{}'); }catch(e){ return {}; }
+  }
+  function save(state){ localStorage.setItem(KEY, JSON.stringify(state)); }
+
+  function update(){
+    const state = load();
+    let done = 0;
+    lessons.forEach(l=>{
+      const isDone = !!state[l.dataset.id];
+      l.classList.toggle('done', isDone);
+      if(isDone) done++;
+    });
+    const pct = Math.round(done/total*100);
+    document.getElementById('barFill').style.width = pct + '%';
+    document.getElementById('pct').textContent = pct + '%';
+    document.getElementById('count').textContent = done + '/' + total;
+  }
+
+  lessons.forEach(l=>{
+    l.querySelector('.check').addEventListener('click', ()=>{
+      const state = load();
+      state[l.dataset.id] = !state[l.dataset.id];
+      save(state);
+      update();
+    });
+  });
+
+  update();
+</script>
+</body>
+</html>
