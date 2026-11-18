@@ -71,3 +71,9 @@ JS বন্ধ ব্রাউজারের জন্য `teacher-lookup/` en
 ## ফাইল
 
 `students/models.py` (field + allotment + `normalize/display_teacher_number`, `current_academic_session`), `forms.py` (`TeacherAssignmentForm` নতুন করে, `EmployeeForm`-এ read-only নম্বর), `views.py` (`_teacher_assignment_form_context`, `_assignment_sessions`, `teacher_number_lookup`), `urls.py`, `admin.py`, `templates/students/teacher_assignment_form.html` (নতুন), `employee_list.html`, `employee_detail.html`, `static/students/js/teacher_number_picker.js`, migrations `0056`/`0057`, টেস্ট দুটি + EM-01 টেস্ট হালনাগাদ।
+
+## CI (PR #90)
+
+- `test (sqlite, 3.12)` ✅ — পুরো ১২৯১ Django টেস্ট pass।
+- `test (postgres, 3.12)` — **`Run test suite (postgres)` ✅ pass** (আসল Postgres-এও সব টেস্ট pass)। fail হয়েছে শুধু **`Backup / restore smoke test (postgres)`** ধাপে, যা `main`-এও আগের তিনটি run-এ (base commit `ecb9b77` সহ) একইভাবে fail — এই পরিবর্তনের সাথে সম্পর্কহীন।
+- `Node row-action button tests` ✅ (৬s) — `node --test students/js/*.test.js` এখন ৫৯টি টেস্ট চালায় (৩০ নতুন)।
