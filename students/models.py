@@ -182,9 +182,90 @@ class Institution(models.Model):
         max_length=300,
         help_text="Enter classes/semesters separated by commas, e.g.: Shishu,1,2,3,4,5"
     )
+    number = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name='Institution number',
+        help_text=(
+            'The running number the owner uses for this branch — College 1, '
+            'School 2, Shishukanon 3, Madrasa 4. It becomes the middle part of '
+            'every teacher number here (2011 02 0001).'
+        ),
+    )
+
+    # Two-digit branch code: 01 … 99. A teacher number carries it, so it has
+    # to fit in two digits.
+    NUMBER_MIN = 1
+    NUMBER_MAX = 99
 
     def get_class_list(self):
         return [c.strip() for c in self.classes.split(',') if c.strip()]
+
+    @property
+    def number_display(self):
+        """``2`` -> ``'02'`` (the two digits a teacher number carries)."""
+        return '' if self.number is None else f'{self.number:02d}'
+
+    @property
+    def short_label(self):
+        """``'02 — School 2'``-style label for pickers and printed headers."""
+        if self.number is None:
+            return self.name
+        return f'{self.number_display} — {self.name}'
+
+    @staticmethod
+    def next_number():
+        """The lowest free branch code, so a new branch gets 3 after 1 and 2."""
+        used = set(
+            Institution.objects.filter(number__isnull=False)
+            .values_list('number', flat=True)
+        )
+        for candidate in range(Institution.NUMBER_MIN, Institution.NUMBER_MAX + 1):
+            if candidate not in used:
+                return candidate
+        return None
+
+    def clean(self):
+        super().clean()
+        if self.number is not None and not (
+            self.NUMBER_MIN <= self.number <= self.NUMBER_MAX
+        ):
+            raise ValidationError({
+                'number': f'Branch numbers run from {self.NUMBER_MIN} to '
+                          f'{self.NUMBER_MAX} (they are two digits inside a '
+                          'teacher number).',
+            })
+        # A teacher number carries this branch number, and those numbers are
+        # already printed on salary sheets. Changing the branch number would
+        # leave every existing teacher number pointing at another branch, so
+        # it is refused while numbered teachers exist.
+        if self.pk:
+            stored = (
+                Institution.objects.filter(pk=self.pk)
+                .values_list('number', flat=True).first()
+            )
+            if stored is not None and stored != self.number and Employee.objects.filter(
+                institution_id=self.pk, teacher_no__isnull=False
+            ).exclude(teacher_no='').exists():
+                raise ValidationError({
+                    'number': (
+                        f'{self.name} already has numbered teachers (branch '
+                        f'{stored:02d}). Their numbers carry this branch number and '
+                        'are already on printed sheets, so it cannot be changed.'
+                    ),
+                })
+
+    def save(self, *args, **kwargs):
+        # A branch that is added without a number is numbered in the order the
+        # owner adds them (College 1, School 2, Shishukanon 3 …), so a clerk
+        # never has to invent one. An explicit number is never overwritten.
+        update_fields = kwargs.get('update_fields')
+        if self.number is None and (update_fields is None or 'number' in update_fields):
+            number = Institution.next_number()
+            if number is not None:
+                self.number = number
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -1149,59 +1230,109 @@ class SeatPlan(models.Model):
 
 
 # Teacher numbers are long, spoken-on-the-phone identifiers, not a display
-# serial: they begin with the school's founding year (২০১১ ⇒ 2011) so a number
-# says "when this school started" to anyone reading a paper or a salary sheet.
+# serial: they begin with the school's founding year (২০১১ ⇒ 2011), carry the
+# owner's own branch number (College 1, School 2, Shishukanon 3, Madrasa 4 …)
+# and end with a serial that starts again at 1 in every branch:
+#
+#     2011 02 0001   →  School 2's first teacher
+#     2011 01 0007   →  College 1's seventh teacher
+#
+# One number per employee across the whole system (``teacher_no`` is unique), and
+# the branch part makes a number self-explanatory on a salary sheet.
 TEACHER_NUMBER_YEAR_PREFIX = '2011'
-# 2011 + 6 digit running serial (2011 000 001 …). Eleven digits keeps the
-# number unambiguous when it is read out or copied from a printed sheet.
-TEACHER_NUMBER_SEQUENCE_WIDTH = 6
+TEACHER_NUMBER_BRANCH_WIDTH = 2
+TEACHER_NUMBER_SEQUENCE_WIDTH = 4
+# Serial counters are per branch: 'TEACHER-02', 'TEACHER-01' …
 TEACHER_NUMBER_SCOPE = 'TEACHER'
+
+
+def teacher_number_branch(teacher_number):
+    """The branch code inside a teacher number (``int``), or ``None``."""
+    text = str(teacher_number or '').strip()
+    if not text.startswith(TEACHER_NUMBER_YEAR_PREFIX):
+        return None
+    if len(text) != (len(TEACHER_NUMBER_YEAR_PREFIX) + TEACHER_NUMBER_BRANCH_WIDTH
+                     + TEACHER_NUMBER_SEQUENCE_WIDTH):
+        return None
+    branch = text[len(TEACHER_NUMBER_YEAR_PREFIX):][:TEACHER_NUMBER_BRANCH_WIDTH]
+    if not branch.isdigit():
+        return None
+    # Branch codes start at 1 (College 1, School 2 …), so 00 is not a branch.
+    return int(branch) or None
 
 
 def teacher_number_serial(teacher_number):
     """The running serial inside a teacher number, or ``None`` if unparseable."""
     text = str(teacher_number or '').strip()
-    if not text.startswith(TEACHER_NUMBER_YEAR_PREFIX):
+    if teacher_number_branch(text) is None:
         return None
-    tail = text[len(TEACHER_NUMBER_YEAR_PREFIX):]
+    tail = text[-TEACHER_NUMBER_SEQUENCE_WIDTH:]
     return int(tail) if tail.isdigit() else None
 
 
-def format_teacher_number(serial):
-    """``1`` -> ``2011000001`` (the stored, searchable form)."""
-    return f'{TEACHER_NUMBER_YEAR_PREFIX}{int(serial):0{TEACHER_NUMBER_SEQUENCE_WIDTH}d}'
+def format_teacher_number(serial, branch):
+    """``(1, 2)`` -> ``'2011020001'`` (the stored, searchable form)."""
+    if branch is None:
+        raise ValueError('A teacher number needs its institution number.')
+    return (
+        f'{TEACHER_NUMBER_YEAR_PREFIX}{int(branch):0{TEACHER_NUMBER_BRANCH_WIDTH}d}'
+        f'{int(serial):0{TEACHER_NUMBER_SEQUENCE_WIDTH}d}'
+    )
 
 
 def display_teacher_number(teacher_number):
-    """``2011000001`` -> ``2011 000 001`` for screens and printed sheets."""
+    """``2011020001`` -> ``2011 02 0001`` for screens and printed sheets."""
     text = str(teacher_number or '').strip()
     if not text:
         return ''
+    branch = teacher_number_branch(text)
     serial = teacher_number_serial(text)
-    if serial is None:
+    if branch is None or serial is None:
         return text
-    digits = f'{serial:0{TEACHER_NUMBER_SEQUENCE_WIDTH}d}'
-    return f'{TEACHER_NUMBER_YEAR_PREFIX} {digits[:-3]} {digits[-3:]}'
+    return (
+        f'{TEACHER_NUMBER_YEAR_PREFIX} {branch:0{TEACHER_NUMBER_BRANCH_WIDTH}d} '
+        f'{serial:0{TEACHER_NUMBER_SEQUENCE_WIDTH}d}'
+    )
 
 
-def normalize_teacher_number(value):
+def normalize_teacher_number(value, branch=None):
     """Turn what a clerk actually types into the stored teacher number.
 
-    ``'2011 000 001'``, ``'2011-000001'``, ``'২০১১০০০০০১'`` (Bangla digits) and
-    the shorthand serial ``'1'`` all become ``'2011000001'``. Anything that is
-    not a teacher number comes back unchanged, so the form can say "no teacher
-    with this number" instead of silently storing nonsense.
+    ``'2011 02 0001'``, ``'2011-02-0001'``, ``'2011020001'`` and the Bangla
+    digits ``'২০১১০২০০০১'`` all become ``'2011020001'``. A serial on its own
+    (``'0001'``) is accepted when ``branch`` is known — that is what the assign
+    screen passes, because the clerk saw the number on the branch's own sheet.
+
+    Anything that is not a teacher number comes back unchanged, so the form can
+    say "no teacher with this number" instead of silently storing nonsense.
     """
     text = str(value or '').strip().translate(_BANGLA_DIGIT_TABLE)
     compact = _CONTACT_SEPARATORS.sub('', text)
     if not compact.isdigit():
         return text
+    full_width = TEACHER_NUMBER_BRANCH_WIDTH + TEACHER_NUMBER_SEQUENCE_WIDTH
     if compact.startswith(TEACHER_NUMBER_YEAR_PREFIX):
         tail = compact[len(TEACHER_NUMBER_YEAR_PREFIX):]
-        return format_teacher_number(int(tail)) if tail else text
-    # '1' / '000001' — the clerk is quoting only the running serial.
-    if 1 <= len(compact) <= TEACHER_NUMBER_SEQUENCE_WIDTH:
-        return format_teacher_number(int(compact))
+        if len(tail) == full_width and tail.isdigit():
+            return (
+                f'{TEACHER_NUMBER_YEAR_PREFIX}'
+                f'{int(tail[:TEACHER_NUMBER_BRANCH_WIDTH]):0{TEACHER_NUMBER_BRANCH_WIDTH}d}'
+                f'{int(tail[TEACHER_NUMBER_BRANCH_WIDTH:]):0{TEACHER_NUMBER_SEQUENCE_WIDTH}d}'
+            )
+        # '2011' + a serial only: the branch is known from the screen.
+        if branch is not None and 1 <= len(tail) <= TEACHER_NUMBER_SEQUENCE_WIDTH:
+            return format_teacher_number(int(tail), branch)
+        return text
+    # '02 0001' — branch + serial, the way a clerk quotes it out loud.
+    if branch is None and len(compact) == full_width:
+        return (
+            f'{TEACHER_NUMBER_YEAR_PREFIX}'
+            f'{int(compact[:TEACHER_NUMBER_BRANCH_WIDTH]):0{TEACHER_NUMBER_BRANCH_WIDTH}d}'
+            f'{int(compact[TEACHER_NUMBER_BRANCH_WIDTH:]):0{TEACHER_NUMBER_SEQUENCE_WIDTH}d}'
+        )
+    # '1' / '0001' — only the serial; needs the branch.
+    if branch is not None and 1 <= len(compact) <= TEACHER_NUMBER_SEQUENCE_WIDTH:
+        return format_teacher_number(int(compact), branch)
     return text
 
 
@@ -1216,23 +1347,46 @@ def current_academic_session(today=None):
     return f'{start}-{start + 1}'
 
 
-def next_teacher_number():
-    """Allocate the next teacher number: the counter never goes backwards.
+def teacher_number_scopes():
+    """Every teacher counter scope in use (``'TEACHER-01'``, ``'TEACHER-02'``…)."""
+    scopes = set(
+        DocumentSequence.objects.filter(scope__startswith=f'{TEACHER_NUMBER_SCOPE}-')
+        .values_list('scope', flat=True)
+    )
+    for branch in (
+        Institution.objects.filter(number__isnull=False)
+        .values_list('number', flat=True)
+    ):
+        scopes.add(f'{TEACHER_NUMBER_SCOPE}-{branch:02d}')
+    return sorted(scopes)
 
-    The number is printed on ID cards, salary sheets and signature sheets, so it
-    must never be handed out twice — a retired employee's number stays spent.
-    ``seed`` lifts a brand-new counter to the highest number already stored, so
-    numbers typed in by hand before the counter existed are respected.
+
+def next_teacher_number(institution=None):
+    """Allocate the next teacher number for ``institution``'s branch.
+
+    The serial belongs to one branch and starts again at 1 there, so School 2's
+    first teacher is ``2011 02 0001`` no matter how many teachers College 1 has
+    already numbered. The counter never goes backwards: the number is printed on
+    ID cards, salary sheets and signature sheets, so it must never be handed out
+    twice — a retired employee's number stays spent. ``seed`` lifts a brand-new
+    counter to the highest serial already stored *for that branch*, so numbers
+    typed in by hand before the counter existed are respected.
     """
+    branch = getattr(institution, 'number', None)
+    if branch is None:
+        raise ValueError(
+            'Give the institution its number first — teacher numbers carry it.'
+        )
+    scope = f'{TEACHER_NUMBER_SCOPE}-{branch:02d}'
     highest = 0
-    for value in Employee.objects.filter(teacher_no__isnull=False).exclude(
-        teacher_no=''
-    ).values_list('teacher_no', flat=True):
+    for value in Employee.objects.filter(
+        teacher_no__isnull=False, institution__number=branch
+    ).exclude(teacher_no='').values_list('teacher_no', flat=True):
         serial = teacher_number_serial(value)
         if serial and serial > highest:
             highest = serial
     return format_teacher_number(
-        next_document_sequence_number(TEACHER_NUMBER_SCOPE, seed=highest)
+        next_document_sequence_number(scope, seed=highest), branch
     )
 
 
@@ -1254,8 +1408,9 @@ class Employee(models.Model):
     teacher_no = models.CharField(
         max_length=20, unique=True, blank=True, null=True, verbose_name='Teacher number',
         help_text=(
-            'Starts with the founding year (2011) plus a running serial, e.g. '
-            '2011 000 001. Left blank, the next free number is allocated on save.'
+            'Founding year (2011) + the institution number + that branch\'s own '
+            'serial, e.g. 2011 02 0001 for School 2\'s first teacher. Left blank, '
+            'the next free number for the employee\'s institution is allocated on save.'
         ),
     )
 
@@ -1286,8 +1441,20 @@ class Employee(models.Model):
         update_fields = kwargs.get('update_fields')
         may_number = update_fields is None or 'teacher_no' in update_fields
         if not self.teacher_no and may_number:
-            if self.is_teacher:
-                self.teacher_no = next_teacher_number()
+            if self.is_teacher and self.institution_id and self.institution.number:
+                self.teacher_no = next_teacher_number(self.institution)
+            elif self.is_teacher:
+                # The branch number is granted on save, so ask the stored row
+                # (a teacher added together with a brand-new institution).
+                stored = (
+                    Institution.objects.filter(pk=self.institution_id).first()
+                    if self.institution_id else None
+                )
+                if stored is not None and stored.number:
+                    self.teacher_no = next_teacher_number(stored)
+                # No number yet (a teacher with no institution, or a branch
+                # that still has no number): stay unnumbered rather than
+                # inventing a number the register cannot explain.
             else:
                 # Every non-teaching employee shares "no number", and a unique
                 # text column allows only one empty string, so store NULL (the

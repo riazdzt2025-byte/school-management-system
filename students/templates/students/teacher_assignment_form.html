@@ -79,7 +79,7 @@
                    id="id_teacher_no_input"
                    name="teacher_no"
                    class="form-control form-control-lg"
-                   placeholder="e.g. 2011 000 001 — or just 1"
+                   placeholder="e.g. 2011 {% if teacher_branch.number %}{{ teacher_branch.number }}{% else %}02{% endif %} 0001"
                    autocomplete="off"
                    inputmode="numeric"
                    autofocus
@@ -90,7 +90,13 @@
             <span class="search-state" id="teacher-search-state">teachers only</span>
         </div>
         <div class="form-text" id="teacher-search-help">
-            Spacing, Bangla digits and a serial on its own all work. Only teaching staff have a number.
+            {% if teacher_branch.number %}
+                Looking in <strong>{{ teacher_branch.name }}</strong> (branch {{ teacher_branch.number }}) —
+                the serial alone, e.g. <code>0001</code>, is enough there.
+            {% else %}
+                Numbers start with 2011 and carry the branch, e.g. <code>2011 02 0001</code>.
+            {% endif %}
+            Spacing and Bangla digits are fine. Only teaching staff have a number.
         </div>
         {% if form.teacher_no.errors %}
         <div class="text-danger small mt-1">{{ form.teacher_no.errors|join:" " }}</div>
@@ -165,6 +171,7 @@
 {{ sections_by_class|json_script:"teacher-sections-data" }}
 {{ subjects_by_class|json_script:"teacher-subjects-data" }}
 {{ institution_classes|json_script:"teacher-institution-classes" }}
+{{ teacher_branch|json_script:"teacher-branch-data" }}
 {% endblock %}
 
 {% block extra_script %}

@@ -943,8 +943,9 @@ class EmployeeForm(forms.ModelForm):
             label='Teacher number',
             widget=forms.TextInput(attrs={'class': 'form-control'}),
             help_text=(
-                'Allocated automatically for teaching staff (founding year + serial, '
-                'e.g. 2011 000 001). Non-teaching employees have none.'
+                'Allocated automatically for teaching staff: founding year + the '
+                'institution number + that branch\'s own serial, e.g. 2011 02 0001 '
+                'for the first teacher of School 2. Non-teaching employees have none.'
             ),
         )
         if self.instance and self.instance.pk and self.instance.teacher_no:
@@ -1158,13 +1159,16 @@ class TeacherAssignmentForm(forms.ModelForm):
         max_length=20,
         widget=forms.TextInput(attrs={
             'class': 'form-control form-control-lg',
-            'placeholder': 'e.g. 2011 000 001 (or just 1)',
+            'placeholder': 'e.g. 2011 02 0001',
             'autocomplete': 'off',
             'autofocus': 'autofocus',
             'inputmode': 'numeric',
             'id': 'id_teacher_no_input',
         }),
-        help_text='Type the number; the name appears under the box. Only teachers are listed.',
+        help_text=(
+            'Type the number; the name appears under the box. Only teachers have '
+            'a number. In your own branch the serial alone (0001) is enough.'
+        ),
     )
 
     class Meta:
@@ -1194,6 +1198,20 @@ class TeacherAssignmentForm(forms.ModelForm):
             institutions = institutions.filter(pk__in=self.allowed_institution_ids)
         self.fields['institution'].queryset = institutions.order_by('name')
 
+        # The branch this screen belongs to. A clerk who may write only one
+        # institution works in that branch, so a bare serial ("0001") is read
+        # against its number and the number box can say which branch it means.
+        if self.allowed_institution_ids is not None:
+            self.page_institution = institutions.order_by('pk').first()
+        else:
+            # An unrestricted user sees every branch, so a bare serial would be
+            # ambiguous — unless the system has exactly one branch.
+            only_institution = list(institutions.order_by('pk')[:2])
+            self.page_institution = (
+                only_institution[0] if len(only_institution) == 1 else None
+            )
+        self.page_branch = getattr(self.page_institution, 'number', None)
+
         # Teachers only, and only inside the institutions the user may write.
         teachers = Employee.objects.filter(designation__icontains='teacher')
         if self.allowed_institution_ids is not None:
@@ -1217,6 +1235,8 @@ class TeacherAssignmentForm(forms.ModelForm):
         if not self.is_bound:
             self.initial.setdefault('session', current_academic_session())
             self.initial.setdefault('is_active', True)
+            if self.page_institution is not None:
+                self.initial.setdefault('institution', self.page_institution.pk)
 
         # Editing: show the number, and let the class/section pickers offer the
         # values that institution actually uses.
@@ -1247,7 +1267,8 @@ class TeacherAssignmentForm(forms.ModelForm):
             ('', '— type a teacher number —'),
             *[
                 (row.pk, f'{display_teacher_number(row.teacher_no)} — {row.name} ({row.designation})'
-                 if row.teacher_no else f'{row.name} ({row.designation}) — no number yet')
+                 if row.teacher_no else f'{row.name} ({row.designation}) — no number yet '
+                 '(save the employee to allocate one)')
                 for row in rows
             ],
         ]
@@ -1266,7 +1287,7 @@ class TeacherAssignmentForm(forms.ModelForm):
         raw = (self.cleaned_data.get('teacher_no') or '').strip()
         if not raw:
             raise forms.ValidationError('Type the teacher number.')
-        number = normalize_teacher_number(raw)
+        number = normalize_teacher_number(raw, self.page_branch)
         teachers = self._teacher_queryset_for_form()
         match = teachers.exclude(teacher_no__isnull=True).filter(
             teacher_no__iexact=number).first()
@@ -1274,9 +1295,13 @@ class TeacherAssignmentForm(forms.ModelForm):
             # Accept the case where the number was typed with the school's
             # spacing ('2011 000 001') but stored compactly — handled above —
             # so this really is "no such teacher".
+            branch_note = (
+                f' in {self.page_institution.name}'
+                if self.page_institution is not None else ''
+            )
             raise forms.ValidationError(
-                f'No teacher has the number "{raw}". Check the staff register '
-                '(numbers start with 2011) and try again.'
+                f'No teacher has the number "{raw}"{branch_note}. Check the staff '
+                'register — numbers look like 2011 02 0001.'
             )
         if match.status != 'ACTIVE':
             raise forms.ValidationError(

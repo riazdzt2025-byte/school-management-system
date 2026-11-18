@@ -22,7 +22,23 @@ class StudentAdmin(BoundedModelAdmin):
 
 admin.site.register(Student, StudentAdmin)
 admin.site.register(Subject, BoundedModelAdmin)
-admin.site.register(Institution, BoundedModelAdmin)
+@admin.register(Institution)
+class InstitutionAdmin(BoundedModelAdmin):
+    """The branch number is what teacher numbers carry (2011 02 0001), so it is
+    edited here — new branches are numbered in the order they are added."""
+    list_display = ('number', 'name', 'classes')
+    list_display_links = ('name',)
+    search_fields = ('name', 'classes')
+    ordering = ('number', 'name')
+    fields = ('number', 'name', 'classes')
+    readonly_fields = ()
+
+    def get_changeform_initial_data(self, request):
+        # A new branch is offered the next free number instead of a blank box.
+        initial = super().get_changeform_initial_data(request)
+        if request.path.endswith('/add/'):
+            initial.setdefault('number', Institution.next_number())
+        return initial
 @admin.register(InstitutionAccess)
 class InstitutionAccessAdmin(BoundedModelAdmin):
     """Who may log in against which institution + department. Without a row a
@@ -41,6 +57,7 @@ admin.site.register(SeatPlan, BoundedModelAdmin)
 class EmployeeAdmin(BoundedModelAdmin):
     """Teacher numbers are allocated on save; show them and allow a lookup."""
     list_display = ('teacher_no', 'name', 'designation', 'institution', 'status')
+    list_select_related = ('institution',)
     search_fields = ('teacher_no', 'name', 'designation', 'contact_no')
     list_filter = ('status', 'institution')
     readonly_fields = ('teacher_no',)

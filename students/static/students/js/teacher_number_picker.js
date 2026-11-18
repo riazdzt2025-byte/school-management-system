@@ -19,7 +19,8 @@
     var BANGLA_DIGITS = '০১২৩৪৫৬৭৮৯';
     var LATIN_DIGITS = '0123456789';
     var YEAR_PREFIX = '2011';
-    var SERIAL_WIDTH = 6;
+    var BRANCH_WIDTH = 2;
+    var SERIAL_WIDTH = 4;
 
     function toLatinDigits(value) {
         var text = value === null || value === undefined ? '' : String(value);
@@ -31,23 +32,53 @@
         return out;
     }
 
-    /* "2011 000 001" / "2011-000001" / "০০০০০১" / "1" -> "2011000001" */
-    function normalizeNumber(value) {
+    /*
+     * "2011 02 0001" / "2011-02-0001" / "২০১১০২০০০১" / "02 0001" -> "2011020001"
+     * The branch is the owner's institution number (School 2 -> 02); a serial
+     * on its own ("0001") is read as that branch's serial.
+     */
+    function normalizeNumber(value, defaultBranch) {
         var compact = toLatinDigits(value).replace(/[\s\-().]/g, '');
         if (!compact || !/^\d+$/.test(compact)) {
             return '';
         }
+        var branch = normalizeBranch(defaultBranch);
         if (compact.indexOf(YEAR_PREFIX) === 0) {
             var tail = compact.slice(YEAR_PREFIX.length);
-            if (!tail) {
-                return '';
+            if (tail.length === BRANCH_WIDTH + SERIAL_WIDTH) {
+                return YEAR_PREFIX + padBranch(parseInt(tail.slice(0, BRANCH_WIDTH), 10)) +
+                    padSerial(parseInt(tail.slice(BRANCH_WIDTH), 10));
             }
-            return YEAR_PREFIX + padSerial(parseInt(tail, 10));
+            if (branch && tail && tail.length <= SERIAL_WIDTH) {
+                return YEAR_PREFIX + branch + padSerial(parseInt(tail, 10));
+            }
+            return '';
         }
-        if (compact.length <= SERIAL_WIDTH) {
-            return YEAR_PREFIX + padSerial(parseInt(compact, 10));
+        if (compact.length === BRANCH_WIDTH + SERIAL_WIDTH) {
+            return YEAR_PREFIX + padBranch(parseInt(compact.slice(0, BRANCH_WIDTH), 10)) +
+                padSerial(parseInt(compact.slice(BRANCH_WIDTH), 10));
+        }
+        if (branch && compact.length <= SERIAL_WIDTH) {
+            return YEAR_PREFIX + branch + padSerial(parseInt(compact, 10));
         }
         return '';
+    }
+
+    /* 2 / "2" / "02" -> "02"; anything else -> '' */
+    function normalizeBranch(value) {
+        var digits = toLatinDigits(value).replace(/\s/g, '');
+        if (!/^\d{1,2}$/.test(digits)) {
+            return '';
+        }
+        return padBranch(parseInt(digits, 10));
+    }
+
+    function padBranch(branch) {
+        var digits = String(branch);
+        while (digits.length < BRANCH_WIDTH) {
+            digits = '0' + digits;
+        }
+        return digits;
     }
 
     function padSerial(serial) {
@@ -58,14 +89,14 @@
         return digits;
     }
 
-    /* "2011000001" -> "2011 000 001" */
-    function prettyNumber(value) {
-        var compact = normalizeNumber(value);
+    /* "2011020001" -> "2011 02 0001" */
+    function prettyNumber(value, defaultBranch) {
+        var compact = normalizeNumber(value, defaultBranch);
         if (!compact) {
             return value ? String(value) : '';
         }
-        var tail = compact.slice(YEAR_PREFIX.length);
-        return YEAR_PREFIX + ' ' + tail.slice(0, 3) + ' ' + tail.slice(3);
+        return YEAR_PREFIX + ' ' + compact.slice(YEAR_PREFIX.length, YEAR_PREFIX.length + BRANCH_WIDTH) +
+            ' ' + compact.slice(YEAR_PREFIX.length + BRANCH_WIDTH);
     }
 
     /*
@@ -76,15 +107,16 @@
      *   { kind: 'unknown', query }    a full number nobody has
      *   { kind: 'searching', query }  a prefix of a number — keep typing
      */
-    function resolveInput(rawValue, teachers) {
+    function resolveInput(rawValue, teachers, defaultBranch) {
         var raw = rawValue === null || rawValue === undefined ? '' : String(rawValue).trim();
         if (!raw) {
             return { kind: 'empty' };
         }
         var list = Array.isArray(teachers) ? teachers : [];
+        var branch = normalizeBranch(defaultBranch);
         var digits = toLatinDigits(raw).replace(/[\s\-().]/g, '');
         if (/^\d+$/.test(digits)) {
-            var normalized = normalizeNumber(digits);
+            var normalized = normalizeNumber(digits, branch);
             if (normalized) {
                 var exact = list.filter(function (t) { return t.number === normalized; });
                 if (exact.length === 1) {
@@ -95,7 +127,7 @@
                 }
             }
             // Still being typed: show who could still match. A clerk who has
-            // typed "2011 000 00" should see the shortlist, not "no match".
+            // typed "2011 02 00" should see the shortlist, not "no match".
             if (digits.length >= 4) {
                 var prefixed = list.filter(function (t) {
                     return String(t.number).indexOf(digits) === 0;
@@ -104,10 +136,19 @@
                     return { kind: 'choose', matches: prefixed.slice(0, 8) };
                 }
             }
+            // A serial on its own: only this branch's teachers can match. Both
+            // what was typed and its zero-padded form are tried, so "00" and
+            // "0000" both find 0001 / 0002 / 0007.
             if (digits.length <= SERIAL_WIDTH) {
-                var serial = padSerial(parseInt(digits, 10));
+                var serialPrefixes = [digits, padSerial(parseInt(digits, 10))];
                 var bySerial = list.filter(function (t) {
-                    return String(t.number).slice(YEAR_PREFIX.length).indexOf(serial) === 0;
+                    if (branch && String(t.number).slice(YEAR_PREFIX.length, YEAR_PREFIX.length + BRANCH_WIDTH) !== branch) {
+                        return false;
+                    }
+                    var serial = String(t.number).slice(YEAR_PREFIX.length + BRANCH_WIDTH);
+                    return serialPrefixes.some(function (prefix) {
+                        return serial.indexOf(prefix) === 0;
+                    });
                 });
                 if (bySerial.length) {
                     return { kind: 'choose', matches: bySerial.slice(0, 8) };
@@ -116,7 +157,8 @@
             return { kind: 'unknown', query: raw };
         }
         var byName = list.filter(function (t) {
-            return String(t.name || '').toLowerCase().indexOf(raw.toLowerCase()) !== -1;
+            var haystack = (String(t.name || '') + ' ' + String(t.pretty || t.number || '')).toLowerCase();
+            return haystack.indexOf(raw.toLowerCase()) !== -1;
         });
         if (byName.length === 1) {
             return { kind: 'picked', teacher: byName[0] };
@@ -235,6 +277,11 @@
         var sessionInput = doc.getElementById('id_session');
         var sessionSummary = doc.getElementById('session-summary');
         var teachers = readJson(doc.getElementById('teacher-lookup-data'), []);
+        // The branch code the clerk is working in (School 2 -> "02"), so a bare
+        // serial "0001" is read as that branch's serial and a number typed
+        // without it is attributed to the row's own institution.
+        var branchData = readJson(doc.getElementById('teacher-branch-data'), {});
+        var pageBranch = normalizeBranch(branchData.number);
         var sectionsByClass = readJson(doc.getElementById('teacher-sections-data'), {});
         var subjectsByClass = readJson(doc.getElementById('teacher-subjects-data'), {});
         var subjectLabels = {};
@@ -325,6 +372,7 @@
                 var who = doc.createElement('span');
                 who.className = 'meta';
                 who.textContent = teacher.name + (teacher.designation ? ' · ' + teacher.designation : '') +
+                    (teacher.branch_label ? ' · ' + teacher.branch_label : '') +
                     (teacher.active ? '' : ' · ' + (teacher.status || 'Inactive'));
                 row.appendChild(num);
                 row.appendChild(who);
@@ -410,7 +458,7 @@
         }
 
         function onInput() {
-            var result = resolveInput(input.value, teachers);
+            var result = resolveInput(input.value, teachers, pageBranch);
             if (result.kind === 'empty') {
                 clearPicked();
                 setState('teachers only');
@@ -433,7 +481,9 @@
             hideResults();
             if (result.kind === 'unknown') {
                 setState('no match');
-                renderEmpty('No teacher has this number. Numbers start with 2011.');
+                renderEmpty(
+                    'No teacher has this number. Numbers look like 2011 02 0001.'
+                );
                 return;
             }
             setState('keep typing');
@@ -515,7 +565,7 @@
                 sessionInput.addEventListener('change', updateSummary);
             }
             // Edit screen: land on the saved values, already narrowed.
-            var current = resolveInput(input.value, teachers);
+            var current = resolveInput(input.value, teachers, pageBranch);
             if (current.kind === 'picked') {
                 showPicked(current.teacher);
             } else {
@@ -541,7 +591,10 @@
         filterSelectOptions: filterSelectOptions,
         fillDatalist: fillDatalist,
         createController: createController,
+        normalizeBranch: normalizeBranch,
         YEAR_PREFIX: YEAR_PREFIX,
+        BRANCH_WIDTH: BRANCH_WIDTH,
+        SERIAL_WIDTH: SERIAL_WIDTH,
     };
 
     if (typeof document !== 'undefined' && document && document.addEventListener) {

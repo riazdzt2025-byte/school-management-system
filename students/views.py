@@ -2739,8 +2739,13 @@ def _teacher_assignment_form_context(request, form, assignment=None):
         str(inst.pk): [c.strip() for c in (inst.classes or '').split(',') if c.strip()]
         for inst in institutions
     }
+    employees = getattr(form, 'teacher_rows', [])
+    # The branch the screen was opened in: when the user may only work in one
+    # institution, that is the branch, so a bare serial "0001" is unambiguous
+    # (and is how a clerk quotes the number off that branch's own sheet).
+    page_institution = getattr(form, 'page_institution', None)
     teachers = []
-    for employee in getattr(form, 'teacher_rows', []):
+    for employee in employees:
         teachers.append({
             'id': employee.pk,
             'number': employee.teacher_no,
@@ -2748,6 +2753,7 @@ def _teacher_assignment_form_context(request, form, assignment=None):
             'name': employee.name,
             'designation': employee.designation,
             'institution': employee.institution_id,
+            'branch_label': employee.institution.name if employee.institution_id else '',
             'status': employee.status,
             'active': employee.status == 'ACTIVE',
             'initials': ''.join(part[0] for part in employee.name.split()[:2]).upper(),
@@ -2760,6 +2766,12 @@ def _teacher_assignment_form_context(request, form, assignment=None):
         'subjects_by_class': {k: sorted(v) for k, v in subjects_by_class.items()},
         'institution_classes': institution_classes,
         'teacher_lookup': teachers,
+        'teacher_branch': {
+            'number': page_institution.number_display if page_institution else '',
+            'name': page_institution.name if page_institution else '',
+            'institution': page_institution.pk if page_institution else None,
+            'count': len(employees),
+        },
         'available_sessions': _assignment_sessions(),
         'current_session': current_academic_session(),
     }
@@ -2793,11 +2805,18 @@ def teacher_number_lookup(request):
     generic answer as a number the user may not see.
     """
     raw = (request.GET.get('q') or '').strip()
-    number = normalize_teacher_number(raw) if raw else ''
     teachers = Employee.objects.filter(designation__icontains='teacher').exclude(
         teacher_no__isnull=True
     )
     teachers = _scope_by_allowed_institutions(request, teachers)
+    # A serial on its own ("0001") is read against the branch the clerk is in:
+    # ?institution=<pk>. Without it the number must be complete (2011 02 0001).
+    branch = None
+    institution_id = request.GET.get('institution')
+    if institution_id:
+        branch_institution = Institution.objects.filter(pk=institution_id).first()
+        branch = getattr(branch_institution, 'number', None)
+    number = normalize_teacher_number(raw, branch) if raw else ''
     match = None
     if number:
         match = teachers.filter(teacher_no__iexact=number).first()

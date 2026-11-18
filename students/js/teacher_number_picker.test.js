@@ -133,7 +133,7 @@ function jsonScript(id, payload) {
 }
 
 /* Build the page the template renders (ids match the template exactly). */
-function buildPage({ teachers, sectionsByClass, subjectsByClass, subjectOptions, initial = {} }) {
+function buildPage({ teachers, sectionsByClass, subjectsByClass, subjectOptions, initial = {}, branch = { number: BRANCH } }) {
     const document = new Document();
     const node = (tag, attrs = {}) => {
         const element = new Element(tag, attrs);
@@ -185,6 +185,7 @@ function buildPage({ teachers, sectionsByClass, subjectsByClass, subjectOptions,
     document.elements['teacher-sections-data'] = jsonScript('teacher-sections-data', sectionsByClass);
     document.elements['teacher-subjects-data'] = jsonScript('teacher-subjects-data', subjectsByClass);
     document.elements['teacher-institution-classes'] = jsonScript('teacher-institution-classes', {});
+    document.elements['teacher-branch-data'] = jsonScript('teacher-branch-data', branch);
     return document;
 }
 
@@ -213,21 +214,29 @@ function load(document) {
 
 const TEACHERS = [
     {
-        id: 1, number: '2011000001', pretty: '2011 000 001', name: 'Salma Akter',
+        id: 1, number: '2011020001', pretty: '2011 02 0001', name: 'Salma Akter',
         designation: 'Assistant Teacher', institution: 1, status: 'Active', active: true,
-        initials: 'SA',
+        initials: 'SA', branch_label: 'School 2',
     },
     {
-        id: 2, number: '2011000002', pretty: '2011 000 002', name: 'Karim Mia',
+        id: 2, number: '2011020002', pretty: '2011 02 0002', name: 'Karim Mia',
         designation: 'Senior Teacher', institution: 1, status: 'Active', active: true,
-        initials: 'KM',
+        initials: 'KM', branch_label: 'School 2',
     },
     {
-        id: 3, number: '2011000007', pretty: '2011 000 007', name: 'Retired Rahman',
+        id: 3, number: '2011020007', pretty: '2011 02 0007', name: 'Retired Rahman',
         designation: 'Teacher', institution: 1, status: 'Resigned', active: false,
-        initials: 'RR',
+        initials: 'RR', branch_label: 'School 2',
+    },
+    {
+        id: 4, number: '2011010001', pretty: '2011 01 0001', name: 'College Teacher',
+        designation: 'Lecturer', institution: 2, status: 'Active', active: true,
+        initials: 'CT', branch_label: 'College 1',
     },
 ];
+
+/* The branch the page was opened in: School 2 -> "02". */
+const BRANCH = '02';
 
 const SECTIONS = { 9: ['A', 'B'], 10: ['A'] };
 const SUBJECTS = { 9: ['11', '12'], 10: ['11'] };
@@ -244,22 +253,42 @@ const PAGE = {
 
 test('Bangla digits are read as the same numbers', (t) => {
     const api = load(new Document());
-    t.assert.equal(api.toLatinDigits('২০১১০০০০০১'), '2011000001');
-    t.assert.equal(api.normalizeNumber('২০১১০০০০০১'), '2011000001');
+    t.assert.equal(api.toLatinDigits('২০১১০২০০০১'), '2011020001');
+    t.assert.equal(api.normalizeNumber('২০১১০২০০০১'), '2011020001');
 });
 
 test('spacing, dashes and dots are ignored', (t) => {
     const api = load(new Document());
-    for (const typed of ['2011 000 001', '2011-000-001', '2011.000.001', '2011 000001']) {
-        t.assert.equal(api.normalizeNumber(typed), '2011000001', typed);
+    for (const typed of ['2011 02 0001', '2011-02-0001', '2011.02.0001', '2011 020001']) {
+        t.assert.equal(api.normalizeNumber(typed), '2011020001', typed);
     }
 });
 
-test('the bare serial becomes the full number', (t) => {
+test('the branch code is the institution number', (t) => {
     const api = load(new Document());
-    t.assert.equal(api.normalizeNumber('1'), '2011000001');
-    t.assert.equal(api.normalizeNumber('000007'), '2011000007');
-    t.assert.equal(api.prettyNumber('7'), '2011 000 007');
+    t.assert.equal(api.normalizeBranch(2), '02');
+    t.assert.equal(api.normalizeBranch('02'), '02');
+    t.assert.equal(api.normalizeBranch('1'), '01');
+    t.assert.equal(api.normalizeBranch(''), '');
+    t.assert.equal(api.normalizeBranch('abc'), '');
+    t.assert.equal(api.normalizeBranch(100), '');
+});
+
+test('the bare serial becomes the branch number', (t) => {
+    const api = load(new Document());
+    t.assert.equal(api.normalizeNumber('1', BRANCH), '2011020001');
+    t.assert.equal(api.normalizeNumber('0007', BRANCH), '2011020007');
+    t.assert.equal(api.prettyNumber('7', BRANCH), '2011 02 0007');
+    // Without a branch a bare serial is ambiguous — never guessed.
+    t.assert.equal(api.normalizeNumber('1'), '');
+});
+
+test('a branch + serial typed together is a full number', (t) => {
+    const api = load(new Document());
+    for (const typed of ['02 0001', '02-0001', '020001']) {
+        t.assert.equal(api.normalizeNumber(typed), '2011020001', typed);
+    }
+    t.assert.equal(api.normalizeNumber('01 0001'), '2011010001');
 });
 
 test('free text is not turned into a number', (t) => {
@@ -268,46 +297,63 @@ test('free text is not turned into a number', (t) => {
     t.assert.equal(api.normalizeNumber(''), '');
 });
 
-test('the display form groups the serial for printing', (t) => {
+test('the display form groups year, branch and serial', (t) => {
     const api = load(new Document());
-    t.assert.equal(api.prettyNumber('2011000001'), '2011 000 001');
-    t.assert.equal(api.prettyNumber('2011000042'), '2011 000 042');
+    t.assert.equal(api.prettyNumber('2011020001'), '2011 02 0001');
+    t.assert.equal(api.prettyNumber('2011010042'), '2011 01 0042');
 });
 
 /* ---- pure helpers: resolving what is typed ------------------------------ */
 
 test('one exact number picks that teacher', (t) => {
     const api = load(new Document());
-    const result = api.resolveInput('2011 000 001', TEACHERS);
+    const result = api.resolveInput('2011 02 0001', TEACHERS, BRANCH);
     t.assert.equal(result.kind, 'picked');
     t.assert.equal(result.teacher.name, 'Salma Akter');
 });
 
+test('another branch\'s number picks that branch\'s teacher', (t) => {
+    const api = load(new Document());
+    const result = api.resolveInput('2011 01 0001', TEACHERS, BRANCH);
+    t.assert.equal(result.kind, 'picked');
+    t.assert.equal(result.teacher.name, 'College Teacher');
+});
+
+test('the branch\'s own serial number picks its teacher', (t) => {
+    const api = load(new Document());
+    const result = api.resolveInput('0002', TEACHERS, BRANCH);
+    t.assert.equal(result.kind, 'picked');
+    t.assert.equal(result.teacher.name, 'Karim Mia');
+});
+
 test('a number nobody has is reported as unknown, not as empty', (t) => {
     const api = load(new Document());
-    const result = api.resolveInput('2011 000 999', TEACHERS);
+    const result = api.resolveInput('2011 02 9999', TEACHERS, BRANCH);
     t.assert.equal(result.kind, 'unknown');
-    t.assert.equal(result.query, '2011 000 999');
+    t.assert.equal(result.query, '2011 02 9999');
 });
 
 test('a prefix offers the matching teachers to choose from', (t) => {
     const api = load(new Document());
-    const result = api.resolveInput('2011 000 00', TEACHERS);
+    const result = api.resolveInput('2011 02 00', TEACHERS, BRANCH);
     t.assert.equal(result.kind, 'choose');
-    t.assert.deepEqual(arr(result.matches).map((row) => row.number), ['2011000001', '2011000002', '2011000007']);
+    t.assert.deepEqual(arr(result.matches).map((row) => row.number), ['2011020001', '2011020002', '2011020007']);
+    // A serial on its own never offers another branch's teachers.
+    const serialOnly = api.resolveInput('00', TEACHERS, BRANCH);
+    t.assert.deepEqual(arr(serialOnly.matches).map((row) => row.number), ['2011020001', '2011020002', '2011020007']);
 });
 
 test('nothing typed yet is empty, not unknown', (t) => {
     const api = load(new Document());
-    t.assert.equal(api.resolveInput('', TEACHERS).kind, 'empty');
-    t.assert.equal(api.resolveInput('   ', TEACHERS).kind, 'empty');
+    t.assert.equal(api.resolveInput('', TEACHERS, BRANCH).kind, 'empty');
+    t.assert.equal(api.resolveInput('   ', TEACHERS, BRANCH).kind, 'empty');
 });
 
 test('a typed name finds its teacher', (t) => {
     const api = load(new Document());
-    const result = api.resolveInput('karim', TEACHERS);
+    const result = api.resolveInput('karim', TEACHERS, BRANCH);
     t.assert.equal(result.kind, 'picked');
-    t.assert.equal(result.teacher.number, '2011000002');
+    t.assert.equal(result.teacher.number, '2011020002');
 });
 
 /* ---- pure helpers: fewer choices ---------------------------------------- */
@@ -358,8 +404,8 @@ test('the section datalist is filled once, without duplicates', (t) => {
 
 /* ---- the wired-up screen ------------------------------------------------ */
 
-function buildScreen(initial = {}) {
-    const document = buildPage({ ...PAGE, initial });
+function buildScreen(initial = {}, branch = { number: BRANCH }) {
+    const document = buildPage({ ...PAGE, initial, branch });
     const api = load(document);
     const controller = api.createController(document);
     controller.attach();
@@ -368,14 +414,14 @@ function buildScreen(initial = {}) {
 
 test('typing a full number shows the name and fills the hidden employee', (t) => {
     const { document: page } = buildScreen();
-    get(page, 'id_teacher_no_input').value = '2011 000 001';
+    get(page, 'id_teacher_no_input').value = '2011 02 0001';
     get(page, 'id_teacher_no_input').emit('input');
 
     t.assert.equal(get(page, 'id_employee').value, '1');
     t.assert.equal(get(page, 'id_institution').value, '1');
     t.assert.equal(get(page, 'teacher-picked').hidden, false);
     t.assert.equal(get(page, 'teacher-picked-name').textContent, 'Salma Akter');
-    t.assert.equal(get(page, 'teacher-picked-meta').textContent, '2011 000 001 · Assistant Teacher');
+    t.assert.equal(get(page, 'teacher-picked-meta').textContent, '2011 02 0001 · Assistant Teacher');
     t.assert.equal(get(page, 'teacher-picked-badge').textContent, 'Active');
     t.assert.equal(get(page, 'teacher-search-state').textContent, 'found');
     t.assert.equal(get(page, 'teacher-results').hidden, true);
@@ -384,7 +430,7 @@ test('typing a full number shows the name and fills the hidden employee', (t) =>
 test('a resigned teacher is surfaced, not silently assigned', (t) => {
     const { document: page } = buildScreen();
     const input = get(page, 'id_teacher_no_input');
-    input.value = '2011 000 007';
+    input.value = '2011 02 0007';
     input.emit('input');
     t.assert.equal(get(page, 'teacher-picked-badge').textContent, 'Resigned');
     t.assert.equal(get(page, 'teacher-picked-badge').className, 'badge bg-secondary');
@@ -393,7 +439,7 @@ test('a resigned teacher is surfaced, not silently assigned', (t) => {
 test('an unknown number says so and leaves the form unassigned', (t) => {
     const { document: page } = buildScreen();
     const input = get(page, 'id_teacher_no_input');
-    input.value = '2011 000 999';
+    input.value = '2011 02 9999';
     input.emit('input');
 
     t.assert.equal(get(page, 'teacher-search-state').textContent, 'no match');
@@ -407,7 +453,7 @@ test('an unknown number says so and leaves the form unassigned', (t) => {
 test('clearing the box clears the selection', (t) => {
     const { document: page } = buildScreen();
     const input = get(page, 'id_teacher_no_input');
-    input.value = '2011 000 001';
+    input.value = '2011 02 0001';
     input.emit('input');
     input.value = '';
     input.emit('input');
@@ -420,7 +466,7 @@ test('clearing the box clears the selection', (t) => {
 test('a partial number offers a short list; Enter picks the highlighted one', (t) => {
     const { document: page } = buildScreen();
     const input = get(page, 'id_teacher_no_input');
-    input.value = '2011 000 00';
+    input.value = '2011 02 00';
     input.emit('input');
 
     t.assert.equal(get(page, 'teacher-results').hidden, false);
@@ -431,13 +477,13 @@ test('a partial number offers a short list; Enter picks the highlighted one', (t
     const event = input.emit('keydown', { key: 'Enter' });
     t.assert.equal(event.defaultPrevented, true);
     t.assert.equal(get(page, 'id_employee').value, '2');
-    t.assert.equal(input.value, '2011 000 002');
+    t.assert.equal(input.value, '2011 02 0002');
 });
 
 test('clicking a match picks that teacher', (t) => {
     const { document: page } = buildScreen();
     const input = get(page, 'id_teacher_no_input');
-    input.value = '2011 000 0';
+    input.value = '2011 02 00';
     input.emit('input');
 
     const rows = get(page, 'teacher-results').children;
@@ -504,7 +550,7 @@ test('the session summary mirrors the session box', (t) => {
 
 test('an edit screen lands on the saved teacher, already narrowed', (t) => {
     const { document: page } = buildScreen({
-        teacherNo: '2011 000 001', admissionClass: '9', section: 'B', subject: '12',
+        teacherNo: '2011 02 0001', admissionClass: '9', section: 'B', subject: '12',
     });
     t.assert.equal(get(page, 'id_employee').value, '1');
     t.assert.equal(get(page, 'teacher-picked').hidden, false);
