@@ -27,6 +27,7 @@ from .models import (
     MARK_PARTS, GROUPED_CLASS_LABELS,
     class_supports_group, normalize_guardian_contact, validate_guardian_contact,
     GUARDIAN_CONTACT_ERROR,
+    current_academic_session, display_teacher_number, normalize_teacher_number,
 )
 from .forms import (
     StudentForm, SubjectForm, SubjectRequirementForm, DiscontinueStudentForm, ExcelImportForm,
@@ -2697,6 +2698,124 @@ def teacher_assignment_list(request):
     })
 
 
+def _teacher_assignment_form_context(request, form, assignment=None):
+    """Shared context for the add/edit assignment screens.
+
+    The class/section/subject pickers are narrowed here (not in the template)
+    so the browser never offers a value the server would reject: classes come
+    from the institutions the user may write, sections from the students and
+    section-capacity rows of those classes, subjects from the curriculum.
+    """
+    institutions = _visible_institutions(request)
+    class_options = []
+    sections_by_class = {}
+    for inst in institutions:
+        for label in [c.strip() for c in (inst.classes or '').split(',') if c.strip()]:
+            if label not in class_options:
+                class_options.append(label)
+    for institution in institutions:
+        for admission_class in class_options:
+            sections = set()
+            for row in SectionCapacity.objects.filter(
+                institution=institution, admission_class__in=class_filter_variants(admission_class)
+            ).values_list('section', flat=True):
+                if row:
+                    sections.add(row.strip())
+            for row in Student.objects.filter(
+                institution=institution, admission_class__in=class_filter_variants(admission_class)
+            ).values_list('section', flat=True).distinct():
+                if row:
+                    sections.add(row.strip())
+            if sections:
+                sections_by_class.setdefault(admission_class, set()).update(sections)
+
+    subjects_by_class = {}
+    for institution in institutions:
+        for requirement in SubjectRequirement.objects.filter(
+            institution=institution
+        ).select_related('subject'):
+            subjects_by_class.setdefault(requirement.admission_class, set()).add(requirement.subject_id)
+    institution_classes = {
+        str(inst.pk): [c.strip() for c in (inst.classes or '').split(',') if c.strip()]
+        for inst in institutions
+    }
+    teachers = []
+    for employee in getattr(form, 'teacher_rows', []):
+        teachers.append({
+            'id': employee.pk,
+            'number': employee.teacher_no,
+            'pretty': display_teacher_number(employee.teacher_no),
+            'name': employee.name,
+            'designation': employee.designation,
+            'institution': employee.institution_id,
+            'status': employee.status,
+            'active': employee.status == 'ACTIVE',
+            'initials': ''.join(part[0] for part in employee.name.split()[:2]).upper(),
+        })
+    return {
+        'form': form,
+        'assignment': assignment,
+        'class_options': class_options,
+        'sections_by_class': {k: sorted(v) for k, v in sections_by_class.items()},
+        'subjects_by_class': {k: sorted(v) for k, v in subjects_by_class.items()},
+        'institution_classes': institution_classes,
+        'teacher_lookup': teachers,
+        'available_sessions': _assignment_sessions(),
+        'current_session': current_academic_session(),
+    }
+
+
+def _assignment_sessions():
+    """Sessions offered by the form: this one, the next and every one already
+    used in the registry (so last year's sheet can still be opened)."""
+    this_year = current_academic_session()
+    start = int(this_year.split('-')[0])
+    sessions = [this_year, f'{start + 1}-{start + 2}']
+    used = (
+        TeacherAssignment.objects.exclude(session='')
+        .values_list('session', flat=True).distinct()
+    )
+    for value in used:
+        if value not in sessions:
+            sessions.append(value)
+    return sessions
+
+
+@login_required
+@permission_required('students.view_teacherassignment', raise_exception=True)
+def teacher_number_lookup(request):
+    """Resolve a typed teacher number to its teacher (no-JS / slow-key fallback).
+
+    The form searches the numbers it was rendered with, so this endpoint is not
+    on the typing path: it exists for a browser with JavaScript disabled and for
+    a clerk who types the number then presses Enter. Only teaching staff inside
+    the user's institutions are ever returned, and unknown numbers get the same
+    generic answer as a number the user may not see.
+    """
+    raw = (request.GET.get('q') or '').strip()
+    number = normalize_teacher_number(raw) if raw else ''
+    teachers = Employee.objects.filter(designation__icontains='teacher').exclude(
+        teacher_no__isnull=True
+    )
+    teachers = _scope_by_allowed_institutions(request, teachers)
+    match = None
+    if number:
+        match = teachers.filter(teacher_no__iexact=number).first()
+    if match is None:
+        return JsonResponse({'found': False, 'message': 'No teacher has this number.'})
+    return JsonResponse({
+        'found': True,
+        'number': match.teacher_no,
+        'pretty': display_teacher_number(match.teacher_no),
+        'name': match.name,
+        'designation': match.designation,
+        'institution': match.institution_id,
+        'institution_name': match.institution.name if match.institution else '',
+        'active': match.status == 'ACTIVE',
+        'status': match.get_status_display(),
+    })
+
+
 @login_required
 @permission_required('students.add_teacherassignment', raise_exception=True)
 def add_teacher_assignment(request):
@@ -2724,15 +2843,10 @@ def add_teacher_assignment(request):
             )
             messages.success(request, 'Teacher assigned.')
             return redirect('teacher_assignment_list')
-    class_options = []
-    for inst in _visible_institutions(request):
-        for label in [c.strip() for c in (inst.classes or '').split(',') if c.strip()]:
-            if label not in class_options:
-                class_options.append(label)
-    return render(request, 'students/teacher_assignment_form.html', {
-        'form': form,
-        'class_options': class_options,
-    })
+    return render(
+        request, 'students/teacher_assignment_form.html',
+        _teacher_assignment_form_context(request, form),
+    )
 
 
 @login_required
@@ -2758,16 +2872,10 @@ def edit_teacher_assignment(request, pk):
             )
             messages.success(request, 'Teacher assignment updated.')
             return redirect('teacher_assignment_list')
-    class_options = []
-    for inst in _visible_institutions(request):
-        for label in [c.strip() for c in (inst.classes or '').split(',') if c.strip()]:
-            if label not in class_options:
-                class_options.append(label)
-    return render(request, 'students/teacher_assignment_form.html', {
-        'form': form,
-        'assignment': assignment,
-        'class_options': class_options,
-    })
+    return render(
+        request, 'students/teacher_assignment_form.html',
+        _teacher_assignment_form_context(request, form, assignment=assignment),
+    )
 
 
 @login_required

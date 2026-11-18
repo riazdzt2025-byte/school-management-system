@@ -50,6 +50,8 @@ A web-based Student Management System built with Python and Django, inspired by 
    - Monthly summary and CSV export; holidays excluded from the rate
 - **Teacher Assignment Registry**
    - Teacher ↔ class/section/subject/session assignment with validation
+   - Teacher numbers (founding year + serial, e.g. 2011 000 001) allocated once, never reused
+   - Assign a teacher by typing the number: class → section → subject narrow themselves, session defaults
    - HR/Office permissions, audit trail, employee assignment tab
    - Assigned teachers printed on the exam signature sheet
 - **Payroll Period Lock**

@@ -44,8 +44,10 @@ class TeacherAssignmentValidationTests(TestCase):
 
     def _post(self, **overrides):
         payload = {
-            'institution': self.institution.pk,
-            'employee': self.employee.pk,
+            # The add screen asks for the teacher *number* (the employee and
+            # institution selects are hidden and filled in from it), so that is
+            # what a browser really posts.
+            'teacher_no': self.employee.teacher_no or self.employee.teacher_no_display,
             'admission_class': '9',
             'section': 'A',
             'subject': self.subject.pk,
@@ -68,7 +70,7 @@ class TeacherAssignmentValidationTests(TestCase):
         response = self._post()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(TeacherAssignment.objects.count(), 1)
-        self.assertContains(response, 'already exists')
+        self.assertContains(response, 'already teaches')
 
     def test_class_not_offered_by_institution_is_rejected(self):
         response = self._post(admission_class='8')
@@ -81,10 +83,16 @@ class TeacherAssignmentValidationTests(TestCase):
         self.assertEqual(TeacherAssignment.objects.count(), 0)
         self.assertContains(response, 'not part of the curriculum')
 
-    def test_employee_from_another_institution_is_rejected(self):
-        response = self._post(employee=self.other_employee.pk)
+    def test_teacher_from_another_institution_is_out_of_scope(self):
+        # A clerk scoped to this school cannot reach the other school's teacher
+        # by number: the picker (and the POST) only see their own staff.
+        InstitutionAccess.objects.create(
+            user=self.user, institution=self.institution, department='Office', is_active=True,
+        )
+        response = self._post(teacher_no=self.other_employee.teacher_no)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(TeacherAssignment.objects.count(), 0)
+        self.assertContains(response, 'No teacher has the number')
 
     def test_list_page_renders_assignment(self):
         self._post()

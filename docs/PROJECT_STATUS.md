@@ -36,7 +36,7 @@ _Previous: OF-06 public success slip + status page (PR #63 MERGED, 873 Django + 
 |---|---|
 | **AT-01** Attendance correction | **Complete** — correction page with mandatory reason + AuditLog old/new, future-date block, report filters, permission gate |
 | **AT-02** Attendance calendar | **Complete** — monthly grid, P+A+L rate (H excluded), archived excluded, CSV summary, print CSS |
-| **EM-01** Teacher assignment | **Complete** — `TeacherAssignment` model + UI + validation + audit + employee tab + signature sheet |
+| **EM-01** Teacher assignment | **Complete** — `TeacherAssignment` model + UI + validation + audit + employee tab + signature sheet · **২০২৬-১১-১৭: শিক্ষক নম্বর** (`Employee.teacher_no`, `2011`+serial, unique, counter-allotted, never reused, teachers only) সহ Assign Teacher স্ক্রিন নম্বর-ভিত্তিক (migrations `0056`/`0057`; report `prompts/reports/teacher-number-2026-11-17.md`) |
 | **EM-03** Payroll lock | **Complete** — audited lock/unlock, edit/delete frozen, scoped 404 |
 | **DB-02** Branding | **Verified clean** — no agent name in migrations |
 | **DB-03** SEC-FU-1/2 | **Verified implemented** — shared cache flag + group sync tests |

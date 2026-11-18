@@ -1148,6 +1148,94 @@ class SeatPlan(models.Model):
         return f"{self.exam.name} - {self.room_name} Seat {self.seat_no} - {self.student.name}"
 
 
+# Teacher numbers are long, spoken-on-the-phone identifiers, not a display
+# serial: they begin with the school's founding year (২০১১ ⇒ 2011) so a number
+# says "when this school started" to anyone reading a paper or a salary sheet.
+TEACHER_NUMBER_YEAR_PREFIX = '2011'
+# 2011 + 6 digit running serial (2011 000 001 …). Eleven digits keeps the
+# number unambiguous when it is read out or copied from a printed sheet.
+TEACHER_NUMBER_SEQUENCE_WIDTH = 6
+TEACHER_NUMBER_SCOPE = 'TEACHER'
+
+
+def teacher_number_serial(teacher_number):
+    """The running serial inside a teacher number, or ``None`` if unparseable."""
+    text = str(teacher_number or '').strip()
+    if not text.startswith(TEACHER_NUMBER_YEAR_PREFIX):
+        return None
+    tail = text[len(TEACHER_NUMBER_YEAR_PREFIX):]
+    return int(tail) if tail.isdigit() else None
+
+
+def format_teacher_number(serial):
+    """``1`` -> ``2011000001`` (the stored, searchable form)."""
+    return f'{TEACHER_NUMBER_YEAR_PREFIX}{int(serial):0{TEACHER_NUMBER_SEQUENCE_WIDTH}d}'
+
+
+def display_teacher_number(teacher_number):
+    """``2011000001`` -> ``2011 000 001`` for screens and printed sheets."""
+    text = str(teacher_number or '').strip()
+    if not text:
+        return ''
+    serial = teacher_number_serial(text)
+    if serial is None:
+        return text
+    digits = f'{serial:0{TEACHER_NUMBER_SEQUENCE_WIDTH}d}'
+    return f'{TEACHER_NUMBER_YEAR_PREFIX} {digits[:-3]} {digits[-3:]}'
+
+
+def normalize_teacher_number(value):
+    """Turn what a clerk actually types into the stored teacher number.
+
+    ``'2011 000 001'``, ``'2011-000001'``, ``'২০১১০০০০০১'`` (Bangla digits) and
+    the shorthand serial ``'1'`` all become ``'2011000001'``. Anything that is
+    not a teacher number comes back unchanged, so the form can say "no teacher
+    with this number" instead of silently storing nonsense.
+    """
+    text = str(value or '').strip().translate(_BANGLA_DIGIT_TABLE)
+    compact = _CONTACT_SEPARATORS.sub('', text)
+    if not compact.isdigit():
+        return text
+    if compact.startswith(TEACHER_NUMBER_YEAR_PREFIX):
+        tail = compact[len(TEACHER_NUMBER_YEAR_PREFIX):]
+        return format_teacher_number(int(tail)) if tail else text
+    # '1' / '000001' — the clerk is quoting only the running serial.
+    if 1 <= len(compact) <= TEACHER_NUMBER_SEQUENCE_WIDTH:
+        return format_teacher_number(int(compact))
+    return text
+
+
+def current_academic_session(today=None):
+    """The running session label, e.g. ``'2026-2027'``.
+
+    A session is named after the year it starts in; the school's year opens in
+    July, so January–June still belong to the session that began last year.
+    """
+    today = today or timezone.localdate()
+    start = today.year if today.month >= 7 else today.year - 1
+    return f'{start}-{start + 1}'
+
+
+def next_teacher_number():
+    """Allocate the next teacher number: the counter never goes backwards.
+
+    The number is printed on ID cards, salary sheets and signature sheets, so it
+    must never be handed out twice — a retired employee's number stays spent.
+    ``seed`` lifts a brand-new counter to the highest number already stored, so
+    numbers typed in by hand before the counter existed are respected.
+    """
+    highest = 0
+    for value in Employee.objects.filter(teacher_no__isnull=False).exclude(
+        teacher_no=''
+    ).values_list('teacher_no', flat=True):
+        serial = teacher_number_serial(value)
+        if serial and serial > highest:
+            highest = serial
+    return format_teacher_number(
+        next_document_sequence_number(TEACHER_NUMBER_SCOPE, seed=highest)
+    )
+
+
 class Employee(models.Model):
     STATUS_CHOICES = [
         ('ACTIVE', 'Active'),
@@ -1163,9 +1251,57 @@ class Employee(models.Model):
     join_date = models.DateField()
     contact_no = models.CharField(max_length=20, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='ACTIVE')
+    teacher_no = models.CharField(
+        max_length=20, unique=True, blank=True, null=True, verbose_name='Teacher number',
+        help_text=(
+            'Starts with the founding year (2011) plus a running serial, e.g. '
+            '2011 000 001. Left blank, the next free number is allocated on save.'
+        ),
+    )
+
+    @staticmethod
+    def is_teacher_designation(designation):
+        """Teaching staff only: 'Assistant Teacher', 'Senior Teacher'… not
+        'Aya', 'Caretaker' or 'Accountant'. Used to scope the teacher-number
+        pickers so a clerk never has to scroll through every employee."""
+        return 'teacher' in str(designation or '').lower()
+
+    @property
+    def is_teacher(self):
+        return self.is_teacher_designation(self.designation)
+
+    @property
+    def teacher_no_display(self):
+        return display_teacher_number(self.teacher_no)
+
+    @property
+    def has_teacher_no(self):
+        return bool(self.teacher_no)
+
+    def save(self, *args, **kwargs):
+        # A number is allocated the first time a row is written without one —
+        # an existing number (typed by hand or auto) is never re-allocated.
+        # Only teaching staff get one automatically: the owner's rule is that
+        # the teacher-number pickers hold teachers, not every employee.
+        update_fields = kwargs.get('update_fields')
+        may_number = update_fields is None or 'teacher_no' in update_fields
+        if not self.teacher_no and may_number:
+            if self.is_teacher:
+                self.teacher_no = next_teacher_number()
+            else:
+                # Every non-teaching employee shares "no number", and a unique
+                # text column allows only one empty string, so store NULL (the
+                # attribute stays '' for templates and comparisons).
+                self.teacher_no = None
+        try:
+            super().save(*args, **kwargs)
+        finally:
+            if self.teacher_no is None:
+                self.teacher_no = ''
 
     def __str__(self):
-        return f"{self.name} - {self.designation} ({self.get_status_display()})"
+        number = f" [{self.teacher_no_display}]" if self.teacher_no else ''
+        return f"{self.name} - {self.designation} ({self.get_status_display()}){number}"
 
 
 class EmployeeStatusLog(models.Model):

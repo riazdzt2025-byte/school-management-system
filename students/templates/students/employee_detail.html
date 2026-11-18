@@ -16,6 +16,7 @@
 <!-- Employee Info Card -->
 <div class="table-card mb-4">
     <table class="table table-bordered mb-0">
+        <tr><th>Teacher number</th><td>{{ employee.teacher_no_display|default:"—" }}</td></tr>
         <tr><th>Designation</th><td>{{ employee.designation }}</td></tr>
         <tr><th>Department</th><td>{{ employee.department|default:"—" }}</td></tr>
         <tr><th>Institution</th><td>{{ employee.institution.name|default:"—" }}</td></tr>
@@ -68,6 +69,7 @@
             <table class="table table-bordered mb-0">
                 <tr><th colspan="2" class="table-light">Employee Information</th></tr>
                 <tr><th style="width: 30%;">Name</th><td>{{ employee.name }}</td></tr>
+                <tr><th>Teacher number</th><td>{{ employee.teacher_no_display|default:"—" }}</td></tr>
                 <tr><th>Designation</th><td>{{ employee.designation }}</td></tr>
                 <tr><th>Department</th><td>{{ employee.department|default:"—" }}</td></tr>
                 <tr><th>Institution</th><td>{{ employee.institution.name|default:"—" }}</td></tr>

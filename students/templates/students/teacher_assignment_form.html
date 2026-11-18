@@ -1,23 +1,172 @@
 {% extends 'students/base.html' %}
+{% load static %}
 
-{% block title %}{% if assignment %}Edit{% else %}New{% endif %} Teacher Assignment - {{ block.super }}{% endblock %}
+{% block title %}{% if assignment %}Edit{% else %}Assign{% endif %} Teacher - {{ block.super }}{% endblock %}
+
+
+{% block extra_style %}
+    .assign-shell { max-width: 780px; }
+    .teacher-search { position: relative; }
+    .teacher-search input { padding-right: 5.5rem; font-size: 1.15rem; letter-spacing: 0.02em; }
+    .teacher-search .search-state {
+        position: absolute; right: .75rem; top: 50%; transform: translateY(-50%);
+        font-size: .78rem; color: #6c757d; pointer-events: none;
+    }
+    .teacher-picked {
+        display: flex; align-items: center; gap: .75rem;
+        border: 1px solid #cfe3d6; background: #f2fbf5; border-radius: .6rem;
+        padding: .65rem .85rem; margin-top: .6rem;
+    }
+    .teacher-picked .avatar {
+        width: 40px; height: 40px; border-radius: 50%; background: var(--navy, #0f2d52);
+        color: #fff; display: flex; align-items: center; justify-content: center;
+        font-weight: 600; font-size: .9rem; flex: 0 0 40px;
+    }
+    .teacher-picked .who { line-height: 1.2; }
+    .teacher-picked .who .name { font-weight: 600; }
+    .teacher-picked .who .meta { font-size: .82rem; color: #5f6b76; }
+    .teacher-picked .badge { margin-left: auto; }
+    .teacher-results {
+        list-style: none; margin: .35rem 0 0; padding: 0; max-height: 240px; overflow-y: auto;
+        border: 1px solid #e3e7eb; border-radius: .55rem; background: #fff;
+        box-shadow: 0 .35rem 1rem rgba(15,45,82,.08);
+    }
+    .teacher-results li {
+        display: flex; align-items: center; gap: .6rem; padding: .55rem .8rem;
+        cursor: pointer; border-bottom: 1px solid #f0f2f4;
+    }
+    .teacher-results li:last-child { border-bottom: 0; }
+    .teacher-results li:hover, .teacher-results li.active { background: #eef3fa; }
+    .teacher-results .num { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--navy, #0f2d52); }
+    .teacher-results .meta { font-size: .8rem; color: #6c757d; }
+    .teacher-results .empty { cursor: default; color: #b02a37; }
+    .assign-step { display: none; }
+    .assign-step.ready { display: block; }
+    .assign-more summary { cursor: pointer; color: var(--navy, #0f2d52); font-size: .9rem; }
+    .assign-summary { font-size: .9rem; color: #47535e; }
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <div><h1>{% if assignment %}Edit{% else %}Assign{% endif %} Teacher</h1></div>
+    <div>
+        <h1>{% if assignment %}Edit assignment{% else %}Assign a teacher{% endif %}</h1>
+        <div class="subtitle">Type the teacher number — everything else is filled in for you.</div>
+    </div>
     <a href="{% url 'teacher_assignment_list' %}" class="btn btn-outline-navy">Back</a>
 </div>
 
-<div class="table-card p-4">
-    <form method="post" novalidate>
-        {% csrf_token %}
-        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
-        {{ form.as_p }}
-        <datalist id="teacher-class-options">
-            {% for option in class_options %}<option value="{{ option }}"></option>{% endfor %}
-        </datalist>
-        <button class="btn btn-navy">Save Assignment</button>
-        <a href="{% url 'teacher_assignment_list' %}" class="btn btn-outline-navy">Cancel</a>
-    </form>
+<div class="assign-shell">
+<form method="post" novalidate id="teacher-assignment-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    {# Hidden selects: the number box decides who the row is about, but the #}
+    {# employee/institution selects stay in the DOM so a no-JS browser (and an #}
+    {# edit round-trip) still posts values the server can validate. #}
+    <div class="d-none" aria-hidden="true">
+        {{ form.employee }}
+        {{ form.institution }}
+        {{ form.is_active }}
+    </div>
+
+    <div class="table-card p-4 mb-3">
+        <label for="id_teacher_no_input" class="form-label fw-semibold mb-1">Teacher number</label>
+        <div class="teacher-search">
+            <input type="text"
+                   id="id_teacher_no_input"
+                   name="teacher_no"
+                   class="form-control form-control-lg"
+                   placeholder="e.g. 2011 000 001 — or just 1"
+                   autocomplete="off"
+                   inputmode="numeric"
+                   autofocus
+                   value="{{ form.teacher_no.value|default_if_none:'' }}"
+                   aria-describedby="teacher-search-help"
+                   aria-autocomplete="list"
+                   aria-controls="teacher-results">
+            <span class="search-state" id="teacher-search-state">teachers only</span>
+        </div>
+        <div class="form-text" id="teacher-search-help">
+            Spacing, Bangla digits and a serial on its own all work. Only teaching staff have a number.
+        </div>
+        {% if form.teacher_no.errors %}
+        <div class="text-danger small mt-1">{{ form.teacher_no.errors|join:" " }}</div>
+        {% endif %}
+
+        <div id="teacher-picked" class="teacher-picked" hidden>
+            <span class="avatar" id="teacher-picked-initials"></span>
+            <span class="who">
+                <span class="name" id="teacher-picked-name"></span>
+                <span class="meta" id="teacher-picked-meta"></span>
+            </span>
+            <span class="badge bg-success" id="teacher-picked-badge">Active</span>
+        </div>
+        <ul class="teacher-results" id="teacher-results" role="listbox" hidden></ul>
+    </div>
+
+    <div class="assign-step ready" id="assign-step-postings">
+        <div class="table-card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="h6 mb-0 text-uppercase text-muted" style="letter-spacing:.06em">Where they teach</h2>
+                <span class="assign-summary" id="assign-summary"></span>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-sm-4">
+                    <label class="form-label" for="id_admission_class">Class</label>
+                    {{ form.admission_class }}
+                    {% if form.admission_class.errors %}<div class="text-danger small">{{ form.admission_class.errors|join:" " }}</div>{% endif %}
+                </div>
+                <div class="col-sm-3">
+                    <label class="form-label" for="id_section">Section <span class="text-muted small">(optional)</span></label>
+                    {{ form.section }}
+                    {% if form.section.errors %}<div class="text-danger small">{{ form.section.errors|join:" " }}</div>{% endif %}
+                </div>
+                <div class="col-sm-5">
+                    <label class="form-label" for="id_subject">Subject</label>
+                    {{ form.subject }}
+                    {% if form.subject.errors %}<div class="text-danger small">{{ form.subject.errors|join:" " }}</div>{% endif %}
+                    <div class="form-text" id="subject-hint">Pick a class to see its subjects.</div>
+                </div>
+            </div>
+
+            <details class="assign-more mt-3">
+                <summary>Session <span class="text-muted" id="session-summary">{{ form.session.value|default:current_session }}</span></summary>
+                <div class="mt-2" style="max-width: 260px">
+                    <input type="text" name="session" id="id_session" class="form-control"
+                           list="teacher-session-options" placeholder="e.g. 2026-2027"
+                           value="{{ form.session.value|default:current_session }}">
+                    {% if form.session.errors %}<div class="text-danger small">{{ form.session.errors|join:" " }}</div>{% endif %}
+                    <div class="form-text">Defaults to the running session; change it only for an older sheet.</div>
+                </div>
+            </details>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-navy">Save assignment</button>
+            <a href="{% url 'teacher_assignment_list' %}" class="btn btn-outline-navy">Cancel</a>
+        </div>
+    </div>
+
+    <datalist id="teacher-class-options">
+        {% for option in class_options %}<option value="{{ option }}"></option>{% endfor %}
+    </datalist>
+    <datalist id="teacher-section-options"></datalist>
+    <datalist id="teacher-session-options">
+        {% for option in available_sessions %}<option value="{{ option }}"></option>{% endfor %}
+    </datalist>
+</form>
 </div>
+
+{{ teacher_lookup|json_script:"teacher-lookup-data" }}
+{{ sections_by_class|json_script:"teacher-sections-data" }}
+{{ subjects_by_class|json_script:"teacher-subjects-data" }}
+{{ institution_classes|json_script:"teacher-institution-classes" }}
+{% endblock %}
+
+{% block extra_script %}
+<script src="{% static 'students/js/teacher_number_picker.js' %}"></script>
 {% endblock %}
