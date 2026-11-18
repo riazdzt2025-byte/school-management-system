@@ -13,7 +13,9 @@ from .models import (
     AdmissionApplication, SectionCapacity, TeacherAssignment,
     RELIGION_CHOICES, student_religion,
     normalize_guardian_contact, validate_guardian_contact,
+    current_academic_session, display_teacher_number, normalize_teacher_number,
 )
+from .result_utils import class_filter_variants
 
 # Largest value that fits the money columns (max_digits=10, decimal_places=2).
 _MONEY_MAX = Decimal('99999999.99')
@@ -932,6 +934,22 @@ class EmployeeForm(forms.ModelForm):
             self.fields['institution'].queryset = Institution.objects.filter(
                 pk__in=self.allowed_institution_ids
             )
+        # The teacher number is shown, never typed: it is allocated from the
+        # locked counter on the first save of a teaching employee, so two
+        # clerks adding teachers at once cannot be handed the same number.
+        self.fields['teacher_no'] = forms.CharField(
+            required=False,
+            disabled=True,
+            label='Teacher number',
+            widget=forms.TextInput(attrs={'class': 'form-control'}),
+            help_text=(
+                'Allocated automatically for teaching staff: founding year + the '
+                'institution number + that branch\'s own serial, e.g. 2011 02 0001 '
+                'for the first teacher of School 2. Non-teaching employees have none.'
+            ),
+        )
+        if self.instance and self.instance.pk and self.instance.teacher_no:
+            self.initial['teacher_no'] = self.instance.teacher_no_display
 
     def clean_institution(self):
         institution = self.cleaned_data.get('institution')
@@ -1127,15 +1145,44 @@ class AttendanceCorrectionForm(forms.Form):
 
 
 class TeacherAssignmentForm(forms.ModelForm):
-    """EM-01: assign one teacher to one class/section/subject for a session."""
+    """EM-01: assign one teacher to one class/section/subject for a session.
+
+    The clerk types the **teacher number** they already know from the staff
+    register — not a 200-row employee dropdown. Everything else is either
+    narrowed by that choice (class → section → subject come from the
+    institution's own curriculum) or defaulted (session, active), so the screen
+    asks one real question and confirms the rest.
+    """
+
+    teacher_no = forms.CharField(
+        label='Teacher number',
+        max_length=20,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control form-control-lg',
+            'placeholder': 'e.g. 2011 02 0001',
+            'autocomplete': 'off',
+            'autofocus': 'autofocus',
+            'inputmode': 'numeric',
+            'id': 'id_teacher_no_input',
+        }),
+        help_text=(
+            'Type the number; the name appears under the box. Only teachers have '
+            'a number. In your own branch the serial alone (0001) is enough.'
+        ),
+    )
+
     class Meta:
         model = TeacherAssignment
         fields = ['institution', 'employee', 'admission_class', 'section', 'subject', 'session', 'is_active']
         widgets = {
-            'institution': forms.Select(attrs={'class': 'form-select'}),
-            'employee': forms.Select(attrs={'class': 'form-select'}),
-            'admission_class': forms.TextInput(attrs={'class': 'form-control', 'list': 'teacher-class-options', 'placeholder': 'e.g. 9'}),
-            'section': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. A (optional)'}),
+            'institution': forms.HiddenInput(),
+            'employee': forms.HiddenInput(),
+            'admission_class': forms.TextInput(attrs={
+                'class': 'form-control', 'list': 'teacher-class-options', 'placeholder': 'e.g. 9',
+            }),
+            'section': forms.TextInput(attrs={
+                'class': 'form-control', 'list': 'teacher-section-options', 'placeholder': 'e.g. A (optional)',
+            }),
             'subject': forms.Select(attrs={'class': 'form-select'}),
             'session': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 2026-2027'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -1145,37 +1192,177 @@ class TeacherAssignmentForm(forms.ModelForm):
         user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         self.allowed_institution_ids = _allowed_institution_ids(user)
+
+        institutions = Institution.objects.all()
         if self.allowed_institution_ids is not None:
-            self.fields['institution'].queryset = Institution.objects.filter(pk__in=self.allowed_institution_ids)
-            self.fields['employee'].queryset = Employee.objects.filter(institution_id__in=self.allowed_institution_ids)
+            institutions = institutions.filter(pk__in=self.allowed_institution_ids)
+        self.fields['institution'].queryset = institutions.order_by('name')
+
+        # The branch this screen belongs to. A clerk who may write only one
+        # institution works in that branch, so a bare serial ("0001") is read
+        # against its number and the number box can say which branch it means.
+        if self.allowed_institution_ids is not None:
+            self.page_institution = institutions.order_by('pk').first()
         else:
-            self.fields['employee'].queryset = Employee.objects.all()
-        self.fields['employee'].label_from_instance = lambda obj: f'{obj.name} — {obj.designation}'
-        # The class datalist is rendered by the template from the allowed
-        # institutions; the model still validates the exact class server-side.
+            # An unrestricted user sees every branch, so a bare serial would be
+            # ambiguous — unless the system has exactly one branch.
+            only_institution = list(institutions.order_by('pk')[:2])
+            self.page_institution = (
+                only_institution[0] if len(only_institution) == 1 else None
+            )
+        self.page_branch = getattr(self.page_institution, 'number', None)
+
+        # Teachers only, and only inside the institutions the user may write.
+        teachers = Employee.objects.filter(designation__icontains='teacher')
+        if self.allowed_institution_ids is not None:
+            teachers = teachers.filter(institution_id__in=self.allowed_institution_ids)
+        self.teacher_choices = teachers.order_by('name', 'pk')
+        self.fields['employee'].queryset = self.teacher_choices
+
+        # Both are filled in from the typed number (clean_teacher_no), so the
+        # hidden selects are never a required input of their own; clean() is
+        # what refuses a post that resolves to nobody.
+        self.fields['employee'].required = False
+        # Derived from the teacher's own record: one person belongs to one
+        # institution, so asking for it would be a redundant choice.
+        self.fields['institution'].required = False
         self.fields['admission_class'].required = True
+        self.fields['subject'].required = True
         self.fields['session'].required = True
+
+        # A brand-new session and the (nearly always ticked) active flag are
+        # defaulted; the institution arrives with the teacher's number.
+        if not self.is_bound:
+            self.initial.setdefault('session', current_academic_session())
+            self.initial.setdefault('is_active', True)
+            if self.page_institution is not None:
+                self.initial.setdefault('institution', self.page_institution.pk)
+
+        # Editing: show the number, and let the class/section pickers offer the
+        # values that institution actually uses.
+        if self.instance and self.instance.pk:
+            employee = self.instance.employee
+            self.initial.setdefault('teacher_no', display_teacher_number(employee.teacher_no))
+            self.initial['institution'] = employee.institution_id
+
+        self._apply_teacher_selection_hint()
+        self._apply_institution_choices()
+
+    # -- helpers -----------------------------------------------------------
+    def _teacher_queryset_for_form(self):
+        """The teacher rows this user may actually save (number first, then name)."""
+        teachers = self.teacher_choices.select_related('institution')
+        return teachers
+
+    def _apply_teacher_selection_hint(self):
+        """Add '2011 000 001 — Name (Designation)' to the hidden employee select.
+
+        The select is hidden: it exists so an edit round-trip and a no-JS
+        browser still submit something the server can validate. The visible
+        control is the number box above.
+        """
+        employee_field = self.fields['employee']
+        rows = list(self._teacher_queryset_for_form())
+        employee_field.choices = [
+            ('', '— type a teacher number —'),
+            *[
+                (row.pk, f'{display_teacher_number(row.teacher_no)} — {row.name} ({row.designation})'
+                 if row.teacher_no else f'{row.name} ({row.designation}) — no number yet '
+                 '(save the employee to allocate one)')
+                for row in rows
+            ],
+        ]
+        self.teacher_rows = rows
+        if not self.is_bound and not self.initial.get('teacher_no') and self.instance and self.instance.pk:
+            self.initial['teacher_no'] = display_teacher_number(self.instance.employee.teacher_no)
+
+    def _apply_institution_choices(self):
+        """Subject picker: the curriculum of the chosen class when we know it,
+        otherwise every subject (the model still validates the final answer)."""
+        self.fields['subject'].queryset = Subject.objects.all().order_by(
+            F('display_order').asc(nulls_last=True), 'name'
+        )
+
+    def clean_teacher_no(self):
+        raw = (self.cleaned_data.get('teacher_no') or '').strip()
+        if not raw:
+            raise forms.ValidationError('Type the teacher number.')
+        number = normalize_teacher_number(raw, self.page_branch)
+        teachers = self._teacher_queryset_for_form()
+        match = teachers.exclude(teacher_no__isnull=True).filter(
+            teacher_no__iexact=number).first()
+        if match is None:
+            # Accept the case where the number was typed with the school's
+            # spacing ('2011 000 001') but stored compactly — handled above —
+            # so this really is "no such teacher".
+            branch_note = (
+                f' in {self.page_institution.name}'
+                if self.page_institution is not None else ''
+            )
+            raise forms.ValidationError(
+                f'No teacher has the number "{raw}"{branch_note}. Check the staff '
+                'register — numbers look like 2011 02 0001.'
+            )
+        if match.status != 'ACTIVE':
+            raise forms.ValidationError(
+                f'{match.name} is marked {match.get_status_display()} and cannot be assigned.'
+            )
+        self.cleaned_data['teacher_no'] = match.teacher_no
+        # The number is the single source of truth: who the row is about *and*
+        # which institution it belongs to both follow from it.
+        self.cleaned_data['employee'] = match
+        self.cleaned_data['institution'] = match.institution
+        self.instance.employee = match
+        self.instance.institution = match.institution
+        return match.teacher_no
 
     def clean(self):
         cleaned = super().clean()
+        # The typed number is the authority for who this row is about; a
+        # tampered hidden <select> must not be able to assign somebody else.
+        number = (cleaned.get('teacher_no') or '').strip()
+        employee = None
+        if number:
+            employee = self._teacher_queryset_for_form().filter(teacher_no__iexact=number).first()
+            if employee is not None:
+                cleaned['employee'] = employee
+                cleaned['institution'] = employee.institution
         institution = cleaned.get('institution')
         admission_class = (cleaned.get('admission_class') or '').strip()
+        if not employee:
+            # The number field already reported why; don't double-report.
+            if 'teacher_no' not in self.errors:
+                self.add_error('teacher_no', 'Type the teacher number.')
+            return cleaned
+        cleaned['employee'] = employee
         if institution and admission_class:
             classes = [label.strip() for label in (institution.classes or '').split(',') if label.strip()]
-            if classes and admission_class not in classes:
-                self.add_error('admission_class', 'Select a class offered by this institution.')
-        employee = cleaned.get('employee')
-        if employee and institution and employee.institution_id != institution.pk:
-            self.add_error('employee', 'The employee must belong to the selected institution.')
+            # '9' and '09' are the same class (see class_filter_variants), so a
+            # variant is accepted and stored as the institution's own label.
+            matching_label = next(
+                (label for label in classes if admission_class in class_filter_variants(label)),
+                None,
+            )
+            if classes and matching_label is None:
+                self.add_error(
+                    'admission_class',
+                    f'Class {admission_class} is not offered by {institution.name}. '
+                    f'It has: {", ".join(classes)}.',
+                )
+            elif matching_label is not None:
+                cleaned['admission_class'] = matching_label
+        section = (cleaned.get('section') or '').strip()
+        cleaned['section'] = section
+        subject = cleaned.get('subject')
         # Friendly duplicate message before the database constraint fires; the
         # view still catches IntegrityError as a race-safe fallback.
-        if institution and employee and admission_class and cleaned.get('subject') and cleaned.get('session'):
+        if institution and employee and admission_class and subject and cleaned.get('session'):
             duplicates = TeacherAssignment.objects.filter(
                 institution=institution,
                 employee=employee,
                 admission_class=admission_class,
-                section=cleaned.get('section') or '',
-                subject=cleaned['subject'],
+                section=section,
+                subject=subject,
                 session=cleaned['session'],
                 is_active=True,
             )
@@ -1183,7 +1370,8 @@ class TeacherAssignmentForm(forms.ModelForm):
                 duplicates = duplicates.exclude(pk=self.instance.pk)
             if duplicates.exists():
                 self.add_error(
-                    None,
-                    'An active assignment for this teacher, class, section, subject and session already exists.',
+                    'subject',
+                    f'{employee.name} already teaches {subject.name} to class '
+                    f'{admission_class} ({section or "all sections"}) in {cleaned["session"]}.',
                 )
         return cleaned

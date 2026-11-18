@@ -68,6 +68,7 @@ urlpatterns = [
     path('employees/<int:pk>/status-history/', views.employee_status_history, name='employee_status_history'),
     # EM-01 teacher assignment registry
     path('employees/assignments/', views.teacher_assignment_list, name='teacher_assignment_list'),
+    path('employees/assignments/teacher-lookup/', views.teacher_number_lookup, name='teacher_number_lookup'),
     path('employees/assignments/add/', views.add_teacher_assignment, name='add_teacher_assignment'),
     path('employees/assignments/<int:pk>/edit/', views.edit_teacher_assignment, name='edit_teacher_assignment'),
     path('employees/assignments/<int:pk>/toggle/', views.toggle_teacher_assignment, name='toggle_teacher_assignment'),
