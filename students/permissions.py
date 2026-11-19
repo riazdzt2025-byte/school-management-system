@@ -123,6 +123,23 @@ def _group_permission_map():
             # Assignments" workflow links keep working.
             (SubjectRequirement, ['view']),
         ],
+        'Teacher': [
+            # A teacher needs the class roll, the subjects and their own
+            # assignments to know what they may enter; nothing here grants
+            # write access to the register or to an approval.
+            (Student, ['view']),
+            (Subject, ['view']),
+            (SubjectRequirement, ['view']),
+            (Exam, ['view']),
+            (TeacherAssignment, ['view']),
+            # Marks entry is the teacher's own job; views narrow it to their
+            # own class/section/subject assignments.
+            (ExamMark, ['add', 'change', 'view']),
+            # Check, sign and submit a correction application the office filed.
+            # No 'add': the office files, the teacher signs. Approving or
+            # rejecting is gated to the Exam department in the view as well.
+            (MarkCorrectionRequest, ['change', 'view']),
+        ],
         'Audit': [
             (AuditLog, ['view']),
         ],
@@ -152,8 +169,8 @@ def sync_user_department_permissions(user):
     """Mirror the user's active institution access into Django groups.
 
     Intentional limit (SEC-FU-2): a non-admin clerk signs in through one of the
-    three login departments (Office, Exam, Accounts), so only those access rows
-    are mirrored (Office also brings Admission). Membership of the HR, Subjects
+    login departments (Office, Exam, Accounts, Teacher), so only those access
+    rows are mirrored (Office also brings Admission, Teacher brings Teacher). Membership of the HR, Subjects
     and Audit groups is never granted here and is removed at the next login.
     Admin/staff accounts are skipped and may use those groups directly. See
     students/test_department_group_sync.py.
@@ -170,6 +187,7 @@ def sync_user_department_permissions(user):
         'Office': {'Office', 'Admission'},
         'Exam': {'Exam'},
         'Accounts': {'Accounts'},
+        'Teacher': {'Teacher'},
     }
 
     desired_group_names = set()
@@ -179,7 +197,7 @@ def sync_user_department_permissions(user):
                 desired_group_names.update(targets)
                 break
 
-    for group_name in ['Office', 'Admission', 'Subjects', 'Exam', 'HR', 'Accounts', 'Audit']:
+    for group_name in ['Office', 'Admission', 'Subjects', 'Exam', 'HR', 'Accounts', 'Audit', 'Teacher']:
         group = Group.objects.filter(name=group_name).first()
         if not group:
             continue

@@ -1,3 +1,5 @@
+from functools import wraps
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from django.contrib import messages
@@ -84,6 +86,15 @@ from .result_utils import (
     section_arrangement_rows,
 )
 from .special_exam_results import build_special_exam_result
+from .teacher_scope import (
+    current_teaching_session,
+    teacher_assignments,
+    teacher_correction_requests,
+    teacher_employee,
+    teacher_exams,
+    teacher_students,
+    teacher_subjects,
+)
 from .mark_corrections import (
     current_mark_snapshot,
     parts_from_json,
@@ -552,6 +563,25 @@ def institution_login(request):
                 department=department,
                 is_active=True,
             ).select_related('institution').first()
+            if access is None and department == 'Teacher':
+                # A teacher account is granted by linking the login to its
+                # Employee row (Employee.user), so a clerical "give the teacher
+                # a login" step cannot be forgotten. The Employee must be an
+                # active teacher of that institution.
+                linked = Employee.objects.filter(
+                    user=user, institution_id=institution_id, status='ACTIVE',
+                    designation__icontains='teacher',
+                ).first()
+                if linked is not None:
+                    # Persist the row rather than keeping it in memory:
+                    # sync_user_department_permissions() reads the table to put
+                    # the login in the Teacher group, and the next sign-in is an
+                    # ordinary one.
+                    access, _created = InstitutionAccess.objects.get_or_create(
+                        user=user, institution=linked.institution,
+                        department='Teacher',
+                        defaults={'is_active': True},
+                    )
 
         if user is not None and (user.is_superuser or user.is_staff or access is not None):
             _login_fail_reset(request)
@@ -576,6 +606,11 @@ def dashboard(request):
     selected_institution_id = request.session.get('selected_institution_id')
     selected_department = request.session.get('selected_department')
     institution = _selected_institution_for_request(request)
+
+    # A teacher has no business on the institution-wide dashboard: send them to
+    # their own classes, which is the only place their scope is wide enough for.
+    if selected_department == 'Teacher' and not (request.user.is_superuser or request.user.is_staff):
+        return redirect('teacher_home')
 
     students_qs = Student.objects.filter(status='ACTIVE', is_archived=False)
     if institution is not None:
@@ -2811,10 +2846,17 @@ def _mark_request_scoped(request, queryset=None, field_name='institution'):
 
 
 def _mark_request_get(request, pk):
-    """One request the user may read, or 404 (never leaks another school's)."""
-    return _get_scoped_object_or_404(
+    """One request the user may read, or 404 (never leaks another school's).
+
+    A teacher is additionally narrowed to their own class students, so guessing
+    an id from another class is a 404 rather than a read.
+    """
+    row = _get_scoped_object_or_404(
         request, MarkCorrectionRequest, pk, lambda row: row.institution
     )
+    if request.session.get('selected_department') == 'Teacher' and not _teacher_can_check(request, row):
+        raise Http404
+    return row
 
 
 def _mark_request_choices(request, *, institution=None, admission_class='', section=''):
@@ -2879,13 +2921,133 @@ def _save_parts_from_post(request, parts, prefix='requested'):
     return values, problem
 
 
+# ---------------------------------------------------------------------------
+# The teacher's own screens (Teacher department, scoped by Employee.user)
+# ---------------------------------------------------------------------------
+
+@login_required
+@_require_department('Teacher')
+def teacher_home(request):
+    """Everything a signed-in teacher owns, on one page.
+
+    This is the answer to "where does a teacher input?" — they see only their own
+    classes: enter marks for a paper they take, and check/submit the correction
+    applications the office filed about their students.
+    """
+    employee = teacher_employee(request.user)
+    if employee is None:
+        messages.error(
+            request,
+            'This login is not linked to a teacher record yet. Ask the office to '
+            'connect it (Employee → Login account).',
+        )
+        return redirect('dashboard')
+
+    assignments = list(teacher_assignments(employee))
+    session = current_teaching_session(employee)
+    students = teacher_students(employee, assignments)
+    exams = list(teacher_exams(employee, assignments))
+
+    # One row per assignment, with the exam it can be marked in (if any).
+    exam_by_class = {}
+    for exam in exams:
+        for variant in class_filter_variants(exam.admission_class):
+            exam_by_class.setdefault(variant, exam)
+    rows = []
+    for assignment in assignments:
+        exam = exam_by_class.get(assignment.admission_class)
+        rows.append({
+            'assignment': assignment,
+            'exam': exam,
+            'marks_url': (
+                reverse('enter_marks', kwargs={'pk': exam.pk, 'subject_pk': assignment.subject_id})
+                if exam is not None else ''
+            ),
+            'student_count': students.filter(
+                admission_class__in=class_filter_variants(assignment.admission_class)
+            ).count(),
+        })
+
+    pending = teacher_correction_requests(employee, assignments).filter(
+        status='SUBMITTED'
+    ).select_related('student', 'subject', 'exam').order_by('-submitted_at', '-pk')
+    drafts = teacher_correction_requests(employee, assignments).filter(
+        status='DRAFT'
+    ).select_related('student', 'subject', 'exam').order_by('-created_at', '-pk')
+
+    return render(request, 'students/teacher_home.html', {
+        'employee': employee,
+        'session': session,
+        'assignments': assignments,
+        'rows': rows,
+        'exams': exams,
+        'student_count': students.count(),
+        'subject_count': teacher_subjects(employee, assignments).count(),
+        'pending_requests': pending,
+        'draft_requests': drafts,
+        'number': employee.teacher_no_display,
+    })
+
+
+@login_required
+@_require_department('Teacher')
+def teacher_correction_list(request):
+    """The correction applications filed about this teacher's students."""
+    employee = teacher_employee(request.user)
+    if employee is None:
+        messages.error(request, 'This login is not linked to a teacher record yet.')
+        return redirect('dashboard')
+    rows = teacher_correction_requests(employee).select_related(
+        'student', 'subject', 'exam'
+    )
+    status = (request.GET.get('status') or '').strip().upper()
+    if status in dict(MarkCorrectionRequest.STATUS_CHOICES):
+        rows = rows.filter(status=status)
+    tabs = [
+        {
+            'key': key,
+            'label': label,
+            'count': teacher_correction_requests(employee).filter(status=key).count(),
+        }
+        for key, label in MarkCorrectionRequest.STATUS_CHOICES
+    ]
+    pagination = paginate_list(request, rows, allow_full_print=True)
+    return render(request, 'students/teacher_correction_list.html', {
+        **pagination,
+        'requests': pagination['page_rows'],
+        'employee': employee,
+        'tabs': tabs,
+        'status': status,
+    })
+
+
+def _teacher_can_check(request, row):
+    """A teacher may read/check a request only for their own class students."""
+    if request.user.is_superuser or request.user.is_staff:
+        return True
+    employee = teacher_employee(request.user)
+    if employee is None:
+        return False
+    return teacher_correction_requests(employee).filter(pk=row.pk).exists()
+
+
 @login_required
 @permission_required('students.view_markcorrectionrequest', raise_exception=True)
-@_require_department(('Office', 'Exam'))
+@_require_department(('Office', 'Exam', 'Teacher'))
 def mark_correction_request_list(request):
-    """The examination department's application register, printable as a file."""
+    """The examination department's application register, printable as a file.
+
+    A teacher sees only the applications about their own students (and only the
+    ones they may check); office and exam see their institution's.
+    """
+    if request.session.get('selected_department') == 'Teacher':
+        return redirect('teacher_correction_list')
     institution = _resolve_requested_institution(request, request.GET.get('institution'))
-    rows = _mark_request_scoped(request).select_related(
+    rows = _mark_request_scoped(request)
+    if request.session.get('selected_department') == 'Teacher':
+        employee = teacher_employee(request.user)
+        rows = teacher_correction_requests(employee) if employee else rows.none()
+    rows = rows.select_related(
         'student', 'subject', 'exam', 'institution', 'filed_by', 'submitted_by', 'decided_by'
     )
     if institution is not None:
@@ -3011,10 +3173,28 @@ def _mark_section_options(request, institution, admission_class):
     })
 
 
+def _teacher_redirect(view_func):
+    """Send a teacher to their own list instead of a 403 on an office screen."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if request.session.get('selected_department') == 'Teacher' and not _is_admin(request.user):
+            messages.error(
+                request,
+                'The office files the application — you check, sign and submit it. '
+                'It will appear in your own list.',
+            )
+            return redirect('teacher_correction_list')
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
 @login_required
+@_teacher_redirect
 @permission_required('students.add_markcorrectionrequest', raise_exception=True)
 @_require_department(('Office', 'Exam'))
 def add_mark_correction_request(request):
+    # Teacher accounts deliberately cannot file: the office files, the teacher
+    # checks and signs.
     """File a draft application (the printed sheet is taken to the teacher)."""
     form = MarkCorrectionRequestForm(request.POST or None, user=request.user)
     if request.method == 'POST' and form.is_valid():
@@ -3126,22 +3306,28 @@ def edit_mark_correction_request(request, pk):
 
 @login_required
 @permission_required('students.view_markcorrectionrequest', raise_exception=True)
-@_require_department(('Office', 'Exam'))
+@_require_department(('Office', 'Exam', 'Teacher'))
 def mark_correction_request_detail(request, pk):
     row = _mark_request_get(request, pk)
     marks_config = get_subject_marks(row.exam, row.subject, group=row.exam.group or None)
+    department = request.session.get('selected_department')
+    # Only the examination department (or an admin) may decide. The teacher sees
+    # the submit/withdraw controls, never the approve/reject ones.
+    can_decide = request.user.is_superuser or request.user.is_staff or department == 'Exam'
     return render(request, 'students/mark_correction_request_detail.html', {
         'request_row': row,
         'parts': marks_config.parts,
         'current_parts': parts_from_json(row.current_parts),
         'requested_parts': parts_from_json(row.requested_parts),
         'full_marks': marks_config.full_marks,
+        'can_decide': can_decide,
+        'is_teacher': department == 'Teacher',
     })
 
 
 @login_required
 @permission_required('students.view_markcorrectionrequest', raise_exception=True)
-@_require_department(('Office', 'Exam'))
+@_require_department(('Office', 'Exam', 'Teacher'))
 def mark_correction_request_print(request, pk):
     """The signed application the examination department keeps on file."""
     row = _mark_request_get(request, pk)
@@ -3157,6 +3343,7 @@ def mark_correction_request_print(request, pk):
 
 @login_required
 @permission_required('students.change_markcorrectionrequest', raise_exception=True)
+@_require_department(('Office', 'Exam', 'Teacher'))
 @require_POST
 def submit_mark_correction_request(request, pk):
     """The teacher's check: the numbers are frozen and the sheet goes to Exam."""
@@ -3189,8 +3376,11 @@ def submit_mark_correction_request(request, pk):
 
 @login_required
 @permission_required('students.change_markcorrectionrequest', raise_exception=True)
+@_require_department(('Office', 'Exam'))
 @require_POST
 def withdraw_mark_correction_request(request, pk):
+    # Withdrawing cancels the office's own filing, so a teacher cannot do it
+    # (they would be cancelling a request made about them, not by them).
     row = _mark_request_get(request, pk)
     reason = (request.POST.get('decision_reason') or '').strip()
     with transaction.atomic():
@@ -5782,6 +5972,14 @@ def select_marks_subject(request, pk):
     subjects, is_filtered = get_exam_subjects_for_students(
         exam, students, group=selected_group or None,
     )
+    if request.session.get('selected_department') == 'Teacher':
+        teacher = teacher_employee(request.user)
+        own_ids = set(
+            teacher_assignments(teacher).filter(
+                admission_class__in=class_filter_variants(exam.admission_class)
+            ).values_list('subject_id', flat=True)
+        ) if teacher else set()
+        subjects = [subject for subject in subjects if subject.pk in own_ids]
     allowed_ids = {s.pk for s in subjects}
     no_subjects = not subjects
 
@@ -6088,6 +6286,25 @@ def enter_marks(request, pk, subject_pk):
     exam = _get_scoped_object_or_404(request, Exam, pk, lambda e: e.institution)
     subject = get_object_or_404(Subject, pk=subject_pk)
 
+    # A teacher may only open a paper they actually take, in a class they take
+    # it in. This is the write path for marks, so the check is here — not only
+    # in the menu that leads to it.
+    if request.session.get('selected_department') == 'Teacher':
+        teacher = teacher_employee(request.user)
+        assignments = list(teacher_assignments(teacher)) if teacher else []
+        allowed = any(
+            assignment.subject_id == subject.pk
+            and exam.admission_class in class_filter_variants(assignment.admission_class)
+            for assignment in assignments
+        ) if teacher else False
+        if not allowed:
+            messages.error(
+                request,
+                f'You are not assigned to teach {subject.name} in class '
+                f'{exam.admission_class}. Ask the office to assign you first.',
+            )
+            return redirect('teacher_home')
+
     # Exams created without a group can be narrowed down here too, so the
     # subject list and the student list are always filtered by the same group.
     group_choices = get_exam_group_choices(exam)
@@ -6099,6 +6316,14 @@ def enter_marks(request, pk, subject_pk):
             selected_group = requested
 
     students = list(get_exam_students(exam, group=selected_group or None))
+    if request.session.get('selected_department') == 'Teacher':
+        # An exam can cover a whole class while the teacher takes one section;
+        # showing the other sections would invite editing someone else's roll.
+        teacher = teacher_employee(request.user)
+        allowed_students = set(
+            teacher_students(teacher).values_list('pk', flat=True)
+        ) if teacher else set()
+        students = [student for student in students if student.pk in allowed_students]
     all_subjects, _all_filtered = get_exam_subjects(exam, group=selected_group or None)
     student_subject_ids = get_student_subject_ids(
         exam, students, subjects=all_subjects, group=selected_group or None,

@@ -16,12 +16,22 @@ hunting in the wrong place.
 The department groups (Office / Exam / Accounts permissions) are created here
 too, so a freshly granted user can actually open the pages their department
 owns instead of hitting 403.
+
+A teacher does not need this command: once the login is linked to an Employee
+row in the HR screen, signing in with the Teacher department grants itself. Use
+``--department Teacher`` only to force the row for a specific account.
 """
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
 from students.models import Institution, InstitutionAccess
 from students.permissions import ensure_default_groups
+
+
+# Departments a clerk signs in through, and the ones this command grants when
+# --department is omitted. Teacher is granted by linking the login to an
+# Employee row (Employee.user), not by a blanket grant, so it is left out.
+CLERICAL_DEPARTMENTS = ('Office', 'Exam', 'Accounts')
 
 
 class Command(BaseCommand):
@@ -33,7 +43,11 @@ class Command(BaseCommand):
         parser.add_argument(
             '--department',
             choices=[label for label, _ in InstitutionAccess.DEPARTMENT_CHOICES],
-            help='One department. Omit to grant every department (Office, Exam, Accounts).',
+            help=(
+                'One department. Omit to grant every clerical department (Office, '
+                'Exam, Accounts) — Teacher access comes from linking the login to '
+                'an Employee row, so it is never granted blanket.'
+            ),
         )
         parser.add_argument('--revoke', action='store_true', help='Remove the access instead of granting it.')
         parser.add_argument('--list-users', action='store_true', help='List every user and their access, then exit.')
@@ -56,7 +70,9 @@ class Command(BaseCommand):
         institution = self._resolve_institution(options['institution'])
         departments = (
             [options['department']] if options['department']
-            else [label for label, _ in InstitutionAccess.DEPARTMENT_CHOICES]
+            # Teacher is deliberately out of the blanket grant: that access is
+            # granted by linking the login to an Employee row (Employee.user).
+            else [value for value in CLERICAL_DEPARTMENTS]
         )
 
         if options['revoke']:

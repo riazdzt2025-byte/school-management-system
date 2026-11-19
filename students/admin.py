@@ -57,9 +57,11 @@ admin.site.register(SeatPlan, BoundedModelAdmin)
 @admin.register(Employee)
 class EmployeeAdmin(BoundedModelAdmin):
     """Teacher numbers are allocated on save; show them and allow a lookup."""
-    list_display = ('teacher_no', 'name', 'designation', 'institution', 'status')
-    list_select_related = ('institution',)
-    search_fields = ('teacher_no', 'name', 'designation', 'contact_no')
+    # ``user`` is the link that decides which classes a teacher may enter marks
+    # for once they sign in, so it is shown here as well as in the HR screen.
+    list_display = ('teacher_no', 'name', 'designation', 'institution', 'user', 'status')
+    list_select_related = ('institution', 'user')
+    search_fields = ('teacher_no', 'name', 'designation', 'contact_no', 'user__username')
     list_filter = ('status', 'institution')
     readonly_fields = ('teacher_no',)
 @admin.register(MarkCorrectionRequest)

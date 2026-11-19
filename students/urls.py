@@ -69,6 +69,10 @@ urlpatterns = [
     # EM-01 teacher assignment registry
     # Mark correction applications: office files a draft, the teacher checks and
     # submits it, the exam department approves or rejects it with a reason.
+    # The teacher's own screens: their classes, their papers, the corrections
+    # the office filed about their students.
+    path('teacher/', views.teacher_home, name='teacher_home'),
+    path('teacher/corrections/', views.teacher_correction_list, name='teacher_correction_list'),
     path('marks/corrections/', views.mark_correction_request_list, name='mark_correction_request_list'),
     path('marks/corrections/add/', views.add_mark_correction_request, name='add_mark_correction_request'),
     path('marks/corrections/student-options/', views.mark_correction_student_options, name='mark_correction_student_options'),
