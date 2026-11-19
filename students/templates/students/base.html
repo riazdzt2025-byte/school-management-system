@@ -225,6 +225,16 @@
 
     <a href="{% url 'dashboard' %}" class="{% block nav_dashboard %}{% endblock %}"><i class="bi bi-grid-1x2-fill"></i><span class="nav-text">Dashboard</span></a>
 
+    {% if request.session.selected_department == 'Teacher' %}
+    {% comment %}
+    A teacher's own screen: only their classes, their papers and the correction
+    applications the office filed about their students. Nothing else is shown,
+    because everything else would be out of their scope.
+    {% endcomment %}
+    <a href="{% url 'teacher_home' %}" class="{% block nav_my_classes %}{% endblock %}"><i class="bi bi-person-workspace"></i><span class="nav-text">My Classes</span></a>
+    <a href="{% url 'teacher_correction_list' %}"><i class="bi bi-pen-fill"></i><span class="nav-text">My Corrections</span></a>
+    {% endif %}
+
     <div class="nav-group">
         <div class="group-label"><span><i class="bi bi-folder-fill"></i><span class="nav-text">Office</span></span><i class="bi bi-chevron-right"></i></div>
         <div class="flyout">

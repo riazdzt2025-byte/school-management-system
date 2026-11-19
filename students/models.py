@@ -276,6 +276,10 @@ class InstitutionAccess(models.Model):
         ('Office', 'Office'),
         ('Exam', 'Exam'),
         ('Accounts', 'Accounts'),
+        # A teacher signs in to enter marks and to file/submit a correction
+        # application for their own classes. Everything they may touch is
+        # narrowed to their own assignments (see students.teacher_scope).
+        ('Teacher', 'Teacher'),
     ]
 
     user = models.ForeignKey(
@@ -1538,6 +1542,19 @@ class Employee(models.Model):
     join_date = models.DateField()
     contact_no = models.CharField(max_length=20, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='ACTIVE')
+    # The login a teacher uses. One employee has at most one account, and the
+    # account may belong to only one employee — that link is what decides which
+    # classes and marks the person may open once they sign in as a Teacher.
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='employee_profile',
+        verbose_name='Login account',
+        help_text='Give a teacher a login so they can enter marks and check the '
+                  'correction applications filed about their own classes.',
+    )
     teacher_no = models.CharField(
         max_length=20, unique=True, blank=True, null=True, verbose_name='Teacher number',
         help_text=(

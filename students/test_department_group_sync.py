@@ -89,8 +89,11 @@ class DepartmentGroupSyncTests(TestCase):
         self.assertEqual(self._groups(staff), {'HR'})
         self.assertEqual(self._groups(admin), {'Audit'})
 
-    def test_login_departments_are_only_office_exam_accounts(self):
+    def test_login_departments_are_office_exam_accounts_and_teacher(self):
+        # Teacher is a login department like the others; it is granted by
+        # linking the login to an Employee row rather than by a clerk grant,
+        # which is what students/test_teacher_login.py covers.
         self.assertEqual(
             [value for value, _ in InstitutionAccess.DEPARTMENT_CHOICES],
-            ['Office', 'Exam', 'Accounts'],
+            ['Office', 'Exam', 'Accounts', 'Teacher'],
         )

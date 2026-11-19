@@ -13,7 +13,11 @@
     </div>
     <div class="page-actions">
         <a href="{% url 'mark_correction_request_print' request_row.pk %}" class="btn btn-outline-navy">Print application</a>
+        {% if is_teacher %}
+        <a href="{% url 'teacher_correction_list' %}" class="btn btn-outline-secondary">Back</a>
+        {% else %}
         <a href="{% url 'mark_correction_request_list' %}" class="btn btn-outline-secondary">Back</a>
+        {% endif %}
     </div>
 </div>
 
@@ -90,7 +94,10 @@
     </p>
     <div class="d-flex flex-wrap gap-2">
         {% if perms.students.change_markcorrectionrequest %}
+        {% comment %}The office edits the numbers; the teacher only signs them.{% endcomment %}
+        {% if not is_teacher %}
         <a href="{% url 'edit_mark_correction_request' request_row.pk %}" class="btn btn-outline-navy">Edit numbers</a>
+        {% endif %}
         <form method="post" action="{% url 'submit_mark_correction_request' request_row.pk %}" class="d-flex gap-2 align-items-end">
             {% csrf_token %}
             <input type="text" name="teacher_note" class="form-control form-control-sm" style="width:280px"
@@ -102,7 +109,7 @@
 </div>
 {% endif %}
 
-{% if request_row.status == 'SUBMITTED' and perms.students.change_markcorrectionrequest %}
+{% if request_row.status == 'SUBMITTED' and can_decide %}
 <div class="table-card p-4 mb-3" style="max-width: 880px;">
     <h2 class="h6 text-uppercase text-muted mb-2" style="letter-spacing:.06em">Examination department decides</h2>
     <p class="small text-muted mb-3">
@@ -130,7 +137,7 @@
 </div>
 {% endif %}
 
-{% if request_row.is_open and perms.students.change_markcorrectionrequest %}
+{% if request_row.is_open and perms.students.change_markcorrectionrequest and not is_teacher %}
 <form method="post" action="{% url 'withdraw_mark_correction_request' request_row.pk %}" class="d-flex gap-2 align-items-end" style="max-width: 880px;">
     {% csrf_token %}
     <input type="text" name="decision_reason" class="form-control form-control-sm" style="max-width:340px"

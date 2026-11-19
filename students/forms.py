@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django import forms
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 from .models import (
     Student, Subject, SubjectRequirement, TransferCertificate, Certificate,
@@ -48,6 +48,36 @@ def _allowed_institution_ids(user):
         .values_list('institution_id', flat=True)
     )
     return ids or None
+
+
+def _linkable_login_accounts(instance, allowed_institution_ids):
+    """Logins that may still be attached to this employee record.
+
+    A login already linked to a different employee is excluded (the OneToOne
+    would refuse it anyway), and a clerk is only offered accounts that already
+    hold access to one of their institutions — or that hold no access at all,
+    since a brand-new login is granted its row on first sign-in.
+    """
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    linked = Employee.objects.filter(user__isnull=False)
+    if instance is not None and instance.pk:
+        linked = linked.exclude(pk=instance.pk)
+    accounts = User.objects.exclude(pk__in=linked.values('user_id')).order_by('username')
+    if allowed_institution_ids is not None:
+        allowed_ids = set(allowed_institution_ids)
+        shared = set(
+            InstitutionAccess.objects.filter(
+                user__isnull=False, is_active=True, institution_id__in=allowed_ids
+            ).values_list('user_id', flat=True)
+        )
+        with_access = set(
+            InstitutionAccess.objects.filter(user__isnull=False)
+            .values_list('user_id', flat=True)
+        )
+        accounts = accounts.filter(Q(pk__in=shared) | ~Q(pk__in=with_access))
+    return accounts
 
 
 def _user_allowed_institution(user, institution):
@@ -1016,7 +1046,7 @@ class GenerateSeatPlanForm(forms.Form):
 class EmployeeForm(forms.ModelForm):
     class Meta:
         model = Employee
-        fields = ['name', 'designation', 'department', 'institution', 'join_date', 'contact_no']
+        fields = ['name', 'designation', 'department', 'institution', 'join_date', 'contact_no', 'user']
         widgets = {field: forms.TextInput(attrs={'class': 'form-control'}) for field in ['name', 'designation', 'department', 'contact_no']}
         widgets.update({
             'institution': forms.Select(attrs={'class': 'form-select'}),
@@ -1047,6 +1077,21 @@ class EmployeeForm(forms.ModelForm):
         )
         if self.instance and self.instance.pk and self.instance.teacher_no:
             self.initial['teacher_no'] = self.instance.teacher_no_display
+
+        # Linking a login here is the one step that gives a teacher their own
+        # account: the same field grants the Classroom scope, so the clerk who
+        # adds the teacher is also the one who hands over the username.
+        self.fields['user'] = forms.ModelChoiceField(
+            required=False,
+            label='Login account',
+            queryset=_linkable_login_accounts(self.instance, self.allowed_institution_ids),
+            widget=forms.Select(attrs={'class': 'form-select'}),
+            help_text=(
+                'Pick the login this employee signs in with. Leave empty for someone '
+                'who does not use the system. Only accounts not already linked to '
+                'another employee are listed.'
+            ),
+        )
 
     def clean_institution(self):
         institution = self.cleaned_data.get('institution')
