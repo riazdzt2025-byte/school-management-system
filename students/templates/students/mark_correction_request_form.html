@@ -1,0 +1,210 @@
+{% extends 'students/base.html' %}
+{% load student_filters %}
+
+{% block title %}{% if request_row %}Edit{% else %}File{% endif %} mark correction - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{% if request_row %}Edit application{% else %}File a mark correction{% endif %}</h1>
+        <div class="subtitle">
+            Nothing changes on the result until the examination department approves.
+        </div>
+    </div>
+    <a href="{% url 'mark_correction_request_list' %}" class="btn btn-outline-navy">Back to applications</a>
+</div>
+
+{% if messages %}
+{% for message in messages %}
+<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+{% endfor %}
+{% endif %}
+
+{% if form.errors %}
+<div class="alert alert-danger">
+    <div class="fw-semibold mb-1">Please fix the following:</div>
+    <ul class="mb-0 small">
+        {% for field, errors in form.errors.items %}
+            {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<form method="post" id="mark-correction-form">
+    {% csrf_token %}
+    <div class="table-card p-4 mb-3" style="max-width: 880px;">
+        <h2 class="h6 text-uppercase text-muted mb-3" style="letter-spacing:.06em">Whose mark</h2>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="id_institution">Institution</label>
+                <select name="institution" id="id_institution" class="form-select">
+                    <option value="">— all my institutions —</option>
+                    {% for inst in institutions %}
+                    <option value="{{ inst.pk }}" {% if institution and inst.pk == institution.pk %}selected{% endif %}>{{ inst.number_display|default:'' }}{% if inst.number %} · {% endif %}{{ inst.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="filter-class">Class</label>
+                <input type="text" id="filter-class" name="admission_class" class="form-control"
+                       list="mark-class-options" value="{{ admission_class }}" placeholder="e.g. 9">
+                <datalist id="mark-class-options">
+                    {% for option in class_options %}<option value="{{ option }}"></option>{% endfor %}
+                </datalist>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="filter-section">Section</label>
+                <input type="text" id="filter-section" name="section" class="form-control"
+                       list="mark-section-options" value="{{ section }}" placeholder="e.g. A">
+                <datalist id="mark-section-options">
+                    {% for option in section_options %}<option value="{{ option }}"></option>{% endfor %}
+                </datalist>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1">
+            <div class="col-md-6">
+                <label class="form-label" for="id_exam">Exam</label>
+                {{ form.exam }}
+                <div class="form-text">The exam whose register holds the mark.</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="id_student">Student</label>
+                <select name="student" id="id_student" class="form-select">
+                    {% if student %}<option value="{{ student.pk }}" selected>{{ student.name }} · {{ student.student_id }}{% if student.section %} · {{ student.section }}{% endif %}</option>{% else %}<option value="">— pick a class/section first —</option>{% endif %}
+                </select>
+                <div class="form-text">Narrowed by the class/section above.</div>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <label class="form-label" for="id_subject">Subject</label>
+            {{ form.subject }}
+        </div>
+    </div>
+
+    {% if parts or full_marks %}
+    <div class="table-card p-4 mb-3" style="max-width: 880px;">
+        <h2 class="h6 text-uppercase text-muted mb-3" style="letter-spacing:.06em">The numbers</h2>
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Part</th><th style="width:130px">Now in register</th><th style="width:170px">Corrected mark</th></tr>
+            </thead>
+            <tbody>
+                {% if parts %}
+                    {% for part in parts %}
+                    <tr>
+                        <td>{{ part.label }} <span class="text-muted small">/ {{ part.max_marks }}</span></td>
+                        <td>
+                            {% with value=current_parts|get_item:part.key %}
+                                {% if value is not None %}{{ value }}{% else %}<span class="text-muted">—</span>{% endif %}
+                            {% endwith %}
+                        </td>
+                        <td>
+                            <input type="number" step="0.01" min="0" max="{{ part.max_marks }}"
+                                   class="form-control" name="requested_{{ part.key }}"
+                                   value="{{ requested_parts|get_item:part.key|default_if_none:'' }}">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td>Total <span class="text-muted small">/ {{ full_marks }}</span></td>
+                        <td>{% if current_total is not None %}{{ current_total }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td>
+                            <input type="number" step="0.01" min="0" max="{{ full_marks }}"
+                                   class="form-control" name="requested_total"
+                                   value="{{ requested_parts|get_item:'total'|default_if_none:'' }}">
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+        <div class="form-text mt-2">
+            A blank box means the student did not sit that part — it stays blank, not zero.
+        </div>
+    </div>
+    {% else %}
+    <div class="table-card p-4 mb-3" style="max-width: 880px;">
+        <div class="text-muted small">Pick an exam, student and subject to see the current mark.</div>
+    </div>
+    {% endif %}
+
+    <div class="table-card p-4 mb-3" style="max-width: 880px;">
+        <label class="form-label" for="id_reason">Why does the mark change?</label>
+        {{ form.reason }}
+        <div class="form-text">Printed on the application the teacher signs.</div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button class="btn btn-navy">Save draft</button>
+        <a href="{% url 'mark_correction_request_list' %}" class="btn btn-outline-navy">Cancel</a>
+    </div>
+</form>
+
+<script>
+(function () {
+    // Narrowing the student list needs the class/section the clerk just typed,
+    // so the page reloads the choices only when those fields change — never per
+    // keystroke.
+    var form = document.getElementById('mark-correction-form');
+    var institution = document.getElementById('id_institution');
+    var klass = document.getElementById('filter-class');
+    var section = document.getElementById('filter-section');
+    var exam = document.getElementById('id_exam');
+    var student = document.getElementById('id_student');
+    var subject = document.getElementById('id_subject');
+    var optionsUrl = "{% url 'mark_correction_student_options' %}";
+    if (!form || !institution || !klass || !student) { return; }
+
+    function fetchStudents() {
+        var params = new URLSearchParams({
+            institution: institution.value, admission_class: klass.value.trim(), section: section.value.trim(),
+        });
+        fetch(optionsUrl + '?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                var current = student.value;
+                student.replaceChildren();
+                var head = document.createElement('option');
+                head.value = '';
+                head.textContent = data.students.length ? '— pick a student —' : 'No student matches';
+                student.appendChild(head);
+                data.students.forEach(function (row) {
+                    var option = document.createElement('option');
+                    option.value = row.id;
+                    option.textContent = row.name + ' · ' + row.student_id +
+                        (row.section ? ' · ' + row.section : '') +
+                        (row.roll_no ? ' · roll ' + row.roll_no : '');
+                    student.appendChild(option);
+                });
+                if (current) { student.value = current; }
+                var list = document.getElementById('mark-section-options');
+                if (list) {
+                    list.replaceChildren();
+                    data.sections.forEach(function (value) {
+                        var option = document.createElement('option');
+                        option.value = value;
+                        list.appendChild(option);
+                    });
+                }
+            })
+            .catch(function () { /* keep the current list on a network hiccup */ });
+    }
+
+    [institution, klass, section].forEach(function (field) {
+        field.addEventListener('change', fetchStudents);
+    });
+    // The current mark is loaded by the server: a reload carries the three
+    // narrowing values so the same student/exam/subject come back selected.
+    [student, exam, subject].forEach(function (field) {
+        if (!field) { return; }
+        field.addEventListener('change', function () {
+            var params = new URLSearchParams(new FormData(form));
+            window.location = window.location.pathname + '?' + params.toString();
+        });
+    });
+})();
+</script>
+{% endblock %}

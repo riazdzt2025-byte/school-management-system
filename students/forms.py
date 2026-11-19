@@ -11,6 +11,7 @@ from .models import (
     Exam, SeatPlan,
     Employee, MoneyReceipt, Voucher, SalarySheet, AttendanceRecord,
     AdmissionApplication, SectionCapacity, TeacherAssignment,
+    MarkCorrectionRequest, MARK_PARTS,
     RELIGION_CHOICES, student_religion,
     normalize_guardian_contact, validate_guardian_contact,
     current_academic_session, display_teacher_number, normalize_teacher_number,
@@ -435,6 +436,102 @@ class SubjectForm(forms.ModelForm):
             'full_marks': forms.NumberInput(attrs={'class': 'form-control'}),
             'category': forms.Select(attrs={'class': 'form-select'}),
         }
+
+
+class MarkCorrectionRequestForm(forms.ModelForm):
+    """File or edit a mark-correction application.
+
+    Everything the printed sheet needs is chosen here: exam, student (narrowed
+    by Institution → Class → Section, so a clerk never scrolls the whole roll),
+    subject (only the ones that exam actually marks), the corrected numbers and
+    the reason. The "current mark" boxes are filled in by the view from the
+    register — they are displayed on the sheet as evidence of what is being
+    changed, never typed by hand.
+    """
+
+    class Meta:
+        model = MarkCorrectionRequest
+        fields = ['institution', 'exam', 'student', 'subject', 'reason']
+        widgets = {
+            'institution': forms.Select(attrs={'class': 'form-select'}),
+            'exam': forms.Select(attrs={'class': 'form-select'}),
+            'student': forms.Select(attrs={'class': 'form-select'}),
+            'subject': forms.Select(attrs={'class': 'form-select'}),
+            'reason': forms.Textarea(attrs={
+                'class': 'form-control', 'rows': 3,
+                'placeholder': 'e.g. CQ 3 was written correctly but left unmarked',
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.allowed_institution_ids = _allowed_institution_ids(user)
+        institutions = Institution.objects.all()
+        if self.allowed_institution_ids is not None:
+            institutions = institutions.filter(pk__in=self.allowed_institution_ids)
+        self.fields['institution'].queryset = institutions.order_by('name')
+        self.fields['exam'].queryset = Exam.objects.order_by('-session', 'name')
+        # Narrowed step by step — Institution → Class → Section — so the whole
+        # roll is never one long dropdown. It is computed from the posted data
+        # (not from the view afterwards) because Django validates the choice
+        # before the view could narrow it.
+        students = Student.objects.filter(is_archived=False)
+        if self.instance and self.instance.pk:
+            students = students.filter(pk=self.instance.student_id)
+        else:
+            data = self.data if self.is_bound else None
+            institution_id = (data or {}).get('institution') if data else None
+            admission_class = ((data or {}).get('admission_class') if data else '') or ''
+            section = ((data or {}).get('section') if data else '') or ''
+            if institution_id:
+                students = students.filter(institution_id=institution_id)
+            if admission_class.strip():
+                students = students.filter(
+                    admission_class__in=class_filter_variants(admission_class.strip())
+                )
+            if section.strip():
+                students = students.filter(section__iexact=section.strip())
+            if not institution_id and not self.allowed_institution_ids:
+                students = students.none()
+        self.fields['student'].queryset = students.order_by(
+            'admission_class', 'section', 'roll_no', 'name'
+        )
+        self.fields['subject'].queryset = Subject.objects.order_by('name')
+        self.fields['reason'].required = True
+        # The student/exam lists are narrowed in the view (they depend on the
+        # posted Institution/Class/Section), so keep them optional here and
+        # refuse in clean() with a readable message instead of "choose a valid
+        # choice".
+        for field in ('exam', 'student', 'subject', 'institution'):
+            self.fields[field].required = False
+        if self.instance and self.instance.pk:
+            self.initial.setdefault('institution', self.instance.institution_id)
+            self.initial.setdefault('exam', self.instance.exam_id)
+            self.initial.setdefault('student', self.instance.student_id)
+            self.initial.setdefault('subject', self.instance.subject_id)
+
+    def clean(self):
+        cleaned = super().clean()
+        institution = cleaned.get('institution')
+        exam = cleaned.get('exam')
+        student = cleaned.get('student')
+        subject = cleaned.get('subject')
+        if self.allowed_institution_ids is not None and institution is not None:
+            if institution.pk not in self.allowed_institution_ids:
+                self.add_error('institution', 'Select an institution you have access to.')
+        if exam is not None and institution is not None and exam.institution_id != institution.pk:
+            self.add_error('exam', 'That exam belongs to another institution.')
+        if student is not None and institution is not None and student.institution_id != institution.pk:
+            self.add_error('student', 'That student belongs to another institution.')
+        if student is not None and exam is not None:
+            if str(student.admission_class) not in class_filter_variants(exam.admission_class):
+                self.add_error(
+                    'student',
+                    f'{student.name} is in class {student.admission_class}, but '
+                    f'{exam.name} is a class {exam.admission_class} exam.',
+                )
+        return cleaned
 
 
 class SubjectRequirementForm(forms.ModelForm):

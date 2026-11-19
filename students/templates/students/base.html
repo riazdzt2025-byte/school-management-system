@@ -262,6 +262,7 @@
             {% endcomment %}
             {% if perms.students.add_exammark %}<a href="{% url 'start_entering_marks' %}"><i class="bi bi-pencil-fill"></i> Enter Marks</a>{% endif %}
             <a href="{% url 'exam_list' %}"><i class="bi bi-journal-check"></i> Exam List</a>
+            {% if perms.students.view_markcorrectionrequest %}<a href="{% url 'mark_correction_request_list' %}"><i class="bi bi-pen-fill"></i> Mark Corrections</a>{% endif %}
             {% if perms.students.change_subject %}<a href="{% url 'mark_evaluation_settings' %}"><i class="bi bi-sliders"></i> Mark Evaluation</a>{% endif %}
             {% if can_result_analysis %}
             <div class="flyout-subhead">Analysis</div>

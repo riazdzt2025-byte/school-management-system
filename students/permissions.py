@@ -10,6 +10,7 @@ def _group_permission_map():
         Employee,
         EmployeeStatusLog,
         Exam,
+    MarkCorrectionRequest,
         ExamMark,
         MoneyReceipt,
         PromotionBatch,
@@ -65,6 +66,10 @@ def _group_permission_map():
             # employee list to pick one.
             (TeacherAssignment, ['add', 'change', 'delete', 'view']),
             (Employee, ['view']),
+            # Marks enter wrongly far more often than a result is tampered with,
+            # but the printed result belongs to the Exam department. Office
+            # files the correction request; Exam approves it.
+            (MarkCorrectionRequest, ['add', 'change', 'view']),
             # AT-01: the departments that mark attendance also correct it. The
             # change permission is what the correction view enforces; every
             # correction writes an AuditLog row.
@@ -90,6 +95,9 @@ def _group_permission_map():
             # Read-only: the signature sheet shows the assigned teacher for the
             # exam's class/section (EM-01 integration).
             (TeacherAssignment, ['view']),
+            # The exam department submits a correction and decides on one; only
+            # its approval writes the corrected mark into the register.
+            (MarkCorrectionRequest, ['add', 'change', 'view']),
             # Mark Evaluation (নম্বর বণ্টন) is per Institution + Class + Exam
             # Type, i.e. exactly the exam department's job: it decides Full
             # Marks / CQ / MCQ / Practical / pass % and which subjects count.

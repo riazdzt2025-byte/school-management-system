@@ -1,0 +1,141 @@
+{% extends 'students/base.html' %}
+{% load student_filters %}
+
+{% block title %}Application #{{ request_row.pk }} - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div>
+        <h1>Mark correction application #{{ request_row.pk }}</h1>
+        <div class="subtitle">
+            {{ request_row.student.name }} · {{ request_row.subject.name }} · {{ request_row.exam.name }}
+        </div>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'mark_correction_request_print' request_row.pk %}" class="btn btn-outline-navy">Print application</a>
+        <a href="{% url 'mark_correction_request_list' %}" class="btn btn-outline-secondary">Back</a>
+    </div>
+</div>
+
+{% if messages %}
+{% for message in messages %}
+<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+{% endfor %}
+{% endif %}
+
+<div class="table-card p-4 mb-3" style="max-width: 880px;">
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <div class="fw-semibold">
+                {% if request_row.status == 'DRAFT' %}Draft — with the office
+                {% elif request_row.status == 'SUBMITTED' %}Submitted — awaiting the examination department
+                {% elif request_row.status == 'APPROVED' %}Approved
+                {% elif request_row.status == 'REJECTED' %}Rejected
+                {% else %}Withdrawn{% endif %}
+            </div>
+            <div class="small text-muted">
+                Filed {% if request_row.filed_by %}by {{ request_row.filed_by.username }}{% endif %}
+                on {{ request_row.filed_at|date:"M d, Y H:i"|default:request_row.created_at }}
+            </div>
+        </div>
+        {% if request_row.status == 'SUBMITTED' %}<span class="badge bg-warning text-dark">Awaiting exam dept</span>
+        {% elif request_row.status == 'APPROVED' %}<span class="badge bg-success">Approved</span>
+        {% elif request_row.status == 'REJECTED' %}<span class="badge bg-danger">Rejected</span>
+        {% elif request_row.status == 'WITHDRAWN' %}<span class="badge bg-secondary">Withdrawn</span>
+        {% else %}<span class="badge bg-light text-dark border">Draft</span>{% endif %}
+    </div>
+
+    <table class="table table-sm mb-0">
+        <tr><th style="width:170px">Institution</th><td>{{ request_row.institution.name|default:"—" }}</td></tr>
+        <tr><th>Class / section</th><td>{{ request_row.admission_class }}{% if request_row.section %} ({{ request_row.section }}){% endif %}</td></tr>
+        <tr><th>Student</th><td>{{ request_row.student.name }} · {{ request_row.student.student_id }}{% if request_row.student.roll_no %} · roll {{ request_row.student.roll_no }}{% endif %}</td></tr>
+        <tr><th>Exam</th><td>{{ request_row.exam.name }} · {{ request_row.exam.session }}</td></tr>
+        <tr><th>Subject</th><td>{{ request_row.subject.name }} (full {{ full_marks }})</td></tr>
+        <tr>
+            <th>Mark</th>
+            <td>
+                {% if parts %}
+                    {% for part in parts %}
+                        <div class="small">{{ part.label }}: was {% with was=current_parts|get_item:part.key %}{% if was is not None %}{{ was }}{% else %}—{% endif %}{% endwith %},
+                        asked {% with asked=requested_parts|get_item:part.key %}{% if asked is not None %}{{ asked }}{% else %}—{% endif %}{% endwith %}</div>
+                    {% endfor %}
+                {% endif %}
+                <div class="fw-semibold mt-1">
+                    Total: was {% if request_row.current_total is not None %}{{ request_row.current_total }}{% else %}—{% endif %}
+                    → asked {{ request_row.requested_total|default:"—" }}
+                </div>
+            </td>
+        </tr>
+        <tr><th>Reason</th><td>{{ request_row.reason|linebreaksbr }}</td></tr>
+        {% if request_row.teacher_note %}<tr><th>Teacher's note</th><td>{{ request_row.teacher_note }}</td></tr>{% endif %}
+        {% if request_row.submitted_at %}<tr><th>Submitted</th><td>{{ request_row.submitted_by.username|default:"—" }} · {{ request_row.submitted_at|date:"M d, Y H:i" }}</td></tr>{% endif %}
+        {% if request_row.decided_at %}
+        <tr>
+            <th>{% if request_row.status == 'APPROVED' %}Approved{% elif request_row.status == 'REJECTED' %}Rejected{% else %}Withdrawn{% endif %}</th>
+            <td>
+                {{ request_row.decided_by.username|default:"—" }} · {{ request_row.decided_at|date:"M d, Y H:i" }}
+                {% if request_row.decision_reason %}<div class="small text-muted">Reason: {{ request_row.decision_reason }}</div>{% endif %}
+            </td>
+        </tr>
+        {% endif %}
+    </table>
+</div>
+
+{% if request_row.status == 'DRAFT' %}
+<div class="table-card p-4 mb-3" style="max-width: 880px;">
+    <h2 class="h6 text-uppercase text-muted mb-2" style="letter-spacing:.06em">Draft still open</h2>
+    <p class="small text-muted mb-3">
+        Print the application, take the teacher's signature, then submit it. After
+        submitting, the numbers are locked — the exam department decides.
+    </p>
+    <div class="d-flex flex-wrap gap-2">
+        {% if perms.students.change_markcorrectionrequest %}
+        <a href="{% url 'edit_mark_correction_request' request_row.pk %}" class="btn btn-outline-navy">Edit numbers</a>
+        <form method="post" action="{% url 'submit_mark_correction_request' request_row.pk %}" class="d-flex gap-2 align-items-end">
+            {% csrf_token %}
+            <input type="text" name="teacher_note" class="form-control form-control-sm" style="width:280px"
+                   placeholder="Teacher's check note (optional)">
+            <button class="btn btn-navy">Teacher checked — submit</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if request_row.status == 'SUBMITTED' and perms.students.change_markcorrectionrequest %}
+<div class="table-card p-4 mb-3" style="max-width: 880px;">
+    <h2 class="h6 text-uppercase text-muted mb-2" style="letter-spacing:.06em">Examination department decides</h2>
+    <p class="small text-muted mb-3">
+        Approving writes the corrected mark into the register and makes it appear on
+        the result sheet. Rejecting keeps the mark as it is; the reason stays on file.
+    </p>
+    <div class="row g-3">
+        <div class="col-md-6">
+            <form method="post" action="{% url 'approve_mark_correction_request' request_row.pk %}">
+                {% csrf_token %}
+                <input type="text" name="decision_reason" class="form-control form-control-sm mb-2"
+                       placeholder="Note for the file (optional)">
+                <button class="btn btn-success w-100">Approve — change the mark</button>
+            </form>
+        </div>
+        <div class="col-md-6">
+            <form method="post" action="{% url 'reject_mark_correction_request' request_row.pk %}">
+                {% csrf_token %}
+                <input type="text" name="decision_reason" class="form-control form-control-sm mb-2" required
+                       placeholder="Why is it rejected? (required)">
+                <button class="btn btn-outline-danger w-100">Reject</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if request_row.is_open and perms.students.change_markcorrectionrequest %}
+<form method="post" action="{% url 'withdraw_mark_correction_request' request_row.pk %}" class="d-flex gap-2 align-items-end" style="max-width: 880px;">
+    {% csrf_token %}
+    <input type="text" name="decision_reason" class="form-control form-control-sm" style="max-width:340px"
+           placeholder="Reason for withdrawing (optional)">
+    <button class="btn btn-sm btn-outline-secondary">Withdraw application</button>
+</form>
+{% endif %}
+{% endblock %}

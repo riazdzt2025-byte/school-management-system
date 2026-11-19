@@ -67,9 +67,21 @@ urlpatterns = [
     path('employees/<int:pk>/status/', views.change_employee_status, name='change_employee_status'),
     path('employees/<int:pk>/status-history/', views.employee_status_history, name='employee_status_history'),
     # EM-01 teacher assignment registry
+    # Mark correction applications: office files a draft, the teacher checks and
+    # submits it, the exam department approves or rejects it with a reason.
+    path('marks/corrections/', views.mark_correction_request_list, name='mark_correction_request_list'),
+    path('marks/corrections/add/', views.add_mark_correction_request, name='add_mark_correction_request'),
+    path('marks/corrections/student-options/', views.mark_correction_student_options, name='mark_correction_student_options'),
     path('employees/assignments/', views.teacher_assignment_list, name='teacher_assignment_list'),
     path('employees/assignments/teacher-lookup/', views.teacher_number_lookup, name='teacher_number_lookup'),
     path('employees/assignments/add/', views.add_teacher_assignment, name='add_teacher_assignment'),
+    path('marks/corrections/<int:pk>/', views.mark_correction_request_detail, name='mark_correction_request_detail'),
+    path('marks/corrections/<int:pk>/print/', views.mark_correction_request_print, name='mark_correction_request_print'),
+    path('marks/corrections/<int:pk>/edit/', views.edit_mark_correction_request, name='edit_mark_correction_request'),
+    path('marks/corrections/<int:pk>/submit/', views.submit_mark_correction_request, name='submit_mark_correction_request'),
+    path('marks/corrections/<int:pk>/withdraw/', views.withdraw_mark_correction_request, name='withdraw_mark_correction_request'),
+    path('marks/corrections/<int:pk>/approve/', views.approve_mark_correction_request, name='approve_mark_correction_request'),
+    path('marks/corrections/<int:pk>/reject/', views.reject_mark_correction_request, name='reject_mark_correction_request'),
     path('employees/assignments/<int:pk>/edit/', views.edit_teacher_assignment, name='edit_teacher_assignment'),
     path('employees/assignments/<int:pk>/toggle/', views.toggle_teacher_assignment, name='toggle_teacher_assignment'),
     path('employees/assignments/<int:pk>/delete/', views.delete_teacher_assignment, name='delete_teacher_assignment'),
