@@ -1,0 +1,130 @@
+{% load static student_filters %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mark correction application #{{ request_row.pk }} — {{ request_row.student.name }}</title>
+<style>
+    @page { size: A4 portrait; margin: 18mm; }
+    :root { --navy: #0f2d52; --gold: #c9a227; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: #fff; color: #111; }
+    .sheet { max-width: 780px; margin: auto; }
+    .head { text-align: center; border-bottom: 2px solid var(--gold); padding-bottom: 10px; }
+    .head img { width: 52px; display: block; margin: 0 auto 6px; }
+    .head h1 { color: var(--navy); font-size: 21px; margin: 0; }
+    .head p { margin: 2px 0 0; font-size: 13px; }
+    .tag { text-align: center; font-weight: bold; letter-spacing: .08em; font-size: 12px;
+           border: 1px solid var(--navy); display: inline-block; padding: 3px 12px; margin: 12px auto 0; }
+    .tag-wrap { text-align: center; }
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--navy);
+         margin: 20px 0 6px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #f1f4f8; width: 34%; font-weight: 600; }
+    .num { font-variant-numeric: tabular-nums; }
+    .muted { color: #555; }
+    .signs { display: flex; justify-content: space-between; gap: 16px; margin-top: 64px; }
+    .signs div { flex: 1; border-top: 1px solid #333; padding-top: 5px; text-align: center; font-size: 12px; }
+    .note { font-size: 11px; color: #444; margin-top: 18px; }
+    .no-print { margin-bottom: 14px; }
+    @media print { .no-print { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body>
+<div class="no-print">
+    <button onclick="window.print()">Print</button>
+    <a href="{% url 'mark_correction_request_detail' request_row.pk %}">Back</a>
+</div>
+<main class="sheet">
+    <header class="head">
+        <img src="{% static 'students/img/school_logo.png' %}" alt="">
+        <h1>{{ request_row.institution.name|default:'School Name'|school_only }}</h1>
+        <p>Examination Department — Marks Correction Application</p>
+    </header>
+
+    <div class="tag-wrap">
+        <span class="tag">APPLICATION NO. {{ request_row.pk }}</span>
+    </div>
+
+    <h2>Candidate</h2>
+    <table>
+        <tr><th>Name</th><td>{{ request_row.student.name }}</td></tr>
+        <tr><th>Student ID / Roll</th><td class="num">{{ request_row.student.student_id }}{% if request_row.student.roll_no %} · Roll {{ request_row.student.roll_no }}{% endif %}</td></tr>
+        <tr><th>Class / Section</th><td>{{ request_row.admission_class }}{% if request_row.section %} — Section {{ request_row.section }}{% endif %}{% if request_row.group %} · {{ request_row.student.get_group_display }}{% endif %}</td></tr>
+        <tr><th>Exam</th><td>{{ request_row.exam.name }} ({{ request_row.exam.session }})</td></tr>
+    </table>
+
+    <h2>Subject and marks</h2>
+    <table>
+        <tr><th>Subject</th><td>{{ request_row.subject.name }} <span class="muted">— full marks {{ full_marks }}</span></td></tr>
+        {% if parts %}
+        <tr>
+            <th>Part marks</th>
+            <td>
+                <table style="border:0;">
+                    <tr>
+                        <td style="border:0;padding:2px 6px 2px 0;" class="muted">Part</td>
+                        {% for part in parts %}<td style="border:0;padding:2px 6px;" class="muted">{{ part.label }} / {{ part.max_marks }}</td>{% endfor %}
+                    </tr>
+                    <tr>
+                        <td style="border:0;padding:2px 6px 2px 0;" class="muted">In register</td>
+                        {% for part in parts %}
+                        <td style="border:0;padding:2px 6px;" class="num">
+                            {% with was=current_parts|get_item:part.key %}{% if was is not None %}{{ was }}{% else %}—{% endif %}{% endwith %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td style="border:0;padding:2px 6px 2px 0;" class="muted">Applied for</td>
+                        {% for part in parts %}
+                        <td style="border:0;padding:2px 6px;font-weight:bold;" class="num">
+                            {% with asked=requested_parts|get_item:part.key %}{% if asked is not None %}{{ asked }}{% else %}—{% endif %}{% endwith %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        {% endif %}
+        <tr>
+            <th>Total</th>
+            <td>
+                <span class="num">{% if request_row.current_total is not None %}{{ request_row.current_total }}{% else %}—{% endif %}</span>
+                &nbsp;→&nbsp;
+                <strong class="num">{{ request_row.requested_total|default:"—" }}</strong>
+            </td>
+        </tr>
+        <tr><th>Reason</th><td>{{ request_row.reason|linebreaksbr }}</td></tr>
+        {% if request_row.teacher_note %}<tr><th>Teacher's remark</th><td>{{ request_row.teacher_note }}</td></tr>{% endif %}
+    </table>
+
+    <h2>Status of this application</h2>
+    <table>
+        <tr><th>Filed by</th><td>{{ request_row.filed_by.username|default:"—" }} <span class="muted">on {{ request_row.filed_at|date:"M d, Y H:i"|default:request_row.created_at }}</span></td></tr>
+        <tr><th>Submitted (teacher checked)</th><td>{{ request_row.submitted_by.username|default:"—" }}{% if request_row.submitted_at %} <span class="muted">on {{ request_row.submitted_at|date:"M d, Y H:i" }}</span>{% endif %}</td></tr>
+        <tr>
+            <th>Examination department</th>
+            <td>
+                {{ request_row.get_status_display }}
+                {% if request_row.decided_at %}
+                <span class="muted">— {{ request_row.decided_by.username|default:"—" }}, {{ request_row.decided_at|date:"M d, Y H:i" }}</span>
+                {% endif %}
+                {% if request_row.decision_reason %}<br><span class="muted">Reason: {{ request_row.decision_reason }}</span>{% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <div class="signs">
+        <div>Subject Teacher</div>
+        <div>Class Teacher</div>
+        <div>Head of Institution</div>
+        <div>Examination Department</div>
+    </div>
+
+    <div class="note">
+        This application is kept on file by the examination department. The corrected
+        mark is written into the register only on approval; until then every result
+        sheet shows the mark under "In register" above.
+    </div>
+</main>
+</body>
+</html>

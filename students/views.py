@@ -23,7 +23,7 @@ from .models import (
     Exam, ExamMark, SeatPlan, SpecialExamRankOrder,
     Employee, EmployeeStatusLog, AttendanceRecord, MoneyReceipt, Voucher, SalarySheet,
     AdmissionApplication, PromotionBatch, StudentPromotionHistory, AuditLog, SubjectRequirement,
-    StudentSubjectChoice, SectionCapacity, TeacherAssignment,
+    StudentSubjectChoice, SectionCapacity, TeacherAssignment, MarkCorrectionRequest,
     MARK_PARTS, GROUPED_CLASS_LABELS,
     class_supports_group, normalize_guardian_contact, validate_guardian_contact,
     GUARDIAN_CONTACT_ERROR,
@@ -36,7 +36,7 @@ from .forms import (
     ExamForm, auto_exam_name, ExamExcelImportForm, GenerateSeatPlanForm, EmployeeForm,
     EmployeeStatusChangeForm, MoneyReceiptForm, VoucherForm, SalarySheetForm, StudentPromotionForm,
     AdmissionApplicationForm, AdmissionPaymentForm, AttendanceMarkingForm, DailyAttendanceSelectionForm,
-    AttendanceCorrectionForm, TeacherAssignmentForm,
+    AttendanceCorrectionForm, TeacherAssignmentForm, MarkCorrectionRequestForm,
     PublicAdmissionStatusForm, normalize_application_number,
 )
 from django.contrib.auth.decorators import login_required, permission_required
@@ -65,6 +65,7 @@ from .result_utils import (
     get_exam_subjects,
     get_exam_subjects_for_students,
     get_student_subject_ids,
+    marked_subject_ids_for_exam,
     get_subject_marks,
     get_subject_marks_map,
     no_subjects_assigned_message,
@@ -83,6 +84,12 @@ from .result_utils import (
     section_arrangement_rows,
 )
 from .special_exam_results import build_special_exam_result
+from .mark_corrections import (
+    current_mark_snapshot,
+    parts_from_json,
+    record_decision,
+    snapshot_as_json,
+)
 
 
 def subject_assignments_url(exam, group=''):
@@ -2791,6 +2798,476 @@ def _assignment_sessions():
         if value not in sessions:
             sessions.append(value)
     return sessions
+
+
+# ---------------------------------------------------------------------------
+# Mark correction applications (student marks → teacher check → exam dept)
+# ---------------------------------------------------------------------------
+
+def _mark_request_scoped(request, queryset=None, field_name='institution'):
+    """Requests the user may see: their institutions, or everything for admin."""
+    queryset = queryset or MarkCorrectionRequest.objects.all()
+    return _scope_by_allowed_institutions(request, queryset, field_name)
+
+
+def _mark_request_get(request, pk):
+    """One request the user may read, or 404 (never leaks another school's)."""
+    return _get_scoped_object_or_404(
+        request, MarkCorrectionRequest, pk, lambda row: row.institution
+    )
+
+
+def _mark_request_choices(request, *, institution=None, admission_class='', section=''):
+    """Students and subjects the file screen may offer.
+
+    Narrowed step by step the way the clerk thinks — institution, class,
+    section — so the student dropdown is a class list, never the whole roll.
+    """
+    students = Student.objects.filter(is_archived=False, status='ACTIVE')
+    if institution is not None:
+        students = students.filter(institution=institution)
+    else:
+        students = _scope_by_allowed_institutions(request, students)
+    if admission_class:
+        students = students.filter(
+            admission_class__in=class_filter_variants(admission_class)
+        )
+    if section:
+        students = students.filter(section__iexact=section)
+    return students.order_by('admission_class', 'section', 'roll_no', 'name')
+
+
+def _mark_request_exams(request, institution=None):
+    exams = Exam.objects.all()
+    if institution is not None:
+        exams = exams.filter(institution=institution)
+    else:
+        exams = _scope_by_allowed_institutions(request, exams)
+    return exams.order_by('-session', '-exam_date', 'name')
+
+
+def _mark_request_subjects_for(exam, student):
+    """The papers this exam marks for this student — narrowed, never the master."""
+    if exam is None or student is None:
+        return Subject.objects.none()
+    subjects, _is_filtered = get_exam_subjects_for_students(exam, [student])
+    subject_ids = set(marked_subject_ids_for_exam(exam, students=[student]))
+    # Papers the exam has no mark for yet are still correctable: the mark may
+    # simply have been left out. Keep the assigned list, but show marked ones
+    # first so the common case is at the top.
+    ordered = sorted(subjects, key=lambda subject: (subject.pk not in subject_ids, subject.name))
+    return ordered
+
+
+def _save_parts_from_post(request, parts, prefix='requested'):
+    """Read one number per configured part; blank means "did not sit it"."""
+    values, problem = {}, None
+    for part in parts:
+        raw = (request.POST.get(f'{prefix}_{part["key"]}') or '').strip()
+        if raw == '':
+            values[part['key']] = None
+            continue
+        try:
+            number = Decimal(raw)
+        except InvalidOperation:
+            problem = f'{part["label"]} is not a number.'
+            break
+        if number < 0 or number > part['max_marks']:
+            problem = f'{part["label"]} must be between 0 and {part["max_marks"]}.'
+            break
+        values[part['key']] = number
+    return values, problem
+
+
+@login_required
+@permission_required('students.view_markcorrectionrequest', raise_exception=True)
+@_require_department(('Office', 'Exam'))
+def mark_correction_request_list(request):
+    """The examination department's application register, printable as a file."""
+    institution = _resolve_requested_institution(request, request.GET.get('institution'))
+    rows = _mark_request_scoped(request).select_related(
+        'student', 'subject', 'exam', 'institution', 'filed_by', 'submitted_by', 'decided_by'
+    )
+    if institution is not None:
+        rows = rows.filter(institution=institution)
+    admission_class = (request.GET.get('admission_class') or '').strip()
+    if admission_class:
+        rows = rows.filter(admission_class__in=class_filter_variants(admission_class))
+    section = (request.GET.get('section') or '').strip()
+    if section:
+        rows = rows.filter(section__iexact=section)
+    status = (request.GET.get('status') or '').strip().upper()
+    if status in dict(MarkCorrectionRequest.STATUS_CHOICES):
+        rows = rows.filter(status=status)
+
+    counts = {
+        key: _mark_request_scoped(request).filter(status=key).count()
+        for key, _label in MarkCorrectionRequest.STATUS_CHOICES
+    }
+    pagination = paginate_list(request, rows, allow_full_print=True)
+    return render(request, 'students/mark_correction_request_list.html', {
+        **pagination,
+        'requests': pagination['page_rows'],
+        'institutions': _visible_institutions(request),
+        'institution': institution,
+        'status_choices': MarkCorrectionRequest.STATUS_CHOICES,
+        'counts': counts,
+        'filters': {'admission_class': admission_class, 'section': section, 'status': status},
+    })
+
+
+def _mark_request_form_context(request, form, request_row=None):
+    """Everything the file screen needs: narrowed pickers + the current mark."""
+    institution = form.data.get('institution') if form.is_bound else None
+    if institution:
+        institution = Institution.objects.filter(pk=institution).first()
+    if institution is None and request_row is not None:
+        institution = request_row.institution
+    if institution is None:
+        institution = _resolve_requested_institution(request, request.GET.get('institution'))
+
+    admission_class = (form.data.get('admission_class') if form.is_bound else '') or ''
+    section = (form.data.get('section') if form.is_bound else '') or ''
+    admission_class = str(admission_class).strip()
+    section = str(section).strip()
+
+    exam = None
+    student = None
+    subject = None
+    if form.is_bound:
+        exam = Exam.objects.filter(pk=form.data.get('exam') or 0).first()
+        student = Student.objects.filter(pk=form.data.get('student') or 0).first()
+        subject = Subject.objects.filter(pk=form.data.get('subject') or 0).first()
+    elif request_row is not None:
+        exam, student, subject = request_row.exam, request_row.student, request_row.subject
+
+    parts, current_parts, current_total, requested_parts = [], {}, None, {}
+    full_marks = None
+    if exam is not None and subject is not None:
+        marks_config = get_subject_marks(exam, subject, group=exam.group or None)
+        full_marks = marks_config.full_marks
+        parts = marks_config.parts
+        if student is not None:
+            current_total, current_parts = current_mark_snapshot(exam, student, subject)
+        if form.is_bound:
+            requested_parts = parts_from_json({
+                part['key']: form.data.get(f'requested_{part["key"]}')
+                for part in parts
+            })
+        elif request_row is not None:
+            requested_parts = parts_from_json(request_row.requested_parts)
+        if not parts and form.is_bound:
+            requested_total_raw = (form.data.get('requested_total') or '').strip()
+            try:
+                requested_parts = {'total': Decimal(requested_total_raw)}
+            except (InvalidOperation, ValueError):
+                requested_parts = {}
+
+    if form.is_bound:
+        form.fields['student'].queryset = _mark_request_choices(
+            request, institution=institution,
+            admission_class=admission_class, section=section,
+        )
+        if exam is not None:
+            form.fields['exam'].queryset = _mark_request_exams(request, institution)
+    return {
+        'form': form,
+        'request_row': request_row,
+        'institution': institution,
+        'exam': exam,
+        'student': student,
+        'subject': subject,
+        'parts': parts,
+        'current_parts': current_parts,
+        'current_total': current_total,
+        'requested_parts': requested_parts,
+        'full_marks': full_marks,
+        'admission_class': admission_class,
+        'section': section,
+        'institutions': _visible_institutions(request),
+        'class_options': _mark_class_options(request),
+        'section_options': _mark_section_options(request, institution, admission_class),
+    }
+
+
+def _mark_class_options(request):
+    options = []
+    for institution in _visible_institutions(request):
+        for label in [c.strip() for c in (institution.classes or '').split(',') if c.strip()]:
+            if label not in options:
+                options.append(label)
+    return options
+
+
+def _mark_section_options(request, institution, admission_class):
+    if not admission_class:
+        return []
+    sections = Student.objects.filter(is_archived=False)
+    if institution is not None:
+        sections = sections.filter(institution=institution)
+    sections = sections.filter(admission_class__in=class_filter_variants(admission_class))
+    return sorted({
+        value.strip() for value in sections.values_list('section', flat=True) if value
+    })
+
+
+@login_required
+@permission_required('students.add_markcorrectionrequest', raise_exception=True)
+@_require_department(('Office', 'Exam'))
+def add_mark_correction_request(request):
+    """File a draft application (the printed sheet is taken to the teacher)."""
+    form = MarkCorrectionRequestForm(request.POST or None, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        exam = form.cleaned_data['exam']
+        student = form.cleaned_data['student']
+        subject = form.cleaned_data['subject']
+        marks_config = get_subject_marks(exam, subject, group=exam.group or None)
+        parts = marks_config.parts
+        if parts:
+            requested, problem = _save_parts_from_post(request, parts)
+        else:
+            raw = (request.POST.get('requested_total') or '').strip()
+            problem = None
+            try:
+                value = Decimal(raw)
+            except (InvalidOperation, ValueError):
+                value = None
+                problem = 'Type the corrected mark.'
+            if value is not None and (value < 0 or value > marks_config.full_marks):
+                problem = f'The mark must be between 0 and {marks_config.full_marks}.'
+            requested = {'total': value}
+        if problem:
+            form.add_error(None, problem)
+        elif all(value is None for value in requested.values()):
+            form.add_error(None, 'Type the corrected mark — every box is empty.')
+        else:
+            current_total, current_parts = current_mark_snapshot(exam, student, subject)
+            requested_total = (
+                sum((v for v in requested.values() if v is not None), Decimal('0'))
+                if parts else requested.get('total')
+            )
+            with transaction.atomic():
+                if MarkCorrectionRequest.objects.filter(
+                    exam=exam, student=student, subject=subject,
+                ).exclude(status__in=['APPROVED', 'REJECTED', 'WITHDRAWN']).exists():
+                    form.add_error(
+                        None,
+                        'An application for this subject is already open — open it, '
+                        'or withdraw it before filing a new one.',
+                    )
+                    return render(
+                        request, 'students/mark_correction_request_form.html',
+                        _mark_request_form_context(request, form),
+                    )
+                row = form.save(commit=False)
+                row.kind = 'MARKS'
+                row.institution = student.institution or form.cleaned_data['institution']
+                row.admission_class = student.admission_class
+                row.section = student.section or ''
+                row.group = student.group or ''
+                row.current_total = current_total
+                row.current_parts = snapshot_as_json(current_parts)
+                row.requested_total = requested_total
+                row.requested_parts = snapshot_as_json(requested)
+                row.status = 'DRAFT'
+                row.filed_by = request.user
+                row.filed_at = timezone.now()
+                row.save()
+                record_audit(
+                    request.user, 'mark_correction_filed', row,
+                    details={
+                        'student': student.name, 'subject': subject.name,
+                        'exam': exam.name, 'from': str(current_total),
+                        'to': str(requested_total),
+                    },
+                )
+            messages.success(
+                request,
+                'Application saved as a draft. Print it, take the teacher\'s '
+                'signature, then submit it.',
+            )
+            return redirect('mark_correction_request_print', pk=row.pk)
+    return render(
+        request, 'students/mark_correction_request_form.html',
+        _mark_request_form_context(request, form),
+    )
+
+
+@login_required
+@permission_required('students.change_markcorrectionrequest', raise_exception=True)
+@_require_department(('Office', 'Exam'))
+def edit_mark_correction_request(request, pk):
+    row = _mark_request_get(request, pk)
+    if not row.is_editable:
+        messages.error(request, 'A submitted application cannot be edited — withdraw it and file a new one.')
+        return redirect('mark_correction_request_detail', pk=row.pk)
+    form = MarkCorrectionRequestForm(request.POST or None, instance=row, user=request.user)
+    if request.method == 'POST' and form.is_valid():
+        requested_parts = parts_from_json({
+            part['key']: request.POST.get(f'requested_{part["key"]}')
+            for part in get_subject_marks(
+                form.cleaned_data['exam'], form.cleaned_data['subject'],
+                group=form.cleaned_data['exam'].group or None,
+            ).parts
+        })
+        updated = form.save(commit=False)
+        updated.requested_parts = snapshot_as_json(requested_parts)
+        updated.requested_total = sum(
+            (v for v in requested_parts.values() if v is not None), Decimal('0')
+        )
+        updated.save()
+        messages.success(request, 'Application updated.')
+        return redirect('mark_correction_request_detail', pk=row.pk)
+    return render(
+        request, 'students/mark_correction_request_form.html',
+        _mark_request_form_context(request, form, request_row=row),
+    )
+
+
+@login_required
+@permission_required('students.view_markcorrectionrequest', raise_exception=True)
+@_require_department(('Office', 'Exam'))
+def mark_correction_request_detail(request, pk):
+    row = _mark_request_get(request, pk)
+    marks_config = get_subject_marks(row.exam, row.subject, group=row.exam.group or None)
+    return render(request, 'students/mark_correction_request_detail.html', {
+        'request_row': row,
+        'parts': marks_config.parts,
+        'current_parts': parts_from_json(row.current_parts),
+        'requested_parts': parts_from_json(row.requested_parts),
+        'full_marks': marks_config.full_marks,
+    })
+
+
+@login_required
+@permission_required('students.view_markcorrectionrequest', raise_exception=True)
+@_require_department(('Office', 'Exam'))
+def mark_correction_request_print(request, pk):
+    """The signed application the examination department keeps on file."""
+    row = _mark_request_get(request, pk)
+    marks_config = get_subject_marks(row.exam, row.subject, group=row.exam.group or None)
+    return render(request, 'students/mark_correction_request_print.html', {
+        'request_row': row,
+        'parts': marks_config.parts,
+        'current_parts': parts_from_json(row.current_parts),
+        'requested_parts': parts_from_json(row.requested_parts),
+        'full_marks': marks_config.full_marks,
+    })
+
+
+@login_required
+@permission_required('students.change_markcorrectionrequest', raise_exception=True)
+@require_POST
+def submit_mark_correction_request(request, pk):
+    """The teacher's check: the numbers are frozen and the sheet goes to Exam."""
+    row = _mark_request_get(request, pk)
+    note = (request.POST.get('teacher_note') or '').strip()
+    with transaction.atomic():
+        locked = MarkCorrectionRequest.objects.select_for_update().get(pk=row.pk)
+        if locked.status != 'DRAFT':
+            messages.error(request, 'Only a draft application can be submitted.')
+        else:
+            locked.status = 'SUBMITTED'
+            locked.submitted_by = request.user
+            locked.submitted_at = timezone.now()
+            locked.teacher_note = note[:200]
+            locked.save(update_fields=[
+                'status', 'submitted_by', 'submitted_at', 'teacher_note', 'updated_at',
+            ])
+            record_audit(
+                request.user, 'mark_correction_submitted', locked,
+                details={'student': locked.student.name, 'subject': locked.subject.name,
+                         'note': note},
+            )
+            messages.success(
+                request,
+                'Submitted to the examination department. The numbers are now '
+                'locked — withdraw and refile if they are wrong.',
+            )
+    return redirect('mark_correction_request_detail', pk=row.pk)
+
+
+@login_required
+@permission_required('students.change_markcorrectionrequest', raise_exception=True)
+@require_POST
+def withdraw_mark_correction_request(request, pk):
+    row = _mark_request_get(request, pk)
+    reason = (request.POST.get('decision_reason') or '').strip()
+    with transaction.atomic():
+        locked = MarkCorrectionRequest.objects.select_for_update().get(pk=row.pk)
+        if not locked.is_open:
+            messages.error(request, 'This application has already been decided.')
+        else:
+            locked.status = 'WITHDRAWN'
+            locked.decided_by = request.user
+            locked.decided_at = timezone.now()
+            locked.decision_reason = reason
+            locked.save(update_fields=[
+                'status', 'decided_by', 'decided_at', 'decision_reason', 'updated_at',
+            ])
+            record_audit(
+                request.user, 'mark_correction_withdrawn', locked,
+                details={'student': locked.student.name, 'reason': reason},
+            )
+            messages.success(request, 'Application withdrawn. The mark is unchanged.')
+    return redirect('mark_correction_request_detail', pk=row.pk)
+
+
+@login_required
+@permission_required('students.change_markcorrectionrequest', raise_exception=True)
+@_require_department('Exam')
+@require_POST
+def approve_mark_correction_request(request, pk):
+    """Exam department approval — the only path that writes the mark."""
+    row = _mark_request_get(request, pk)
+    ok, message = record_decision(
+        row, actor=request.user, approve=True,
+        reason=(request.POST.get('decision_reason') or '').strip(),
+    )
+    (messages.success if ok else messages.error)(request, message)
+    return redirect('mark_correction_request_detail', pk=row.pk)
+
+
+@login_required
+@permission_required('students.change_markcorrectionrequest', raise_exception=True)
+@_require_department('Exam')
+@require_POST
+def reject_mark_correction_request(request, pk):
+    """Rejection — the reason is mandatory and stays on the file."""
+    row = _mark_request_get(request, pk)
+    ok, message = record_decision(
+        row, actor=request.user, approve=False,
+        reason=(request.POST.get('decision_reason') or '').strip(),
+    )
+    (messages.success if ok else messages.error)(request, message)
+    return redirect('mark_correction_request_detail', pk=row.pk)
+
+
+@login_required
+@permission_required('students.add_markcorrectionrequest', raise_exception=True)
+def mark_correction_student_options(request):
+    """JSON: students of one Institution + Class (+ Section) for the picker."""
+    institution = _resolve_requested_institution(request, request.GET.get('institution'))
+    admission_class = (request.GET.get('admission_class') or '').strip()
+    section = (request.GET.get('section') or '').strip()
+    students = _mark_request_choices(
+        request, institution=institution,
+        admission_class=admission_class, section=section,
+    ).select_related('institution')[:500]
+    return JsonResponse({
+        'students': [
+            {
+                'id': student.pk,
+                'name': student.name,
+                'student_id': student.student_id,
+                'roll_no': student.roll_no or '',
+                'admission_class': student.admission_class,
+                'section': student.section or '',
+            }
+            for student in students
+        ],
+        'sections': _mark_section_options(request, institution, admission_class),
+    })
 
 
 @login_required

@@ -1206,6 +1206,139 @@ class ExamMark(models.Model):
         return f"{self.student.name} - {self.subject.name} - {self.exam.name}: {self.marks_obtained}"
 
 
+class MarkCorrectionRequest(models.Model):
+    """A printed, signed request to change one student's mark in one subject.
+
+    The exam department own the printed result, so a mark is never silently
+    edited: the office files a request (DRAFT), the subject teacher checks it
+    and submits it (SUBMITTED), and only an exam-department approval writes the
+    corrected number into ``ExamMark``. Until then the requested marks live
+    here and nowhere else — no result sheet, register or ranking reads this
+    table, which is what keeps a pending request invisible on paper.
+
+    A rejected request keeps its reason and stays on file; nothing is deleted,
+    so the examination department always holds the proof it signed off (or
+    refused) a change.
+    """
+
+    STATUS_CHOICES = [
+        ('DRAFT', 'Draft — with the office'),
+        ('SUBMITTED', 'Submitted — awaiting exam department'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+        ('WITHDRAWN', 'Withdrawn'),
+    ]
+
+    # What the request is about. This first version covers subject marks; a
+    # second kind (roll number, say) can be added without a second table.
+    KIND_CHOICES = [
+        ('MARKS', 'Subject mark correction'),
+    ]
+
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default='MARKS')
+
+    # Institution/class/section are copied from the student at file time (not
+    # read through the FK) so the printed application still says which class
+    # the student was in when it was signed, even after a promotion.
+    institution = models.ForeignKey(
+        Institution, on_delete=models.PROTECT, related_name='mark_correction_requests',
+    )
+    exam = models.ForeignKey(Exam, on_delete=models.PROTECT, related_name='mark_correction_requests')
+    student = models.ForeignKey(
+        Student, on_delete=models.PROTECT, related_name='mark_correction_requests',
+    )
+    subject = models.ForeignKey(
+        Subject, on_delete=models.PROTECT, related_name='mark_correction_requests',
+    )
+    admission_class = models.CharField(max_length=10)
+    section = models.CharField(max_length=5, blank=True)
+    group = models.CharField(max_length=5, blank=True)
+
+    # What the register says now, and what it should say. The snapshot lets the
+    # printed application show "was 45, sought 55" even if somebody corrected
+    # the mark through another path in the meantime — and the approval refuses
+    # to apply a request whose snapshot no longer matches, so a second change
+    # cannot ride on the first one's approval.
+    current_total = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    current_parts = models.JSONField(default=dict, blank=True)
+    requested_total = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    requested_parts = models.JSONField(default=dict, blank=True)
+
+    reason = models.TextField(
+        help_text='Why the mark changes — printed on the signed application.',
+    )
+
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='DRAFT')
+
+    # The two actors the owner described: the office files, the subject teacher
+    # checks and submits, the examination department decides.
+    filed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mark_correction_requests_filed',
+    )
+    filed_at = models.DateTimeField(null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mark_correction_requests_submitted',
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    teacher_note = models.CharField(max_length=200, blank=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mark_correction_requests_decided',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_reason = models.TextField(
+        blank=True, help_text='Required when a request is rejected.',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        constraints = [
+            # One open request per student/exam/subject: two competing
+            # corrections for the same mark would make "which one is the
+            # register?" unanswerable on paper.
+            models.UniqueConstraint(
+                fields=['exam', 'student', 'subject'],
+                condition=~models.Q(status__in=['APPROVED', 'REJECTED', 'WITHDRAWN']),
+                name='unique_open_mark_correction',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.student.name} · {self.subject.name} · {self.exam.name} '
+            f'({self.get_status_display()})'
+        )
+
+    # -- small helpers the templates and views share -----------------------
+    @property
+    def is_open(self):
+        return self.status in ('DRAFT', 'SUBMITTED')
+
+    @property
+    def is_pending(self):
+        return self.status == 'SUBMITTED'
+
+    @property
+    def is_editable(self):
+        """Only a draft can still be corrected — a submitted sheet is signed."""
+        return self.status == 'DRAFT'
+
+    @property
+    def can_be_approved(self):
+        return self.status in ('DRAFT', 'SUBMITTED')
+
+    @property
+    def delta(self):
+        if self.current_total is None or self.requested_total is None:
+            return None
+        return self.requested_total - self.current_total
+
+
 class SeatPlan(models.Model):
     ROOM_TYPE_CHOICES = [
         ('INDOOR', 'Indoor'),

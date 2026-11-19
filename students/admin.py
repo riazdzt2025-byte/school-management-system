@@ -8,6 +8,7 @@ from .models import (
     MoneyReceipt, Voucher, SalarySheet, AdmissionApplication,
     PromotionBatch, StudentPromotionHistory, AuditLog,
     SubjectRequirement, StudentSubjectChoice, SectionCapacity, Fee, SiteBranding,
+    MarkCorrectionRequest,
 )
 
 
@@ -61,6 +62,22 @@ class EmployeeAdmin(BoundedModelAdmin):
     search_fields = ('teacher_no', 'name', 'designation', 'contact_no')
     list_filter = ('status', 'institution')
     readonly_fields = ('teacher_no',)
+@admin.register(MarkCorrectionRequest)
+class MarkCorrectionRequestAdmin(BoundedModelAdmin):
+    """Read-only paper trail: the workflow (approve/reject) lives in the app,
+    because an approval must also write the mark — never edit it here."""
+    list_display = ('student', 'subject', 'exam', 'admission_class', 'status', 'created_at')
+    list_filter = ('status', 'kind', 'institution')
+    search_fields = ('student__name', 'student__student_id', 'exam__name', 'reason')
+    list_select_related = ('student', 'subject', 'exam')
+    readonly_fields = [field.name for field in MarkCorrectionRequest._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
 admin.site.register(EmployeeStatusLog, BoundedModelAdmin)
 admin.site.register(MoneyReceipt, BoundedModelAdmin)
 admin.site.register(Voucher, BoundedModelAdmin)

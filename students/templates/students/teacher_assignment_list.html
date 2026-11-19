@@ -62,7 +62,7 @@
             <tbody>
                 {% for assignment in assignments %}
                 <tr>
-                    <td>{{ assignment.employee.name }}<div class="small text-muted">{{ assignment.employee.designation }}</div></td>
+                    <td>{{ assignment.employee.name }}<div class="small text-muted">{{ assignment.employee.designation }}{% if assignment.employee.teacher_no %} · <span style="font-variant-numeric:tabular-nums">{{ assignment.employee.teacher_no_display }}</span>{% endif %}</div></td>
                     <td>{{ assignment.admission_class }}</td>
                     <td>{{ assignment.section|default:"All" }}</td>
                     <td>{{ assignment.subject.name }}</td>

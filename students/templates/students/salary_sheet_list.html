@@ -13,12 +13,14 @@
 <div class="table-card">
     <table class="table table-striped mb-0">
         <thead>
-            <tr><th>Employee</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Period</th><th>Entered By</th><th>Action</th></tr>
+            <tr><th>Employee</th><th>Teacher No.</th><th>Month</th><th>Amount</th><th>Date</th><th>Status</th><th>Period</th><th>Entered By</th><th>Action</th></tr>
         </thead>
         <tbody>
             {% for salary in salaries %}
             <tr>
-                <td>{{ salary.employee.name }}</td>
+                <td>{{ salary.employee.name }}
+                    <div class="small text-muted">{{ salary.employee.designation }}</div></td>
+                <td style="font-variant-numeric:tabular-nums">{{ salary.employee.teacher_no_display|default:"—" }}</td>
                 <td>{{ salary.month }}</td>
                 <td>BDT {{ salary.amount }}</td>
                 <td>{{ salary.date }}</td>

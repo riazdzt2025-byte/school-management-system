@@ -1,0 +1,112 @@
+{% extends 'students/base.html' %}
+
+{% block title %}Mark correction applications - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none">
+    <div>
+        <h1>Mark correction applications</h1>
+        <div class="subtitle">
+            Office files a draft → the teacher checks and signs → the examination
+            department approves. Until approval the result sheet shows the old mark.
+        </div>
+    </div>
+    <div class="page-actions">
+        {% if perms.students.add_markcorrectionrequest %}
+        <a href="{% url 'add_mark_correction_request' %}" class="btn btn-navy">+ File an application</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if messages %}
+{% for message in messages %}
+<div class="alert alert-{{ message.tags|default:'info' }} d-print-none">{{ message }}</div>
+{% endfor %}
+{% endif %}
+
+<div class="d-flex flex-wrap gap-2 mb-3 d-print-none">
+    <a class="btn btn-sm {% if not filters.status %}btn-navy{% else %}btn-outline-secondary{% endif %}"
+       href="{% url 'mark_correction_request_list' %}">All ({{ counts.DRAFT|add:counts.SUBMITTED|add:counts.APPROVED|add:counts.REJECTED|add:counts.WITHDRAWN }})</a>
+    <a class="btn btn-sm {% if filters.status == 'DRAFT' %}btn-navy{% else %}btn-outline-secondary{% endif %}"
+       href="?status=DRAFT">Drafts ({{ counts.DRAFT }})</a>
+    <a class="btn btn-sm {% if filters.status == 'SUBMITTED' %}btn-navy{% else %}btn-outline-secondary{% endif %}"
+       href="?status=SUBMITTED">Awaiting exam dept ({{ counts.SUBMITTED }})</a>
+    <a class="btn btn-sm {% if filters.status == 'APPROVED' %}btn-navy{% else %}btn-outline-secondary{% endif %}"
+       href="?status=APPROVED">Approved ({{ counts.APPROVED }})</a>
+    <a class="btn btn-sm {% if filters.status == 'REJECTED' %}btn-navy{% else %}btn-outline-secondary{% endif %}"
+       href="?status=REJECTED">Rejected ({{ counts.REJECTED }})</a>
+</div>
+
+<form method="get" class="d-flex flex-wrap gap-2 align-items-end mb-3 d-print-none">
+    {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+    <div>
+        <label class="form-label small mb-1">Institution</label>
+        <select name="institution" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">All institutions</option>
+            {% for inst in institutions %}
+            <option value="{{ inst.pk }}" {% if institution and institution.pk == inst.pk %}selected{% endif %}>{{ inst.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label class="form-label small mb-1">Class</label>
+        <input type="text" name="admission_class" value="{{ filters.admission_class }}" class="form-control form-control-sm" style="width:90px">
+    </div>
+    <div>
+        <label class="form-label small mb-1">Section</label>
+        <input type="text" name="section" value="{{ filters.section }}" class="form-control form-control-sm" style="width:90px">
+    </div>
+    <button class="btn btn-sm btn-outline-navy">Filter</button>
+    <a href="?{% if filters.status %}status={{ filters.status }}&{% endif %}print=1" class="btn btn-sm btn-outline-secondary ms-auto">Print this list</a>
+</form>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th><th>Institution</th><th>Class</th><th>Section</th>
+                    <th>Student</th><th>Exam</th><th>Subject</th>
+                    <th>Was</th><th>Asked</th><th>Status</th><th>Filed</th><th class="d-print-none">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in requests %}
+                <tr>
+                    <td class="small text-muted">{{ forloop.counter }}</td>
+                    <td class="small">{{ row.institution.name|default:"—" }}</td>
+                    <td>{{ row.admission_class }}</td>
+                    <td>{{ row.section|default:"—" }}</td>
+                    <td>
+                        {{ row.student.name }}
+                        <div class="small text-muted">{{ row.student.student_id }}{% if row.student.roll_no %} · roll {{ row.student.roll_no }}{% endif %}</div>
+                    </td>
+                    <td class="small">{{ row.exam.name }}<div class="text-muted">{{ row.exam.session }}</div></td>
+                    <td>{{ row.subject.name }}</td>
+                    <td>{% if row.current_total is not None %}{{ row.current_total }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td class="fw-semibold">{{ row.requested_total|default:"—" }}</td>
+                    <td>
+                        {% if row.status == 'SUBMITTED' %}<span class="badge bg-warning text-dark">Awaiting exam dept</span>
+                        {% elif row.status == 'APPROVED' %}<span class="badge bg-success">Approved</span>
+                        {% elif row.status == 'REJECTED' %}<span class="badge bg-danger">Rejected</span>
+                        {% elif row.status == 'WITHDRAWN' %}<span class="badge bg-secondary">Withdrawn</span>
+                        {% else %}<span class="badge bg-light text-dark border">Draft</span>{% endif %}
+                    </td>
+                    <td class="small text-muted">{{ row.created_at|date:"M d, Y" }}</td>
+                    <td class="d-print-none">
+                        <a href="{% url 'mark_correction_request_detail' row.pk %}" class="btn btn-sm btn-outline-navy">Open</a>
+                        <a href="{% url 'mark_correction_request_print' row.pk %}" class="btn btn-sm btn-outline-secondary">Print</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="12" class="text-center text-muted py-4">No application matches this filter.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if is_paginated %}
+<div class="d-print-none mt-3">{% include 'students/_pagination.html' %}</div>
+{% endif %}
+{% endblock %}
