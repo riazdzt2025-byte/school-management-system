@@ -1592,10 +1592,11 @@ class InstitutionAccessSetupTests(TestCase):
 		self.assertContains(response, 'Kallan Trust Campus')
 		self.assertContains(response, 'Second Campus')
 		for department in ('Office', 'Exam', 'Accounts'):
-			self.assertContains(response, f'data-department="{department}"')
+			self.assertContains(response, f'<option value="{department}"')
 		self.assertNotContains(response, 'No institution access has been assigned')
-		# the form must post a real institution, not an empty one
-		self.assertIn(f'name="institution_id" id="institution_id" value="{self.institution.pk}"', content)
+		# The required dropdown offers real institution ids.
+		self.assertContains(response, '<select name="institution_id" id="institution_id" class="form-select" required>')
+		self.assertIn(f'<option value="{self.institution.pk}"', content)
 
 	def test_admin_can_log_in_with_a_fresh_install(self):
 		get_user_model().objects.create_superuser(username='boss', password='secret123')
