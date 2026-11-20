@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Teacher sign in — Principal Kazi Faruky School And College. আপনার শিক্ষকের অ্যাকাউন্টে সাইন ইন করুন।">
+<title>Teacher Login — Principal Kazi Faruky School And College</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #ff3b4a;
+    --red-dark: #b3121f;
+    --text: #ffffff;
+    --muted: rgba(255, 255, 255, 0.65);
+    --field-bg: rgba(255, 255, 255, 0.06);
+    --field-border: rgba(255, 90, 100, 0.35);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Poppins', system-ui, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(ellipse at 50% 120%, rgba(200, 20, 35, 0.45), transparent 60%),
+      linear-gradient(180deg, #0a0102 0%, #1c0408 60%, #2a060b 100%);
+    overflow-x: hidden;
+    padding: 24px 16px 16px;
+  }
+
+  /* ---------- circuit background ---------- */
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 860px;
+  }
+  .bg-circuit {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .circuit {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .circuit path, .bg-circuit path { fill: none; stroke: rgba(255, 60, 75, 0.5); stroke-width: 1.5; }
+  .circuit .node, .bg-circuit .node { fill: #1a0206; stroke: rgba(255, 60, 75, 0.8); stroke-width: 1.5; }
+  .circuit .glow, .bg-circuit .glow { fill: var(--red); filter: drop-shadow(0 0 8px var(--red)) drop-shadow(0 0 16px var(--red)); }
+
+  /* ---------- card ---------- */
+  .card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 860px;
+    height: 460px;
+    border-radius: 18px;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(120, 20, 30, 0.35), rgba(40, 6, 10, 0.55));
+    border: 1px solid rgba(255, 80, 90, 0.35);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), inset 0 0 40px rgba(255, 60, 75, 0.06);
+    transition: border-color 0.35s ease, box-shadow 0.35s ease;
+  }
+
+  /* Card hover: brighter border, red glow and a soft spotlight that follows the cursor */
+  .card:hover {
+    border-color: rgba(255, 90, 100, 0.85);
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.55),
+      0 0 40px rgba(255, 59, 74, 0.35),
+      inset 0 0 40px rgba(255, 60, 75, 0.12);
+  }
+  .card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background: radial-gradient(280px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 80, 90, 0.18), transparent 70%);
+  }
+  .card:hover::after { opacity: 1; }
+
+  /* ---------- forms ---------- */
+  .form-box {
+    position: absolute;
+    top: 0;
+    width: 50%;
+    height: 100%;
+    padding: 28px 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    transition: opacity 0.6s ease, transform 0.7s cubic-bezier(.65, 0, .35, 1), filter 0.6s ease;
+  }
+  .form-box.signup { right: 0; }
+  .form-box.login  { left: 0; }
+
+  .card.is-signup .form-box.login  { opacity: 0; transform: translateX(-60px); filter: blur(6px); pointer-events: none; }
+  .card.is-login  .form-box.signup { opacity: 0; transform: translateX(60px);  filter: blur(6px); pointer-events: none; }
+
+  h2 { text-align: center; font-size: 1.65rem; font-weight: 700; margin-bottom: 14px; }
+
+  .field { position: relative; margin-bottom: 12px; }
+  .field svg.icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; stroke: var(--red); fill: none; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+    pointer-events: none;
+  }
+  .field input,
+  .field select {
+    width: 100%;
+    height: 44px;
+    padding: 0 42px 0 42px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--text);
+    background: var(--field-bg);
+    border: 1px solid var(--field-border);
+    border-radius: 10px;
+    outline: none;
+    transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
+    appearance: none;
+    -webkit-appearance: none;
+    color-scheme: dark;
+  }
+  .field select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ff3b4a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 16px;
+  }
+  .field select:invalid { color: rgba(255, 255, 255, 0.45); }
+  .field select option { background: #22070b; color: #fff; }
+  .field input::placeholder { color: rgba(255, 255, 255, 0.45); }
+  .field input:focus,
+  .field select:focus {
+    border-color: var(--red);
+    background-color: rgba(255, 60, 75, 0.08);
+    box-shadow: 0 0 0 3px rgba(255, 60, 75, 0.18), 0 0 18px rgba(255, 60, 75, 0.25);
+  }
+
+  .toggle-eye {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 30px; height: 30px; display: grid; place-items: center;
+    background: none; border: 0; cursor: pointer; color: var(--muted);
+  }
+  .toggle-eye svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .toggle-eye:hover { color: var(--text); }
+
+  .save-row {
+    display: flex; align-items: center; gap: 8px;
+    margin: 2px 0 10px 2px;
+    color: var(--muted); font-size: 0.72rem;
+  }
+  .save-row input { accent-color: var(--red); width: 14px; height: 14px; cursor: pointer; }
+  .save-row label { cursor: pointer; }
+
+  .btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%;
+    height: 44px;
+    margin-top: 4px;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #fff;
+    text-decoration: none;
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+    background: linear-gradient(90deg, #ff4655, #c41426);
+    box-shadow: 0 8px 22px rgba(255, 50, 65, 0.35);
+    transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(255, 50, 65, 0.5); }
+  .btn:active { transform: translateY(0); }
+  .btn[disabled] { opacity: 0.7; cursor: wait; }
+
+  .switch { text-align: center; font-size: 0.72rem; color: var(--muted); margin-top: 12px; }
+  .switch a, .forgot a { color: var(--red); text-decoration: none; cursor: pointer; }
+  .switch a:hover, .forgot a:hover { text-decoration: underline; }
+  .forgot { text-align: center; font-size: 0.72rem; margin-top: 6px; color: var(--muted); }
+
+  /* ---------- alerts (Django messages) ---------- */
+  .alert-box {
+    border: 1px solid rgba(255, 120, 130, 0.5);
+    background: rgba(255, 59, 74, 0.12);
+    color: #ffd7db;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+  }
+  .alert-box.success {
+    border-color: rgba(80, 255, 160, 0.45);
+    background: rgba(50, 230, 140, 0.10);
+    color: #b9ffd9;
+  }
+  .alert-box.warning {
+    border-color: rgba(255, 210, 90, 0.45);
+    background: rgba(255, 200, 80, 0.10);
+    color: #ffe9b0;
+  }
+
+  /* ---------- sliding overlay panel ---------- */
+  .overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 50%;
+    height: 100%;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, rgba(140, 25, 35, 0.55), rgba(60, 8, 14, 0.75));
+    transition: transform 0.8s cubic-bezier(.65, 0, .35, 1), clip-path 0.8s cubic-bezier(.65, 0, .35, 1);
+    clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
+  }
+  .card.is-login .overlay {
+    transform: translateX(100%);
+    clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
+  }
+
+  .overlay .msg {
+    position: absolute;
+    width: 80%;
+    text-align: center;
+    transition: opacity 0.5s ease, transform 0.7s cubic-bezier(.65, 0, .35, 1);
+  }
+  .overlay h1 { font-size: 1.55rem; font-weight: 700; letter-spacing: 0.3px; margin-bottom: 10px; text-transform: uppercase; }
+  .overlay p  { font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
+
+  .card.is-signup .msg.for-login  { opacity: 0; transform: translateX(-40px); }
+  .card.is-login  .msg.for-signup { opacity: 0; transform: translateX(40px); }
+
+  /* ---------- sign up call-to-action panel ---------- */
+  .cta-line {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.6;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .cta-list {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cta-list li {
+    position: relative;
+    padding-left: 26px;
+    font-size: 0.74rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .cta-list li strong { color: var(--text); font-weight: 600; }
+  .cta-list svg {
+    position: absolute; left: 0; top: 1px;
+    width: 16px; height: 16px; stroke: var(--red); fill: none; stroke-width: 2.2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  .status { text-align: center; font-size: 0.72rem; margin-top: 8px; min-height: 1em; color: #7dffa8; }
+
+  .credit {
+    position: relative;
+    z-index: 1;
+    margin-top: 16px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .credit strong { color: rgba(255, 255, 255, 0.75); }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 920px) {
+    .circuit { display: none; }
+  }
+
+  @media (max-width: 720px) {
+    .card { height: auto; min-height: 560px; }
+    .overlay { display: none; }
+    .form-box { width: 100%; left: 0; right: 0; }
+    .card.is-signup .form-box.login,
+    .card.is-login .form-box.signup { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- full-screen background lines (corners) with dots moving back and forth -->
+<svg class="bg-circuit" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+  <path id="b1" d="M60 0 V120 L100 160 V300" />
+  <path id="b2" d="M1380 0 V140 L1340 180 V320" />
+  <path id="b3" d="M60 900 V780 L100 740 V600" />
+  <path id="b4" d="M1380 900 V780 L1340 740 V600" />
+  <circle class="node" cx="100" cy="300" r="6" />
+  <circle class="node" cx="1340" cy="320" r="6" />
+  <circle class="node" cx="100" cy="600" r="6" />
+  <circle class="node" cx="1340" cy="600" r="6" />
+  <circle class="glow" r="5" opacity="0">
+    <animateMotion dur="8s" begin="0s" repeatCount="indefinite" keyPoints="0;1;0" keyTimes="0;0.5;1" calcMode="linear"><mpath href="#b1"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.1;0.5;0.9;1" dur="8s" begin="0s" repeatCount="indefinite"/>
+  </circle>
+  <circle class="glow" r="5" opacity="0">
+    <animateMotion dur="9s" begin="1.5s" repeatCount="indefinite" keyPoints="0;1;0" keyTimes="0;0.5;1" calcMode="linear"><mpath href="#b2"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.1;0.5;0.9;1" dur="9s" begin="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle class="glow" r="5" opacity="0">
+    <animateMotion dur="8.5s" begin="0.8s" repeatCount="indefinite" keyPoints="0;1;0" keyTimes="0;0.5;1" calcMode="linear"><mpath href="#b3"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.1;0.5;0.9;1" dur="8.5s" begin="0.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle class="glow" r="5" opacity="0">
+    <animateMotion dur="7.5s" begin="2.2s" repeatCount="indefinite" keyPoints="0;1;0" keyTimes="0;0.5;1" calcMode="linear"><mpath href="#b4"/></animateMotion>
+    <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.1;0.5;0.9;1" dur="7.5s" begin="2.2s" repeatCount="indefinite"/>
+  </circle>
+</svg>
+
+<div class="stage">
+  <!-- circuit lines: they meet the card edges and pass behind the glass -->
+  <svg class="circuit" viewBox="0 0 860 460" preserveAspectRatio="none" aria-hidden="true">
+    <path id="p1" d="M-420 165 H-300 L-260 135 H1120 L1160 165 H1280" />
+    <path id="p2" d="M1280 246 H1190 L1160 274 H-300 L-330 246 H-420" />
+    <path id="p3" d="M-420 420 H-280 L-240 380 H1100 L1140 330 H1280" />
+    <path id="p4" d="M640 -330 V-160 L610 -130 V600 L640 632 V720" />
+    <path id="p5" d="M220 720 V610 L250 580 V-130 L220 -160 V-330" />
+    <circle class="node" cx="-12" cy="135" r="5" />
+    <circle class="node" cx="872" cy="135" r="5" />
+    <circle class="node" cx="-12" cy="274" r="5" />
+    <circle class="node" cx="872" cy="274" r="5" />
+    <circle class="node" cx="-12" cy="380" r="5" />
+    <circle class="node" cx="872" cy="380" r="5" />
+    <circle class="node" cx="610" cy="-12" r="5" />
+    <circle class="node" cx="610" cy="472" r="5" />
+    <circle class="node" cx="250" cy="-12" r="5" />
+    <circle class="node" cx="250" cy="472" r="5" />
+    <circle class="glow" r="4.5" opacity="0">
+      <animateMotion dur="9s" begin="0s" repeatCount="indefinite"><mpath href="#p1"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.92;1" dur="9s" begin="0s" repeatCount="indefinite"/>
+    </circle>
+    <circle class="glow" r="4.5" opacity="0">
+      <animateMotion dur="10s" begin="1.5s" repeatCount="indefinite"><mpath href="#p2"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.92;1" dur="10s" begin="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle class="glow" r="4.5" opacity="0">
+      <animateMotion dur="11s" begin="3s" repeatCount="indefinite"><mpath href="#p3"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.92;1" dur="11s" begin="3s" repeatCount="indefinite"/>
+    </circle>
+    <circle class="glow" r="4.5" opacity="0">
+      <animateMotion dur="9.5s" begin="0.8s" repeatCount="indefinite"><mpath href="#p4"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.92;1" dur="9.5s" begin="0.8s" repeatCount="indefinite"/>
+    </circle>
+    <circle class="glow" r="4.5" opacity="0">
+      <animateMotion dur="10.5s" begin="2.4s" repeatCount="indefinite"><mpath href="#p5"/></animateMotion>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.92;1" dur="10.5s" begin="2.4s" repeatCount="indefinite"/>
+    </circle>
+  </svg>
+
+  {% if db_not_ready %}
+    <div class="alert-box warning" role="alert" style="position: relative; z-index: 2; margin-bottom: 14px;">
+      <strong>The application is still starting up.</strong>
+      The database has not been initialised yet. If you are the administrator, run
+      <code>python manage.py migrate</code> on the server, then reload this page.
+    </div>
+  {% endif %}
+
+<main class="card is-login" id="card">
+
+  <!-- Sliding info panel -->
+  <section class="overlay" aria-hidden="true">
+    <div class="msg for-login">
+      <h1>Welcome Back!</h1>
+      <p>Sign in with your teacher account — your classes, your students, your marks, all in one place.</p>
+    </div>
+    <div class="msg for-signup">
+      <h1>Hello, Teacher!</h1>
+      <p>Create your account once. The office approves it before your first sign in.</p>
+    </div>
+  </section>
+
+  <!-- Login form -->
+  <section class="form-box login">
+    <h2>Teacher Login</h2>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert-box {{ message.tags }}" role="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <form id="teacherLoginForm" method="post" action="{% url 'teacher_login' %}">
+      {% csrf_token %}
+      <div class="field">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/><path d="M9 7h1.5M9 11h1.5M9 15h1.5M13.5 7H15M13.5 11H15M13.5 15H15"/></svg>
+        <select name="institution_id" id="institution_id" aria-label="Institution / প্রতিষ্ঠান" required>
+          <option value="" {% if not request.POST.institution_id %}selected{% endif %}>Select institution / প্রতিষ্ঠান</option>
+          {% for institution in institutions %}
+            <option value="{{ institution.pk }}" {% if request.POST.institution_id == institution.pk|stringformat:'s' %}selected{% endif %}>{{ institution.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <input type="text" name="username" id="username" placeholder="Username / ব্যবহারকারীর নাম" autocomplete="username" aria-label="Username" value="{{ request.POST.username|default:'' }}" required>
+      </div>
+      <div class="field">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <input type="password" name="password" id="password" placeholder="Password / পাসওয়ার্ড" autocomplete="current-password" aria-label="Password" required>
+        <button type="button" class="toggle-eye" aria-label="Show password"></button>
+      </div>
+
+      <div class="save-row">
+        <input type="checkbox" id="saveUsername" name="save_username" value="1">
+        <label for="saveUsername">Save username on this device</label>
+      </div>
+
+      <button class="btn" id="teacherLoginBtn" type="submit">Login</button>
+      <p class="status" id="status" aria-live="polite"></p>
+    </form>
+
+    {% if not institutions and not db_not_ready %}<p class="alert-box warning" role="alert">No institution has been created yet. Add one from the Django admin, then log in.</p>{% endif %}
+
+    <p class="switch">Don't have a teacher account? <a data-go="signup">Sign Up</a></p>
+    <p class="forgot">Forgot your password? Ask the school office to reset it.</p>
+  </section>
+
+  <!-- Sign-up call to action (the real sign-up form lives at /signup/) -->
+  <section class="form-box signup">
+    <h2>Teacher Sign Up</h2>
+    <p class="cta-line">নতুন শিক্ষক? Account বানান — অ্যাডমিনের অনুমোদনের পর sign in করতে পারবেন।</p>
+    <ul class="cta-list">
+      <li>
+        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        <span><strong>Full name ও contact</strong> এবং teaching designation (e.g. Assistant Teacher) দিন।</span>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        <span><strong>Admin approval</strong> ছাড়া সাইন ইন করা যাবে না — অনুমোদনের পর account সক্রিয় হবে।</span>
+      </li>
+      <li>
+        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>Office / Exam / Accounts staff-ও এখানে নিবন্ধন করবেন — <strong>Department</strong> হিসেবে নিজের বিভাগ বেছে নিন।</span>
+      </li>
+    </ul>
+    <a class="btn" href="{% url 'signup' %}">Go to Sign Up / নিবন্ধন করুন</a>
+    <p class="switch">Already have an account? <a data-go="login">Login</a></p>
+    <p class="forgot">Office, Exam or Accounts staff? <a href="{% url 'login' %}">Staff sign in →</a></p>
+  </section>
+
+</main>
+</div>
+
+<p class="credit">Developed by <strong>{{ DEVELOPER_NAME }}</strong></p>
+
+<script>
+  const card = document.getElementById('card');
+
+  // Switch between Sign Up and Login (sliding panel)
+  document.querySelectorAll('[data-go]').forEach(link => {
+    link.addEventListener('click', () => {
+      const target = link.dataset.go;
+      card.classList.toggle('is-login', target === 'login');
+      card.classList.toggle('is-signup', target === 'signup');
+    });
+  });
+
+  // On narrow screens stretch the corner lines so they stay visible
+  const bg = document.querySelector('.bg-circuit');
+  const narrow = window.matchMedia('(max-width: 920px)');
+  const fitBackground = () => bg.setAttribute('preserveAspectRatio', narrow.matches ? 'none' : 'xMidYMid slice');
+  fitBackground();
+  narrow.addEventListener('change', fitBackground);
+
+  // Spotlight follows the cursor inside the card
+  card.addEventListener('mousemove', e => {
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+    card.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  });
+
+  // Show / hide password
+  const EYE = '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const EYE_OFF = '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19c-6.5 0-10-7-10-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22"/></svg>';
+
+  document.querySelectorAll('.toggle-eye').forEach(btn => {
+    const input = btn.parentElement.querySelector('input');
+    btn.innerHTML = EYE;
+    btn.addEventListener('click', () => {
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.innerHTML = show ? EYE_OFF : EYE;
+      btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    });
+  });
+
+  // Save username on this device (shared with the office login page)
+  const savedUsernameKey = 'school_trust_saved_username';
+  const usernameField = document.getElementById('username');
+  const saveBox = document.getElementById('saveUsername');
+  const savedUsername = localStorage.getItem(savedUsernameKey);
+  if (savedUsername) {
+    usernameField.value = savedUsername;
+    saveBox.checked = true;
+  }
+
+  // Loading state while the form posts
+  const form = document.getElementById('teacherLoginForm');
+  const btn = document.getElementById('teacherLoginBtn');
+  const status = document.getElementById('status');
+  form.addEventListener('submit', () => {
+    if (!form.checkValidity()) {
+      status.style.color = '#ff8a94';
+      status.textContent = 'Please fill in all fields.';
+      return;
+    }
+    try {
+      if (saveBox.checked) {
+        localStorage.setItem(savedUsernameKey, usernameField.value.trim());
+      } else {
+        localStorage.removeItem(savedUsernameKey);
+      }
+    } catch (err) { /* private mode: ignore */ }
+    btn.disabled = true;
+    btn.textContent = 'Please wait…';
+  });
+</script>
+</body>
+</html>
