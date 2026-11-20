@@ -1,7 +1,10 @@
 from django.urls import path
-from . import views
+from . import views, signup
 
 urlpatterns = [
+    path('signup/', signup.signup, name='signup'),
+    path('account-requests/', signup.signup_requests, name='signup_requests'),
+    path('account-requests/<int:pk>/review/', signup.review_signup, name='review_signup'),
     path('', views.dashboard, name='dashboard'),
     path('admission/', views.admission_application_list, name='admission_application_list'),
     path('admission/download-sheet/', views.download_admission_sheet, name='download_admission_sheet'),

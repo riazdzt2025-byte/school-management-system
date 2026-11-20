@@ -31,8 +31,13 @@ def school_info(request):
                     and (user.has_perm('students.view_student') or
                          user.has_perm('students.add_exammark'))
                 )
+    pending_signup_count = 0
+    if user is not None and user.is_authenticated and (user.is_superuser or user.is_staff):
+        from .models import SignupRequest
+        pending_signup_count = SignupRequest.objects.filter(status='PENDING').count()
     developer_name, copyright_holder = _branding()
     return {
+        'pending_signup_count': pending_signup_count,
         'SCHOOL_INFO': settings.SCHOOL_INFO,
         'DEVELOPER_NAME': developer_name,
         'COPYRIGHT_HOLDER': copyright_holder,

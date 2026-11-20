@@ -1928,3 +1928,24 @@ class StudentPhotoDeletionJob(models.Model):
             ),
         ]
         default_permissions = ()
+
+
+class SignupRequest(models.Model):
+    """An inactive login awaiting an administrator's explicit decision."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    institution = models.ForeignKey(Institution, on_delete=models.PROTECT)
+    full_name = models.CharField(max_length=100)
+    department = models.CharField(max_length=30, choices=InstitutionAccess.DEPARTMENT_CHOICES)
+    designation = models.CharField(max_length=100)
+    contact_no = models.CharField(max_length=20)
+    join_date = models.DateField()
+    status = models.CharField(max_length=10, default='PENDING', choices=[
+        ('PENDING', 'Pending'), ('APPROVED', 'Approved'), ('REJECTED', 'Rejected'),
+    ])
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name='reviewed_signups')
+
+    class Meta:
+        ordering = ['-created_at', '-pk']

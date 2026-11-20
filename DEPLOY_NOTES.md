@@ -137,3 +137,28 @@ To go back, delete the variable or set it to `locmem`. Any other value stops the
 app at startup with a clear error. If the counter store is ever unreachable,
 the site keeps working and a warning is written to the log.
 
+
+## Teacher/staff self-registration and approvals (2026-11-20)
+
+- Apply migration `0062_signuprequest` with `python manage.py migrate --noinput`
+  before serving the updated app. The existing `scripts/render_start.sh` startup path
+  already runs migrations; verify this is the deployed start command.
+- `/login/` now offers institution and department dropdowns and a signup link.
+- `/signup/` accepts teacher/staff applications. Passwords use Django's normal
+  hashing and validation; applicants cannot log in while pending or rejected.
+- Signed-in staff/superusers see **Account approvals** with a pending count.
+  `/account-requests/` lists pending/approved/rejected requests, 50 per page.
+  These are in-app notifications, not email or SMS delivery.
+- Approve creates the employee record, activates the login and grants only the
+  requested institution/department access. It never grants Django admin status.
+  Reject keeps the account inactive. Repeated decisions cannot duplicate records.
+- Teachers still need class/subject assignments from the office before they can
+  access their assigned classes. Reviewers should verify identity and department
+  before approving, especially Office/Exam/Accounts access.
+- Existing employee records are not auto-matched by name or phone. If someone
+  already has a linked login, keep using that account rather than signing up again.
+
+Smoke test: register a test teacher, confirm login is refused, approve as admin,
+then sign in with the chosen institution and Teacher department. Repeat with a
+staff application and verify it does not gain admin or teacher access. Reject a
+separate test application and verify it remains unable to sign in.

@@ -36,59 +36,6 @@
             margin: 8px 0 0;
             opacity: 0.9;
         }
-        .institution-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 18px;
-            padding: 28px;
-            background: #f5f7fa;
-        }
-        .institution-card {
-            background: #fff;
-            border: 1px solid #e7edf7;
-            border-radius: 16px;
-            padding: 18px;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            cursor: pointer;
-        }
-        .institution-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 22px rgba(15, 45, 82, 0.08);
-        }
-        .institution-card.active {
-            border-color: #0f2d52;
-            box-shadow: 0 8px 18px rgba(15, 45, 82, 0.09);
-        }
-        .institution-card h3 {
-            margin: 0 0 8px;
-            font-size: 1.3rem;
-            color: #0f2d52;
-        }
-        .institution-card small {
-            color: #5a6d87;
-            display: block;
-            margin-bottom: 12px;
-        }
-        .department-pills {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
-        .department-pill {
-            display: inline-flex;
-            align-items: center;
-            padding: 6px 10px;
-            border-radius: 999px;
-            font-size: 0.75rem;
-            background: #eef3fb;
-            color: #244d75;
-            border: 1px solid transparent;
-        }
-        .department-pill.active {
-            background: #0f2d52;
-            color: #fff;
-        }
         .login-form {
             display: none;
             background: #fff;
@@ -138,34 +85,32 @@
 
         {% if messages %}
             {% for message in messages %}
-                <div class="alert alert-danger m-3 mb-0">{{ message }}</div>
+                <div class="alert alert-{% if message.tags == 'success' %}success{% else %}danger{% endif %} m-3 mb-0" role="status">{{ message }}</div>
             {% endfor %}
         {% endif %}
 
-        <div class="institution-grid">
-            {% for institution in institutions %}
-                <div class="institution-card{% if forloop.first %} active{% endif %}"
-                     data-institution-id="{{ institution.id }}"
-                     data-department="{{ departments.0|default:'Office' }}">
-                    <h3>{{ institution.name }}</h3>
-                    <small>Pick your department, then log in</small>
-                    <div class="department-pills">
-                        {% for department in departments %}
-                            <span class="department-pill{% if forloop.first %} active{% endif %}" data-department="{{ department }}">{{ department }}</span>
-                        {% endfor %}
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary w-100 select-institution">Select</button>
-                </div>
-            {% empty %}
-                <div class="alert alert-warning w-100 mb-0">No institution has been created yet. Add one from the Django admin, then log in.</div>
-            {% endfor %}
-        </div>
-
         <form method="POST" class="login-form active" id="loginForm">
             {% csrf_token %}
-            <input type="hidden" name="institution_id" id="institution_id" value="{{ default_institution_id }}">
-            <input type="hidden" name="department" id="department" value="{{ departments.0|default:'Office' }}">
-
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="institution_id" class="form-label">Institution / প্রতিষ্ঠান</label>
+                    <select name="institution_id" id="institution_id" class="form-select" required>
+                        <option value="">Select institution</option>
+                        {% for institution in institutions %}
+                        <option value="{{ institution.pk }}" {% if request.POST.institution_id == institution.pk|stringformat:'s' %}selected{% endif %}>{{ institution.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="department" class="form-label">Department / বিভাগ</label>
+                    <select name="department" id="department" class="form-select" required>
+                        {% for department in departments %}
+                        <option value="{{ department }}" {% if request.POST.department == department %}selected{% endif %}>{{ department }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            {% if not institutions and not db_not_ready %}<p class="alert alert-warning">No institution has been created yet. Add one from the Django admin, then log in.</p>{% endif %}
             <div class="row g-3 align-items-end">
                 <div class="col-md-4">
                     <label class="form-label">Username</label>
@@ -184,6 +129,8 @@
                 <input type="checkbox" id="saveUsername" name="save_username" value="1">
                 <label for="saveUsername">Save username</label>
             </div>
+            <p class="mt-4 mb-0">নতুন শিক্ষক বা স্টাফ? <a href="{% url 'signup' %}">Sign up / নিবন্ধন করুন</a></p>
+            <small>New accounts require admin approval before sign in.</small>
         </form>
 
         <div class="developer-credit">
@@ -192,10 +139,7 @@
     </div>
 
     <script>
-        const cards = document.querySelectorAll('.institution-card');
         const loginForm = document.getElementById('loginForm');
-        const institutionIdField = document.getElementById('institution_id');
-        const departmentField = document.getElementById('department');
         const usernameField = document.getElementById('username');
         const saveBox = document.getElementById('saveUsername');
 
@@ -205,30 +149,6 @@
             usernameField.value = savedUsername;
             saveBox.checked = true;
         }
-
-        function applySelection(card, department) {
-            cards.forEach((item) => item.classList.remove('active'));
-            card.classList.add('active');
-            card.querySelectorAll('.department-pill').forEach((pill) => {
-                pill.classList.toggle('active', pill.dataset.department === department);
-            });
-            card.dataset.department = department;
-            institutionIdField.value = card.dataset.institutionId;
-            departmentField.value = department;
-        }
-
-        cards.forEach((card) => {
-            // The card picks the institution; the pills inside it pick the department.
-            card.addEventListener('click', function () {
-                applySelection(this, this.dataset.department || 'Office');
-            });
-            card.querySelectorAll('.department-pill').forEach((pill) => {
-                pill.addEventListener('click', function (event) {
-                    event.stopPropagation();
-                    applySelection(card, this.dataset.department);
-                });
-            });
-        });
 
         loginForm.addEventListener('submit', function () {
             if (saveBox.checked) {

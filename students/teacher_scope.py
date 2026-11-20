@@ -47,7 +47,8 @@ def is_teacher_account(user):
     """
     if user is None or getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
         return False
-    return teacher_employee(user) is not None
+    employee = teacher_employee(user)
+    return employee is not None and employee.is_teacher
 
 
 def teacher_assignments(employee, session=None):

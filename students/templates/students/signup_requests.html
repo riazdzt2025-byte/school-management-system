@@ -1,0 +1,16 @@
+{% extends 'students/base.html' %}
+{% block content %}
+<h1 class="h3">Account approval requests / নিবন্ধনের আবেদন</h1>
+<p>নতুন শিক্ষক ও স্টাফদের তথ্য যাচাই করে অনুমোদন দিন। অনুমোদন দিলে কর্মীর রেকর্ড ও সাধারণ বিভাগীয় অ্যাক্সেস স্বয়ংক্রিয়ভাবে তৈরি হবে; অ্যাডমিন অ্যাক্সেস দেওয়া হবে না।</p>
+<div class="mb-3"><a class="btn btn-outline-primary" href="?status=PENDING">Pending ({{ pending_signup_count }})</a> <a class="btn btn-outline-success" href="?status=APPROVED">Approved</a> <a class="btn btn-outline-secondary" href="?status=REJECTED">Rejected</a></div>
+<h2 class="h5">{{ status }}</h2>
+<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Name / Username</th><th>Institution</th><th>Department / Designation</th><th>Contact</th><th>Joined / Applied</th><th>Decision</th></tr></thead><tbody>
+{% for application in page_obj %}<tr>
+<td>{{ application.full_name }}<br><small>{{ application.user.username }}</small></td>
+<td>{{ application.institution }}</td><td>{{ application.department }}<br>{{ application.designation }}</td>
+<td>{{ application.contact_no }}<br>{{ application.user.email }}</td><td>{{ application.join_date }}<br>{{ application.created_at }}</td>
+<td>{% if application.status == 'PENDING' %}<form method="post" action="{% url 'review_signup' application.pk %}">{% csrf_token %}<button class="btn btn-success btn-sm" name="action" value="approve">Approve</button> <button class="btn btn-outline-danger btn-sm" name="action" value="reject">Reject</button></form>{% else %}{{ application.get_status_display }}<br><small>{{ application.reviewed_by }} · {{ application.reviewed_at }}</small>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="6">No {{ status|lower }} requests.</td></tr>{% endfor %}
+</tbody></table></div>
+<nav aria-label="Request pages">{% if page_obj.has_previous %}<a href="?status={{ status }}&page={{ page_obj.previous_page_number }}">Previous</a>{% endif %} Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} {% if page_obj.has_next %}<a href="?status={{ status }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}</nav>
+{% endblock %}

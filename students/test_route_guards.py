@@ -20,6 +20,7 @@ from .models import Institution, InstitutionAccess
 
 # Reviewed on 2026-09-21; `public_admission_status` reviewed on 2026-10-12
 # (OF-06). Each one is public on purpose:
+#   signup                     - rate-limited registration; creates inactive accounts only
 #   login                      - the login page itself
 #   public_admission_apply     - the public admission form (rate limited)
 #   admission_dropdown_options - JSON for that form: group names and section
@@ -31,7 +32,7 @@ from .models import Institution, InstitutionAccess
 #                                returns only that applicant's masked name
 PUBLIC_ROUTE_NAMES = {
     'login', 'public_admission_apply', 'admission_dropdown_options',
-    'public_admission_status',
+    'public_admission_status', 'signup',
 }
 
 SKIPPED_PREFIXES = ('admin/', 'media', 'static')
@@ -90,7 +91,7 @@ class RouteGuardMatrixTests(TestCase):
         self.assertEqual(leaks, [])
 
     def test_public_routes_stay_public_for_anonymous_visitors(self):
-        for name in ('login', 'public_admission_apply', 'public_admission_status'):
+        for name in ('login', 'signup', 'public_admission_apply', 'public_admission_status'):
             self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
 
 
