@@ -601,6 +601,92 @@ def institution_login(request):
     })
 
 
+def teacher_login(request):
+    """The teacher-only sign in page (the red sliding card design).
+
+    Same authentication contract as :func:`institution_login` with the
+    department fixed to Teacher, except the door is stricter: a teacher
+    account exists because the login is linked to an active teaching
+    ``Employee`` row, so a bare ``InstitutionAccess(Teacher)`` row whose
+    employee link was removed (or a resigned teacher) is not let in — that
+    combination otherwise signed in and then bounced between the dashboard
+    and the teacher home forever. The institution the teacher belongs to is
+    taken from the employee record, never from the posted id alone.
+    """
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+
+    try:
+        institutions = list(Institution.objects.order_by('name'))
+    except (OperationalError, ProgrammingError):
+        logging.getLogger(__name__).exception(
+            'Teacher login page could not read the Institution table — the '
+            'database is likely not migrated. Run "python manage.py migrate".'
+        )
+        return render(request, 'students/teacher_login.html', {
+            'institutions': [],
+            'default_institution_id': '',
+            'db_not_ready': True,
+        }, status=503)
+
+    if request.method == 'POST':
+        # P2-2: lock out after too many failed attempts from one IP.
+        if _login_fail_count(request) >= LOGIN_MAX_ATTEMPTS:
+            messages.error(
+                request,
+                'Too many failed login attempts. Please wait 15 minutes and try again.',
+            )
+            return render(request, 'students/teacher_login.html', {
+                'institutions': institutions,
+                'default_institution_id': institutions[0].id if institutions else '',
+            })
+
+        username = (request.POST.get('username') or '').strip()
+        password = request.POST.get('password') or ''
+        institution_id = request.POST.get('institution_id')
+
+        user = authenticate(request, username=username, password=password)
+        allowed = False
+        if user is not None and (user.is_superuser or user.is_staff):
+            allowed = True
+        elif user is not None:
+            employee = teacher_employee(user)
+            if employee is not None and employee.is_teacher and str(employee.institution_id or '') == str(institution_id or ''):
+                access, _created = InstitutionAccess.objects.get_or_create(
+                    user=user, institution=employee.institution,
+                    department='Teacher',
+                    defaults={'is_active': True},
+                )
+                # A revoked (inactive) Teacher access row is not silently
+                # reactivated by signing in.
+                allowed = access.is_active
+
+        if allowed:
+            _login_fail_reset(request)
+            login(request, user)
+            sync_user_department_permissions(user)
+            request.session['selected_institution_id'] = str(institution_id) if institution_id else ''
+            request.session['selected_department'] = 'Teacher'
+            if user.is_superuser or user.is_staff:
+                return redirect('dashboard')
+            return redirect('teacher_home')
+
+        _login_fail_increment(request)
+        if user is not None:
+            messages.error(
+                request,
+                'This login is not linked to a teacher record for that institution. '
+                'Ask the office to connect it (Employee → Login account).',
+            )
+        else:
+            messages.error(request, 'Invalid username, password, or institution access.')
+
+    return render(request, 'students/teacher_login.html', {
+        'institutions': institutions,
+        'default_institution_id': institutions[0].id if institutions else '',
+    })
+
+
 @login_required
 def dashboard(request):
     selected_institution_id = request.session.get('selected_institution_id')
