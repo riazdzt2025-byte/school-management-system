@@ -64,6 +64,11 @@ python manage.py makemigrations --check --dry-run            # No changes detect
 node --test students/js/*.test.js                           # ৮৩ pass (নতুন ২০)
 ```
 
+**CI (PR #97, run 44913534666):** sqlite ✅ 9m8s · Node ✅ 5s ·
+**postgres ❌** — fail-টি `Backup / restore smoke test (postgres)` ধাপে, `Run test suite (postgres)` ✅
+অর্থাৎ **১৪১৪টি Django টেস্ট postgres:16-এ সব pass**; ব্যর্থতা backup smoke ধাপে, যেটি `main`-এ (run 44874631733)
+একইভাবে fail করছে — অর্থাৎ এই ব্রাঞ্চের কোড-জনিত নয় (pre-existing infra/step issue, আলাদা খতিয়ান দরকার)।
+
 | ফাইল | কী |
 |---|---|
 | `students/views.py` | `teacher_assignment_grid` + `_grid_rows`/`_grid_sections`/`_grid_also_map`/`_grid_teacher_rows`/`_grid_teacher_from_post`/`_apply_grid` |
