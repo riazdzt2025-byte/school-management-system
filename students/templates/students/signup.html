@@ -99,18 +99,36 @@
   .card:hover::after { opacity: 1; }
 
   /* ---------- forms ---------- */
+  /* The form panel must have a fixed height (height: 100%, not min-height):
+     an absolutely-positioned box with only min-height grows with its
+     content, so overflow-y: auto never engages and the long sign-up form
+     is simply clipped by the card's overflow: hidden — no scrolling at all.
+     justify-content must not be center either: a centered flex column
+     pushes overflowing content above the scroll origin, losing the top
+     of the form. Auto margins below keep short panels centered while
+     letting a tall form scroll from the very top. */
   .form-box {
     position: absolute;
     top: 0; left: 0;
     width: 50%;
-    min-height: 100%;
+    height: 100%;
+    max-height: 100%;
     padding: 22px 34px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     transition: opacity 0.6s ease, transform 0.7s cubic-bezier(.65, 0, .35, 1), filter 0.6s ease;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(96, 165, 250, 0.5) transparent;
   }
+  .form-box > :first-child { margin-top: auto; }
+  .form-box > :last-child { margin-bottom: auto; }
+  .form-box::-webkit-scrollbar { width: 8px; }
+  .form-box::-webkit-scrollbar-thumb { background: rgba(96, 165, 250, 0.45); border-radius: 999px; }
+  .form-box::-webkit-scrollbar-track { background: transparent; }
   .form-box.signup { left: auto; right: 0; }
   .form-box.login  { left: 0; }
 
@@ -369,9 +387,20 @@
   }
 
   @media (max-width: 720px) {
-    .card { min-height: 560px; }
+    /* On small screens the panel leaves the absolute positioning and the
+       card grows with the form, so the page itself scrolls. Keeping the
+       panel absolute inside an overflow: hidden card (with overflow:
+       visible) clipped the form with no way to reach it. */
+    .card { min-height: 0; }
     .overlay { display: none; }
-    .form-box { width: 100%; left: 0; right: 0; overflow: visible; }
+    .form-box {
+      position: relative;
+      width: 100%;
+      left: 0; right: 0;
+      height: auto;
+      max-height: none;
+      overflow: visible;
+    }
     .card.is-signup .form-box.login,
     .card.is-login .form-box.signup { display: none; }
   }
