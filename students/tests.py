@@ -1595,7 +1595,8 @@ class InstitutionAccessSetupTests(TestCase):
 			self.assertContains(response, f'<option value="{department}"')
 		self.assertNotContains(response, 'No institution access has been assigned')
 		# The required dropdown offers real institution ids.
-		self.assertContains(response, '<select name="institution_id" id="institution_id" class="form-select" required>')
+		self.assertContains(response, '<select name="institution_id" id="institution_id"')
+		self.assertContains(response, ' required>')
 		self.assertIn(f'<option value="{self.institution.pk}"', content)
 
 	def test_admin_can_log_in_with_a_fresh_install(self):

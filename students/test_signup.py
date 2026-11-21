@@ -20,6 +20,29 @@ class SignupTests(TestCase):
             'contact_no': '01812345678', 'join_date': '2020-01-01',
         }
 
+    def test_signup_page_renders_all_the_information(self):
+        # The page is restyled (blue sliding card) but must keep every part of
+        # the original information: heading, description, fields, submit
+        # button, back link and title.
+        response = self.client.get(reverse('signup'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn('<title>Teacher & Staff Sign up</title>', content)
+        self.assertIn('শিক্ষক ও স্টাফ নিবন্ধন', content)
+        self.assertIn('Teacher &amp; Staff Sign up — অ্যাডমিনের অনুমোদন ছাড়া সাইন ইন করা যাবে না', content)
+        self.assertIn('Office, Exam or Accounts', content)
+        for field in (
+            'username', 'email', 'password1', 'password2', 'full_name',
+            'institution', 'department', 'designation', 'contact_no', 'join_date',
+        ):
+            self.assertIn(f'name="{field}"', content)
+        self.assertIn('Submit for approval', content)
+        self.assertIn('Back to', content)
+        self.assertIn(reverse('login'), content)
+        # Every department offered on the login/signup dropdown.
+        for department in ('Office', 'Exam', 'Accounts', 'Teacher'):
+            self.assertIn(f'value="{department}"', content)
+
     def apply(self):
         response = self.client.post(reverse('signup'), self.data)
         self.assertRedirects(response, reverse('login'))
@@ -58,7 +81,9 @@ class SignupTests(TestCase):
             'username': user.username, 'password': self.data['password1'],
             'institution_id': self.institution.pk, 'department': 'Teacher',
         })
-        self.assertRedirects(response, reverse('dashboard'), fetch_redirect_response=False)
+        # The teacher lands on their classroom (the merged login page behaves
+        # exactly like the old dedicated teacher login page did).
+        self.assertRedirects(response, reverse('teacher_home'), fetch_redirect_response=False)
 
     def test_rejection_stays_inactive(self):
         application = self.apply()
