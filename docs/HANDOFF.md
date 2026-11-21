@@ -1,5 +1,27 @@
 # Handoff — School Management System
 
+## ২০২৬-১১-২১ · TCH-02 — ক্লাস ধরে বিষয়ের গ্রিডে শিক্ষক বসানো (assign by class)
+
+- **Branch/base:** `arena/521f2feb-school-management-system` / `7730a95`.
+- **Owner request:** teacher job no + class + subject সাজানো থাকবে, পাশের কলামে শিক্ষক
+  সার্চ/ড্রপডাউন করে অ্যাসাইন — কারণ একই শিক্ষক একাধিক বিষয় ও অন্য ক্লাসের বিষয় নেন।
+  Owner বেছে নিয়েছেন: **বিষয়ের গ্রিড + নিচে একবার Save** (প্রতি সারিতে সাথে সাথে সেভ নয়)।
+- **Implemented:** `/employees/assignments/grid/` (`teacher_assignment_grid`) —
+  * Institution → Class → Section → Session ⇒ কারিকুলামের প্রতিটি বিষয় এক সারি; পাশে শিক্ষক সার্চ
+    (job no / সিরিয়াল / বাংলা অঙ্ক / নাম), তালিকা থেকে বাছাই, বাছাই করা শিক্ষক পরের খালি সারিতে সাজেশন,
+    সারির নিচে শিক্ষকের অন্য ক্লাস/বিষয় ("also teaches …")।
+  * এক Save-এ পুরো গ্রিড এক transaction-এ: খালি সারি = inactive (delete নয়) + audit, বদল = পুরোনো inactive + নতুন,
+    idempotent, এক সারি ভুল হলে কিছুই সেভ হয় না; inactive/অন্য প্রতিষ্ঠানের শিক্ষক server-side প্রত্যাখ্যাত।
+  * অনুমতি ছাড়া read-only, POST 403; প্রতিষ্ঠান-স্কোপ; রেজিস্ট্রি লিস্টে দুই বাটন (Assign by class / One row), সাইডবার লিংক।
+  * কোনো model/migration/URL-breaking পরিবর্তন নেই; পুরোনো এক-সারির ফর্ম অপরিবর্তিত।
+- **Evidence:** `manage.py test students.test_teacher_assignment_grid` → **২২ pass**;
+  full `manage.py test students` → **১৪১৪ pass OK**; `node --test students/js/*.test.js` → **৮৩ pass** (নতুন ২০);
+  `check` 0 issue; `makemigrations --check` clean (leaf `0062`).
+- **Not verified:** আসল ব্রাউজারে হাতে দেখা (sandbox-এ Playwright ব্রাউজার ডাউনলোড ব্লকড), live Render,
+  mobile/touch আচরণ। Report: `docs/prompts/reports/teacher-assignment-grid-2026-11-21.md`।
+- **Owner action:** merge করে একবার খুলে দেখা — Employees → Assign by Class → ক্লাস → দুই সারিতে একই শিক্ষক → Save।
+
+---
 ## ২০২৬-১১-০৩ · Remaining backlog completion (AT-01 / AT-02 / EM-01 / EM-03, DB-02/DB-03 verification, FN-01)
 
 - **Branch/base:** `arena/e2d5c9b9-school-management-system` / `9ff07f4` (= `origin/main`, PR #78 merged). The user-referenced branch `arena/1928885f-school-management-system` **does not exist** on the remote (checked `git ls-remote --heads origin` and the GitHub branches API). The remaining backlog was completed on this session branch and merged through a PR.

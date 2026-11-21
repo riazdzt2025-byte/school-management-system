@@ -2854,6 +2854,439 @@ def _assignment_sessions():
 
 
 # ---------------------------------------------------------------------------
+# Teacher assignment grid (class + section → one row per subject)
+# ---------------------------------------------------------------------------
+
+def _grid_sections(institution, admission_class):
+    """Sections this class actually uses: students, capacity rows, assignments."""
+    variants = class_filter_variants(admission_class)
+    sections = set()
+    sources = (
+        Student.objects.filter(institution=institution, admission_class__in=variants)
+        .values_list('section', flat=True),
+        SectionCapacity.objects.filter(institution=institution, admission_class__in=variants)
+        .values_list('section', flat=True),
+        TeacherAssignment.objects.filter(institution=institution, admission_class__in=variants)
+        .values_list('section', flat=True),
+    )
+    for values in sources:
+        for value in values:
+            label = (value or '').strip()
+            if label:
+                sections.add(label)
+    return sorted(sections, key=lambda label: label.lower())
+
+
+def _grid_rows(institution, admission_class, section, session):
+    """One row per curriculum subject for this class, plus any assignment-only
+    subject (so the office can still see and clear what is already on record)."""
+    variants = class_filter_variants(admission_class)
+    rows_by_subject = {}
+
+    requirements = (
+        SubjectRequirement.objects
+        .filter(institution=institution, admission_class__in=variants)
+        .select_related('subject')
+    )
+    for requirement in requirements:
+        entry = rows_by_subject.setdefault(requirement.subject_id, {
+            'subject': requirement.subject,
+            'groups': [],
+            'types': [],
+            'in_curriculum': True,
+            'current': [],
+        })
+        if requirement.group:
+            label = requirement.get_group_display()
+            if label not in entry['groups']:
+                entry['groups'].append(label)
+        kind = requirement.get_requirement_type_display()
+        if kind not in entry['types']:
+            entry['types'].append(kind)
+
+    wanted_section = (section or '').strip().lower()
+    active = (
+        TeacherAssignment.objects
+        .filter(
+            institution=institution,
+            admission_class__in=variants,
+            session=session,
+            is_active=True,
+        )
+        .select_related('employee', 'subject')
+        .order_by('employee__name', 'pk')
+    )
+    for assignment in active:
+        assigned_section = (assignment.section or '').strip()
+        if wanted_section:
+            if assigned_section.lower() != wanted_section:
+                continue
+        elif assigned_section:
+            continue
+        entry = rows_by_subject.setdefault(assignment.subject_id, {
+            'subject': assignment.subject,
+            'groups': [],
+            'types': [],
+            'in_curriculum': False,
+            'current': [],
+        })
+        entry['current'].append(assignment)
+
+    rows = list(rows_by_subject.values())
+    rows.sort(key=lambda row: (
+        0 if row['in_curriculum'] else 1,
+        row['subject'].display_order if row['subject'].display_order is not None else 10 ** 6,
+        row['subject'].name.lower(),
+    ))
+    return rows
+
+
+def _grid_also_map(institution, session, admission_class):
+    """employee id → the *other* classes they teach this session.
+
+    The clue the clerk asked for: the same teacher usually takes several
+    subjects and other classes, so the other postings are shown beside the
+    name instead of being discovered by opening each class in turn.
+    """
+    variants = class_filter_variants(admission_class)
+    labels = {}
+    other = (
+        TeacherAssignment.objects
+        .filter(institution=institution, session=session, is_active=True)
+        .exclude(admission_class__in=variants)
+        .select_related('employee', 'subject')
+        .order_by('admission_class', 'section', 'subject__name')
+    )
+    for assignment in other:
+        if not assignment.employee_id:
+            continue
+        label = f'Class {assignment.admission_class}'
+        if (assignment.section or '').strip():
+            label += f' ({assignment.section.strip()})'
+        label += f' · {assignment.subject.name}'
+        bucket = labels.setdefault(assignment.employee_id, [])
+        if label not in bucket and len(bucket) < 4:
+            bucket.append(label)
+    return labels
+
+
+def _grid_teacher_rows(institution, also_map):
+    """The staff the search box can offer (the page's own rendered data)."""
+    teachers = []
+    for employee in (
+        Employee.objects.filter(institution=institution, designation__icontains='teacher')
+        .order_by('name', 'pk')
+    ):
+        teachers.append({
+            'id': employee.pk,
+            'number': employee.teacher_no or '',
+            'pretty': display_teacher_number(employee.teacher_no),
+            'name': employee.name,
+            'designation': employee.designation,
+            'initials': ''.join(part[0] for part in employee.name.split()[:2]).upper(),
+            'status': employee.get_status_display(),
+            'active': employee.status == 'ACTIVE',
+            'also': also_map.get(employee.pk, []),
+        })
+    return teachers
+
+
+def _grid_checked_teacher(employee):
+    if employee.status != 'ACTIVE':
+        return None, (
+            f'{employee.name} is marked {employee.get_status_display()} and '
+            'cannot be assigned.'
+        )
+    return employee, ''
+
+
+def _grid_teacher_from_post(raw_value, employee_id, *, teachers, branch):
+    """Resolve one row's posted teacher: the picked id first, then the typed text.
+
+    The id is what the JavaScript picker fills in; the text path is the no-JS
+    fallback (type the job number and save). A text that names more than one
+    teacher is refused rather than guessed.
+    """
+    raw = (raw_value or '').strip()
+    if employee_id:
+        employee = teachers.filter(pk=employee_id).first()
+        if employee is None:
+            return None, "that teacher is not on this institution's staff list."
+        return _grid_checked_teacher(employee)
+    if not raw:
+        return None, ''
+
+    candidates = [raw]
+    for separator in ('·', '—', ' - '):
+        if separator in raw:
+            candidates.insert(0, raw.split(separator, 1)[0].strip())
+            # A row with no teacher number renders as "Name" alone or with a
+            # leading separator; take the name part too.
+            candidates.append(raw.split(separator, 1)[1].strip())
+    candidates = [candidate for candidate in candidates if candidate]
+
+    for candidate in candidates:
+        number = normalize_teacher_number(candidate, branch)
+        if number:
+            match = teachers.filter(teacher_no__iexact=number).first()
+            if match is not None:
+                return _grid_checked_teacher(match)
+
+    exact = list(teachers.filter(name__iexact=raw)[:2])
+    if len(exact) == 1:
+        return _grid_checked_teacher(exact[0])
+    if len(exact) > 1:
+        return None, f'"{raw}" matches more than one teacher — type the job number.'
+
+    partial = list(teachers.filter(name__icontains=raw)[:2])
+    if len(partial) == 1:
+        return _grid_checked_teacher(partial[0])
+    if len(partial) > 1:
+        return None, f'"{raw}" matches more than one teacher — type the job number.'
+    return None, f'no teacher found for "{raw}".'
+
+
+def _apply_grid(request, *, institution, admission_class, section, session, rows, desired):
+    """Write the whole grid in one transaction: 0/1 active teacher per subject."""
+    variants = class_filter_variants(admission_class)
+    section = (section or '').strip()
+    created = replaced = cleared = 0
+    for row in rows:
+        subject = row['subject']
+        keep = desired.get(subject.pk)
+        queryset = TeacherAssignment.objects.select_for_update().filter(
+            institution=institution,
+            admission_class__in=variants,
+            subject=subject,
+            session=session,
+            is_active=True,
+        )
+        if section:
+            queryset = queryset.filter(section__iexact=section)
+        else:
+            queryset = queryset.filter(section='')
+        existing = list(queryset)
+        if keep is not None and len(existing) == 1 and existing[0].employee_id == keep.pk:
+            continue
+        for assignment in existing:
+            assignment.is_active = False
+            assignment.save(update_fields=['is_active', 'updated_at'])
+            record_audit(
+                request.user, 'teacher_assignment_unassigned', assignment,
+                details={
+                    'employee': assignment.employee.name,
+                    'class': assignment.admission_class,
+                    'section': assignment.section,
+                    'subject': assignment.subject.name,
+                    'session': assignment.session,
+                    'source': 'grid',
+                },
+            )
+            cleared += 1
+        if keep is None:
+            continue
+        assignment = TeacherAssignment.objects.create(
+            institution=institution,
+            employee=keep,
+            admission_class=admission_class,
+            section=section,
+            subject=subject,
+            session=session,
+            is_active=True,
+            created_by=request.user,
+        )
+        record_audit(
+            request.user, 'teacher_assignment_created', assignment,
+            details={
+                'employee': assignment.employee.name,
+                'class': assignment.admission_class,
+                'section': assignment.section,
+                'subject': assignment.subject.name,
+                'session': assignment.session,
+                'source': 'grid',
+            },
+        )
+        if existing:
+            replaced += 1
+        else:
+            created += 1
+    return created, replaced, cleared
+
+
+@login_required
+@permission_required('students.view_teacherassignment', raise_exception=True)
+def teacher_assignment_grid(request):
+    """Assign a whole class/section in one screen.
+
+    The clerk picks institution → class → section, and the curriculum of that
+    class is laid out as rows with the teacher search box beside each subject —
+    because one teacher usually takes several subjects, typing their job number
+    once per row is the whole job.
+    """
+    institutions = _visible_institutions(request)
+    requested = request.GET.get('institution') or request.POST.get('institution')
+    institution = _resolve_requested_institution(request, requested)
+    if institution is None:
+        only = list(institutions[:2])
+        if len(only) == 1:
+            institution = only[0]
+
+    class_options = (
+        [label.strip() for label in (institution.classes or '').split(',') if label.strip()]
+        if institution is not None else []
+    )
+    admission_class = (
+        request.GET.get('admission_class') or request.POST.get('admission_class') or ''
+    ).strip()
+    if admission_class and admission_class not in class_options:
+        matched = next(
+            (label for label in class_options
+             if admission_class in class_filter_variants(label)),
+            None,
+        )
+        if matched is None:
+            raise Http404('That class is not offered by this institution.')
+        admission_class = matched
+    if not admission_class and len(class_options) == 1:
+        admission_class = class_options[0]
+
+    section = (request.GET.get('section') or request.POST.get('section') or '').strip()
+    session = (
+        request.GET.get('session') or request.POST.get('session') or ''
+    ).strip() or current_academic_session()
+
+    sections = (
+        _grid_sections(institution, admission_class)
+        if institution is not None and admission_class else []
+    )
+    if section and section not in sections:
+        # Keep an existing spelling ('a' vs 'A') usable without inventing one.
+        matched = next((label for label in sections if label.lower() == section.lower()), None)
+        section = matched or section
+
+    rows = (
+        _grid_rows(institution, admission_class, section, session)
+        if institution is not None and admission_class else []
+    )
+
+    can_edit = (
+        request.user.has_perm('students.add_teacherassignment')
+        and request.user.has_perm('students.change_teacherassignment')
+    )
+
+    if request.method == 'POST':
+        if not can_edit:
+            raise PermissionDenied
+        if institution is None or not admission_class:
+            messages.error(request, 'Choose an institution and a class first.')
+        elif not rows:
+            messages.error(request, 'This class has no subjects assigned yet.')
+        else:
+            teachers = Employee.objects.filter(
+                institution=institution, designation__icontains='teacher'
+            )
+            branch = getattr(institution, 'number', None)
+            desired = {}
+            errors = []
+            for row in rows:
+                subject = row['subject']
+                raw = request.POST.get(f'teacher_{subject.pk}', '')
+                employee_id = (request.POST.get(f'employee_{subject.pk}') or '').strip()
+                if not raw.strip() and not employee_id:
+                    desired[subject.pk] = None
+                    continue
+                employee, error = _grid_teacher_from_post(
+                    raw, employee_id, teachers=teachers, branch=branch,
+                )
+                if error:
+                    errors.append(f'{subject.name}: {error}')
+                else:
+                    desired[subject.pk] = employee
+            if errors:
+                for error in errors:
+                    messages.error(request, error)
+            else:
+                try:
+                    created, replaced, cleared = _apply_grid(
+                        request,
+                        institution=institution,
+                        admission_class=admission_class,
+                        section=section,
+                        session=session,
+                        rows=rows,
+                        desired=desired,
+                    )
+                except IntegrityError:
+                    messages.error(
+                        request,
+                        'Another active assignment already covers one of these '
+                        'teacher/class/section/subject/session rows.',
+                    )
+                else:
+                    if created or replaced or cleared:
+                        messages.success(
+                            request,
+                            f'Grid saved — {created} new, {replaced} changed, '
+                            f'{cleared} removed.',
+                        )
+                    else:
+                        messages.info(request, 'Nothing changed — the grid already matched.')
+                    query = urlencode({
+                        'institution': institution.pk,
+                        'admission_class': admission_class,
+                        'section': section,
+                        'session': session,
+                    })
+                    return redirect(f"{reverse('teacher_assignment_grid')}?{query}")
+
+    also_map = (
+        _grid_also_map(institution, session, admission_class)
+        if institution is not None and admission_class else {}
+    )
+    grid_rows = []
+    for row in rows:
+        current = row['current']
+        primary = current[0] if current else None
+        grid_rows.append({
+            'subject': row['subject'],
+            'groups': row['groups'],
+            'types': row['types'],
+            'in_curriculum': row['in_curriculum'],
+            'current': primary,
+            'current_employee': primary.employee.pk if primary else '',
+            'current_label': (
+                ' · '.join(part for part in (
+                    display_teacher_number(primary.employee.teacher_no),
+                    primary.employee.name,
+                ) if part)
+                if primary else ''
+            ),
+            'extra_current': [assignment.employee.name for assignment in current[1:]],
+        })
+
+    return render(request, 'students/teacher_assignment_grid.html', {
+        'institutions': institutions,
+        'institution': institution,
+        'class_options': class_options,
+        'admission_class': admission_class,
+        'section': section,
+        'sections': sections,
+        'session': session,
+        'session_options': _assignment_sessions(),
+        'rows': grid_rows,
+        'teacher_rows': (
+            _grid_teacher_rows(institution, also_map) if institution is not None else []
+        ),
+        'teacher_branch': {
+            'number': institution.number_display if institution is not None else '',
+            'name': institution.name if institution is not None else '',
+        },
+        'can_edit': can_edit,
+        'current_session': current_academic_session(),
+    })
+
+
+# ---------------------------------------------------------------------------
 # Mark correction applications (student marks → teacher check → exam dept)
 # ---------------------------------------------------------------------------
 

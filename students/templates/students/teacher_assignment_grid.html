@@ -1,0 +1,233 @@
+{% extends 'students/base.html' %}
+{% load static %}
+
+{% block title %}Assign by class - {{ block.super }}{% endblock %}
+
+{% block extra_style %}
+    .grid-shell { max-width: 1080px; }
+    .grid-picker { display: flex; flex-wrap: wrap; gap: .9rem; align-items: flex-end; }
+    .grid-picker .field { min-width: 150px; }
+    .grid-picker .field.grow { flex: 1 1 220px; }
+    .grid-picker label { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: #5f6b76; margin-bottom: .25rem; }
+    .grid-note { font-size: .85rem; color: #6c757d; }
+
+    .assign-grid { width: 100%; border-collapse: separate; border-spacing: 0; }
+    .assign-grid th {
+        font-size: .75rem; text-transform: uppercase; letter-spacing: .05em;
+        color: #fff; background: var(--navy, #0f2d52); padding: .55rem .7rem;
+        position: sticky; top: 0; z-index: 2;
+    }
+    .assign-grid th:first-child { border-radius: .55rem 0 0 0; }
+    .assign-grid th:last-child { border-radius: 0 .55rem 0 0; }
+    .assign-grid td { padding: .5rem .7rem; border-bottom: 1px solid #eef0f3; vertical-align: middle; }
+    .assign-grid tr:last-child td { border-bottom: 0; }
+    .assign-grid tr:hover td { background: #fbfcfe; }
+    .assign-grid .subject-name { font-weight: 600; color: #1f2d3a; }
+    .assign-grid .subject-meta { font-size: .78rem; color: #6c757d; }
+    .assign-grid .subject-meta .pill {
+        display: inline-block; padding: .05rem .4rem; border-radius: 999px;
+        background: #eef3fa; color: var(--navy, #0f2d52); margin-right: .3rem;
+        font-size: .72rem;
+    }
+    .assign-grid .warn-pill { background: #fdf3d6; color: #7a5a00; }
+
+    .teacher-cell { position: relative; min-width: 320px; }
+    .teacher-cell .search-wrap { position: relative; }
+    .teacher-cell input[type="text"] { padding-right: 2.1rem; }
+    .teacher-cell .search-state {
+        position: absolute; right: .55rem; top: 50%; transform: translateY(-50%);
+        font-size: .7rem; color: #98a1aa; pointer-events: none;
+    }
+    .teacher-cell .picked-meta { font-size: .74rem; color: #5f6b76; margin-top: .15rem; }
+    .teacher-cell .picked-meta .also { color: #8a6d00; }
+    .teacher-cell .results {
+        position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 20;
+        list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto;
+        border: 1px solid #dfe4ea; border-radius: .5rem; background: #fff;
+        box-shadow: 0 .4rem 1.1rem rgba(15,45,82,.12);
+    }
+    .teacher-cell .results li {
+        padding: .45rem .7rem; cursor: pointer; display: flex; gap: .5rem;
+        align-items: baseline; border-bottom: 1px solid #f2f4f6;
+    }
+    .teacher-cell .results li:last-child { border-bottom: 0; }
+    .teacher-cell .results li:hover, .teacher-cell .results li.active { background: #eef3fa; }
+    .teacher-cell .results .num { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--navy, #0f2d52); }
+    .teacher-cell .results .who { font-size: .85rem; }
+    .teacher-cell .results .also { font-size: .74rem; color: #8a6d00; }
+    .teacher-cell .results li.empty { cursor: default; color: #b02a37; font-size: .85rem; }
+
+    .grid-footer {
+        position: sticky; bottom: 0; background: #fff; border-top: 1px solid #e7eaee;
+        padding: .8rem 1rem; display: flex; gap: .6rem; align-items: center;
+        border-radius: 0 0 .6rem .6rem;
+    }
+    .grid-footer .count-note { font-size: .85rem; color: #6c757d; margin-right: auto; }
+    .grid-empty { padding: 2rem 1rem; text-align: center; color: #6c757d; }
+    /* The subject grid has two columns, so it never needs a horizontal scroll
+       box — and the search results must be allowed to hang out of the card
+       instead of being clipped by overflow:auto. */
+    #assignment-grid-form .table-responsive { overflow: visible; }
+    @media (max-width: 640px) {
+        #assignment-grid-form .table-responsive { overflow-x: auto; }
+        .teacher-cell { min-width: 220px; }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Assign teachers by class</h1>
+        <div class="subtitle">
+            Pick a class and section — every subject of its curriculum gets one row, with the teacher search beside it.
+        </div>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'teacher_assignment_list' %}" class="btn btn-outline-navy">Registry list</a>
+    </div>
+</div>
+
+{% if messages %}
+{% for message in messages %}
+<div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+{% endfor %}
+{% endif %}
+
+<div class="grid-shell">
+
+<form method="get" class="table-card p-3 mb-3" id="grid-picker-form">
+    <div class="grid-picker">
+        <div class="field grow">
+            <label for="grid-institution">Institution</label>
+            <select name="institution" id="grid-institution" class="form-select" required>
+                {% for inst in institutions %}
+                <option value="{{ inst.pk }}" {% if institution and institution.pk == inst.pk %}selected{% endif %}>{{ inst.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="grid-class">Class</label>
+            <select name="admission_class" id="grid-class" class="form-select" required>
+                {% if not admission_class %}<option value="">— pick a class —</option>{% endif %}
+                {% for label in class_options %}
+                <option value="{{ label }}" {% if admission_class == label %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="grid-section">Section</label>
+            <select name="section" id="grid-section" class="form-select">
+                <option value="">Whole class (all sections)</option>
+                {% for label in sections %}
+                <option value="{{ label }}" {% if section == label %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="grid-session">Session</label>
+            <input name="session" id="grid-session" class="form-control" list="grid-session-options"
+                   value="{{ session }}" placeholder="e.g. {{ current_session }}">
+        </div>
+        <div class="field">
+            <button class="btn btn-navy w-100">Show subjects</button>
+        </div>
+    </div>
+    <datalist id="grid-session-options">
+        {% for option in session_options %}<option value="{{ option }}"></option>{% endfor %}
+    </datalist>
+    <div class="grid-note mt-2">
+        {% if institution and admission_class %}
+            {{ rows|length }} subject row{{ rows|length|pluralize }} for class {{ admission_class }}{% if section %} (section {{ section }}){% else %} — whole class{% endif %}, session {{ session }}.
+        {% else %}
+            Choose a class to lay out its subjects.
+        {% endif %}
+        Only teaching staff appear in the search; the job number, part of the name or the serial alone (in your own branch) all work.
+    </div>
+</form>
+
+{% if institution and admission_class %}
+<form method="post" id="assignment-grid-form">
+    {% csrf_token %}
+    <input type="hidden" name="institution" value="{{ institution.pk }}">
+    <input type="hidden" name="admission_class" value="{{ admission_class }}">
+    <input type="hidden" name="section" value="{{ section }}">
+    <input type="hidden" name="session" value="{{ session }}">
+
+    <div class="table-card">
+        <div class="table-responsive">
+            <table class="assign-grid" id="assignment-grid">
+                <thead>
+                    <tr>
+                        <th style="width:34%">Subject</th>
+                        <th>Teacher {% if institution and institution.number %}<span style="font-weight:400; opacity:.75">(job no {{ institution.number_display }})</span>{% endif %}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr data-subject="{{ row.subject.pk }}">
+                        <td>
+                            <div class="subject-name">{{ row.subject.name }}</div>
+                            <div class="subject-meta">
+                                {% if row.groups %}{% for group in row.groups %}<span class="pill">{{ group }}</span>{% endfor %}{% endif %}
+                                {% for kind in row.types %}<span class="pill">{{ kind }}</span>{% endfor %}
+                                {% if not row.in_curriculum %}<span class="pill warn-pill">not in this class's curriculum</span>{% endif %}
+                            </div>
+                        </td>
+                        <td class="teacher-cell">
+                            <input type="hidden" name="employee_{{ row.subject.pk }}" id="employee_{{ row.subject.pk }}" value="{{ row.current_employee }}">
+                            <div class="search-wrap">
+                                <input type="text"
+                                       class="form-control form-control-sm grid-teacher-input"
+                                       id="teacher_{{ row.subject.pk }}"
+                                       name="teacher_{{ row.subject.pk }}"
+                                       value="{{ row.current_label }}"
+                                       placeholder="Job number or name…"
+                                       autocomplete="off"
+                                       {% if not can_edit %}readonly{% endif %}
+                                       data-subject="{{ row.subject.pk }}"
+                                       aria-label="Teacher for {{ row.subject.name }}">
+                                <span class="search-state">search</span>
+                            </div>
+                            <div class="picked-meta" data-picked-meta="{{ row.subject.pk }}">
+                                {% if row.extra_current %}
+                                    <span class="also">Also on this row: {{ row.extra_current|join:", " }}</span>
+                                {% endif %}
+                            </div>
+                            <ul class="results" id="results_{{ row.subject.pk }}" hidden></ul>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="2" class="grid-empty">No curriculum has been set up for class {{ admission_class }} yet — assign its subjects first.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="grid-footer">
+            <span class="count-note" id="grid-count-note">
+                {% if can_edit %}
+                    Leave a row empty to remove that subject's teacher.
+                {% else %}
+                    You can view this grid but not change it — ask the Office or HR department.
+                {% endif %}
+            </span>
+            {% if can_edit and rows %}
+            <button class="btn btn-outline-secondary" type="button" id="grid-clear-all">Clear all</button>
+            <button class="btn btn-navy" id="grid-save">Save assignments</button>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+{{ teacher_rows|json_script:"grid-teacher-data" }}
+{{ teacher_branch|json_script:"grid-branch-data" }}
+{% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_script %}
+{% if institution and admission_class %}
+<script src="{% static 'students/js/teacher_assignment_grid.js' %}"></script>
+{% endif %}
+{% endblock %}

@@ -52,7 +52,11 @@ A web-based Student Management System built with Python and Django, inspired by 
    - Teacher ↔ class/section/subject/session assignment with validation
    - Teacher numbers = founding year + institution number + that branch's own serial
      (e.g. 2011 02 0001 = School 2's first teacher), allocated once, never reused
-   - Assign a teacher by typing the number: class → section → subject narrow themselves, session defaults
+   - **Assign by class**: pick class + section and the curriculum becomes one row per
+     subject, with the teacher search beside each row — because one teacher usually takes
+     several subjects and other classes. A picked teacher is suggested on the next empty
+     row, and one Save writes the whole grid (an empty row unassigns; history is kept)
+   - A single-row form and a filterable registry list stay available for corrections
    - HR/Office permissions, audit trail, employee assignment tab
    - Assigned teachers printed on the exam signature sheet
 - **Payroll Period Lock**
