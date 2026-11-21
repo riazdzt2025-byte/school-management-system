@@ -82,6 +82,7 @@ urlpatterns = [
     path('employees/assignments/', views.teacher_assignment_list, name='teacher_assignment_list'),
     path('employees/assignments/teacher-lookup/', views.teacher_number_lookup, name='teacher_number_lookup'),
     path('employees/assignments/add/', views.add_teacher_assignment, name='add_teacher_assignment'),
+    path('employees/assignments/grid/', views.teacher_assignment_grid, name='teacher_assignment_grid'),
     path('marks/corrections/<int:pk>/', views.mark_correction_request_detail, name='mark_correction_request_detail'),
     path('marks/corrections/<int:pk>/print/', views.mark_correction_request_print, name='mark_correction_request_print'),
     path('marks/corrections/<int:pk>/edit/', views.edit_mark_correction_request, name='edit_mark_correction_request'),

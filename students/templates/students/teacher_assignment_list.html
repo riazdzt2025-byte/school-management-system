@@ -9,7 +9,8 @@
         <div class="subtitle">Teacher ↔ class / section / subject registry · {{ institution.name|default:"All institutions" }}</div>
     </div>
     {% if perms.students.add_teacherassignment %}
-    <a href="{% url 'add_teacher_assignment' %}" class="btn btn-navy">+ Assign Teacher</a>
+    <a href="{% url 'teacher_assignment_grid' %}" class="btn btn-navy">+ Assign by class</a>
+    <a href="{% url 'add_teacher_assignment' %}" class="btn btn-outline-navy">+ One row</a>
     {% endif %}
 </div>
 

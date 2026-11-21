@@ -317,6 +317,7 @@
         <div class="flyout">
             <a href="{% url 'employee_list' %}"><i class="bi bi-people-fill"></i> Employee List</a>
             <a href="{% url 'add_employee' %}"><i class="bi bi-person-plus-fill"></i> Add Employee</a>
+            {% if perms.students.view_teacherassignment %}<a href="{% url 'teacher_assignment_grid' %}"><i class="bi bi-grid-3x3-gap-fill"></i> Assign by Class</a>{% endif %}
             {% if perms.students.view_teacherassignment %}<a href="{% url 'teacher_assignment_list' %}"><i class="bi bi-diagram-3-fill"></i> Teacher Assignments</a>{% endif %}
         </div>
     </div>
