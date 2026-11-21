@@ -1,3 +1,6 @@
+from pathlib import Path
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -5,6 +8,9 @@ from django.urls import reverse
 
 from .models import Employee, Institution, InstitutionAccess, SignupRequest
 from .teacher_scope import is_teacher_account
+
+TEMPLATES = Path(settings.BASE_DIR) / 'students' / 'templates' / 'students'
+LOGIN_TEMPLATE = Path(settings.BASE_DIR) / 'school_system' / 'templates' / 'students' / 'login.html'
 
 
 class SignupTests(TestCase):
@@ -125,3 +131,57 @@ class SignupTests(TestCase):
         self.assertContains(response, '<select name="institution_id"')
         self.assertContains(response, '<select name="department"')
         self.assertContains(response, reverse('signup'))
+
+
+class SignupScrollingTests(TestCase):
+    """The sign-up form is taller than the card, so it must be scrollable.
+
+    Regression tests for "scrolling does not work on /signup/": the form
+    panel is absolutely positioned inside an ``overflow: hidden`` card.
+    With only ``min-height: 100%`` the panel grew with its content, so
+    ``overflow-y: auto`` never engaged and the form was clipped with no
+    way to reach it; ``justify-content: center`` additionally pushed the
+    top of an overflowing form above the scroll origin. On small screens
+    the panel stayed absolute with ``overflow: visible``, so the page
+    could not scroll to the clipped content either.
+    """
+
+    def _form_box_block(self, template):
+        css = template.read_text(encoding='utf-8')
+        return css.split('.form-box {', 1)[1].split('}', 1)[0]
+
+    def _mobile_block(self, template):
+        css = template.read_text(encoding='utf-8')
+        return css.split('@media (max-width: 720px)', 1)[1].split('@media', 1)[0]
+
+    def test_signup_form_panel_has_a_fixed_height_so_it_can_scroll(self):
+        block = self._form_box_block(TEMPLATES / 'signup.html')
+        self.assertIn('height: 100%', block)
+        self.assertIn('max-height: 100%', block)
+        self.assertIn('overflow-y: auto', block)
+        self.assertNotIn('min-height: 100%', block)
+
+    def test_signup_form_panel_is_not_centered_so_its_top_is_reachable(self):
+        block = self._form_box_block(TEMPLATES / 'signup.html')
+        self.assertNotIn('justify-content: center', block)
+        self.assertIn('justify-content: flex-start', block)
+        # Short panels stay vertically centered via auto margins, which
+        # collapse to 0 when the content is taller than the panel.
+        css = (TEMPLATES / 'signup.html').read_text(encoding='utf-8')
+        self.assertIn('.form-box > :first-child { margin-top: auto; }', css)
+        self.assertIn('.form-box > :last-child { margin-bottom: auto; }', css)
+
+    def test_signup_form_scrolls_the_page_on_small_screens(self):
+        mobile = self._mobile_block(TEMPLATES / 'signup.html')
+        self.assertIn('position: relative', mobile)
+        self.assertIn('height: auto', mobile)
+        self.assertIn('.card { min-height: 0; }', mobile)
+
+    def test_login_form_panel_has_the_same_scroll_contract(self):
+        block = self._form_box_block(LOGIN_TEMPLATE)
+        self.assertIn('height: 100%', block)
+        self.assertIn('overflow-y: auto', block)
+        self.assertNotIn('justify-content: center', block)
+        mobile = self._mobile_block(LOGIN_TEMPLATE)
+        self.assertIn('position: relative', mobile)
+        self.assertIn('.card { min-height: 0; }', mobile)
