@@ -17,7 +17,7 @@ from .permissions import sync_user_department_permissions
 
 class SignupForm(UserCreationForm):
     full_name = forms.CharField(max_length=100, label='Full name / পূর্ণ নাম')
-    institution = forms.ModelChoiceField(queryset=Institution.objects.order_by('name'))
+    institution = forms.ModelChoiceField(queryset=Institution.objects.order_by('name'), empty_label='Select an option')
     department = forms.ChoiceField(choices=InstitutionAccess.DEPARTMENT_CHOICES,
                                    label='Department (Teacher / Staff)')
     designation = forms.CharField(max_length=100, help_text='Teachers: e.g. Assistant Teacher')

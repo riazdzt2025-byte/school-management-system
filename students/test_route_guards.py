@@ -30,12 +30,9 @@ from .models import Institution, InstitutionAccess
 #                                the guardian contact, rate limited, one generic
 #                                answer for every mismatch, noindex, and it
 #                                returns only that applicant's masked name
-#   teacher_login              - the teacher sign-in page (2026-11-20): same
-#                                contract as login — rate limited, and it only
-#                                signs in linked active teaching employees
 PUBLIC_ROUTE_NAMES = {
     'login', 'public_admission_apply', 'admission_dropdown_options',
-    'public_admission_status', 'signup', 'teacher_login',
+    'public_admission_status', 'signup',
 }
 
 SKIPPED_PREFIXES = ('admin/', 'media', 'static')
